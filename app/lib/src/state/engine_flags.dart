@@ -37,6 +37,37 @@ final engineFlagsProvider = NotifierProvider<EngineFlags, String>(
   EngineFlags.new,
 );
 
+/// Whether [flag]'s leading token (e.g. `--fast-list` or the `--transfers` of
+/// `--transfers 8`) is present in [raw].
+bool hasEngineFlag(String raw, String flag) {
+  final name = flag.split(' ').first;
+  return parseEngineFlags(raw).contains(name);
+}
+
+/// Toggles a preset [flag] (a bare `--name` or a `--name value` pair) in [raw]:
+/// removes it (and its value, for the pair form) if its leading token is already
+/// present, otherwise appends it. Returns the new flags string. Used by the
+/// engine-flag preset chips; the free-text field stays the source of truth, so
+/// the two never desync.
+String toggleEngineFlag(String raw, String flag) {
+  final parts = flag.split(' ').where((s) => s.isNotEmpty).toList();
+  if (parts.isEmpty) return raw;
+  final name = parts.first;
+  final tokens = parseEngineFlags(raw);
+  if (!tokens.contains(name)) {
+    return [...tokens, ...parts].join(' ');
+  }
+  final out = <String>[];
+  for (var i = 0; i < tokens.length; i++) {
+    if (tokens[i] == name) {
+      if (parts.length > 1 && i + 1 < tokens.length) i++; // also drop its value
+      continue;
+    }
+    out.add(tokens[i]);
+  }
+  return out.join(' ');
+}
+
 /// Tokenizes a raw flags string into argv-style tokens.
 ///
 /// Splits on whitespace, but a double-quoted substring becomes ONE token with

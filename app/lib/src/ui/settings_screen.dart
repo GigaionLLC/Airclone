@@ -574,6 +574,33 @@ class _EngineFlagsSectionState extends ConsumerState<_EngineFlagsSection> {
               'Optional global flags added to the rclone engine, e.g. '
               '--transfers 8 --fast-list. Applied when the engine restarts.',
         ),
+        // One-tap presets for common flags; they compose into the text below
+        // (which stays the source of truth).
+        Wrap(
+          spacing: Space.x2,
+          runSpacing: Space.x1,
+          children: [
+            for (final f in const [
+              '--fast-list',
+              '--transfers 8',
+              '--checkers 16',
+              '--no-traverse',
+            ])
+              FilterChip(
+                label: Text(
+                  f,
+                  style: const TextStyle(fontSize: 12, fontFamily: 'monospace'),
+                ),
+                visualDensity: VisualDensity.compact,
+                selected: hasEngineFlag(_c.text, f),
+                onSelected: (_) => setState(() {
+                  _c.text = toggleEngineFlag(_c.text, f);
+                  _dirty = true;
+                }),
+              ),
+          ],
+        ),
+        const SizedBox(height: Space.x2),
         TextField(
           controller: _c,
           style: const TextStyle(fontSize: 13),

@@ -6,6 +6,23 @@ All changes made by AI agents are tracked chronologically below (most recent fir
 
 <!-- New entries go above this line, most recent first -->
 
+## [2026-06-28] - v0.1.0-alpha.38: engine-flag preset chips (discoverability Phase C)
+
+**Agent:** Airclone Build (Claude Opus 4.8)
+**Files Modified:**
+- `state/engine_flags.dart`: pure `hasEngineFlag(raw, flag)` + `toggleEngineFlag(raw, flag)` (handles bare
+  `--name` and `--name value` pairs; removes the value with the name; free-text stays source of truth)
+- `ui/settings_screen.dart`: `_EngineFlagsSection` shows a `Wrap` of `FilterChip` presets (`--fast-list`,
+  `--transfers 8`, `--checkers 16`, `--no-traverse`) above the text field, composing into it
+- New `test/engine_flags_test.dart`: 5 tests (tokenize + add/remove bare + value flags + reflect existing)
+- pubspec → alpha.38
+
+**Database/API Changes:** None
+**Summary:** alpha.38 — Phase C of the discoverability track: common engine flags are now one-tap chips that
+compose into the existing free-text field, so users don't need to know rclone's flag syntax. analyze (0) /
+test (49, +5) / Windows build green. Discoverability track (A–C) done; next up is the skins track
+(Airclone default + optional Explorer/Finder/GNOME).
+
 ## [2026-06-28] - v0.1.0-alpha.37: discoverable advanced transfer options (Phase A+B of the discoverability track)
 
 **Agent:** Airclone Build (Claude Opus 4.8) — preceded by a 4-agent audit/research/plan workflow
