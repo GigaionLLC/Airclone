@@ -6,6 +6,27 @@ All changes made by AI agents are tracked chronologically below (most recent fir
 
 <!-- New entries go above this line, most recent first -->
 
+## [2026-06-28] - v0.1.0-alpha.25: native window backdrop (Mica/Acrylic, opt-in)
+
+**Agent:** Airclone Build (Claude Opus 4.8) — background agent drafted the state file; integration by main
+**Files Modified:**
+- New `state/window_backdrop.dart`: `WindowBackdrop` enum (systemDefault/solid/mica/acrylic) + `.label`;
+  persisted `windowBackdropProvider`; `initWindowBackdrop()` / `applyWindowBackdrop()` (flutter_acrylic,
+  every call try/caught); `loadSavedBackdrop()` for startup
+- `main.dart`: async — `initWindowBackdrop()` + `applyWindowBackdrop(loadSavedBackdrop())` before runApp
+- `ui/app.dart`: when Mica/Acrylic active, theme `scaffoldBackgroundColor`/`canvasColor` → transparent so
+  the OS material reads through
+- `ui/settings_screen.dart`: `_BackdropSection` (Window background dropdown) under Appearance
+- pubspec: `flutter_acrylic: ^1.1.4`; → alpha.25
+
+**Database/API Changes:** None
+**Summary:** alpha.25 — opt-in **native window backdrop**. Settings → Window background offers Mica (Win11)
+/ Acrylic / Solid / System default; the choice is applied via flutter_acrylic and persisted, and the app
+paints transparently behind the material when active. All native calls are best-effort no-ops where
+unsupported, and the default (System default) leaves the standard opaque window — verified the app builds
+**and launches** with the new startup init. First cut of the native-chrome track; per-surface translucency
+tuning will follow (needs visual iteration). analyze (0) / test (19) / Windows build + launch green.
+
 ## [2026-06-28] - v0.1.0-alpha.24: transfer concurrency queue
 
 **Agent:** Airclone Build (Claude Opus 4.8)

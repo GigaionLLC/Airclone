@@ -11,6 +11,7 @@ import '../state/engine_controller.dart';
 import '../state/engine_flags.dart';
 import '../state/jobs_controller.dart';
 import '../state/settings_controller.dart';
+import '../state/window_backdrop.dart';
 import 'theme/tokens.dart';
 
 /// Opens the app settings dialog (theme, engine path override, update check).
@@ -46,6 +47,8 @@ class SettingsDialog extends ConsumerWidget {
                 _Header(),
                 const SizedBox(height: Space.x5),
                 _ThemeSection(),
+                const SizedBox(height: Space.x5),
+                _BackdropSection(),
                 const SizedBox(height: Space.x5),
                 _ModeSection(),
                 const SizedBox(height: Space.x5),
@@ -376,6 +379,52 @@ class _ThemeSection extends ConsumerWidget {
           showSelectedIcon: false,
           onSelectionChanged: (sel) => ctrl.setThemeMode(sel.first),
         ),
+      ],
+    );
+  }
+}
+
+/// Desktop window background material (Mica/Acrylic on Windows 11).
+class _BackdropSection extends ConsumerWidget {
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final c = AircloneTheme.of(context);
+    final backdrop = ref.watch(windowBackdropProvider);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const _SectionLabel(
+          'Window background',
+          help:
+              'Translucent materials need OS support (Mica is Windows 11). '
+              'Falls back to a normal window where unavailable.',
+        ),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: DropdownButton<WindowBackdrop>(
+            value: backdrop,
+            underline: const SizedBox.shrink(),
+            borderRadius: BorderRadius.circular(Radii.md),
+            items: [
+              for (final b in WindowBackdrop.values)
+                DropdownMenuItem(value: b, child: Text(b.label)),
+            ],
+            onChanged: (v) {
+              if (v != null) {
+                ref.read(windowBackdropProvider.notifier).set(v);
+              }
+            },
+          ),
+        ),
+        if (backdrop == WindowBackdrop.mica ||
+            backdrop == WindowBackdrop.acrylic) ...[
+          const SizedBox(height: 2),
+          Text(
+            'Tip: the effect shows behind the app. Some surfaces stay solid for '
+            'readability.',
+            style: TextStyle(color: c.textFaint, fontSize: 11),
+          ),
+        ],
       ],
     );
   }
