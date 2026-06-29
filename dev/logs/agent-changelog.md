@@ -6,6 +6,23 @@ All changes made by AI agents are tracked chronologically below (most recent fir
 
 <!-- New entries go above this line, most recent first -->
 
+## [2026-06-29] - v0.1.0-alpha.46: per-skin chrome — Explorer toolbar (chrome P3)
+
+**Agent:** Airclone Build (Claude Opus 4.8) — branch `explorer-finder-chrome`.
+**Files Modified:**
+- `ui/theme/tokens.dart`: `SkinChrome` gains `showActivePaneDot`, `newButtonLabel`, `searchAlwaysVisible`,
+  `showDetailsToggle` (Airclone: dot on, no label/details, search toggled; Windows: dot off, New label,
+  wide search, Details; macOS: dot off, wide search; GNOME: dot off).
+- `ui/browser_pane.dart`: `_addressRow` hides the dot + widens `_FilterBox` per chrome; `_FilterBox` gains a
+  `width`; `_commandRow` renders a labelled "New" (`_cmdLabeled` helper) + a far-right "Details" toggle
+  (drives `inspectorVisibleProvider`). Imported `inspector_panel.dart`.
+- pubspec → alpha.46.
+
+**Database/API Changes:** None
+**Summary:** alpha.46 (branch) — the Explorer skin's pane toolbar now reads more like Explorer: no active-pane
+dot, a labelled New, a wide always-on Search, and a far-right Details toggle. analyze (0) / test (57) /
+Windows build green. Next: Finder unified toolbar (P4). **Needs the user's eyes.**
+
 ## [2026-06-29] - v0.1.0-alpha.45: per-skin chrome — SkinChrome delegate + sidebar makeover (chrome P0–P2)
 
 **Agent:** Airclone Build (Claude Opus 4.8) — preceded by a 4-agent audit+plan workflow; on branch

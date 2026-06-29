@@ -427,6 +427,10 @@ class SkinChrome {
     required this.colouredFolderIcons,
     required this.tileShowsSubtitle,
     required this.sidebarItemInset,
+    required this.showActivePaneDot,
+    required this.newButtonLabel,
+    required this.searchAlwaysVisible,
+    required this.showDetailsToggle,
   });
 
   /// Sidebar row selection treatment.
@@ -443,6 +447,19 @@ class SkinChrome {
 
   /// Horizontal inset so selection pills don't run edge-to-edge.
   final double sidebarItemInset;
+
+  /// Show the small active-pane indicator dot in the address row (Airclone).
+  final bool showActivePaneDot;
+
+  /// Label for the "New" command (Explorer's "New ▾"); null = icon-only.
+  final String? newButtonLabel;
+
+  /// Dock a wide, always-visible Search field at the far right of the address
+  /// row (Explorer/Finder) instead of a toggled filter box.
+  final bool searchAlwaysVisible;
+
+  /// Pin a "Details" pane toggle at the far right of the command row (Explorer).
+  final bool showDetailsToggle;
 
   static SkinChrome of(Skin skin) => switch (skin) {
     Skin.airclone => airclone,
@@ -461,6 +478,10 @@ class SkinChrome {
     colouredFolderIcons: false,
     tileShowsSubtitle: true,
     sidebarItemInset: 0,
+    showActivePaneDot: true,
+    newButtonLabel: null,
+    searchAlwaysVisible: false,
+    showDetailsToggle: false,
   );
 
   static const windows = SkinChrome(
@@ -469,6 +490,10 @@ class SkinChrome {
     colouredFolderIcons: true,
     tileShowsSubtitle: false,
     sidebarItemInset: 4,
+    showActivePaneDot: false,
+    newButtonLabel: 'New',
+    searchAlwaysVisible: true,
+    showDetailsToggle: true,
   );
 
   static const macos = SkinChrome(
@@ -477,6 +502,10 @@ class SkinChrome {
     colouredFolderIcons: true,
     tileShowsSubtitle: false,
     sidebarItemInset: 6,
+    showActivePaneDot: false,
+    newButtonLabel: null,
+    searchAlwaysVisible: true,
+    showDetailsToggle: false,
   );
 
   static const gnome = SkinChrome(
@@ -485,6 +514,10 @@ class SkinChrome {
     colouredFolderIcons: false,
     tileShowsSubtitle: false,
     sidebarItemInset: 4,
+    showActivePaneDot: false,
+    newButtonLabel: null,
+    searchAlwaysVisible: false,
+    showDetailsToggle: false,
   );
 }
 

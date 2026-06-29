@@ -21,6 +21,7 @@ import 'file_grid.dart';
 import 'file_icon.dart';
 import 'file_op_dialogs.dart';
 import 'format.dart';
+import 'inspector_panel.dart';
 import 'media_gallery.dart';
 import 'native_drag.dart';
 import 'pane_drag.dart';
@@ -774,6 +775,7 @@ class _PaneToolbar extends ConsumerWidget {
   // ── Row 1: nav + breadcrumb path + filter ────────────────────────────────
   Widget _addressRow(BuildContext context, WidgetRef ref, AircloneColors c) {
     final ctrl = ref.read(paneProvider(index).notifier);
+    final chrome = AircloneTheme.chromeOf(context);
     final segs = state.segments;
     return SizedBox(
       height: 38,
@@ -781,15 +783,16 @@ class _PaneToolbar extends ConsumerWidget {
         padding: const EdgeInsets.symmetric(horizontal: Space.x2),
         child: Row(
           children: [
-            Container(
-              width: 6,
-              height: 6,
-              margin: const EdgeInsets.only(right: Space.x2),
-              decoration: BoxDecoration(
-                color: active ? c.primary : c.border,
-                shape: BoxShape.circle,
+            if (chrome.showActivePaneDot)
+              Container(
+                width: 6,
+                height: 6,
+                margin: const EdgeInsets.only(right: Space.x2),
+                decoration: BoxDecoration(
+                  color: active ? c.primary : c.border,
+                  shape: BoxShape.circle,
+                ),
               ),
-            ),
             IconButton(
               onPressed: ctrl.canBack ? ctrl.back : null,
               icon: const Icon(Icons.arrow_back, size: 15),
@@ -829,7 +832,11 @@ class _PaneToolbar extends ConsumerWidget {
                 onNavigate: ctrl.navigateTo,
               ),
             ),
-            if (state.remote != null) _FilterBox(index: index),
+            if (state.remote != null)
+              _FilterBox(
+                index: index,
+                width: chrome.searchAlwaysVisible ? 220 : 150,
+              ),
             if (state.remote != null)
               IconButton(
                 tooltip: 'Close pane (deselect remote)',
@@ -851,6 +858,7 @@ class _PaneToolbar extends ConsumerWidget {
     final oneSel = state.selected.length == 1;
     final clipFull = ref.watch(clipboardControllerProvider).isNotEmpty;
     final other = ref.watch(paneProvider(index == 0 ? 1 : 0));
+    final chrome = AircloneTheme.chromeOf(context);
 
     return SizedBox(
       height: 38,
@@ -863,13 +871,22 @@ class _PaneToolbar extends ConsumerWidget {
                 scrollDirection: Axis.horizontal,
                 child: Row(
                   children: [
-                    _cmd(
-                      c,
-                      Icons.create_new_folder_outlined,
-                      'New folder',
-                      enabled: hasRemote,
-                      onTap: () => _newFolder(context, ref),
-                    ),
+                    if (chrome.newButtonLabel != null)
+                      _cmdLabeled(
+                        c,
+                        Icons.add,
+                        chrome.newButtonLabel!,
+                        enabled: hasRemote,
+                        onTap: () => _newFolder(context, ref),
+                      )
+                    else
+                      _cmd(
+                        c,
+                        Icons.create_new_folder_outlined,
+                        'New folder',
+                        enabled: hasRemote,
+                        onTap: () => _newFolder(context, ref),
+                      ),
                     _sep(c),
                     _cmd(
                       c,
@@ -953,11 +970,44 @@ class _PaneToolbar extends ConsumerWidget {
                 onTap: ctrl.clearSelection,
               ),
             ],
+            // Explorer pins a "Details" pane toggle at the far right.
+            if (chrome.showDetailsToggle)
+              _cmdLabeled(
+                c,
+                Icons.view_sidebar_outlined,
+                'Details',
+                enabled: true,
+                onTap: () => ref
+                    .read(inspectorVisibleProvider.notifier)
+                    .update((v) => !v),
+              ),
           ],
         ),
       ),
     );
   }
+
+  /// A labelled toolbar button (Explorer's "New", "Details"). Icon + text.
+  Widget _cmdLabeled(
+    AircloneColors c,
+    IconData icon,
+    String label, {
+    required bool enabled,
+    required VoidCallback onTap,
+  }) => Padding(
+    padding: const EdgeInsets.symmetric(horizontal: 1),
+    child: TextButton.icon(
+      onPressed: enabled ? onTap : null,
+      icon: Icon(icon, size: 15),
+      label: Text(label, style: const TextStyle(fontSize: 12)),
+      style: TextButton.styleFrom(
+        foregroundColor: c.textMuted,
+        disabledForegroundColor: c.textFaint,
+        visualDensity: VisualDensity.compact,
+        padding: const EdgeInsets.symmetric(horizontal: Space.x2),
+      ),
+    ),
+  );
 
   Widget _cmd(
     AircloneColors c,
@@ -1361,8 +1411,9 @@ class _FileRowState extends ConsumerState<_FileRow> {
 
 /// Compact client-side filter box (Ctrl+F focuses the active pane's box).
 class _FilterBox extends ConsumerStatefulWidget {
-  const _FilterBox({required this.index});
+  const _FilterBox({required this.index, this.width = 150});
   final int index;
+  final double width;
 
   @override
   ConsumerState<_FilterBox> createState() => _FilterBoxState();
@@ -1390,7 +1441,7 @@ class _FilterBoxState extends ConsumerState<_FilterBox> {
       if (next.isEmpty && _controller.text.isNotEmpty) _controller.clear();
     });
     return SizedBox(
-      width: 150,
+      width: widget.width,
       height: 28,
       child: TextField(
         controller: _controller,
