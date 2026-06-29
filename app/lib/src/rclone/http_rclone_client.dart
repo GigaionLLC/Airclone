@@ -34,6 +34,36 @@ class HttpRcloneClient implements RcloneClient {
 
   Uri _uri(String method) => Uri.parse('http://127.0.0.1:$_port/$method');
 
+  /// Marker recording the PID of the `rcd` child WE last spawned, so a fresh
+  /// launch can reap a leftover from a force-killed prior run. Only ever holds
+  /// our own single recorded PID — never a broad process-name match.
+  File get _markerFile => File('${Directory.systemTemp.path}/airclone_rcd.pid');
+
+  /// Best-effort kill of the `rcd` child from a previous run that was orphaned
+  /// by a hard exit. Targets only the single PID we recorded in the marker, so
+  /// it cannot touch the user's other rclone processes.
+  Future<void> _reapPreviousRcd() async {
+    final marker = _markerFile;
+    try {
+      if (!await marker.exists()) return;
+      final pid = int.tryParse((await marker.readAsString()).trim());
+      if (pid != null) {
+        try {
+          Process.killPid(pid, ProcessSignal.sigkill);
+        } catch (_) {
+          /* stale or already gone; ignore */
+        }
+      }
+      try {
+        await marker.delete();
+      } catch (_) {
+        /* ignore */
+      }
+    } catch (_) {
+      /* ignore unreadable/missing marker */
+    }
+  }
+
   @override
   ObjectRef objectRef(String fs, String remote) {
     // rcd `--rc-serve` exposes objects at /[<fs>]/<remote-path> with Basic auth.
@@ -47,6 +77,9 @@ class HttpRcloneClient implements RcloneClient {
   @override
   Future<void> start() async {
     if (_process != null) return;
+
+    // Reap any rcd child orphaned by a prior hard exit before spawning a new one.
+    await _reapPreviousRcd();
 
     final port = await _freeLoopbackPort();
     final user = 'airclone';
@@ -80,6 +113,12 @@ class HttpRcloneClient implements RcloneClient {
           ? {'RCLONE_CONFIG_PASS': configPassword!}
           : null,
     );
+    // Record the new child's PID so a future launch can reap it if we crash.
+    try {
+      await _markerFile.writeAsString('${_process!.pid}');
+    } catch (_) {
+      /* non-fatal: reaping is best-effort */
+    }
     // Surface engine stderr to the app log for diagnostics.
     _process!.stderr.transform(utf8.decoder).listen((line) {
       // ignore: avoid_print
@@ -158,6 +197,12 @@ class HttpRcloneClient implements RcloneClient {
     _port = null;
     _authHeader = null;
     _version = null;
+    // Clean shutdown: drop the reap marker so no future launch targets this PID.
+    try {
+      await _markerFile.delete();
+    } catch (_) {
+      /* already gone; ignore */
+    }
   }
 
   @override

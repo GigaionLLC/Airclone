@@ -197,6 +197,7 @@ class BrowserPane extends ConsumerWidget {
               joinPath(state.path, f.name),
             ),
             thumbRequestFor: thumbReqFor,
+            folderPreviews: thumbsOn,
           );
         case ViewMode.media:
           content = MediaGallery(

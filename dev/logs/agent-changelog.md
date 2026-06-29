@@ -6,6 +6,26 @@ All changes made by AI agents are tracked chronologically below (most recent fir
 
 <!-- New entries go above this line, most recent first -->
 
+## [2026-06-28] - v0.1.0-alpha.16: folder previews + safe orphaned-engine reap (2-agent workflow)
+
+**Agent:** Airclone Build (Claude Opus 4.8) + 2-agent parallel workflow
+**Files Modified:**
+- New (agent): `ui/folder_thumbnail.dart` (`FolderThumbnail` — lists a folder, composites its first ≤4
+  images via the alpha.15 `FolderPreviewService`, falls back to the folder icon; cached)
+- Edited (agent): `rclone/http_rclone_client.dart` — records the spawned rcd PID to a temp marker; on next
+  `start()` best-effort `Process.killPid` the previously-recorded PID then clears it (targeted reap, never a
+  broad name match); clears the marker on `quit()`
+- New (me wiring): `ui/file_grid.dart` gains a `folderPreviews` flag → renders `FolderThumbnail` for dir tiles
+  when on; `ui/browser_pane.dart` passes `folderPreviews: thumbsOn` to the grid
+- pubspec → alpha.16
+
+**Database/API Changes:** None
+**Summary:** alpha.16 — **folder previews**: in grid view, a folder shows a composite of its first few images
+(2×2) instead of a plain icon when thumbnails are enabled for the remote (local always; cloud opt-in), with a
+graceful icon fallback for empty/non-image folders. Also fixes the **orphaned `rclone rcd`** accumulation
+safely — only the single PID we recorded is reaped, so the user's unrelated rclone processes are never
+touched. Both units authored concurrently by a 2-agent workflow. analyze (0) / test (16) / Windows build green.
+
 ## [2026-06-28] - v0.1.0-alpha.15: advanced transfer dialog + live stats (3-agent workflow)
 
 **Agent:** Airclone Build (Claude Opus 4.8) + 3-agent parallel workflow

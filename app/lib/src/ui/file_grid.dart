@@ -6,6 +6,7 @@ import '../rclone/models/remote.dart';
 import '../state/browser_controller.dart';
 import '../state/thumbnail_service.dart';
 import 'file_icon.dart';
+import 'folder_thumbnail.dart';
 import 'thumbnail_image.dart';
 import 'pane_drag.dart';
 import 'theme/tokens.dart';
@@ -26,6 +27,7 @@ class FileGrid extends ConsumerWidget {
     required this.onContextMenu,
     required this.onDropInto,
     required this.thumbRequestFor,
+    this.folderPreviews = false,
   });
 
   /// Already filtered + sorted; rendered as-is.
@@ -48,6 +50,9 @@ class FileGrid extends ConsumerWidget {
 
   /// Null => render an icon only (no thumbnail).
   final ThumbRequest? Function(RcloneFile) thumbRequestFor;
+
+  /// When true, folders render a composite preview of their first images.
+  final bool folderPreviews;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -73,6 +78,7 @@ class FileGrid extends ConsumerWidget {
         onContextMenu: onContextMenu,
         onDropInto: onDropInto,
         request: thumbRequestFor(entries[i]),
+        folderPreviews: folderPreviews,
       ),
     );
   }
@@ -92,6 +98,7 @@ class _GridTile extends StatelessWidget {
     required this.onContextMenu,
     required this.onDropInto,
     required this.request,
+    required this.folderPreviews,
   });
 
   final RcloneFile file;
@@ -105,6 +112,7 @@ class _GridTile extends StatelessWidget {
   final void Function(RcloneFile file, Offset globalPosition) onContextMenu;
   final void Function(RcloneFile dir, PaneDragData data) onDropInto;
   final ThumbRequest? request;
+  final bool folderPreviews;
 
   @override
   Widget build(BuildContext context) {
@@ -195,6 +203,13 @@ class _GridTile extends StatelessWidget {
             placeholder: Center(
               child: Icon(iconFor(file), color: iconColorFor(file, c)),
             ),
+          )
+        : (file.isDir && folderPreviews)
+        ? FolderThumbnail(
+            remote: remote,
+            parentPath: state.path,
+            folder: file,
+            placeholder: Center(child: icon),
           )
         : Center(child: icon);
 
