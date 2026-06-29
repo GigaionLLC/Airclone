@@ -4,6 +4,7 @@ import '../rclone/models/job.dart';
 import '../rclone/models/remote.dart';
 import 'engine_controller.dart';
 import 'jobs_controller.dart';
+import 'transfer_options.dart';
 
 /// Builds async rclone transfers and registers them as [Job]s so the Jobs panel
 /// can track progress.
@@ -84,6 +85,59 @@ class TransferService {
       }
 
       final res = await client.rpc(method, params);
+      final jobid = res['jobid'];
+      if (jobid is num) {
+        jobs.update(job.id, jobid: jobid.toInt());
+      } else {
+        jobs.markDone(
+          job.id,
+          JobStatus.failed,
+          error: 'rclone did not return a job id',
+        );
+      }
+    } catch (e) {
+      jobs.markDone(job.id, JobStatus.failed, error: '$e');
+    }
+  }
+
+  /// Advanced Copy/Move/Sync of [srcPath] → [dstPath] driven by [options]
+  /// (skip rules, compare mode, include/exclude/filter, dry-run). Dispatches
+  /// `sync/copy|move|sync` with the assembled `_config`/`_filter` and tracks it
+  /// as a [Job].
+  Future<void> transferAdvanced({
+    required Remote srcRemote,
+    required String srcPath,
+    required Remote dstRemote,
+    required String dstPath,
+    required TransferOptions options,
+  }) async {
+    final client = _ref.read(engineControllerProvider).client;
+    final jobs = _ref.read(jobsControllerProvider.notifier);
+    final jtype = switch (options.mode) {
+      TransferMode.copy => JobType.copy,
+      TransferMode.move => JobType.move,
+      TransferMode.sync => JobType.sync,
+    };
+    final job = jobs.add(
+      type: jtype,
+      source: '${srcRemote.name}:$srcPath${options.dryRun ? ' (dry run)' : ''}',
+      dest: '${dstRemote.name}:$dstPath',
+    );
+    if (client == null) {
+      jobs.markDone(job.id, JobStatus.failed, error: 'Engine not ready');
+      return;
+    }
+    final call = buildRcCall(
+      options,
+      '${srcRemote.fs}$srcPath',
+      '${dstRemote.fs}$dstPath',
+    );
+    final params = <String, dynamic>{
+      ...call.params,
+      '_group': 'airclone/${job.id}',
+    };
+    try {
+      final res = await client.rpc(call.method, params);
       final jobid = res['jobid'];
       if (jobid is num) {
         jobs.update(job.id, jobid: jobid.toInt());

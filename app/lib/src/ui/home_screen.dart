@@ -13,6 +13,7 @@ import '../state/browser_controller.dart';
 import '../state/engine_controller.dart';
 import '../state/local_locations.dart';
 import '../state/remotes_provider.dart';
+import '../state/stats_controller.dart';
 import '../state/transfer_service.dart';
 import 'add_remote_dialog.dart';
 import 'bandwidth_control.dart';
@@ -22,6 +23,7 @@ import 'jobs_panel.dart';
 import 'pane_drag.dart';
 import 'quick_look.dart';
 import 'settings_screen.dart';
+import 'stats_panel.dart';
 import 'theme/tokens.dart';
 
 /// Whether the explorer shows a single wide pane (default, Spacedrive-like) or
@@ -158,7 +160,22 @@ class _WorkArea extends ConsumerWidget {
         ),
         if (jobsExpanded) ...[
           Divider(height: 1, color: c.border),
-          const SizedBox(height: 220, child: JobsPanel()),
+          SizedBox(
+            height: 220,
+            child: Column(
+              children: [
+                if (ref.watch(statsProvider.select((s) => s.isActive)))
+                  const SizedBox(
+                    height: 100,
+                    child: Padding(
+                      padding: EdgeInsets.all(Space.x2),
+                      child: StatsPanel(),
+                    ),
+                  ),
+                const Expanded(child: JobsPanel()),
+              ],
+            ),
+          ),
         ],
       ],
     );

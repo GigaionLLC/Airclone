@@ -54,6 +54,12 @@ Prioritized roadmap distilled from competitive + engine research. Tags: `[D]` de
 - [ ] **Global settings window** — custom rclone flags · VFS · bandwidth · performance presets.
 - [ ] **Easy ⇄ Advanced mode** toggle (progressive disclosure of the above).
 
+### 🐞 Known robustness bugs
+- [ ] **Orphaned engine processes** — force-killing `airclone.exe` leaves its spawned `rclone rcd`
+  child running (observed 15+ stray `rcd` accumulating). On desktop, tie `rcd`'s lifetime to the app
+  (Windows Job Object / `CREATE_BREAKAWAY` off; POSIX prctl/`PR_SET_PDEATHSIG`) and reap any orphaned
+  `rcd` on startup before spawning a new one.
+
 ### 💡 Recommended additions (proposed)
 - [ ] **Type-to-navigate** (typeahead) + full keyboard map (F2 rename · Del · Ctrl+C/X/V/A · Enter).
 - [ ] **Morphing breadcrumb path bar** (collapsed → breadcrumbs → editable type-to-go).

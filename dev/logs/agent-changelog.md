@@ -6,6 +6,29 @@ All changes made by AI agents are tracked chronologically below (most recent fir
 
 <!-- New entries go above this line, most recent first -->
 
+## [2026-06-28] - v0.1.0-alpha.15: advanced transfer dialog + live stats (3-agent workflow)
+
+**Agent:** Airclone Build (Claude Opus 4.8) + 3-agent parallel workflow
+**Files Modified:**
+- New (agents): `state/transfer_options.dart` (TransferMode/CompareMode, `TransferOptions`, `rcloneCmdPreview`,
+  `buildRcCall` → `sync/copy|move|sync` + `_config`/`_filter`), `ui/transfer_options_dialog.dart`
+  (`showTransferOptionsDialog` — Settings/Filters/rclone-cmd tabs, Dry-run/Run), `state/stats_controller.dart`
+  (`statsProvider` 1s `core/stats` poller → `CoreStats`/`TransferItem`), `ui/stats_panel.dart` (`StatsPanel`
+  live strip), `state/folder_preview.dart` (`FolderPreviewService` — composites a folder thumbnail from its
+  first images; ready, wiring next)
+- New (me): `TransferService.transferAdvanced(...)` dispatches `buildRcCall` with `_group`/`_async` + Job tracking
+- Refactored: `ui/browser_pane.dart` (command-bar **Advanced transfer** button → dialog → `transferAdvanced`),
+  `ui/home_screen.dart` (live `StatsPanel` strip in the transfers dock, shown while transfers are active)
+- pubspec → alpha.15
+
+**Database/API Changes:** None (uses `sync/*` + `core/stats` RC)
+**Summary:** alpha.15 — the **power-user transfer path**. Select files → **Advanced transfer** (tune icon)
+opens a tabbed dialog: Copy/Move/Sync, skip-newer/skip-existing, compare by size/checksum, Include/Exclude/
+Filter pattern lists, and a **live `rclone` command preview**, with **Dry run** or **Run**. While transfers
+run, a **live stats strip** shows aggregate speed/ETA + per-file progress (`core/stats`). The three feature
+units were authored concurrently by a 3-agent workflow, then integrated. analyze (0) / test (16) / Windows
+build green locally.
+
 ## [2026-06-28] - v0.1.0-alpha.14: Explorer-style command toolbar + view-size presets
 
 **Agent:** Airclone Build (Claude Opus 4.8)

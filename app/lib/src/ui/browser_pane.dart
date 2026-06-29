@@ -27,6 +27,7 @@ import 'pane_drag.dart';
 import 'path_bar.dart';
 import 'quick_look.dart';
 import 'theme/tokens.dart';
+import 'transfer_options_dialog.dart';
 
 /// One of the two dual-pane browsers. [index] 0 = A (left), 1 = B (right).
 class BrowserPane extends ConsumerWidget {
@@ -791,6 +792,13 @@ class _PaneToolbar extends ConsumerWidget {
               ),
               _cmd(
                 c,
+                Icons.tune,
+                'Advanced transfer to other pane…',
+                enabled: other.remote != null,
+                onTap: () => _advancedTransfer(context, ref),
+              ),
+              _cmd(
+                c,
                 Icons.close,
                 'Clear selection',
                 enabled: true,
@@ -997,6 +1005,35 @@ class _PaneToolbar extends ConsumerWidget {
         dstRemote: to.remote!,
         dstPath: joinPath(to.path, f.name),
         type: type,
+      );
+    }
+    ref.read(paneProvider(index).notifier).clearSelection();
+  }
+
+  /// Opens the advanced Copy/Move/Sync options dialog and runs the chosen
+  /// transfer of the selection into the other pane.
+  Future<void> _advancedTransfer(BuildContext context, WidgetRef ref) async {
+    final from = ref.read(paneProvider(index));
+    final to = ref.read(paneProvider(index == 0 ? 1 : 0));
+    if (from.remote == null ||
+        to.remote == null ||
+        from.selectedEntries.isEmpty) {
+      return;
+    }
+    final options = await showTransferOptionsDialog(
+      context,
+      fromLabel: '${from.remote!.name}:${from.path}',
+      toLabel: '${to.remote!.name}:${to.path}',
+    );
+    if (options == null) return;
+    final svc = ref.read(transferServiceProvider);
+    for (final f in from.selectedEntries) {
+      await svc.transferAdvanced(
+        srcRemote: from.remote!,
+        srcPath: joinPath(from.path, f.name),
+        dstRemote: to.remote!,
+        dstPath: joinPath(to.path, f.name),
+        options: options,
       );
     }
     ref.read(paneProvider(index).notifier).clearSelection();
