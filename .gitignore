@@ -1,0 +1,52 @@
+# ─── External reference material (NEVER commit) ────────────────────────────
+# Competitive research notes, clones, screenshots, and feature breakdowns of
+# third-party projects, plus the documentation-methodology source. Kept locally
+# so we can learn from them without shipping external resources in our repo.
+/reference/
+
+# Vendored agent/dev skills (their own third-party permissive licenses). Dev
+# tooling only — not part of the shipped app. Kept locally, out of this repo.
+/Skills/
+
+# ─── Dependencies / build output ───────────────────────────────────────────
+node_modules/
+dist/
+dist-ssr/
+build/
+out/
+target/
+.output/
+*.local
+
+# ─── Flutter / Dart ────────────────────────────────────────────────────────
+# (app/.gitignore covers most of these within app/; these are repo-wide guards.)
+/.pub-cache/
+.pub-cache/
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+**/windows/flutter/ephemeral/
+**/linux/flutter/ephemeral/
+**/macos/Flutter/ephemeral/
+*.iml
+
+# ─── Tauri / Rust (if adopted) ─────────────────────────────────────────────
+src-tauri/target/
+**/*.rs.bk
+
+# ─── Editor / OS ───────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+.idea/
+
+# ─── Logs / env ────────────────────────────────────────────────────────────
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.env
+.env.*
+!.env.example

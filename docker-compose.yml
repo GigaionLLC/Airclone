@@ -1,0 +1,38 @@
+# Container-based dev workflow for Airclone.
+# Linux containers (this machine's Docker is linux/amd64) handle: scaffold,
+# `flutter pub get`, `flutter analyze`, `flutter test`, codegen, and Linux/Android/web
+# builds. They CANNOT build the Windows or macOS desktop binaries — those are produced
+# on GitHub Actions windows-latest / macos-latest runners (see .github/workflows/).
+#
+# The pub cache lives in a Docker NAMED VOLUME (not in the repo) so it is fast, survives
+# across runs, and never shows up in git. Do NOT put PUB_CACHE on the bind mount —
+# cross-mount atomic renames fail and it pollutes the working tree.
+#
+# Usage:
+#   docker compose run --rm flutter flutter --version
+#   docker compose run --rm flutter flutter pub get
+#   docker compose run --rm flutter flutter analyze
+#   docker compose run --rm flutter flutter test
+#   # one-time scaffold (run from /work):
+#   docker compose run --rm -w /work flutter \
+#     flutter create --org app.airclone --project-name airclone \
+#       --platforms=windows,macos,linux,android,ios app
+#
+# Helper wrappers: tool/flutter.sh (bash) and tool/flutter.ps1 (PowerShell).
+
+services:
+  flutter:
+    image: ghcr.io/cirruslabs/flutter:stable
+    working_dir: /work/app
+    volumes:
+      - ./:/work
+      - pub-cache:/root/.pub-cache
+    environment:
+      PUB_CACHE: /root/.pub-cache
+      # Mark the mounted repo safe for the SDK's git calls.
+      GIT_CONFIG_COUNT: "1"
+      GIT_CONFIG_KEY_0: safe.directory
+      GIT_CONFIG_VALUE_0: "*"
+
+volumes:
+  pub-cache:

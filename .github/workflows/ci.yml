@@ -1,0 +1,40 @@
+name: CI
+
+# Fast feedback on every push/PR: format check, static analysis, and unit tests.
+# These run on ubuntu (and locally via `docker compose run --rm flutter ...`) and do
+# NOT require the Windows/macOS toolchains.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+defaults:
+  run:
+    working-directory: app
+
+jobs:
+  analyze-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - name: Install dependencies
+        run: flutter pub get
+      - name: Verify formatting
+        run: dart format --output=none --set-exit-if-changed .
+      - name: Analyze
+        run: flutter analyze
+      - name: Unit tests
+        run: flutter test --coverage
+      - name: Upload coverage
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: app/coverage/lcov.info
+          if-no-files-found: ignore
