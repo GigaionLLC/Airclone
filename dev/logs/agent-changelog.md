@@ -6,6 +6,29 @@ All changes made by AI agents are tracked chronologically below (most recent fir
 
 <!-- New entries go above this line, most recent first -->
 
+## [2026-06-28] - v0.1.0-alpha.22: easy/advanced mode + saved transfer tasks
+
+**Agent:** Airclone Build (Claude Opus 4.8)
+**Files Modified:**
+- New: `state/advanced_mode.dart` (`advancedModeProvider`, persisted), `state/tasks_controller.dart`
+  (`TransferTask` + persisted `tasksProvider`), `ui/tasks_panel.dart` (`showTasksDialog` — list/run/delete +
+  "New task" from active→other pane via the advanced dialog + name prompt)
+- `state/transfer_options.dart`: `TransferOptions` toJson/fromJson (shipped in alpha.21)
+- `state/transfer_service.dart`: extracted `transferAdvancedRaw(srcFs/dstFs/labels/options)`; `transferAdvanced`
+  delegates to it (so tasks reuse the same dispatch)
+- `ui/browser_pane.dart`: the advanced-transfer command-bar button is gated on advanced mode
+- `ui/home_screen.dart`: top-bar **Saved tasks** button (advanced mode only)
+- `ui/settings_screen.dart`: **Advanced mode** toggle
+- pubspec → alpha.22
+
+**Database/API Changes:** None
+**Summary:** alpha.22 — **easy/advanced mode** (default easy hides power-user controls; flip it in Settings)
+and **saved transfer tasks**. In advanced mode, the top bar gets a **Saved tasks** panel: "New task" captures
+the active pane → other pane as a From/To with full Copy/Move/Sync + filter options, names it, and persists
+it; later you **Run** it (one click → tracked job) or delete it. Built on a refactored `transferAdvancedRaw`.
+Transfer **queue + scheduler** remain on the backlog (the scheduler needs background execution to be useful).
+analyze (0) / test (16) / Windows build green.
+
 ## [2026-06-28] - v0.1.0-alpha.20: download-to-folder + type-to-navigate + status bar
 
 **Agent:** Airclone Build (Claude Opus 4.8)

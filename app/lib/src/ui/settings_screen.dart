@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../state/advanced_mode.dart';
 import '../state/app_info.dart';
 import '../state/cache_crypto.dart';
 import '../state/download_settings.dart';
@@ -38,6 +39,8 @@ class SettingsDialog extends ConsumerWidget {
               const SizedBox(height: Space.x5),
               _ThemeSection(),
               const SizedBox(height: Space.x5),
+              _ModeSection(),
+              const SizedBox(height: Space.x5),
               _RclonePathSection(),
               const SizedBox(height: Space.x5),
               _DownloadsSection(),
@@ -49,6 +52,43 @@ class SettingsDialog extends ConsumerWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// Easy vs advanced mode toggle.
+class _ModeSection extends ConsumerWidget {
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final c = AircloneTheme.of(context);
+    final advanced = ref.watch(advancedModeProvider);
+    return Row(
+      children: [
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Advanced mode',
+                style: TextStyle(
+                  color: c.text,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              Text(
+                'Show power-user features: Sync, include/exclude/filter, '
+                'dry-run, and saved tasks.',
+                style: TextStyle(color: c.textFaint, fontSize: 11),
+              ),
+            ],
+          ),
+        ),
+        Switch(
+          value: advanced,
+          onChanged: ref.read(advancedModeProvider.notifier).set,
+        ),
+      ],
     );
   }
 }

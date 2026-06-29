@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../rclone/models/job.dart';
 import '../rclone/models/rclone_file.dart';
 import '../rclone/models/remote.dart';
+import '../state/advanced_mode.dart';
 import '../state/browser_controller.dart';
 import '../state/clipboard_controller.dart';
 import '../state/download_settings.dart';
@@ -800,6 +801,7 @@ class _PaneToolbar extends ConsumerWidget {
     final oneSel = state.selected.length == 1;
     final clipFull = ref.watch(clipboardControllerProvider).isNotEmpty;
     final other = ref.watch(paneProvider(index == 0 ? 1 : 0));
+    final advanced = ref.watch(advancedModeProvider);
 
     return SizedBox(
       height: 38,
@@ -887,13 +889,14 @@ class _PaneToolbar extends ConsumerWidget {
                 enabled: other.remote != null,
                 onTap: () => _transferToOther(ref, JobType.move),
               ),
-              _cmd(
-                c,
-                Icons.tune,
-                'Advanced transfer to other pane…',
-                enabled: other.remote != null,
-                onTap: () => _advancedTransfer(context, ref),
-              ),
+              if (advanced)
+                _cmd(
+                  c,
+                  Icons.tune,
+                  'Advanced transfer to other pane…',
+                  enabled: other.remote != null,
+                  onTap: () => _advancedTransfer(context, ref),
+                ),
               _cmd(
                 c,
                 Icons.close,

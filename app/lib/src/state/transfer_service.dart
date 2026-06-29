@@ -110,6 +110,22 @@ class TransferService {
     required Remote dstRemote,
     required String dstPath,
     required TransferOptions options,
+  }) => transferAdvancedRaw(
+    srcFs: '${srcRemote.fs}$srcPath',
+    dstFs: '${dstRemote.fs}$dstPath',
+    srcLabel: '${srcRemote.name}:$srcPath',
+    dstLabel: '${dstRemote.name}:$dstPath',
+    options: options,
+  );
+
+  /// Advanced transfer from full `fs<path>` strings (used by saved tasks).
+  /// [srcLabel]/[dstLabel] are human-readable for the job row.
+  Future<void> transferAdvancedRaw({
+    required String srcFs,
+    required String dstFs,
+    required String srcLabel,
+    required String dstLabel,
+    required TransferOptions options,
   }) async {
     final client = _ref.read(engineControllerProvider).client;
     final jobs = _ref.read(jobsControllerProvider.notifier);
@@ -120,18 +136,14 @@ class TransferService {
     };
     final job = jobs.add(
       type: jtype,
-      source: '${srcRemote.name}:$srcPath${options.dryRun ? ' (dry run)' : ''}',
-      dest: '${dstRemote.name}:$dstPath',
+      source: '$srcLabel${options.dryRun ? ' (dry run)' : ''}',
+      dest: dstLabel,
     );
     if (client == null) {
       jobs.markDone(job.id, JobStatus.failed, error: 'Engine not ready');
       return;
     }
-    final call = buildRcCall(
-      options,
-      '${srcRemote.fs}$srcPath',
-      '${dstRemote.fs}$dstPath',
-    );
+    final call = buildRcCall(options, srcFs, dstFs);
     final params = <String, dynamic>{
       ...call.params,
       '_group': 'airclone/${job.id}',

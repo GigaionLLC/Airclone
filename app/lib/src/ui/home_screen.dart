@@ -9,6 +9,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../rclone/models/job.dart';
 import '../rclone/models/remote.dart';
+import '../state/advanced_mode.dart';
 import '../state/app_info.dart';
 import '../state/browser_controller.dart';
 import '../state/engine_controller.dart';
@@ -27,6 +28,7 @@ import 'pane_drag.dart';
 import 'quick_look.dart';
 import 'settings_screen.dart';
 import 'stats_panel.dart';
+import 'tasks_panel.dart';
 import 'theme/tokens.dart';
 
 /// Whether the explorer shows a single wide pane (default, Spacedrive-like) or
@@ -260,6 +262,7 @@ class _TopBar extends ConsumerWidget {
     final inspectorOpen = ref.watch(inspectorVisibleProvider);
     final singlePane = ref.watch(singlePaneProvider);
     final sidebarVisible = ref.watch(sidebarVisibleProvider);
+    final advanced = ref.watch(advancedModeProvider);
     return Container(
       height: 44,
       padding: const EdgeInsets.only(left: Space.x2, right: Space.x2),
@@ -325,6 +328,13 @@ class _TopBar extends ConsumerWidget {
             tooltip: jobsExpanded ? 'Hide transfers' : 'Show transfers',
             color: c.textMuted,
           ),
+          if (advanced)
+            IconButton(
+              onPressed: () => showTasksDialog(context),
+              icon: const Icon(Icons.checklist_rounded, size: 18),
+              tooltip: 'Saved tasks',
+              color: c.textMuted,
+            ),
           IconButton(
             onPressed: () => showSettingsDialog(context),
             icon: const Icon(Icons.settings_outlined, size: 18),
