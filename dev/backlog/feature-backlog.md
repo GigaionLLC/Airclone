@@ -29,35 +29,52 @@ Prioritized roadmap distilled from competitive + engine research. Tags: `[D]` de
 - [x] **Editable Locations** — + folder picker, drag-drop a folder to add, remove from sidebar — a11
 - [x] **Instant** right-click context menu (no fetch-blocking, no scale-in) — a13
 - [x] **Resizable + hideable** sidebar — a13
+- [x] **Explorer two-row header** — address row + **command bar** (New · Cut/Copy/Paste · Rename · Delete ·
+  **Sort ▾** · **View ▾** with icon-size presets) — a14
+- [x] **Advanced transfer dialog** (Copy/Move/Sync · skip rules · compare · Include/Exclude/Filter · cmd
+  preview · Dry-run) + **live statistics strip** (`core/stats`) — a15
+- [x] **Folder previews** (composite of first images) + **orphaned-engine reap** — a16
+- [x] **Tabs per pane** (independent sessions + history; Ctrl+T/W) — a17
+- [x] **Video thumbnails fixed** (libmpv headless keyframe) — a18
+- [x] **Encrypted preview cache** (AES-256-GCM; PBKDF2/config-pw or remote-name key) + **Clear cache** +
+  **memory-only** mode — a19
+- [x] **Download-to-chosen-folder** (prompt/remember/always-ask) · **type-to-navigate** · **rich status bar**
+  (count · selection size · free/total via `operations/about`) — a20
+- [x] **Double-context-menu bug fixed** (onSecondaryTapUp) — a21
+- [x] **Easy/Advanced mode** toggle + **Saved transfer tasks** (run/delete) — a22
+- [x] **Morphing breadcrumb path bar** (breadcrumbs ⇄ editable) · **resizable Details columns** ·
+  **global engine flags** (Apply & restart) — a23
+- [x] **Transfer concurrency queue** (limit · Queued state · auto-dispatch) — a24
+- [x] **Native window backdrop (opt-in)** — Mica/Acrylic via flutter_acrylic, persisted — a25
 
 ### 🔜 Layout & chrome
-- [ ] **Command toolbar** below the address/path bar (New · Cut/Copy/Paste · Rename · Delete · Sort ·
-  View · Filter · overflow ⋯) — Explorer-style two-row header.
-- [ ] **Tabs** — multiple open locations per window (Explorer-style), each tab its own path history +
-  view mode + selection. (Structural: per-tab browser state.)
-- [ ] **View presets** — Extra-large / Large / Medium / Small icons · List · Details · Tiles · Content;
-  plus **Details pane** / **Preview pane** toggles.
+- [x] **Command toolbar** below the address/path bar (New · Cut/Copy/Paste · Rename · Delete · Sort ·
+  View · Filter) — Explorer-style two-row header — a14.
+- [x] **Tabs** — multiple open locations per pane, each its own path history + view mode + selection — a17.
+- [x] **View presets** — Extra-large / Large / Medium / Small icons · List · Media (via View ▾) — a14.
+  (Tiles / Content + Details/Preview-pane toggles still open.)
 - [ ] **Native per-OS look** as default (Explorer / Finder / Linux) + a **skin selector** to switch.
-- [ ] **Native window chrome** — tabs-in-titlebar + Mica (Windows); traffic-light insets + vibrancy (macOS).
+- [~] **Native window chrome** — **Mica/Acrylic backdrop shipped (opt-in)** a25; tabs-in-titlebar +
+  macOS traffic-light insets/vibrancy + per-surface translucency tuning still open.
 
 ### 🖼️ Previews & icons
-- [ ] **Folder previews** — folder thumbnail composited from the folder's first few images.
-- [ ] **Icon/preview sizing** wired to the view presets (slider + presets).
+- [x] **Folder previews** — folder thumbnail composited from the folder's first few images — a16.
+- [x] **Icon/preview sizing** wired to the view presets — a14.
 - [ ] PDF / document **first-page thumbnails** (extend the image+video thumbnail pipeline).
 
 ### ⚙️ Advanced power (optional "advanced mode")
-- [ ] **Advanced transfer dialog** — Copy/Move/Sync · skip-existing / skip-newer · compare
-  (size / mod-time / checksum) · **Extra Options · Include · Exclude · Filter** tabs · raw **rclone-cmd
-  preview** · **Dry-run** / Run.
-- [ ] **Transfer queue** + "**save as task**" + **scheduler**.
-- [ ] **Statistics** panel — live + historical transfer stats (`core/stats`), per-job + aggregate, speeds/ETA.
-- [ ] **Global settings window** — custom rclone flags · VFS · bandwidth · performance presets.
-- [ ] **Easy ⇄ Advanced mode** toggle (progressive disclosure of the above).
+- [x] **Advanced transfer dialog** — Copy/Move/Sync · skip rules · compare · Include/Exclude/Filter tabs ·
+  rclone-cmd preview · Dry-run/Run — a15 (gated behind advanced mode a22).
+- [x] **Transfer queue** (a24) + "**save as task**" (a22). **Scheduler** still open (needs background exec).
+- [x] **Statistics** strip — live transfer stats (`core/stats`), per-job + aggregate, speeds/ETA — a15.
+- [~] **Global settings** — custom rclone **engine flags** shipped a23; VFS · bandwidth · performance
+  presets still open.
+- [x] **Easy ⇄ Advanced mode** toggle (progressive disclosure) — a22.
 
 ### 🔒 Cache & privacy
-- [ ] **Clear cache** — one-click "Clear thumbnail/preview cache" in Settings (delete `airclone_thumbs` +
-  `airclone_folderthumbs`, reset in-memory caches); show cache size.
-- [ ] **Encrypt the on-disk cache at rest** (thumbnails now; file/VFS cache later). AES-256-GCM per blob.
+- [x] **Clear cache** — one-click in Settings (deletes `airclone_thumbs` + `airclone_folderthumbs`); shows
+  cache size — a19.
+- [x] **Encrypt the on-disk cache at rest** (thumbnails now; file/VFS cache later). AES-256-GCM per blob.
   Key derivation: **PBKDF2 from the rclone config password** when the config is encrypted (so no config
   password ⇒ no remotes ⇒ no cache — coherent). **Fallback when the config is NOT password-encrypted:**
   a random key sealed in the **OS secure store** (Windows DPAPI / macOS Keychain / Linux Secret Service)
@@ -65,17 +82,23 @@ Prioritized roadmap distilled from competitive + engine research. Tags: `[D]` de
   **memory-only / no-disk-cache** mode for the paranoid.
 
 ### 🐞 Known robustness bugs
-- [ ] **Orphaned engine processes** — force-killing `airclone.exe` leaves its spawned `rclone rcd`
-  child running (observed 15+ stray `rcd` accumulating). On desktop, tie `rcd`'s lifetime to the app
-  (Windows Job Object / `CREATE_BREAKAWAY` off; POSIX prctl/`PR_SET_PDEATHSIG`) and reap any orphaned
-  `rcd` on startup before spawning a new one.
+- [x] **Orphaned engine processes** — a16 records the spawned `rcd` PID and reaps that exact child on next
+  launch (targeted; never the user's other rclone). Original report: force-killing `airclone.exe` left its
+  `rcd` child running (15+ stray accumulating). Remaining belt-and-suspenders: tie `rcd`'s lifetime to the
+  app at the OS level (Windows Job Object / `CREATE_BREAKAWAY` off; POSIX `PR_SET_PDEATHSIG`).
 
 ### 💡 Recommended additions (proposed)
-- [ ] **Type-to-navigate** (typeahead) + full keyboard map (F2 rename · Del · Ctrl+C/X/V/A · Enter).
-- [ ] **Morphing breadcrumb path bar** (collapsed → breadcrumbs → editable type-to-go).
+- [x] **Type-to-navigate** (typeahead) — a20. Full keyboard map (F2 · Del · Ctrl+C/X/V/A · Enter) partial.
+- [x] **Morphing breadcrumb path bar** (breadcrumbs ⇄ editable type-to-go) — a23.
 - [ ] **Drag-out to OS** — drag a remote file to Explorer/Finder to download it there.
-- [ ] **Resizable + sortable columns** in Details view.
-- [ ] **Status bar** — item count + selection size + free/used space (`operations/about`).
+  > ⚠️ **Deferred / needs collaboration.** Highest-risk remaining item: needs a native drag package
+  > (`super_drag_and_drop`) that would compete with the existing in-app `Draggable<PaneDragData>` gesture
+  > (a *working core feature*), and remote files must be **materialized on drop** (download-on-drag /
+  > virtual-file promises) — platform-specific. Can't be visually verified from this environment. Plan:
+  > scope to **local files first** (real `file://` URI), keep in-app drag intact, then add remote
+  > materialization — with the user verifying drag behavior on-screen.
+- [x] **Resizable + sortable columns** in Details view — sortable since a6, resizable a23.
+- [x] **Status bar** — item count + selection size + free/used space (`operations/about`) — a20.
 - [ ] **Per-tab / per-remote view memory** (remember view mode + sort per location).
 
 ---
@@ -226,8 +249,8 @@ release · `later` = post-design-partner.
 From the user's own REM feature requests:
 - ✅ **Multi-select** files/folders for bulk copy/move/delete (REM #20) — *done in Airclone*.
 - ✅ **Folders shown first** in listings (REM #10) — *done in Airclone*.
-- `[D]` **Keyboard shortcuts + navigation** (REM #9): back/forward **history** (Alt+← / Alt+→), up
-  (Alt+↑), and a **filter box** focused by **Ctrl+F**; plus arrow-key row navigation.
+- ✅ **Keyboard shortcuts + navigation** (REM #9): back/forward **history** (Alt+← / Alt+→), up (Alt+↑),
+  **filter box** via **Ctrl+F** — *done a5*; plus tabs (Ctrl+T/W a17) + type-to-navigate (a20).
 
 ## 🏆 Differentiators — Airclone's edge
 
