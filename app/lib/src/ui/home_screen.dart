@@ -12,6 +12,7 @@ import '../rclone/models/remote.dart';
 import '../state/advanced_mode.dart';
 import '../state/app_info.dart';
 import '../state/browser_controller.dart';
+import '../state/clipboard_controller.dart';
 import '../state/engine_controller.dart';
 import '../state/file_ops.dart';
 import '../state/local_locations.dart';
@@ -159,6 +160,40 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     await ref.read(paneProvider(idx).notifier).refresh();
   }
 
+  /// Ctrl+C / Ctrl+X: stage the active pane's selection on the shared clipboard.
+  void _clipboardStage({required bool cut}) {
+    final idx = ref.read(activePaneProvider);
+    final st = ref.read(paneProvider(idx));
+    if (st.remote == null) return;
+    final sel = st.selectedEntries;
+    if (sel.isEmpty) return;
+    final clip = ref.read(clipboardControllerProvider.notifier);
+    cut
+        ? clip.cut(st.remote!, st.path, sel)
+        : clip.copy(st.remote!, st.path, sel);
+  }
+
+  /// Ctrl+V: paste the clipboard into the active pane (copy, or move for a cut).
+  Future<void> _pasteIntoActive() async {
+    final idx = ref.read(activePaneProvider);
+    final st = ref.read(paneProvider(idx));
+    if (st.remote == null) return;
+    final clip = ref.read(clipboardControllerProvider);
+    if (clip.isEmpty || clip.remote == null) return;
+    final svc = ref.read(transferServiceProvider);
+    for (final f in clip.files) {
+      await svc.transfer(
+        srcRemote: clip.remote!,
+        srcPath: joinPath(clip.parentPath, f.name),
+        dstRemote: st.remote!,
+        dstPath: joinPath(st.path, f.name),
+        type: clip.isCut ? JobType.move : JobType.copy,
+      );
+    }
+    if (clip.isCut) ref.read(clipboardControllerProvider.notifier).clear();
+    await ref.read(paneProvider(idx).notifier).refresh();
+  }
+
   /// Delete on the active pane: confirm, then delete every selected entry.
   Future<void> _deleteActiveSelection() async {
     final idx = ref.read(activePaneProvider);
@@ -217,6 +252,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           const SingleActivator(LogicalKeyboardKey.f2): _renameActiveSelection,
           const SingleActivator(LogicalKeyboardKey.delete):
               _deleteActiveSelection,
+          const SingleActivator(LogicalKeyboardKey.keyC, control: true): () =>
+              _clipboardStage(cut: false),
+          const SingleActivator(LogicalKeyboardKey.keyX, control: true): () =>
+              _clipboardStage(cut: true),
+          const SingleActivator(LogicalKeyboardKey.keyV, control: true):
+              _pasteIntoActive,
         },
         child: Focus(
           autofocus: true,

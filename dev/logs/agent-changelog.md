@@ -6,6 +6,21 @@ All changes made by AI agents are tracked chronologically below (most recent fir
 
 <!-- New entries go above this line, most recent first -->
 
+## [2026-06-28] - v0.1.0-alpha.27: clipboard keyboard shortcuts (Ctrl+C/X/V)
+
+**Agent:** Airclone Build (Claude Opus 4.8)
+**Files Modified:**
+- `ui/home_screen.dart`: `_clipboardStage(cut:)` (Ctrl+C copy / Ctrl+X cut → `clipboardControllerProvider`)
+  and `_pasteIntoActive` (Ctrl+V → transfer each staged file into the active pane, move-on-paste for a cut,
+  clear after a cut, refresh) + the three CallbackShortcuts bindings; imported `clipboard_controller.dart`
+- pubspec → alpha.27
+
+**Database/API Changes:** None
+**Summary:** alpha.27 — wired **Ctrl+C / Ctrl+X / Ctrl+V** to the existing shared clipboard (the same staging
+used by the right-click Copy/Cut/Paste), finishing the Explorer keyboard map started in a26. A cut pastes as
+a move and clears the clipboard. Editable text fields keep handling these keys for normal text editing.
+analyze (0) / test (23) / Windows build green.
+
 ## [2026-06-28] - v0.1.0-alpha.26: Explorer keyboard shortcuts + per-location view memory
 
 **Agent:** Airclone Build (Claude Opus 4.8)
