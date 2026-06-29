@@ -6,6 +6,32 @@ All changes made by AI agents are tracked chronologically below (most recent fir
 
 <!-- New entries go above this line, most recent first -->
 
+## [2026-06-28] - v0.1.0-alpha.32: drag a local file out to the OS from a row grip (super_drag_and_drop returns)
+
+**Agent:** Airclone Build (Claude Opus 4.8)
+**Why:** the user explicitly chose real OS drag-out after the verifiable reveal/open/copy approach (a30–a31)
+wasn't the drag UX they wanted. There is no official Flutter drag-out, so this re-adds the community
+`super_drag_and_drop` (+ Rust/cargokit). Implemented on the file ROWS this time (the natural place) via a
+NON-conflicting drag handle so the working in-app drag is preserved.
+
+**Files Modified:**
+- New `ui/os_drag_handle.dart`: `OsDragHandle` — a `DragItemWidget`/`DraggableWidget` grip providing
+  `Formats.fileUri` (copy) for a local OS path; shows a **diagnostic SnackBar when the drag gesture fires**
+  (an OS drag is not auto-testable, so this distinguishes "gesture didn't start" from "OS drop failed").
+- `ui/browser_pane.dart`: list `_FileRow` now overlays the handle at the left edge via a `Stack`, OUTSIDE
+  the in-app `Draggable<PaneDragData>` (local files only).
+- `pubspec.yaml`: re-add `super_drag_and_drop: ^0.9.1` (→ alpha.32). `.github/workflows/release.yml`:
+  re-add `dtolnay/rust-toolchain` to the 3 desktop jobs.
+
+**Toolchain:** Rust required again for desktop builds (cargokit). Verified analyze (0) / test (40) /
+`flutter build windows` green with cargo on PATH.
+
+**Database/API Changes:** None
+**Summary:** alpha.32 — drag-out from a left-edge grip on local file rows, kept separate from the in-app
+drag gesture. The build + code are verified by the agent; the **drag itself needs the user to confirm on
+screen** — the diagnostic toast is there to make that confirmation/iteration efficient. (List view first;
+grid/media can follow if it works.)
+
 ## [2026-06-28] - v0.1.0-alpha.30: official OS interop (Open/Reveal/Copy-path) replaces native drag-out
 
 **Agent:** Airclone Build (Claude Opus 4.8) — preceded by a 4-agent research+verify workflow

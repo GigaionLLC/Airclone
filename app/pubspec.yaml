@@ -16,7 +16,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-version: 0.1.0-alpha.31+31
+version: 0.1.0-alpha.32+32
 
 environment:
   sdk: ^3.12.0
@@ -65,6 +65,10 @@ dependencies:
   media_kit_libs_video: ^1.0.4
   # alpha.25: opt-in Windows 11 Mica/Acrylic window backdrop.
   flutter_acrylic: ^1.1.4
+  # alpha.32: drag a local file OUT to the OS from a row drag-handle. Its native
+  # side (super_native_extensions) builds a Rust crate via cargokit, so DESKTOP
+  # builds need a Rust toolchain on PATH (CI installs it; see release.yml).
+  super_drag_and_drop: ^0.9.1
 
 dev_dependencies:
   flutter_test:

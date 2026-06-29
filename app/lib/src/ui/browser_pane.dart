@@ -24,6 +24,7 @@ import 'file_icon.dart';
 import 'file_op_dialogs.dart';
 import 'format.dart';
 import 'media_gallery.dart';
+import 'os_drag_handle.dart';
 import 'pane_drag.dart';
 import 'path_bar.dart';
 import 'quick_look.dart';
@@ -1317,11 +1318,37 @@ class _FileRow extends ConsumerWidget {
       );
     }
 
-    return Draggable<PaneDragData>(
+    final draggableRow = Draggable<PaneDragData>(
       data: payload,
       dragAnchorStrategy: pointerDragAnchorStrategy,
       feedback: _dragFeedback(c, dragFiles.length),
       child: row,
+    );
+
+    // Local files get a native drag-OUT grip at the left edge, OUTSIDE the
+    // in-app Draggable (overlaid via a Stack) so the two drag gestures don't
+    // compete. Cloud files have no OS path to hand the desktop.
+    final osPath = paneRemote.isLocal
+        ? '${paneRemote.fs}${joinPath(state.path, file.name)}'
+        : null;
+    if (osPath == null) return draggableRow;
+    return Stack(
+      children: [
+        draggableRow,
+        Positioned(
+          left: 0,
+          top: 0,
+          bottom: 0,
+          width: 16,
+          child: Center(
+            child: OsDragHandle(
+              osPath: osPath,
+              fileName: file.name,
+              color: c.textFaint,
+            ),
+          ),
+        ),
+      ],
     );
   }
 
