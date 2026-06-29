@@ -31,9 +31,14 @@ import 'theme/tokens.dart';
 import 'transfer_options_dialog.dart';
 
 /// One of the two dual-pane browsers. [index] 0 = A (left), 1 = B (right).
+///
+/// When [showToolbar] is false the address/command bar is omitted — the OS
+/// skins hoist it to a full-width band above the sidebar (see [PaneToolbar]),
+/// so the pane renders content only.
 class BrowserPane extends ConsumerWidget {
-  const BrowserPane({super.key, required this.index});
+  const BrowserPane({super.key, required this.index, this.showToolbar = true});
   final int index;
+  final bool showToolbar;
 
   int get _other => index == 0 ? 1 : 0;
 
@@ -51,8 +56,10 @@ class BrowserPane extends ConsumerWidget {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             if (state.tabs.length > 1) _TabStrip(index: index),
-            _PaneToolbar(index: index, active: active, state: state),
-            Divider(height: 1, color: c.border),
+            if (showToolbar) ...[
+              _PaneToolbar(index: index, active: active, state: state),
+              Divider(height: 1, color: c.border),
+            ],
             Expanded(
               child: state.remote == null
                   ? _empty(c)
@@ -739,6 +746,29 @@ class _TabStrip extends ConsumerWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// The active pane's toolbar hoisted to a full-width band, for the OS skins
+/// that put their toolbar across the top above the sidebar (Explorer/Finder)
+/// rather than beside it. Reads the same pane state [BrowserPane] does, so the
+/// hoisted bar and the (toolbar-less) pane below it stay in lock-step.
+class PaneToolbar extends ConsumerWidget {
+  const PaneToolbar({super.key, required this.index});
+  final int index;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final c = AircloneTheme.of(context);
+    final state = ref.watch(paneProvider(index));
+    final active = ref.watch(activePaneProvider) == index;
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        _PaneToolbar(index: index, active: active, state: state),
+        Divider(height: 1, color: c.border),
+      ],
     );
   }
 }

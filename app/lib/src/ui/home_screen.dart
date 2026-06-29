@@ -283,21 +283,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 onToggleJobs: () =>
                     setState(() => _jobsExpanded = !_jobsExpanded),
               ),
-              Expanded(
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    if (ref.watch(sidebarVisibleProvider)) ...[
-                      SizedBox(
-                        width: ref.watch(sidebarWidthProvider),
-                        child: const _Sidebar(),
-                      ),
-                      const _SidebarResizeHandle(),
-                    ],
-                    Expanded(child: _WorkArea(jobsExpanded: _jobsExpanded)),
-                  ],
-                ),
-              ),
+              Expanded(child: _ExplorerArea(jobsExpanded: _jobsExpanded)),
               const _StatusBar(),
             ],
           ),
@@ -307,9 +293,57 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   }
 }
 
-class _WorkArea extends ConsumerWidget {
-  const _WorkArea({required this.jobsExpanded});
+/// The sidebar + work area. For the OS skins in single-pane mode the active
+/// pane's toolbar is hoisted to a full-width band across the very top (the way
+/// Explorer/Finder do it), so the sidebar starts *below* the toolbar instead of
+/// running the entire left edge. Airclone keeps the toolbar beside the sidebar.
+class _ExplorerArea extends ConsumerWidget {
+  const _ExplorerArea({required this.jobsExpanded});
   final bool jobsExpanded;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final chrome = AircloneTheme.chromeOf(context);
+    final singlePane = ref.watch(singlePaneProvider);
+    final engineReady =
+        ref.watch(engineControllerProvider).phase == EnginePhase.ready;
+    final hoist = chrome.toolbarAboveSidebar && singlePane && engineReady;
+
+    final body = Row(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (ref.watch(sidebarVisibleProvider)) ...[
+          SizedBox(
+            width: ref.watch(sidebarWidthProvider),
+            child: const _Sidebar(),
+          ),
+          const _SidebarResizeHandle(),
+        ],
+        Expanded(
+          child: _WorkArea(jobsExpanded: jobsExpanded, hoistToolbar: hoist),
+        ),
+      ],
+    );
+
+    if (!hoist) return body;
+    // Hoisted: toolbar across the top, then [sidebar | content] below it.
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        PaneToolbar(index: ref.watch(activePaneProvider)),
+        Expanded(child: body),
+      ],
+    );
+  }
+}
+
+class _WorkArea extends ConsumerWidget {
+  const _WorkArea({required this.jobsExpanded, this.hoistToolbar = false});
+  final bool jobsExpanded;
+
+  /// When true the active pane omits its own toolbar — [_ExplorerArea] has
+  /// hoisted it to a full-width band above the sidebar.
+  final bool hoistToolbar;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -328,7 +362,9 @@ class _WorkArea extends ConsumerWidget {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               if (singlePane)
-                Expanded(child: BrowserPane(index: active))
+                Expanded(
+                  child: BrowserPane(index: active, showToolbar: !hoistToolbar),
+                )
               else ...[
                 const Expanded(child: BrowserPane(index: 0)),
                 VerticalDivider(width: 1, color: c.border),

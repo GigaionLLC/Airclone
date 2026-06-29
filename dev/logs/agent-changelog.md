@@ -6,6 +6,27 @@ All changes made by AI agents are tracked chronologically below (most recent fir
 
 <!-- New entries go above this line, most recent first -->
 
+## [2026-06-29] - v0.1.0-alpha.47: per-skin chrome — hoist toolbar above the sidebar (chrome P3.5)
+
+**Agent:** Airclone Build (Claude Opus 4.8) — branch `explorer-finder-chrome`.
+**Files Modified:**
+- `ui/theme/tokens.dart`: `SkinChrome` gains `toolbarAboveSidebar` (Airclone false; Windows/macOS/GNOME true).
+- `ui/browser_pane.dart`: `BrowserPane` gains `showToolbar` (omits the address/command bar when the toolbar
+  is hoisted). New public `PaneToolbar` widget renders the active pane's toolbar standalone (reads the same
+  pane state) for the hoisted band.
+- `ui/home_screen.dart`: new `_ExplorerArea` — for OS skins in single-pane mode it renders the active pane's
+  `PaneToolbar` as a full-width band across the top, then `[sidebar | content]` below it (so the sidebar no
+  longer runs the whole left edge). Airclone + dual-pane keep the toolbar beside the sidebar. `_WorkArea`
+  gains `hoistToolbar` and passes `showToolbar: !hoist` to the single pane.
+- pubspec → alpha.47; `skin_test.dart` asserts the new flag.
+
+**Database/API Changes:** None
+**Summary:** alpha.47 (branch) — addresses the user's structural note that "the sidebar takes the whole left
+side, but on Finder/Explorer it's different": Explorer/Finder put the toolbar in a full-width band across the
+top and the sidebar starts below it. Now the OS skins do the same (single-pane). Gated on engine-ready so the
+hoisted bar never floats over the engine gate. analyze (0) / test (57) / Windows build green. **Needs the
+user's eyes** — does the sidebar now sit below the toolbar like Explorer?
+
 ## [2026-06-29] - v0.1.0-alpha.46: per-skin chrome — Explorer toolbar (chrome P3)
 
 **Agent:** Airclone Build (Claude Opus 4.8) — branch `explorer-finder-chrome`.

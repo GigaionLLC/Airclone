@@ -431,6 +431,7 @@ class SkinChrome {
     required this.newButtonLabel,
     required this.searchAlwaysVisible,
     required this.showDetailsToggle,
+    required this.toolbarAboveSidebar,
   });
 
   /// Sidebar row selection treatment.
@@ -461,6 +462,12 @@ class SkinChrome {
   /// Pin a "Details" pane toggle at the far right of the command row (Explorer).
   final bool showDetailsToggle;
 
+  /// Hoist the pane toolbar to a full-width band across the top, above the
+  /// sidebar — Explorer/Finder put their toolbar there, so the sidebar starts
+  /// *below* it rather than running the whole left edge. Airclone keeps the
+  /// toolbar beside the sidebar (each pane owns its own). Single-pane only.
+  final bool toolbarAboveSidebar;
+
   static SkinChrome of(Skin skin) => switch (skin) {
     Skin.airclone => airclone,
     Skin.windows => windows,
@@ -482,6 +489,7 @@ class SkinChrome {
     newButtonLabel: null,
     searchAlwaysVisible: false,
     showDetailsToggle: false,
+    toolbarAboveSidebar: false,
   );
 
   static const windows = SkinChrome(
@@ -494,6 +502,7 @@ class SkinChrome {
     newButtonLabel: 'New',
     searchAlwaysVisible: true,
     showDetailsToggle: true,
+    toolbarAboveSidebar: true,
   );
 
   static const macos = SkinChrome(
@@ -506,6 +515,7 @@ class SkinChrome {
     newButtonLabel: null,
     searchAlwaysVisible: true,
     showDetailsToggle: false,
+    toolbarAboveSidebar: true,
   );
 
   static const gnome = SkinChrome(
@@ -518,6 +528,7 @@ class SkinChrome {
     newButtonLabel: null,
     searchAlwaysVisible: false,
     showDetailsToggle: false,
+    toolbarAboveSidebar: true,
   );
 }
 

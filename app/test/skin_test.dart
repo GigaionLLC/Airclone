@@ -73,7 +73,10 @@ void main() {
     );
     expect(SkinChrome.of(Skin.windows).colouredFolderIcons, isTrue);
     expect(SkinChrome.of(Skin.gnome).colouredFolderIcons, isFalse);
-    // OS skins drop the rclone-type subtitle + use Title Case headers.
+    // OS skins drop the rclone-type subtitle + use Title Case headers, and
+    // hoist the toolbar to a top band above the sidebar (Explorer/Finder);
+    // Airclone keeps the toolbar beside the sidebar.
+    expect(SkinChrome.airclone.toolbarAboveSidebar, isFalse);
     for (final s in [Skin.windows, Skin.macos, Skin.gnome]) {
       expect(SkinChrome.of(s).tileShowsSubtitle, isFalse, reason: '$s');
       expect(
@@ -81,6 +84,7 @@ void main() {
         SectionHeaderStyle.titleCase,
         reason: '$s',
       );
+      expect(SkinChrome.of(s).toolbarAboveSidebar, isTrue, reason: '$s');
     }
     // The theme carries the chrome.
     expect(
