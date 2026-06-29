@@ -392,16 +392,114 @@ class SkinTokens {
   );
 }
 
-/// Exposes [AircloneColors] + the active skin's [SkinTokens] through the widget
-/// tree via `Theme.of`.
+/// How a skin draws the sidebar selection.
+enum SidebarSelection {
+  /// Airclone: a left accent bar + faint fill.
+  leftAccentBar,
+
+  /// Explorer/GNOME: a rounded pill of faint accent fill (inset from the edge),
+  /// plus a short left accent indicator (Explorer).
+  roundedPill,
+
+  /// Finder: a solid system-accent pill with white label text.
+  accentFillPill,
+}
+
+/// How a skin styles sidebar section headers.
+enum SectionHeaderStyle {
+  /// Airclone: ALL-CAPS, letter-spaced.
+  caps,
+
+  /// Explorer/Finder/GNOME: Title Case, muted, no letter-spacing.
+  titleCase,
+}
+
+/// Per-skin CHROME presentation — the arrangement/labels/decoration that make a
+/// skin read like its OS file manager, layered on top of [SkinTokens] (which
+/// covers font/density/colors). Pure data (no BuildContext/Riverpod) so it is
+/// unit-testable; selected once via [SkinChrome.of] and reached through
+/// [AircloneTheme.chromeOf].
+@immutable
+class SkinChrome {
+  const SkinChrome({
+    required this.sidebarSelection,
+    required this.sectionHeaderStyle,
+    required this.colouredFolderIcons,
+    required this.tileShowsSubtitle,
+    required this.sidebarItemInset,
+  });
+
+  /// Sidebar row selection treatment.
+  final SidebarSelection sidebarSelection;
+
+  /// Sidebar section-header typography.
+  final SectionHeaderStyle sectionHeaderStyle;
+
+  /// Tint known-folder sidebar icons (Explorer/Finder) vs monochrome.
+  final bool colouredFolderIcons;
+
+  /// Show the second `remote.type` line on sidebar tiles (an Airclone tell).
+  final bool tileShowsSubtitle;
+
+  /// Horizontal inset so selection pills don't run edge-to-edge.
+  final double sidebarItemInset;
+
+  static SkinChrome of(Skin skin) => switch (skin) {
+    Skin.airclone => airclone,
+    Skin.windows => windows,
+    Skin.macos => macos,
+    Skin.gnome => gnome,
+  };
+
+  /// Chrome layout can't interpolate — snap at the midpoint.
+  static SkinChrome lerp(SkinChrome a, SkinChrome b, double t) =>
+      t < 0.5 ? a : b;
+
+  static const airclone = SkinChrome(
+    sidebarSelection: SidebarSelection.leftAccentBar,
+    sectionHeaderStyle: SectionHeaderStyle.caps,
+    colouredFolderIcons: false,
+    tileShowsSubtitle: true,
+    sidebarItemInset: 0,
+  );
+
+  static const windows = SkinChrome(
+    sidebarSelection: SidebarSelection.roundedPill,
+    sectionHeaderStyle: SectionHeaderStyle.titleCase,
+    colouredFolderIcons: true,
+    tileShowsSubtitle: false,
+    sidebarItemInset: 4,
+  );
+
+  static const macos = SkinChrome(
+    sidebarSelection: SidebarSelection.accentFillPill,
+    sectionHeaderStyle: SectionHeaderStyle.titleCase,
+    colouredFolderIcons: true,
+    tileShowsSubtitle: false,
+    sidebarItemInset: 6,
+  );
+
+  static const gnome = SkinChrome(
+    sidebarSelection: SidebarSelection.roundedPill,
+    sectionHeaderStyle: SectionHeaderStyle.titleCase,
+    colouredFolderIcons: false,
+    tileShowsSubtitle: false,
+    sidebarItemInset: 4,
+  );
+}
+
+/// Exposes [AircloneColors] + the active skin's [SkinTokens] + [SkinChrome]
+/// through the widget tree via `Theme.of`.
 @immutable
 class AircloneTheme extends ThemeExtension<AircloneTheme> {
   const AircloneTheme({
     required this.colors,
     this.tokens = SkinTokens.airclone,
+    this.chrome = SkinChrome.airclone,
   });
   final AircloneColors colors;
   final SkinTokens tokens;
+  final SkinChrome chrome;
 
   /// The semantic palette (the common lookup — most widgets use `c.primary`).
   static AircloneColors of(BuildContext context) =>
@@ -411,12 +509,20 @@ class AircloneTheme extends ThemeExtension<AircloneTheme> {
   static SkinTokens tokensOf(BuildContext context) =>
       Theme.of(context).extension<AircloneTheme>()!.tokens;
 
+  /// The active skin's chrome presentation delegate.
+  static SkinChrome chromeOf(BuildContext context) =>
+      Theme.of(context).extension<AircloneTheme>()!.chrome;
+
   @override
-  AircloneTheme copyWith({AircloneColors? colors, SkinTokens? tokens}) =>
-      AircloneTheme(
-        colors: colors ?? this.colors,
-        tokens: tokens ?? this.tokens,
-      );
+  AircloneTheme copyWith({
+    AircloneColors? colors,
+    SkinTokens? tokens,
+    SkinChrome? chrome,
+  }) => AircloneTheme(
+    colors: colors ?? this.colors,
+    tokens: tokens ?? this.tokens,
+    chrome: chrome ?? this.chrome,
+  );
 
   @override
   AircloneTheme lerp(ThemeExtension<AircloneTheme>? other, double t) {
@@ -424,6 +530,7 @@ class AircloneTheme extends ThemeExtension<AircloneTheme> {
     return AircloneTheme(
       colors: AircloneColors.lerp(colors, other.colors, t),
       tokens: SkinTokens.lerp(tokens, other.tokens, t),
+      chrome: SkinChrome.lerp(chrome, other.chrome, t),
     );
   }
 }

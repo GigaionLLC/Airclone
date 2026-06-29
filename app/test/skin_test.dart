@@ -54,6 +54,44 @@ void main() {
     }
   });
 
+  test('SkinChrome.of returns the right delegate; Airclone is unchanged', () {
+    // Airclone default keeps its exact look.
+    const a = SkinChrome.airclone;
+    expect(a.sidebarSelection, SidebarSelection.leftAccentBar);
+    expect(a.sectionHeaderStyle, SectionHeaderStyle.caps);
+    expect(a.tileShowsSubtitle, isTrue);
+    expect(a.colouredFolderIcons, isFalse);
+    expect(SkinChrome.of(Skin.airclone), same(a));
+    // Finder: accent-fill pill selection; Explorer: rounded pill + coloured icons.
+    expect(
+      SkinChrome.of(Skin.macos).sidebarSelection,
+      SidebarSelection.accentFillPill,
+    );
+    expect(
+      SkinChrome.of(Skin.windows).sidebarSelection,
+      SidebarSelection.roundedPill,
+    );
+    expect(SkinChrome.of(Skin.windows).colouredFolderIcons, isTrue);
+    expect(SkinChrome.of(Skin.gnome).colouredFolderIcons, isFalse);
+    // OS skins drop the rclone-type subtitle + use Title Case headers.
+    for (final s in [Skin.windows, Skin.macos, Skin.gnome]) {
+      expect(SkinChrome.of(s).tileShowsSubtitle, isFalse, reason: '$s');
+      expect(
+        SkinChrome.of(s).sectionHeaderStyle,
+        SectionHeaderStyle.titleCase,
+        reason: '$s',
+      );
+    }
+    // The theme carries the chrome.
+    expect(
+      AppTheme.build(
+        Skin.macos,
+        Brightness.dark,
+      ).extension<AircloneTheme>()!.chrome,
+      SkinChrome.macos,
+    );
+  });
+
   test('OS skins render dividerless rounded rows; Airclone keeps dividers', () {
     expect(SkinTokens.airclone.rowDividers, isTrue);
     for (final s in [Skin.windows, Skin.macos, Skin.gnome]) {

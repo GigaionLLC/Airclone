@@ -6,6 +6,29 @@ All changes made by AI agents are tracked chronologically below (most recent fir
 
 <!-- New entries go above this line, most recent first -->
 
+## [2026-06-29] - v0.1.0-alpha.45: per-skin chrome — SkinChrome delegate + sidebar makeover (chrome P0–P2)
+
+**Agent:** Airclone Build (Claude Opus 4.8) — preceded by a 4-agent audit+plan workflow; on branch
+`explorer-finder-chrome` (main snapshotted at tag `snapshot-pre-chrome-rework`).
+**Why:** user wants the actual Explorer/Finder *layout* (sidebar + toolbar), not just colors, for an easy
+transition. Plan: a per-skin `SkinChrome` delegate replacing scattered `skin == X` checks; sidebar first
+(biggest tell).
+**Files Modified:**
+- `ui/theme/tokens.dart`: `SidebarSelection` + `SectionHeaderStyle` enums; `SkinChrome` (sidebarSelection,
+  sectionHeaderStyle, colouredFolderIcons, tileShowsSubtitle, sidebarItemInset) + `.of(skin)` + `.lerp`;
+  folded `chrome` into `AircloneTheme` (+ `chromeOf`, copyWith/lerp).
+- `ui/theme/app_theme.dart`: `build()` sets `chrome: SkinChrome.of(skin)`.
+- `ui/home_screen.dart`: `_Sidebar`/`_RemoteTile`/`_SectionHeader` now read `chromeOf(context)` instead of
+  raw skin checks — Finder accent-fill pill + white text, Explorer/GNOME rounded pill, Airclone left bar;
+  Title-Case headers for OS skins; single-line tiles (no type subtitle). Removed the `skin.dart` import.
+- `test/skin_test.dart`: SkinChrome.of per skin + Airclone-unchanged assertions.
+- pubspec → alpha.45 (built after bump).
+
+**Database/API Changes:** None
+**Summary:** alpha.45 (branch) — the sidebar now reads much more like Explorer/Finder per skin via a clean
+`SkinChrome` delegate; Airclone default is unchanged (asserted). analyze (0) / test (58, +3). Next: Explorer
+command-row labels + Finder unified toolbar (chrome P3/P4). **Needs the user's eyes** on the sidebar feel.
+
 ## [2026-06-29] - v0.1.0-alpha.44: macOS Finder + Linux GNOME skins (Phase G)
 
 **Agent:** Airclone Build (Claude Opus 4.8)

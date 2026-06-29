@@ -39,7 +39,9 @@ abstract final class AppTheme {
       fontFamilyFallback: t.fontFamilyFallback,
       visualDensity: t.density,
       dividerColor: c.border,
-      extensions: [AircloneTheme(colors: c, tokens: t)],
+      extensions: [
+        AircloneTheme(colors: c, tokens: t, chrome: SkinChrome.of(skin)),
+      ],
       textTheme: baseText.apply(bodyColor: c.text, displayColor: c.text),
     );
   }

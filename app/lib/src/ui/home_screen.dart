@@ -18,7 +18,6 @@ import '../state/jobs_controller.dart';
 import '../state/local_locations.dart';
 import '../state/remote_about.dart';
 import '../state/remotes_provider.dart';
-import '../state/skin.dart';
 import '../state/stats_controller.dart';
 import '../state/transfer_service.dart';
 import 'add_remote_dialog.dart';
@@ -476,11 +475,10 @@ class _Sidebar extends ConsumerWidget {
     final active = ref.watch(activePaneProvider);
     final selectedRemote = ref.watch(paneProvider(active)).remote;
     final engineReady = ref.watch(engineControllerProvider).isReady;
-    // OS skins use a rounded sidebar selection; Explorer + Finder also colour
-    // the known-folder icons (GNOME keeps monochrome symbolic icons).
-    final skin = ref.watch(skinProvider);
-    final roundedSidebar = skin != Skin.airclone;
-    final colouredIcons = skin == Skin.windows || skin == Skin.macos;
+    // Per-skin chrome drives sidebar presentation (selection style, header
+    // casing, coloured folder icons) — see SkinChrome.
+    final chrome = AircloneTheme.chromeOf(context);
+    final colouredIcons = chrome.colouredFolderIcons;
 
     Widget tile(
       Remote r,
@@ -497,7 +495,6 @@ class _Sidebar extends ConsumerWidget {
         selected: r == selectedRemote,
         leadingIcon: icon,
         leadingIconColor: iconColor,
-        roundedSelection: roundedSidebar,
         onTap: () => _openOrToggle(ref, active, r),
         onDelete: onDelete,
         deleteLabel: deleteLabel,
@@ -623,9 +620,16 @@ class _SectionHeader extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final c = AircloneTheme.of(context);
+    final titleCase =
+        AircloneTheme.chromeOf(context).sectionHeaderStyle ==
+        SectionHeaderStyle.titleCase;
     final collapsed = ref.watch(
       collapsedSectionsProvider.select((s) => s.contains(sectionKey)),
     );
+    // Title Case (OS skins: "Locations") vs ALL-CAPS (Airclone: "LOCATIONS").
+    final shown = titleCase
+        ? '${label[0]}${label.substring(1).toLowerCase()}'
+        : label;
     return Padding(
       padding: const EdgeInsets.only(top: Space.x3, bottom: Space.x1),
       child: Row(
@@ -649,12 +653,12 @@ class _SectionHeader extends ConsumerWidget {
                     ),
                     const SizedBox(width: 2),
                     Text(
-                      label,
+                      shown,
                       style: TextStyle(
-                        color: c.textFaint,
-                        fontSize: 11,
+                        color: titleCase ? c.textMuted : c.textFaint,
+                        fontSize: titleCase ? 12 : 11,
                         fontWeight: FontWeight.w600,
-                        letterSpacing: 0.6,
+                        letterSpacing: titleCase ? 0 : 0.6,
                       ),
                     ),
                   ],
@@ -783,7 +787,6 @@ class _RemoteTile extends StatelessWidget {
     this.onDelete,
     this.leadingIcon,
     this.leadingIconColor,
-    this.roundedSelection = false,
     this.deleteLabel = 'Delete remote',
   });
   final Remote remote;
@@ -794,11 +797,8 @@ class _RemoteTile extends StatelessWidget {
   /// Overrides the default cloud/computer icon (used for local locations).
   final IconData? leadingIcon;
 
-  /// Tints the icon (Explorer skin's coloured known-folder icons).
+  /// Tints the icon (Explorer/Finder coloured known-folder icons).
   final Color? leadingIconColor;
-
-  /// Explorer-style rounded selection fill (no left accent bar).
-  final bool roundedSelection;
 
   /// Label for the tile's delete/remove menu item.
   final String deleteLabel;
@@ -806,27 +806,43 @@ class _RemoteTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = AircloneTheme.of(context);
+    final chrome = AircloneTheme.chromeOf(context);
+    // Finder fills the whole pill with the accent and flips text to white.
+    final filled =
+        selected && chrome.sidebarSelection == SidebarSelection.accentFillPill;
+    final leftBar = chrome.sidebarSelection == SidebarSelection.leftAccentBar;
+    final fg = filled ? Colors.white : c.text;
+    final subFg = filled ? Colors.white.withValues(alpha: 0.85) : c.textFaint;
+    final icoColor =
+        leadingIconColor ??
+        (filled ? Colors.white : (selected ? c.primary : c.textMuted));
+
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(Radii.md),
       child: Container(
         padding: EdgeInsets.only(
-          left: roundedSelection ? Space.x3 : Space.x2,
+          left: leftBar ? Space.x2 : Space.x3,
           top: 2,
           bottom: 2,
         ),
-        margin: const EdgeInsets.symmetric(vertical: 1),
+        margin: EdgeInsets.symmetric(
+          horizontal: chrome.sidebarItemInset,
+          vertical: 1,
+        ),
         decoration: BoxDecoration(
-          color: selected ? c.primary.withValues(alpha: 0.12) : null,
+          color: selected
+              ? (filled ? c.primary : c.primary.withValues(alpha: 0.12))
+              : null,
           borderRadius: BorderRadius.circular(Radii.md),
-          border: roundedSelection
-              ? null
-              : Border(
+          border: leftBar
+              ? Border(
                   left: BorderSide(
                     color: selected ? c.primary : Colors.transparent,
                     width: 2,
                   ),
-                ),
+                )
+              : null,
         ),
         child: Row(
           children: [
@@ -836,7 +852,7 @@ class _RemoteTile extends StatelessWidget {
                       ? Icons.computer_outlined
                       : Icons.cloud_outlined),
               size: 18,
-              color: leadingIconColor ?? (selected ? c.primary : c.textMuted),
+              color: icoColor,
             ),
             const SizedBox(width: Space.x2),
             Expanded(
@@ -847,15 +863,16 @@ class _RemoteTile extends StatelessWidget {
                     remote.name,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
-                      color: c.text,
+                      color: fg,
                       fontSize: 13,
                       fontWeight: FontWeight.w600,
                     ),
                   ),
-                  Text(
-                    remote.type,
-                    style: TextStyle(color: c.textFaint, fontSize: 11),
-                  ),
+                  if (chrome.tileShowsSubtitle)
+                    Text(
+                      remote.type,
+                      style: TextStyle(color: subFg, fontSize: 11),
+                    ),
                 ],
               ),
             ),
