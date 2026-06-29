@@ -166,6 +166,7 @@ class SkinTokens {
     required this.rowHeight,
     required this.density,
     required this.selectionRadius,
+    required this.rowDividers,
   });
 
   /// Primary UI font (falls back through [fontFamilyFallback] when absent).
@@ -180,8 +181,12 @@ class SkinTokens {
 
   final VisualDensity density;
 
-  /// Corner radius of the row-selection highlight.
+  /// Corner radius of the row selection/hover highlight (0 = square).
   final double selectionRadius;
+
+  /// Whether Details rows are separated by a thin divider line. When false
+  /// (Explorer/Finder style) the selection + hover are rounded fills instead.
+  final bool rowDividers;
 
   static SkinTokens of(Skin skin) => switch (skin) {
     Skin.airclone => airclone,
@@ -201,6 +206,7 @@ class SkinTokens {
     rowHeight: 36,
     density: VisualDensity.standard,
     selectionRadius: 0,
+    rowDividers: true,
   );
 
   static const windows = SkinTokens(
@@ -210,6 +216,7 @@ class SkinTokens {
     rowHeight: 28,
     density: VisualDensity.compact,
     selectionRadius: 4,
+    rowDividers: false,
   );
 
   static const macos = SkinTokens(
@@ -224,6 +231,7 @@ class SkinTokens {
     rowHeight: 24,
     density: VisualDensity.compact,
     selectionRadius: 6,
+    rowDividers: true,
   );
 
   static const gnome = SkinTokens(
@@ -233,6 +241,7 @@ class SkinTokens {
     rowHeight: 38,
     density: VisualDensity.standard,
     selectionRadius: 8,
+    rowDividers: true,
   );
 }
 

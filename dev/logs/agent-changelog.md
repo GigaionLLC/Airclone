@@ -6,6 +6,23 @@ All changes made by AI agents are tracked chronologically below (most recent fir
 
 <!-- New entries go above this line, most recent first -->
 
+## [2026-06-29] - v0.1.0-alpha.41: Windows Explorer skin — row styling (Phase F, part 1)
+
+**Agent:** Airclone Build (Claude Opus 4.8)
+**Files Modified:**
+- `ui/theme/tokens.dart`: new `SkinTokens.rowDividers` (airclone/macos/gnome = true, windows = false).
+- `ui/browser_pane.dart`: `_FileRow` → `ConsumerStatefulWidget` with hover; the Details row now renders
+  per-skin — divider skins keep the flat full-width fill + bottom line; divider-less skins (Explorer) use a
+  **rounded selection + hover fill** (`selectionRadius`) and no dividers.
+- pubspec → alpha.41
+
+**Database/API Changes:** None
+**Summary:** alpha.41 — first real cut of the **Windows Explorer skin**: selecting it gives the file list a
+Win11 feel — no row dividers, rounded selection + hover highlight, denser 28px rows, Segoe UI Variable. The
+default Airclone skin (and macOS/GNOME for now) keep their dividers. analyze (0) / test (54) / Windows build
+green. **Needs the user's eyes** on the Explorer feel; deeper Explorer chrome (command-bar order, sidebar,
+Mica default) can follow.
+
 ## [2026-06-28] - v0.1.0-alpha.40: skin selector + token routing (Phase E — first visible skins)
 
 **Agent:** Airclone Build (Claude Opus 4.8)

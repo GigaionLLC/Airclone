@@ -1200,7 +1200,7 @@ class _PaneToolbar extends ConsumerWidget {
   }
 }
 
-class _FileRow extends ConsumerWidget {
+class _FileRow extends ConsumerStatefulWidget {
   const _FileRow({
     required this.file,
     required this.state,
@@ -1221,7 +1221,27 @@ class _FileRow extends ConsumerWidget {
   final void Function(PaneDragData) onDropInto;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<_FileRow> createState() => _FileRowState();
+}
+
+class _FileRowState extends ConsumerState<_FileRow> {
+  bool _hover = false;
+
+  void _setHover(bool v) {
+    if (_hover != v) setState(() => _hover = v);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final file = widget.file;
+    final state = widget.state;
+    final paneRemote = widget.paneRemote;
+    final onOpen = widget.onOpen;
+    final onToggle = widget.onToggle;
+    final onPreview = widget.onPreview;
+    final onContextMenu = widget.onContextMenu;
+    final onDropInto = widget.onDropInto;
+
     final c = AircloneTheme.of(context);
     final t = AircloneTheme.tokensOf(context);
     final widths = ref.watch(columnWidthsProvider);
@@ -1231,77 +1251,94 @@ class _FileRow extends ConsumerWidget {
     final dragFiles = selected ? state.selectedEntries : <RcloneFile>[file];
     final payload = PaneDragData(paneRemote, state.path, dragFiles);
 
-    final base = GestureDetector(
-      onSecondaryTapUp: (d) => onContextMenu(d.globalPosition),
-      child: InkWell(
-        onTap: file.isDir ? onOpen : onToggle,
-        onDoubleTap: file.isDir ? onOpen : onPreview,
-        child: Container(
-          height: t.rowHeight,
-          padding: const EdgeInsets.symmetric(horizontal: Space.x3),
-          decoration: BoxDecoration(
-            color: selected ? c.primary.withValues(alpha: 0.12) : null,
-            border: Border(
-              bottom: BorderSide(color: c.border.withValues(alpha: 0.4)),
-            ),
-          ),
-          child: Row(
-            children: [
-              SizedBox(
-                width: 22,
-                child: selected
-                    ? Icon(Icons.check_box, size: 16, color: c.primary)
-                    : Icon(
-                        iconFor(file),
-                        size: 17,
-                        color: iconColorFor(file, c),
+    // Skins with dividers (Airclone) use a flat full-width fill + bottom line;
+    // divider-less skins (Explorer/Finder) use a rounded selection + hover fill.
+    final Color? rowColor = selected
+        ? c.primary.withValues(alpha: 0.12)
+        : (_hover ? c.surfaceSunken.withValues(alpha: 0.7) : null);
+
+    final base = MouseRegion(
+      onEnter: (_) => _setHover(true),
+      onExit: (_) => _setHover(false),
+      child: GestureDetector(
+        onSecondaryTapUp: (d) => onContextMenu(d.globalPosition),
+        child: InkWell(
+          onTap: file.isDir ? onOpen : onToggle,
+          onDoubleTap: file.isDir ? onOpen : onPreview,
+          child: Container(
+            height: t.rowHeight,
+            padding: const EdgeInsets.symmetric(horizontal: Space.x3),
+            decoration: BoxDecoration(
+              color: rowColor,
+              borderRadius: t.rowDividers
+                  ? null
+                  : BorderRadius.circular(t.selectionRadius),
+              border: t.rowDividers
+                  ? Border(
+                      bottom: BorderSide(
+                        color: c.border.withValues(alpha: 0.4),
                       ),
-              ),
-              const SizedBox(width: Space.x2),
-              Expanded(
-                child: Text(
-                  file.name,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(color: c.text, fontSize: t.bodySize),
+                    )
+                  : null,
+            ),
+            child: Row(
+              children: [
+                SizedBox(
+                  width: 22,
+                  child: selected
+                      ? Icon(Icons.check_box, size: 16, color: c.primary)
+                      : Icon(
+                          iconFor(file),
+                          size: 17,
+                          color: iconColorFor(file, c),
+                        ),
                 ),
-              ),
-              const SizedBox(width: Space.x2),
-              SizedBox(
-                width: widths.size,
-                child: Text(
-                  file.isDir ? '' : humanSize(file.size),
-                  textAlign: TextAlign.right,
-                  style: TextStyle(color: c.textFaint, fontSize: 12),
-                ),
-              ),
-              const SizedBox(width: Space.x2),
-              SizedBox(
-                width: widths.modified,
-                child: Text(
-                  relativeTime(file.modTime),
-                  textAlign: TextAlign.right,
-                  style: TextStyle(color: c.textFaint, fontSize: 12),
-                ),
-              ),
-              SizedBox(
-                width: 28,
-                child: Builder(
-                  builder: (bctx) => IconButton(
-                    icon: Icon(Icons.more_vert, size: 15, color: c.textFaint),
-                    tooltip: 'Actions',
-                    padding: EdgeInsets.zero,
-                    visualDensity: VisualDensity.compact,
-                    onPressed: () {
-                      final box = bctx.findRenderObject() as RenderBox?;
-                      final pos = box == null
-                          ? Offset.zero
-                          : box.localToGlobal(box.size.center(Offset.zero));
-                      onContextMenu(pos);
-                    },
+                const SizedBox(width: Space.x2),
+                Expanded(
+                  child: Text(
+                    file.name,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(color: c.text, fontSize: t.bodySize),
                   ),
                 ),
-              ),
-            ],
+                const SizedBox(width: Space.x2),
+                SizedBox(
+                  width: widths.size,
+                  child: Text(
+                    file.isDir ? '' : humanSize(file.size),
+                    textAlign: TextAlign.right,
+                    style: TextStyle(color: c.textFaint, fontSize: 12),
+                  ),
+                ),
+                const SizedBox(width: Space.x2),
+                SizedBox(
+                  width: widths.modified,
+                  child: Text(
+                    relativeTime(file.modTime),
+                    textAlign: TextAlign.right,
+                    style: TextStyle(color: c.textFaint, fontSize: 12),
+                  ),
+                ),
+                SizedBox(
+                  width: 28,
+                  child: Builder(
+                    builder: (bctx) => IconButton(
+                      icon: Icon(Icons.more_vert, size: 15, color: c.textFaint),
+                      tooltip: 'Actions',
+                      padding: EdgeInsets.zero,
+                      visualDensity: VisualDensity.compact,
+                      onPressed: () {
+                        final box = bctx.findRenderObject() as RenderBox?;
+                        final pos = box == null
+                            ? Offset.zero
+                            : box.localToGlobal(box.size.center(Offset.zero));
+                        onContextMenu(pos);
+                      },
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
