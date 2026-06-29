@@ -156,7 +156,7 @@ class _GridTile extends StatelessWidget {
 
   Widget _tile(bool selected) {
     return GestureDetector(
-      onSecondaryTapDown: (d) => onContextMenu(file, d.globalPosition),
+      onSecondaryTapUp: (d) => onContextMenu(file, d.globalPosition),
       child: InkWell(
         borderRadius: BorderRadius.circular(Radii.md),
         onTap: file.isDir ? () => onOpen(file) : () => onToggle(file),

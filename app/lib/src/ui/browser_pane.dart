@@ -66,7 +66,7 @@ class BrowserPane extends ConsumerWidget {
                             _dropOnto(ref, d.data, state.remote!, state.path),
                         builder: (_, cand, _) => GestureDetector(
                           behavior: HitTestBehavior.translucent,
-                          onSecondaryTapDown: (d) => _showEmptyMenu(
+                          onSecondaryTapUp: (d) => _showEmptyMenu(
                             context,
                             ref,
                             state,
@@ -1167,7 +1167,7 @@ class _FileRow extends StatelessWidget {
     final payload = PaneDragData(paneRemote, state.path, dragFiles);
 
     final base = GestureDetector(
-      onSecondaryTapDown: (d) => onContextMenu(d.globalPosition),
+      onSecondaryTapUp: (d) => onContextMenu(d.globalPosition),
       child: InkWell(
         onTap: file.isDir ? onOpen : onToggle,
         onDoubleTap: file.isDir ? onOpen : onPreview,

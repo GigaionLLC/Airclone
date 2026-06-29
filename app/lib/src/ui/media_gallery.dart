@@ -279,7 +279,7 @@ class _MediaTile extends StatelessWidget {
     );
 
     final gestures = GestureDetector(
-      onSecondaryTapDown: (d) => onContextMenu(file, d.globalPosition),
+      onSecondaryTapUp: (d) => onContextMenu(file, d.globalPosition),
       child: InkWell(
         borderRadius: BorderRadius.circular(Radii.sm),
         onTap: () => onToggle(file),

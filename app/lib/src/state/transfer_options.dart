@@ -74,6 +74,42 @@ class TransferOptions {
     filters: filters ?? this.filters,
     extraFlags: extraFlags ?? this.extraFlags,
   );
+
+  Map<String, dynamic> toJson() => {
+    'mode': mode.name,
+    'skipNewer': skipNewer,
+    'skipExisting': skipExisting,
+    'compare': compare?.name,
+    'dryRun': dryRun,
+    'includes': includes,
+    'excludes': excludes,
+    'filters': filters,
+    'extraFlags': extraFlags,
+  };
+
+  factory TransferOptions.fromJson(Map<String, dynamic> j) {
+    List<String> list(Object? v) =>
+        (v as List?)?.whereType<String>().toList() ?? const [];
+    return TransferOptions(
+      mode: TransferMode.values.firstWhere(
+        (m) => m.name == j['mode'],
+        orElse: () => TransferMode.copy,
+      ),
+      skipNewer: j['skipNewer'] == true,
+      skipExisting: j['skipExisting'] == true,
+      compare: j['compare'] == null
+          ? null
+          : CompareMode.values.firstWhere(
+              (m) => m.name == j['compare'],
+              orElse: () => CompareMode.sizeModTime,
+            ),
+      dryRun: j['dryRun'] == true,
+      includes: list(j['includes']),
+      excludes: list(j['excludes']),
+      filters: list(j['filters']),
+      extraFlags: list(j['extraFlags']),
+    );
+  }
 }
 
 /// rclone subcommand name for a [TransferMode].
