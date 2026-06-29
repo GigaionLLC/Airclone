@@ -6,6 +6,29 @@ All changes made by AI agents are tracked chronologically below (most recent fir
 
 <!-- New entries go above this line, most recent first -->
 
+## [2026-06-28] - v0.1.0-alpha.20: download-to-folder + type-to-navigate + status bar
+
+**Agent:** Airclone Build (Claude Opus 4.8)
+**Files Modified:**
+- New: `state/download_settings.dart` — `downloadDirProvider` (persisted default folder),
+  `downloadAlwaysPromptProvider`, and `resolveDownloadDir(ref)` (uses the saved default, else a native
+  folder picker, remembering the choice); `state/remote_about.dart` — `remoteAboutProvider` (`operations/about`)
+- `ui/inspector_panel.dart` + `ui/browser_pane.dart`: Download no longer assumes the OS Downloads folder —
+  resolves the destination **once** via `resolveDownloadDir` (prompt/remember), then copies (download-all
+  prompts once, not per file); dropped now-unused `dart:io`
+- `ui/settings_screen.dart`: **Downloads** section — default folder (Change / Clear) + "Always ask where to save"
+- `state/browser_controller.dart`: `selectOnly` + `paneScrollProvider`; `ui/browser_pane.dart` list view uses it
+- `ui/home_screen.dart`: **type-to-navigate** (Focus `onKeyEvent` accumulates printable keys, jump-selects +
+  scrolls the active pane; skips space + modified combos); **richer status bar** (item count · selection +
+  size · free/total space)
+- pubspec → alpha.20
+
+**Database/API Changes:** None (uses `operations/about`)
+**Summary:** alpha.20 — addresses the Download UX: it now **prompts for the save folder** and remembers it
+(Settings → Downloads sets a default + an "always ask" toggle), instead of silently using Downloads.
+**Type-to-navigate** jumps to a file as you type its name. The **status bar** now shows the active pane's
+item count, selection + size, and the remote's free/total space. analyze (0) / test (16) / Windows build green.
+
 ## [2026-06-28] - v0.1.0-alpha.19: encrypted preview cache + clear-cache + memory-only
 
 **Agent:** Airclone Build (Claude Opus 4.8)

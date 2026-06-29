@@ -1,5 +1,3 @@
-import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -8,6 +6,7 @@ import '../rclone/models/rclone_file.dart';
 import '../rclone/models/remote.dart';
 import '../rclone/rclone_client.dart';
 import '../state/browser_controller.dart';
+import '../state/download_settings.dart';
 import '../state/engine_controller.dart';
 import '../state/remote_features.dart';
 import '../state/thumbnail_prefs.dart';
@@ -291,7 +290,12 @@ class _InspectorPanelState extends ConsumerState<InspectorPanel> {
         _pill(c, Icons.visibility, 'Preview', () {
           showPreviewDialog(context, ref, remote, state.path, f);
         }),
-        _pill(c, Icons.download, 'Download', () => _download(state, f)),
+        _pill(
+          c,
+          Icons.download,
+          'Download',
+          () => _downloadSelection(state, [f]),
+        ),
         if (canLink)
           _pill(c, Icons.link, 'Copy link', () => _publicLink(state, f)),
       ],
@@ -399,11 +403,12 @@ class _InspectorPanelState extends ConsumerState<InspectorPanel> {
           const SizedBox(height: Space.x3),
           Align(
             alignment: Alignment.centerLeft,
-            child: _pill(c, Icons.download, 'Download all', () {
-              for (final f in sel) {
-                _download(state, f);
-              }
-            }),
+            child: _pill(
+              c,
+              Icons.download,
+              'Download all',
+              () => _downloadSelection(state, sel),
+            ),
           ),
         ]),
       ],
@@ -447,31 +452,32 @@ class _InspectorPanelState extends ConsumerState<InspectorPanel> {
 
   // ── Actions ───────────────────────────────────────────────────────────────
 
-  /// Copy [f] from the active pane's remote into the OS Downloads folder.
-  Future<void> _download(BrowserState state, RcloneFile f) async {
+  /// Download [files] from the active pane's remote. Resolves the destination
+  /// folder ONCE (saved default or a folder prompt), then copies each file.
+  Future<void> _downloadSelection(
+    BrowserState state,
+    List<RcloneFile> files,
+  ) async {
     final remote = state.remote;
-    if (remote == null) return;
-    final home =
-        Platform.environment['USERPROFILE'] ??
-        Platform.environment['HOME'] ??
-        '.';
-    final downloads =
-        '${home.replaceAll(String.fromCharCode(92), '/')}/Downloads';
+    if (remote == null || files.isEmpty) return;
+    final dir = await resolveDownloadDir(ref);
+    if (dir == null) return; // cancelled
     final local = Remote(
-      name: 'Downloads',
+      name: 'Download',
       type: 'local',
-      fs: '$downloads/',
+      fs: '$dir/',
       isLocal: true,
     );
-    await ref
-        .read(transferServiceProvider)
-        .transfer(
-          srcRemote: remote,
-          srcPath: joinPath(state.path, f.name),
-          dstRemote: local,
-          dstPath: f.name,
-          type: JobType.copy,
-        );
+    final svc = ref.read(transferServiceProvider);
+    for (final f in files) {
+      await svc.transfer(
+        srcRemote: remote,
+        srcPath: joinPath(state.path, f.name),
+        dstRemote: local,
+        dstPath: f.name,
+        type: JobType.copy,
+      );
+    }
   }
 
   /// Request a public link for [f] and surface it in a small dialog.

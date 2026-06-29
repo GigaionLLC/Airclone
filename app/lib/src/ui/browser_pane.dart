@@ -1,5 +1,3 @@
-import 'dart:io';
-
 import 'package:desktop_drop/desktop_drop.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -9,6 +7,7 @@ import '../rclone/models/rclone_file.dart';
 import '../rclone/models/remote.dart';
 import '../state/browser_controller.dart';
 import '../state/clipboard_controller.dart';
+import '../state/download_settings.dart';
 import '../state/engine_controller.dart';
 import '../state/file_ops.dart';
 import '../state/remote_features.dart';
@@ -222,6 +221,7 @@ class BrowserPane extends ConsumerWidget {
           );
         case ViewMode.list:
           content = ListView.builder(
+            controller: ref.watch(paneScrollProvider(index)),
             itemCount: visible.length,
             itemBuilder: (_, i) {
               final f = visible[i];
@@ -450,15 +450,13 @@ class BrowserPane extends ConsumerWidget {
     BrowserState state,
     List<RcloneFile> files,
   ) async {
-    final home =
-        Platform.environment['USERPROFILE'] ??
-        Platform.environment['HOME'] ??
-        '.';
-    final downloads = '${home.replaceAll('\\', '/')}/Downloads';
+    if (state.remote == null || files.isEmpty) return;
+    final dir = await resolveDownloadDir(ref); // prompts / uses saved default
+    if (dir == null) return; // cancelled
     final local = Remote(
-      name: 'Downloads',
+      name: 'Download',
       type: 'local',
-      fs: '$downloads/',
+      fs: '$dir/',
       isLocal: true,
     );
     final svc = ref.read(transferServiceProvider);

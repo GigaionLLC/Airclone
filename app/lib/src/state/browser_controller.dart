@@ -276,6 +276,9 @@ class BrowserController extends Notifier<BrowserState> {
 
   void clearSelection() => _set(state.copyWith(selected: const {}));
 
+  /// Replace the selection with just [name] (used by type-to-navigate).
+  void selectOnly(String name) => _set(state.copyWith(selected: {name}));
+
   void selectAll() => _set(
     state.copyWith(selected: state.visibleEntries.map((e) => e.name).toSet()),
   );
@@ -344,4 +347,12 @@ final paneFilterFocusProvider = Provider.family<FocusNode, int>((ref, index) {
   final node = FocusNode();
   ref.onDispose(node.dispose);
   return node;
+});
+
+/// App-lifetime ScrollController per pane list view (so type-to-navigate can
+/// scroll the active pane to a matched row).
+final paneScrollProvider = Provider.family<ScrollController, int>((ref, index) {
+  final ctrl = ScrollController();
+  ref.onDispose(ctrl.dispose);
+  return ctrl;
 });

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:desktop_drop/desktop_drop.dart';
@@ -12,12 +13,14 @@ import '../state/app_info.dart';
 import '../state/browser_controller.dart';
 import '../state/engine_controller.dart';
 import '../state/local_locations.dart';
+import '../state/remote_about.dart';
 import '../state/remotes_provider.dart';
 import '../state/stats_controller.dart';
 import '../state/transfer_service.dart';
 import 'add_remote_dialog.dart';
 import 'bandwidth_control.dart';
 import 'browser_pane.dart';
+import 'format.dart';
 import 'inspector_panel.dart';
 import 'jobs_panel.dart';
 import 'pane_drag.dart';
@@ -48,12 +51,66 @@ class HomeScreen extends ConsumerStatefulWidget {
 class _HomeScreenState extends ConsumerState<HomeScreen> {
   bool _jobsExpanded = true;
 
+  // Type-to-navigate: accumulate typed chars briefly, then jump to the match.
+  String _typeBuffer = '';
+  Timer? _typeTimer;
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(engineControllerProvider.notifier).bootstrap();
     });
+  }
+
+  @override
+  void dispose() {
+    _typeTimer?.cancel();
+    super.dispose();
+  }
+
+  /// Printable keystrokes (no modifiers, not space) jump-select the first entry
+  /// in the active pane starting with the typed prefix, and scroll to it (list).
+  KeyEventResult _onKey(FocusNode node, KeyEvent event) {
+    if (event is! KeyDownEvent) return KeyEventResult.ignored;
+    final hk = HardwareKeyboard.instance;
+    if (hk.isControlPressed || hk.isAltPressed || hk.isMetaPressed) {
+      return KeyEventResult.ignored;
+    }
+    final ch = event.character;
+    if (ch == null || ch.length != 1 || ch.codeUnitAt(0) <= 0x20) {
+      return KeyEventResult.ignored; // skip space + control chars
+    }
+    _typeBuffer += ch.toLowerCase();
+    _typeTimer?.cancel();
+    _typeTimer = Timer(
+      const Duration(milliseconds: 800),
+      () => _typeBuffer = '',
+    );
+    _typeaheadJump();
+    return KeyEventResult.handled;
+  }
+
+  void _typeaheadJump() {
+    final idx = ref.read(activePaneProvider);
+    final st = ref.read(paneProvider(idx));
+    final entries = st.visibleEntries;
+    final i = entries.indexWhere(
+      (e) => e.name.toLowerCase().startsWith(_typeBuffer),
+    );
+    if (i < 0) return;
+    ref.read(paneProvider(idx).notifier).selectOnly(entries[i].name);
+    if (st.viewMode == ViewMode.list) {
+      final sc = ref.read(paneScrollProvider(idx));
+      if (sc.hasClients) {
+        final target = (i * 36.0).clamp(0.0, sc.position.maxScrollExtent);
+        sc.animateTo(
+          target,
+          duration: const Duration(milliseconds: 150),
+          curve: Curves.easeOut,
+        );
+      }
+    }
   }
 
   /// Quick Look the active pane's selection (first selected file), navigable
@@ -101,6 +158,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         },
         child: Focus(
           autofocus: true,
+          onKeyEvent: _onKey,
           child: Column(
             children: [
               _TopBar(
@@ -888,6 +946,24 @@ class _StatusBar extends ConsumerWidget {
       EnginePhase.notInstalled => (c.warning, 'engine not installed'),
       _ => (c.textFaint, 'engine ${engine.phase.name}…'),
     };
+
+    // Active-pane summary: item count · selection · free/total space.
+    final active = ref.watch(activePaneProvider);
+    final st = ref.watch(paneProvider(active));
+    final remote = st.remote;
+    final sel = st.selectedEntries;
+    final selBytes = sel.fold<int>(0, (s, e) => s + (e.size > 0 ? e.size : 0));
+    final about = remote == null
+        ? null
+        : ref.watch(remoteAboutProvider(remote.fs)).valueOrNull;
+
+    final parts = <String>[
+      if (remote != null) '${st.visibleEntries.length} items',
+      if (sel.isNotEmpty) '${sel.length} selected · ${humanSize(selBytes)}',
+      if (about?.free != null && about?.total != null)
+        '${humanSize(about!.free!)} free of ${humanSize(about.total!)}',
+    ];
+
     return Container(
       height: 24,
       color: c.surfaceRaised,
@@ -902,6 +978,11 @@ class _StatusBar extends ConsumerWidget {
           const SizedBox(width: Space.x2),
           Text(label, style: TextStyle(color: c.textMuted, fontSize: 11)),
           const Spacer(),
+          if (parts.isNotEmpty)
+            Text(
+              parts.join('   ·   '),
+              style: TextStyle(color: c.textMuted, fontSize: 11),
+            ),
         ],
       ),
     );

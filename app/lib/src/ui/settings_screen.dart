@@ -1,9 +1,11 @@
+import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../state/app_info.dart';
 import '../state/cache_crypto.dart';
+import '../state/download_settings.dart';
 import '../state/settings_controller.dart';
 import 'theme/tokens.dart';
 
@@ -38,6 +40,8 @@ class SettingsDialog extends ConsumerWidget {
               const SizedBox(height: Space.x5),
               _RclonePathSection(),
               const SizedBox(height: Space.x5),
+              _DownloadsSection(),
+              const SizedBox(height: Space.x5),
               _CacheSection(),
               const SizedBox(height: Space.x5),
               _UpdatesSection(),
@@ -45,6 +49,86 @@ class SettingsDialog extends ConsumerWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// Where downloads go: a remembered default folder + an "always ask" toggle.
+class _DownloadsSection extends ConsumerWidget {
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final c = AircloneTheme.of(context);
+    final dir = ref.watch(downloadDirProvider);
+    final always = ref.watch(downloadAlwaysPromptProvider);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const _SectionLabel(
+          'Downloads',
+          help: 'Where downloaded files are saved.',
+        ),
+        Row(
+          children: [
+            Icon(Icons.folder_outlined, size: 16, color: c.textMuted),
+            const SizedBox(width: Space.x2),
+            Expanded(
+              child: Text(
+                dir ?? 'Ask each time (no default set)',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: dir == null ? c.textFaint : c.textMuted,
+                  fontSize: 13,
+                ),
+              ),
+            ),
+            TextButton(
+              onPressed: () async {
+                final p = await getDirectoryPath(initialDirectory: dir);
+                if (p != null) {
+                  await ref
+                      .read(downloadDirProvider.notifier)
+                      .set(p.replaceAll(r'\', '/'));
+                }
+              },
+              child: const Text('Change'),
+            ),
+            if (dir != null)
+              IconButton(
+                onPressed: () =>
+                    ref.read(downloadDirProvider.notifier).set(null),
+                icon: const Icon(Icons.close, size: 16),
+                tooltip: 'Clear default',
+                color: c.textFaint,
+                visualDensity: VisualDensity.compact,
+              ),
+          ],
+        ),
+        const SizedBox(height: Space.x1),
+        Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Always ask where to save',
+                    style: TextStyle(color: c.text, fontSize: 13),
+                  ),
+                  Text(
+                    'Prompt for a folder on every download.',
+                    style: TextStyle(color: c.textFaint, fontSize: 11),
+                  ),
+                ],
+              ),
+            ),
+            Switch(
+              value: always,
+              onChanged: ref.read(downloadAlwaysPromptProvider.notifier).set,
+            ),
+          ],
+        ),
+      ],
     );
   }
 }
