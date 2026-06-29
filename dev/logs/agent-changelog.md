@@ -6,6 +6,25 @@ All changes made by AI agents are tracked chronologically below (most recent fir
 
 <!-- New entries go above this line, most recent first -->
 
+## [2026-06-29] - v0.1.0-alpha.44: macOS Finder + Linux GNOME skins (Phase G)
+
+**Agent:** Airclone Build (Claude Opus 4.8)
+**Files Modified:**
+- `ui/theme/tokens.dart`: `AircloneColors.macosLight/macosDark` (macOS blue) + `gnomeLight/gnomeDark`
+  (Adwaita blue); `forSkin` now maps all four skins. `SkinTokens.macos`/`gnome` → `rowDividers: false`
+  (dividerless rounded rows like modern Finder/Files).
+- `ui/home_screen.dart`: sidebar generalized — `roundedSidebar` for all OS skins, `colouredIcons` for
+  Windows + macOS (GNOME keeps monochrome symbolic icons).
+- `test/skin_test.dart`: per-skin palette mapping + dividerless-row assertions for all OS skins.
+- pubspec → alpha.44 (built after bump).
+
+**Database/API Changes:** None
+**Summary:** alpha.44 — the Finder and GNOME skins are now real: each has its own Adwaita/macOS palette,
+dividerless rounded rows + sidebar selection, OS fonts (SF Pro / Adwaita Sans), and Finder gets coloured
+folder icons. Same token-driven approach as Explorer. Airclone default unchanged. analyze (0) /
+test (56, +2) / Windows build green. **Needs the user's eyes** (and ideally real Finder/Files shots) to tune
+each; deeper per-OS chrome (toolbars/translucency) can follow like Explorer's.
+
 ## [2026-06-29] - v0.1.0-alpha.43: Windows Explorer skin — sidebar styling (Phase F, part 3)
 
 **Agent:** Airclone Build (Claude Opus 4.8)

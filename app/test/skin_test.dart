@@ -19,28 +19,46 @@ void main() {
     expect(ext.colors.primary, AircloneColors.light.primary);
   });
 
-  test('Windows skin uses its own palette; others fall back to Airclone', () {
+  test('each skin maps to its own palette; Airclone is the fallback', () {
     expect(
       AircloneColors.forSkin(Skin.windows, Brightness.dark),
       AircloneColors.windowsDark,
     );
     expect(
-      AircloneColors.forSkin(Skin.windows, Brightness.light),
-      AircloneColors.windowsLight,
+      AircloneColors.forSkin(Skin.macos, Brightness.dark),
+      AircloneColors.macosDark,
+    );
+    expect(
+      AircloneColors.forSkin(Skin.macos, Brightness.light),
+      AircloneColors.macosLight,
+    );
+    expect(
+      AircloneColors.forSkin(Skin.gnome, Brightness.dark),
+      AircloneColors.gnomeDark,
+    );
+    expect(
+      AircloneColors.forSkin(Skin.gnome, Brightness.light),
+      AircloneColors.gnomeLight,
     );
     expect(
       AircloneColors.forSkin(Skin.airclone, Brightness.dark),
       AircloneColors.dark,
     );
-    expect(
-      AircloneColors.forSkin(Skin.macos, Brightness.light),
-      AircloneColors.light,
-    );
-    // The Windows palette really differs from the default.
-    expect(
-      AircloneColors.windowsDark.surface,
-      isNot(AircloneColors.dark.surface),
-    );
+    // Each OS palette really differs from the default.
+    for (final s in [Skin.windows, Skin.macos, Skin.gnome]) {
+      expect(
+        AircloneColors.forSkin(s, Brightness.dark).surface,
+        isNot(AircloneColors.dark.surface),
+        reason: '$s should have its own surface',
+      );
+    }
+  });
+
+  test('OS skins render dividerless rounded rows; Airclone keeps dividers', () {
+    expect(SkinTokens.airclone.rowDividers, isTrue);
+    for (final s in [Skin.windows, Skin.macos, Skin.gnome]) {
+      expect(SkinTokens.of(s).rowDividers, isFalse, reason: '$s');
+    }
   });
 
   test('SkinTokens.of returns the right bundle per skin', () {

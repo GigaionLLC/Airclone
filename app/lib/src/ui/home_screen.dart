@@ -476,8 +476,11 @@ class _Sidebar extends ConsumerWidget {
     final active = ref.watch(activePaneProvider);
     final selectedRemote = ref.watch(paneProvider(active)).remote;
     final engineReady = ref.watch(engineControllerProvider).isReady;
-    // Windows Explorer skin: coloured known-folder icons + rounded selection.
-    final explorer = ref.watch(skinProvider) == Skin.windows;
+    // OS skins use a rounded sidebar selection; Explorer + Finder also colour
+    // the known-folder icons (GNOME keeps monochrome symbolic icons).
+    final skin = ref.watch(skinProvider);
+    final roundedSidebar = skin != Skin.airclone;
+    final colouredIcons = skin == Skin.windows || skin == Skin.macos;
 
     Widget tile(
       Remote r,
@@ -494,7 +497,7 @@ class _Sidebar extends ConsumerWidget {
         selected: r == selectedRemote,
         leadingIcon: icon,
         leadingIconColor: iconColor,
-        roundedSelection: explorer,
+        roundedSelection: roundedSidebar,
         onTap: () => _openOrToggle(ref, active, r),
         onDelete: onDelete,
         deleteLabel: deleteLabel,
@@ -527,7 +530,7 @@ class _Sidebar extends ConsumerWidget {
                 tile(
                   loc.remote,
                   _localIcon(loc.kind),
-                  iconColor: explorer ? _localAccent(loc.kind) : null,
+                  iconColor: colouredIcons ? _localAccent(loc.kind) : null,
                   onDelete: () => ref
                       .read(userLocationsProvider.notifier)
                       .remove(loc.remote.fs),
@@ -544,7 +547,7 @@ class _Sidebar extends ConsumerWidget {
           tile(
             d.remote,
             _localIcon(d.kind),
-            iconColor: explorer ? _localAccent(d.kind) : null,
+            iconColor: colouredIcons ? _localAccent(d.kind) : null,
           ),
 
       // ── Cloud (rclone remotes) ───────────────────────────────────────────────

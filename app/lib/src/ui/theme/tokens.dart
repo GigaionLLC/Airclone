@@ -156,13 +156,105 @@ class AircloneColors {
     info: Color(0xFF4CC2FF),
   );
 
+  /// macOS Finder palette — soft neutral grays + the macOS blue accent.
+  static const macosLight = AircloneColors(
+    surface: Color(0xFFECECEC),
+    surfaceRaised: Color(0xFFFFFFFF),
+    surfaceSunken: Color(0xFFF2F2F2),
+    border: Color(0xFFDCDCDC),
+    borderStrong: Color(0xFFC2C2C2),
+    text: Color(0xFF1D1D1F),
+    textMuted: Color(0xFF6E6E73),
+    textFaint: Color(0xFF8E8E93),
+    primary: Color(0xFF007AFF),
+    primaryHover: Color(0xFF0A84FF),
+    onPrimary: Color(0xFFFFFFFF),
+    secondary: Color(0xFF007AFF),
+    success: Color(0xFF28A745),
+    successBg: Color(0xFFE5F5E9),
+    warning: Color(0xFFB8860B),
+    warningBg: Color(0xFFFBF2DE),
+    error: Color(0xFFFF3B30),
+    errorBg: Color(0xFFFDE6E5),
+    info: Color(0xFF007AFF),
+  );
+
+  static const macosDark = AircloneColors(
+    surface: Color(0xFF1E1E1E),
+    surfaceRaised: Color(0xFF2A2A2A),
+    surfaceSunken: Color(0xFF333333),
+    border: Color(0xFF3A3A3A),
+    borderStrong: Color(0xFF4D4D4D),
+    text: Color(0xFFFFFFFF),
+    textMuted: Color(0xFFB0B0B5),
+    textFaint: Color(0xFF7E7E83),
+    primary: Color(0xFF0A84FF),
+    primaryHover: Color(0xFF3D9BFF),
+    onPrimary: Color(0xFFFFFFFF),
+    secondary: Color(0xFF0A84FF),
+    success: Color(0xFF32D74B),
+    successBg: Color(0xFF12331A),
+    warning: Color(0xFFFFD60A),
+    warningBg: Color(0xFF3A3416),
+    error: Color(0xFFFF453A),
+    errorBg: Color(0xFF3D1F1D),
+    info: Color(0xFF0A84FF),
+  );
+
+  /// GNOME / Adwaita palette — Adwaita grays + the Adwaita blue accent.
+  static const gnomeLight = AircloneColors(
+    surface: Color(0xFFFAFAFB),
+    surfaceRaised: Color(0xFFFFFFFF),
+    surfaceSunken: Color(0xFFF0F0F0),
+    border: Color(0xFFE0E0E0),
+    borderStrong: Color(0xFFCDCDCD),
+    text: Color(0xFF2E3436),
+    textMuted: Color(0xFF5E5C64),
+    textFaint: Color(0xFF9A9996),
+    primary: Color(0xFF3584E4),
+    primaryHover: Color(0xFF1C71D8),
+    onPrimary: Color(0xFFFFFFFF),
+    secondary: Color(0xFF3584E4),
+    success: Color(0xFF2EC27E),
+    successBg: Color(0xFFE4F6EE),
+    warning: Color(0xFFC88A04),
+    warningBg: Color(0xFFFBF2DE),
+    error: Color(0xFFE01B24),
+    errorBg: Color(0xFFFCE7E8),
+    info: Color(0xFF3584E4),
+  );
+
+  static const gnomeDark = AircloneColors(
+    surface: Color(0xFF242424),
+    surfaceRaised: Color(0xFF303030),
+    surfaceSunken: Color(0xFF1E1E1E),
+    border: Color(0xFF3A3A3A),
+    borderStrong: Color(0xFF505050),
+    text: Color(0xFFFFFFFF),
+    textMuted: Color(0xFFC0BFBC),
+    textFaint: Color(0xFF8E8D89),
+    primary: Color(0xFF78AEED),
+    primaryHover: Color(0xFF99C1F1),
+    onPrimary: Color(0xFF1A1A1A),
+    secondary: Color(0xFF78AEED),
+    success: Color(0xFF8FF0A4),
+    successBg: Color(0xFF13371F),
+    warning: Color(0xFFF8E45C),
+    warningBg: Color(0xFF3A3416),
+    error: Color(0xFFFF7B63),
+    errorBg: Color(0xFF3D2120),
+    info: Color(0xFF78AEED),
+  );
+
   /// The palette for a given [skin] + [brightness]. Skins without a dedicated
   /// palette fall back to the default Airclone look.
   static AircloneColors forSkin(Skin skin, Brightness brightness) {
     final dark = brightness == Brightness.dark;
     return switch (skin) {
       Skin.windows => dark ? windowsDark : windowsLight,
-      _ => dark ? AircloneColors.dark : AircloneColors.light,
+      Skin.macos => dark ? macosDark : macosLight,
+      Skin.gnome => dark ? gnomeDark : gnomeLight,
+      Skin.airclone => dark ? AircloneColors.dark : AircloneColors.light,
     };
   }
 
@@ -286,7 +378,7 @@ class SkinTokens {
     rowHeight: 24,
     density: VisualDensity.compact,
     selectionRadius: 6,
-    rowDividers: true,
+    rowDividers: false,
   );
 
   static const gnome = SkinTokens(
@@ -296,7 +388,7 @@ class SkinTokens {
     rowHeight: 38,
     density: VisualDensity.standard,
     selectionRadius: 8,
-    rowDividers: true,
+    rowDividers: false,
   );
 }
 
