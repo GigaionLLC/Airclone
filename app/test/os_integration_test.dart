@@ -25,6 +25,13 @@ void main() {
       expect(c.args, [r'/select,C:\My Docs\a b.txt']);
     });
 
+    test('Windows converts forward slashes to backslashes (regression)', () {
+      // rclone's local fs gives forward slashes; explorer.exe needs backslashes
+      // or it ignores /select and opens the Desktop.
+      final c = revealCommand(TargetPlatform.windows, 'C:/Users/me/sub/f.txt');
+      expect(c.args, [r'/select,C:\Users\me\sub\f.txt']);
+    });
+
     test('macOS uses open -R with the path as a separate element', () {
       final c = revealCommand(TargetPlatform.macOS, '/Users/me/a b.txt');
       expect(c.exe, 'open');

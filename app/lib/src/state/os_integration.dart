@@ -32,8 +32,12 @@ typedef ProcessRunner =
 OsCommand revealCommand(TargetPlatform os, String absPath) {
   switch (os) {
     case TargetPlatform.windows:
-      final needsQuote = absPath.contains(',') || absPath.contains('=');
-      final pathArg = needsQuote ? '"$absPath"' : absPath;
+      // explorer.exe ONLY understands backslashes; rclone's local fs hands us
+      // forward slashes (C:/Users/…), and a forward-slash path makes explorer
+      // silently ignore /select and open the default location (the Desktop).
+      final win = absPath.replaceAll('/', r'\');
+      final needsQuote = win.contains(',') || win.contains('=');
+      final pathArg = needsQuote ? '"$win"' : win;
       return (exe: 'explorer.exe', args: ['/select,$pathArg']);
     case TargetPlatform.macOS:
       return (exe: 'open', args: ['-R', absPath]);
