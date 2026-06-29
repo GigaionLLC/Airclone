@@ -49,6 +49,7 @@ class BrowserPane extends ConsumerWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            if (state.tabs.length > 1) _TabStrip(index: index),
             _PaneToolbar(index: index, active: active, state: state),
             Divider(height: 1, color: c.border),
             Expanded(
@@ -601,6 +602,96 @@ double _nearestPreset(double size) {
   return best;
 }
 
+/// The per-pane tab strip (shown only when a pane has more than one tab).
+/// Each chip switches tabs; its ✕ closes it; the trailing + opens a new tab.
+class _TabStrip extends ConsumerWidget {
+  const _TabStrip({required this.index});
+  final int index;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final c = AircloneTheme.of(context);
+    final state = ref.watch(paneProvider(index));
+    final ctrl = ref.read(paneProvider(index).notifier);
+    final tabs = state.tabs;
+
+    return Container(
+      height: 30,
+      color: c.surface,
+      padding: const EdgeInsets.symmetric(horizontal: Space.x1),
+      child: Row(
+        children: [
+          Expanded(
+            child: ListView.builder(
+              scrollDirection: Axis.horizontal,
+              itemCount: tabs.length,
+              itemBuilder: (_, i) {
+                final on = i == state.activeTab;
+                return Padding(
+                  padding: const EdgeInsets.symmetric(
+                    vertical: 3,
+                    horizontal: 1,
+                  ),
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(Radii.sm),
+                    onTap: () => ctrl.switchTab(i),
+                    child: Container(
+                      constraints: const BoxConstraints(maxWidth: 168),
+                      padding: const EdgeInsets.only(left: Space.x2, right: 2),
+                      decoration: BoxDecoration(
+                        color: on ? c.surfaceRaised : c.surfaceSunken,
+                        borderRadius: BorderRadius.circular(Radii.sm),
+                        border: Border.all(
+                          color: on ? c.border : Colors.transparent,
+                        ),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Flexible(
+                            child: Text(
+                              tabs[i].label,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                color: on ? c.text : c.textMuted,
+                                fontSize: 12,
+                                fontWeight: on
+                                    ? FontWeight.w600
+                                    : FontWeight.w400,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 2),
+                          InkWell(
+                            borderRadius: BorderRadius.circular(Radii.full),
+                            onTap: () => ctrl.closeTab(i),
+                            child: Icon(
+                              Icons.close,
+                              size: 13,
+                              color: c.textFaint,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+          IconButton(
+            onPressed: ctrl.newTab,
+            icon: const Icon(Icons.add, size: 15),
+            tooltip: 'New tab (Ctrl+T)',
+            visualDensity: VisualDensity.compact,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 /// The per-pane header — two Explorer-style rows: an **address row** (nav +
 /// breadcrumb path + filter) and a **command bar** (New · Cut/Copy/Paste ·
 /// Rename · Delete · Sort ▾ · View ▾).
@@ -671,6 +762,12 @@ class _PaneToolbar extends ConsumerWidget {
               onPressed: state.remote == null ? null : ctrl.refresh,
               icon: const Icon(Icons.refresh, size: 15),
               tooltip: 'Refresh',
+              visualDensity: VisualDensity.compact,
+            ),
+            IconButton(
+              onPressed: ctrl.newTab,
+              icon: const Icon(Icons.add, size: 15),
+              tooltip: 'New tab (Ctrl+T)',
               visualDensity: VisualDensity.compact,
             ),
             const SizedBox(width: Space.x1),

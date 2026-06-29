@@ -89,6 +89,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   .requestFocus(),
           const SingleActivator(LogicalKeyboardKey.keyI, control: true): () =>
               ref.read(inspectorVisibleProvider.notifier).update((v) => !v),
+          const SingleActivator(LogicalKeyboardKey.keyT, control: true): () =>
+              activePane().newTab(),
+          const SingleActivator(LogicalKeyboardKey.keyW, control: true): () {
+            final idx = ref.read(activePaneProvider);
+            ref
+                .read(paneProvider(idx).notifier)
+                .closeTab(ref.read(paneProvider(idx)).activeTab);
+          },
           const SingleActivator(LogicalKeyboardKey.space): _quickLookActive,
         },
         child: Focus(

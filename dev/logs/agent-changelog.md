@@ -6,6 +6,27 @@ All changes made by AI agents are tracked chronologically below (most recent fir
 
 <!-- New entries go above this line, most recent first -->
 
+## [2026-06-28] - v0.1.0-alpha.17: tabs (multiple locations per pane)
+
+**Agent:** Airclone Build (Claude Opus 4.8)
+**Files Modified:**
+- `state/browser_controller.dart`: tabs via an internal **`_Session`** list (each = a `BrowserState` + its
+  own `history`/`idx`). The controller keeps `Notifier<BrowserState>` and `_emit()`s the active session's
+  state with `TabInfo` `tabs` + `activeTab` overlaid — so the 36 existing `paneProvider` call sites are
+  unchanged. New ops: `newTab` / `switchTab` / `closeTab`; navigation/history now operate on the active
+  session. `BrowserState` gains `tabs`/`activeTab` + `TabInfo`.
+- `ui/browser_pane.dart`: `_TabStrip` (shown only when >1 tab — chips switch, ✕ closes, **+** adds); a
+  new-tab **+** button in the address row.
+- `ui/home_screen.dart`: **Ctrl+T** (new tab) / **Ctrl+W** (close active tab) shortcuts.
+- pubspec → alpha.17
+
+**Database/API Changes:** None
+**Summary:** alpha.17 — **tabs**. Each pane can hold several tabs, each remembering its own remote, path,
+selection, view mode, and **independent back/forward history**. Add a tab with the **+** in the address row
+or **Ctrl+T**; a tab strip appears once you have more than one; **Ctrl+W** closes the active tab. The whole
+thing rides on an internal session model so the existing browser/UI code didn't have to change. analyze (0)
+/ test (16) / Windows build green locally.
+
 ## [2026-06-28] - v0.1.0-alpha.16: folder previews + safe orphaned-engine reap (2-agent workflow)
 
 **Agent:** Airclone Build (Claude Opus 4.8) + 2-agent parallel workflow

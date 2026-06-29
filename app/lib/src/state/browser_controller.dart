@@ -13,6 +13,13 @@ enum ViewMode { list, grid, media }
 /// Default grid tile target width (px). Tunable live via the density slider.
 const double kDefaultGridSize = 112;
 
+/// Lightweight descriptor of one open tab, for rendering the tab strip.
+@immutable
+class TabInfo {
+  const TabInfo({required this.label});
+  final String label;
+}
+
 @immutable
 class BrowserState {
   const BrowserState({
@@ -27,6 +34,8 @@ class BrowserState {
     this.ascending = true,
     this.viewMode = ViewMode.list,
     this.gridSize = kDefaultGridSize,
+    this.tabs = const [],
+    this.activeTab = 0,
   });
 
   final Remote? remote;
@@ -48,6 +57,13 @@ class BrowserState {
 
   /// Live client-side name filter (Ctrl+F box).
   final String filter;
+
+  /// Open tabs in this pane (overlaid by the controller); the active one's
+  /// location is reflected by the fields above.
+  final List<TabInfo> tabs;
+
+  /// Index of the active tab within [tabs].
+  final int activeTab;
 
   List<String> get segments => path.isEmpty
       ? const []
@@ -77,6 +93,8 @@ class BrowserState {
     bool? ascending,
     ViewMode? viewMode,
     double? gridSize,
+    List<TabInfo>? tabs,
+    int? activeTab,
   }) => BrowserState(
     remote: remote ?? this.remote,
     path: path ?? this.path,
@@ -89,38 +107,99 @@ class BrowserState {
     ascending: ascending ?? this.ascending,
     viewMode: viewMode ?? this.viewMode,
     gridSize: gridSize ?? this.gridSize,
+    tabs: tabs ?? this.tabs,
+    activeTab: activeTab ?? this.activeTab,
   );
 }
 
-/// Drives ONE browser pane: open a remote, navigate (with back/forward history),
-/// list via `operations/list`, filter, and track a multi-selection. Two instances
-/// back the dual pane (A/B).
-class BrowserController extends Notifier<BrowserState> {
-  // Browser-style navigation history (paths within the current remote).
-  List<String> _history = const [''];
-  int _idx = 0;
+/// One tab's full state + its own back/forward history.
+class _Session {
+  _Session([BrowserState? initial]) : state = initial ?? const BrowserState();
+  BrowserState state;
+  List<String> history = [''];
+  int idx = 0;
+}
 
-  bool get canBack => _idx > 0;
-  bool get canForward => _idx < _history.length - 1;
+/// Drives ONE browser pane with **tabs**: each tab is an independent session
+/// (remote/path/selection/view + its own back/forward history). The public
+/// [state] mirrors the active tab, with [BrowserState.tabs]/`activeTab` overlaid
+/// so call sites and the tab strip see a single coherent snapshot.
+class BrowserController extends Notifier<BrowserState> {
+  final List<_Session> _sessions = [_Session()];
+  int _active = 0;
+
+  _Session get _s => _sessions[_active];
+
+  bool get canBack => _s.idx > 0;
+  bool get canForward => _s.idx < _s.history.length - 1;
 
   @override
-  BrowserState build() => const BrowserState();
+  BrowserState build() => _emit();
 
+  /// Public snapshot: the active session's state + the tab metadata.
+  BrowserState _emit() => _s.state.copyWith(
+    tabs: [for (final ses in _sessions) TabInfo(label: _labelFor(ses.state))],
+    activeTab: _active,
+  );
+
+  static String _labelFor(BrowserState s) {
+    final r = s.remote;
+    if (r == null) return 'New tab';
+    return s.path.isEmpty ? r.name : s.path.split('/').last;
+  }
+
+  /// Commit a new active-session state and re-emit with tab metadata.
+  void _set(BrowserState s) {
+    _s.state = s;
+    state = _emit();
+  }
+
+  // ── tabs ───────────────────────────────────────────────────────────────────
+  void newTab() {
+    _sessions.add(
+      _Session(
+        BrowserState(viewMode: state.viewMode, gridSize: state.gridSize),
+      ),
+    );
+    _active = _sessions.length - 1;
+    state = _emit();
+  }
+
+  void switchTab(int i) {
+    if (i < 0 || i >= _sessions.length || i == _active) return;
+    _active = i;
+    state = _emit();
+  }
+
+  void closeTab(int i) {
+    if (_sessions.length <= 1 || i < 0 || i >= _sessions.length) return;
+    _sessions.removeAt(i);
+    if (_active >= _sessions.length) {
+      _active = _sessions.length - 1;
+    } else if (_active > i) {
+      _active--;
+    }
+    state = _emit();
+  }
+
+  // ── navigation ─────────────────────────────────────────────────────────────
   void clear() {
-    _history = const [''];
-    _idx = 0;
-    state = const BrowserState();
+    _s.history = [''];
+    _s.idx = 0;
+    _set(BrowserState(viewMode: state.viewMode, gridSize: state.gridSize));
   }
 
   Future<void> open(Remote remote) async {
-    _history = [''];
-    _idx = 0;
+    _s.history = [''];
+    _s.idx = 0;
     // Keep the pane's view preference (list/grid + density) across remotes.
-    state = BrowserState(
-      remote: remote,
-      loading: true,
-      viewMode: state.viewMode,
-      gridSize: state.gridSize,
+    _set(
+      BrowserState(
+        remote: remote,
+        loading: true,
+        viewMode: state.viewMode,
+        gridSize: state.gridSize,
+      ),
     );
     await _load();
   }
@@ -156,72 +235,71 @@ class BrowserController extends Notifier<BrowserState> {
 
   Future<void> back() async {
     if (!canBack) return;
-    _idx--;
-    await _navigate(_history[_idx], record: false);
+    _s.idx--;
+    await _navigate(_s.history[_s.idx], record: false);
   }
 
   Future<void> forward() async {
     if (!canForward) return;
-    _idx++;
-    await _navigate(_history[_idx], record: false);
+    _s.idx++;
+    await _navigate(_s.history[_s.idx], record: false);
   }
 
   /// Core navigation: optionally records history, resets selection + filter, loads.
   Future<void> _navigate(String path, {bool record = true}) async {
     if (record && path != state.path) {
-      if (_history.length > _idx + 1) _history = _history.sublist(0, _idx + 1);
-      _history = [..._history, path];
-      _idx = _history.length - 1;
+      if (_s.history.length > _s.idx + 1) {
+        _s.history = _s.history.sublist(0, _s.idx + 1);
+      }
+      _s.history = [..._s.history, path];
+      _s.idx = _s.history.length - 1;
     }
-    state = state.copyWith(
-      path: path,
-      loading: true,
-      selected: const {},
-      filter: '',
+    _set(
+      state.copyWith(path: path, loading: true, selected: const {}, filter: ''),
     );
     await _load();
   }
 
   Future<void> refresh() async {
     if (state.remote == null) return;
-    state = state.copyWith(loading: true);
+    _set(state.copyWith(loading: true));
     await _load();
   }
 
-  void setFilter(String value) => state = state.copyWith(filter: value);
+  void setFilter(String value) => _set(state.copyWith(filter: value));
 
   void toggleSelect(String name) {
     final next = Set<String>.from(state.selected);
     next.contains(name) ? next.remove(name) : next.add(name);
-    state = state.copyWith(selected: next);
+    _set(state.copyWith(selected: next));
   }
 
-  void clearSelection() => state = state.copyWith(selected: const {});
+  void clearSelection() => _set(state.copyWith(selected: const {}));
 
-  void selectAll() => state = state.copyWith(
-    selected: state.visibleEntries.map((e) => e.name).toSet(),
+  void selectAll() => _set(
+    state.copyWith(selected: state.visibleEntries.map((e) => e.name).toSet()),
   );
 
   /// Switch this pane between list and grid rendering.
-  void setViewMode(ViewMode mode) => state = state.copyWith(viewMode: mode);
+  void setViewMode(ViewMode mode) => _set(state.copyWith(viewMode: mode));
 
   /// Set the grid tile target width (density), clamped to a sane range.
   void setGridSize(double px) =>
-      state = state.copyWith(gridSize: px.clamp(80, 180).toDouble());
+      _set(state.copyWith(gridSize: px.clamp(80, 180).toDouble()));
 
   /// Sort by [key]; tapping the active column flips direction.
   void setSort(SortKey key) {
     final asc = key == state.sortKey ? !state.ascending : true;
     final sorted = [...state.entries]
       ..sort((a, b) => compareRcloneFiles(a, b, key, asc));
-    state = state.copyWith(sortKey: key, ascending: asc, entries: sorted);
+    _set(state.copyWith(sortKey: key, ascending: asc, entries: sorted));
   }
 
   Future<void> _load() async {
     final remote = state.remote;
     final client = ref.read(engineControllerProvider).client;
     if (remote == null || client == null) {
-      state = state.copyWith(loading: false, error: 'Engine not ready');
+      _set(state.copyWith(loading: false, error: 'Engine not ready'));
       return;
     }
     try {
@@ -238,9 +316,9 @@ class BrowserController extends Notifier<BrowserState> {
               (a, b) =>
                   compareRcloneFiles(a, b, state.sortKey, state.ascending),
             );
-      state = state.copyWith(entries: list, loading: false);
+      _set(state.copyWith(entries: list, loading: false));
     } catch (e) {
-      state = state.copyWith(entries: const [], loading: false, error: '$e');
+      _set(state.copyWith(entries: const [], loading: false, error: '$e'));
     }
   }
 }
