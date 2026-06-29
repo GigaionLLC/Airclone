@@ -6,6 +6,29 @@ All changes made by AI agents are tracked chronologically below (most recent fir
 
 <!-- New entries go above this line, most recent first -->
 
+## [2026-06-28] - v0.1.0-alpha.28: drag a local file out to the OS
+
+**Agent:** Airclone Build (Claude Opus 4.8)
+**Files Modified:**
+- `ui/inspector_panel.dart`: the single-file **Details preview** is now an OS drag source for **local**
+  files — `_localOsPath()` derives the real on-disk path (local remotes only), `_maybeDraggable()` wraps
+  the preview in `DragItemWidget`/`DraggableWidget` providing `Formats.fileUri` (copy); a "Drag out to copy
+  elsewhere" hint shows for draggable files. Cloud files are not draggable yet (no local path).
+- pubspec: `super_drag_and_drop: ^0.9.1` (its native side, super_native_extensions, builds a **Rust** crate
+  via cargokit) → alpha.28
+- `.github/workflows/release.yml`: added `dtolnay/rust-toolchain@stable` to the windows/linux/macos build
+  jobs so the new native dep compiles in CI (ci.yml is analyze/test only — no native build, unchanged)
+
+**Toolchain:** installed Rust (rustup, stable 1.96, MSVC host) locally so desktop builds + the install/verify
+loop keep working. Verified: analyze (0) / test (23) / `flutter build windows` green (Rust crate compiles) /
+app **launches** with super_native_extensions initialized.
+
+**Database/API Changes:** None
+**Summary:** alpha.28 — first cut of **drag-out to the OS**. Pick a file on a local disk and drag its Details
+preview to Explorer/Finder/the desktop to copy it out. Deliberately scoped to the inspector preview (not the
+file rows) so it does **not** disturb the working in-app pane-to-pane drag, and to local files (cloud needs
+download-on-drop, still deferred). Drag behavior itself needs visual confirmation on the user's screen.
+
 ## [2026-06-28] - v0.1.0-alpha.27: clipboard keyboard shortcuts (Ctrl+C/X/V)
 
 **Agent:** Airclone Build (Claude Opus 4.8)

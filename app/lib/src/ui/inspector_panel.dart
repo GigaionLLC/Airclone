@@ -1,5 +1,8 @@
+import 'dart:io' show Platform;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:super_drag_and_drop/super_drag_and_drop.dart';
 
 import '../rclone/models/job.dart';
 import '../rclone/models/rclone_file.dart';
@@ -198,10 +201,26 @@ class _InspectorPanelState extends ConsumerState<InspectorPanel> {
         : '${kindName[0].toUpperCase()}${kindName.substring(1)}';
     final sub = f.size < 0 ? kindLabel : '$kindLabel · ${humanSize(f.size)}';
 
+    final localPath = _localOsPath(state, f);
+
     return ListView(
       padding: const EdgeInsets.all(Space.x4),
       children: [
-        _preview(c, state, f),
+        _maybeDraggable(_preview(c, state, f), f, localPath),
+        if (localPath != null) ...[
+          const SizedBox(height: Space.x1),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.drag_indicator, size: 13, color: c.textFaint),
+              const SizedBox(width: 2),
+              Text(
+                'Drag out to copy elsewhere',
+                style: TextStyle(color: c.textFaint, fontSize: 11),
+              ),
+            ],
+          ),
+        ],
         const SizedBox(height: Space.x3),
         Text(
           f.name,
@@ -229,6 +248,38 @@ class _InspectorPanelState extends ConsumerState<InspectorPanel> {
           _row(c, 'Remote', remote.name),
         ]),
       ],
+    );
+  }
+
+  /// The real on-disk path for [f] when it lives on a synthetic local-disk
+  /// remote, else null (cloud files have no local path to drag out — yet).
+  String? _localOsPath(BrowserState state, RcloneFile f) {
+    final remote = state.remote;
+    if (remote == null || !remote.isLocal) return null;
+    // Local remote fs is an absolute root ending in '/'; append the in-remote
+    // path. Folders are draggable too (the OS copies the whole directory).
+    return '${remote.fs}${joinPath(state.path, f.name)}';
+  }
+
+  /// Wraps [child] so it can be dragged OUT to the OS as a real file copy, but
+  /// only for local files ([osPath] non-null). Uses the native drag backend so
+  /// dropping onto Explorer/Finder/desktop performs a copy. Does not interfere
+  /// with the in-app pane drag (the file rows own that gesture, not this panel).
+  Widget _maybeDraggable(Widget child, RcloneFile f, String? osPath) {
+    if (osPath == null) return child;
+    final uri = Uri.file(
+      Platform.isWindows ? osPath.replaceAll('/', r'\') : osPath,
+      windows: Platform.isWindows,
+    );
+    return DragItemWidget(
+      allowedOperations: () => const [DropOperation.copy],
+      canAddItemToExistingSession: true,
+      dragItemProvider: (request) async {
+        final item = DragItem(suggestedName: f.name);
+        item.add(Formats.fileUri(uri));
+        return item;
+      },
+      child: DraggableWidget(child: child),
     );
   }
 
