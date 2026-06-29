@@ -91,13 +91,13 @@ Prioritized roadmap distilled from competitive + engine research. Tags: `[D]` de
 - [x] **Type-to-navigate** (typeahead) — a20; **keyboard map** F2 · Del · Enter · Ctrl+A · Esc — a26
   (Ctrl+C/X/V clipboard keys still to wire to the existing cut/copy/paste).
 - [x] **Morphing breadcrumb path bar** (breadcrumbs ⇄ editable type-to-go) — a23.
-- [ ] **Drag-out to OS** — drag a remote file to Explorer/Finder to download it there.
-  > ⚠️ **Deferred / needs collaboration.** Highest-risk remaining item: needs a native drag package
-  > (`super_drag_and_drop`) that would compete with the existing in-app `Draggable<PaneDragData>` gesture
-  > (a *working core feature*), and remote files must be **materialized on drop** (download-on-drag /
-  > virtual-file promises) — platform-specific. Can't be visually verified from this environment. Plan:
-  > scope to **local files first** (real `file://` URI), keep in-app drag intact, then add remote
-  > materialization — with the user verifying drag behavior on-screen.
+- [~] **Drag-out to OS** — **local files done a28**: select a file on a local disk → its **Details**
+  preview is a native drag source (`super_drag_and_drop`, `Formats.fileUri`, copy) → drop on
+  Explorer/Finder/desktop. Scoped to the inspector preview (not the rows) so the in-app pane drag is
+  untouched. **Still open:** (1) **cloud files** need download-on-drop (materialization / virtual-file
+  promises) — the hard part; (2) drag *from the file rows* would need migrating the in-app DnD off Flutter
+  `Draggable` onto super_native_extensions. **Cost incurred:** desktop builds now require a **Rust toolchain**
+  (cargokit) — see [[airclone-build-setup]].
 - [x] **Resizable + sortable columns** in Details view — sortable since a6, resizable a23.
 - [x] **Status bar** — item count + selection size + free/used space (`operations/about`) — a20.
 - [x] **Per-remote view memory** (remember view mode + sort + density per remote, restored on open) — a26.
