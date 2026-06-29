@@ -14,6 +14,7 @@ import '../state/browser_controller.dart';
 import '../state/clipboard_controller.dart';
 import '../state/engine_controller.dart';
 import '../state/file_ops.dart';
+import '../state/jobs_controller.dart';
 import '../state/local_locations.dart';
 import '../state/remote_about.dart';
 import '../state/remotes_provider.dart';
@@ -220,6 +221,19 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   Widget build(BuildContext context) {
     BrowserController activePane() =>
         ref.read(paneProvider(ref.read(activePaneProvider)).notifier);
+    // When a transfer job finishes, re-list both panes so a just-copied/uploaded
+    // file shows up without a manual refresh. (Transfers are async rclone jobs
+    // that complete a moment after the drop.)
+    ref.listen(jobsControllerProvider, (prev, next) {
+      final was = {for (final j in (prev ?? const [])) j.id: j.status};
+      final justDone = next.any(
+        (j) => j.status == JobStatus.success && was[j.id] != JobStatus.success,
+      );
+      if (justDone) {
+        ref.read(browserAProvider.notifier).refresh();
+        ref.read(browserBProvider.notifier).refresh();
+      }
+    });
     return Scaffold(
       body: CallbackShortcuts(
         bindings: {

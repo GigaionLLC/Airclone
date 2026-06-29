@@ -6,6 +6,21 @@ All changes made by AI agents are tracked chronologically below (most recent fir
 
 <!-- New entries go above this line, most recent first -->
 
+## [2026-06-28] - v0.1.0-alpha.36: auto-refresh panes after a transfer completes
+
+**Agent:** Airclone Build (Claude Opus 4.8)
+**Why:** user noted a dropped/uploaded file only appeared after a manual refresh — transfers are async rclone
+jobs that finish a moment after the drop, and nothing re-listed the folder on completion.
+**Files Modified:**
+- `ui/home_screen.dart`: `ref.listen(jobsControllerProvider, …)` in the shell — when any job transitions to
+  `JobStatus.success` (id wasn't success in the previous snapshot), re-list both panes
+  (`browserA/BProvider.refresh()`). Imported `jobs_controller.dart`.
+
+**Database/API Changes:** None
+**Summary:** alpha.36 — drops/uploads/pastes now show up on their own. The shell watches the jobs list and
+refreshes both panes the moment a transfer job succeeds, so the new file appears without a manual refresh
+(~1s after the rclone job actually finishes). analyze (0) / test (42) / Windows build green.
+
 ## [2026-06-28] - v0.1.0-alpha.35: restore OS→app upload + drag auto-scroll (post-migration fixes)
 
 **Agent:** Airclone Build (Claude Opus 4.8)
