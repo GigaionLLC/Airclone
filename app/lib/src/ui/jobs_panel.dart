@@ -17,7 +17,8 @@ class JobsPanel extends ConsumerWidget {
     final jobs = ref.watch(jobsControllerProvider);
 
     final running = jobs.where((j) => j.isRunning).length;
-    final finished = jobs.length - running;
+    final queued = jobs.where((j) => j.isQueued).length;
+    final finished = jobs.where((j) => j.isFinished).length;
 
     return Container(
       decoration: BoxDecoration(
@@ -27,7 +28,7 @@ class JobsPanel extends ConsumerWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          _Header(running: running, finished: finished),
+          _Header(running: running, queued: queued, finished: finished),
           Divider(height: 1, color: colors.border),
           Expanded(
             child: jobs.isEmpty
@@ -48,15 +49,25 @@ class JobsPanel extends ConsumerWidget {
 
 /// Title, counts, and the "Clear finished" action.
 class _Header extends ConsumerWidget {
-  const _Header({required this.running, required this.finished});
+  const _Header({
+    required this.running,
+    required this.queued,
+    required this.finished,
+  });
 
   final int running;
+  final int queued;
   final int finished;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final colors = AircloneTheme.of(context);
     final hasFinished = finished > 0;
+    final counts = [
+      '$running active',
+      if (queued > 0) '$queued queued',
+      '$finished done',
+    ].join(' · ');
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(
@@ -76,10 +87,7 @@ class _Header extends ConsumerWidget {
             ),
           ),
           const SizedBox(width: Space.x3),
-          Text(
-            '$running active · $finished done',
-            style: TextStyle(color: colors.textMuted, fontSize: 12),
-          ),
+          Text(counts, style: TextStyle(color: colors.textMuted, fontSize: 12)),
           const Spacer(),
           TextButton(
             onPressed: hasFinished
@@ -204,11 +212,11 @@ class _JobRow extends ConsumerWidget {
           const SizedBox(width: Space.x1),
           SizedBox(
             width: 32,
-            child: job.isRunning
+            child: job.isActive
                 ? IconButton(
                     icon: const Icon(Icons.stop_circle_outlined, size: 18),
                     color: colors.textMuted,
-                    tooltip: 'Stop',
+                    tooltip: job.isQueued ? 'Cancel' : 'Stop',
                     onPressed: () =>
                         ref.read(jobsControllerProvider.notifier).stop(job.id),
                   )
@@ -289,6 +297,7 @@ class _StatusChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final (label, fg, bg) = switch (status) {
+      JobStatus.queued => ('Queued', colors.textMuted, colors.surfaceSunken),
       JobStatus.running => ('Running', colors.info, colors.surfaceSunken),
       JobStatus.success => ('Done', colors.success, colors.successBg),
       JobStatus.failed => ('Failed', colors.error, colors.errorBg),

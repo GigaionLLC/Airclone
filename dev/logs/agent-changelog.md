@@ -6,6 +6,29 @@ All changes made by AI agents are tracked chronologically below (most recent fir
 
 <!-- New entries go above this line, most recent first -->
 
+## [2026-06-28] - v0.1.0-alpha.24: transfer concurrency queue
+
+**Agent:** Airclone Build (Claude Opus 4.8)
+**Files Modified:**
+- `rclone/models/job.dart`: new `JobStatus.queued`; `isQueued`/`isActive` getters; `isFinished` now means
+  strictly terminal (success/failed/canceled)
+- `state/jobs_controller.dart`: a `_pending` dispatch queue + `enqueue()`/`_pump()`/`pumpQueue()`; `add()`
+  gains a `status` param; `markDone` pumps the next queued job; `stop`/`remove` un-queue; new persisted
+  `transferConcurrencyProvider` (`TransferConcurrency`, 0 = unlimited) that re-pumps on raise
+- `state/transfer_service.dart`: both `transfer` and `transferAdvancedRaw` now create the job as `queued`
+  and hand their dispatch closure to `jobs.enqueue` (gated by the limit) instead of firing immediately
+- `ui/jobs_panel.dart`: `Queued` status chip; queued jobs are cancelable; dock header shows `N queued`
+- `ui/settings_screen.dart`: advanced `_ConcurrencySection` (Unlimited / 1–8) dropdown
+- New `test/transfer_queue_test.dart`: gating, completion-pump, queued-cancel (3 tests)
+- pubspec → alpha.24
+
+**Database/API Changes:** None
+**Summary:** alpha.24 — an app-level **transfer concurrency queue**. Set Advanced → Concurrent transfers to
+a limit and only that many transfers run at once; extras sit **Queued** and dispatch automatically as
+running ones finish (or when the limit is raised). Default **Unlimited** keeps the historical fire-all
+behavior, so nothing changes unless opted in. Queued jobs show a chip + cancel; the dock counts them.
+analyze (0) / test (19, +3 new) / Windows build green.
+
 ## [2026-06-28] - v0.1.0-alpha.23: morphing breadcrumb + resizable columns + engine flags
 
 **Agent:** Airclone Build (Claude Opus 4.8) — 3-agent parallel workflow + integration

@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../rclone/models/job.dart';
 import 'engine_controller.dart';
@@ -16,6 +17,10 @@ class JobsController extends Notifier<List<Job>> {
   Timer? _timer;
   int _nextId = 0;
 
+  /// Dispatch closures for jobs that are [JobStatus.queued], awaiting a free
+  /// transfer slot. Keyed by the local job id so a cancel can drop them.
+  final List<({int jobId, Future<void> Function() run})> _pending = [];
+
   @override
   List<Job> build() {
     _timer = Timer.periodic(const Duration(seconds: 1), (_) => _poll());
@@ -26,13 +31,16 @@ class JobsController extends Notifier<List<Job>> {
     return const [];
   }
 
-  /// Registers a new running job and returns it. The caller fills in [jobid]
-  /// later (once the kick-off RC call returns) via [update].
+  /// Registers a new job and returns it. Defaults to [JobStatus.running] for
+  /// callers that dispatch immediately; the transfer queue creates jobs as
+  /// [JobStatus.queued] and dispatches them via [enqueue]. The caller fills in
+  /// [jobid] later (once the kick-off RC call returns) via [update].
   Job add({
     required JobType type,
     required String source,
     required String dest,
     int total = 0,
+    JobStatus status = JobStatus.running,
   }) {
     final job = Job(
       id: _nextId++,
@@ -40,9 +48,38 @@ class JobsController extends Notifier<List<Job>> {
       source: source,
       dest: dest,
       total: total,
+      status: status,
     );
     state = [...state, job];
     return job;
+  }
+
+  /// Queues a transfer's dispatch [run] closure for the job with [jobId]. The
+  /// closure is invoked (which sets the rclone jobid or marks the job failed)
+  /// as soon as a slot is free under the configured concurrency limit.
+  void enqueue(int jobId, Future<void> Function() run) {
+    _pending.add((jobId: jobId, run: run));
+    _pump();
+  }
+
+  /// Number of jobs currently dispatched (occupying a transfer slot).
+  int get _runningCount =>
+      state.where((j) => j.status == JobStatus.running).length;
+
+  /// Public hook to re-evaluate the queue (e.g. after the limit is raised).
+  void pumpQueue() => _pump();
+
+  /// Start as many queued dispatches as the concurrency limit allows. A limit
+  /// of `0` means unlimited (dispatch everything immediately).
+  void _pump() {
+    final limit = ref.read(transferConcurrencyProvider);
+    while (_pending.isNotEmpty && (limit <= 0 || _runningCount < limit)) {
+      final next = _pending.removeAt(0);
+      // Claim the slot before the async dispatch so the count is accurate.
+      update(next.jobId, status: JobStatus.running);
+      // Fire-and-forget: the closure sets jobid or marks the job terminal.
+      unawaited(next.run());
+    }
   }
 
   /// Patches mutable fields of the job with [id]. Unspecified fields are kept.
@@ -72,7 +109,8 @@ class JobsController extends Notifier<List<Job>> {
   }
 
   /// Moves the job with [id] into a terminal [status]. For a successful job we
-  /// snap the progress bar to 100% by pinning bytes to total.
+  /// snap the progress bar to 100% by pinning bytes to total. Freeing a slot
+  /// pumps the queue so the next pending transfer can start.
   void markDone(int id, JobStatus status, {String? error}) {
     state = [
       for (final j in state)
@@ -86,10 +124,12 @@ class JobsController extends Notifier<List<Job>> {
         else
           j,
     ];
+    _pump();
   }
 
-  /// Drops a single job from the list.
+  /// Drops a single job from the list (also un-queues it if pending).
   void remove(int id) {
+    _pending.removeWhere((p) => p.jobId == id);
     state = [
       for (final j in state)
         if (j.id != id) j,
@@ -100,15 +140,18 @@ class JobsController extends Notifier<List<Job>> {
   void clearFinished() {
     state = [
       for (final j in state)
-        if (j.isRunning) j,
+        if (j.isActive) j,
     ];
   }
 
-  /// Cancels a running job: asks rclone to stop the async job, then marks it
-  /// canceled locally. Safe to call even if the engine is gone.
+  /// Cancels a running or queued job: drops it from the pending queue, asks
+  /// rclone to stop the async job if it was dispatched, then marks it canceled
+  /// locally. Safe to call even if the engine is gone.
   Future<void> stop(int id) async {
     final job = _byId(id);
     if (job == null) return;
+    // If it never left the queue, just remove the pending dispatch.
+    _pending.removeWhere((p) => p.jobId == id);
     final client = ref.read(engineControllerProvider).client;
     final jobid = job.jobid;
     if (client != null && jobid != null) {
@@ -191,4 +234,42 @@ class JobsController extends Notifier<List<Job>> {
 
 final jobsControllerProvider = NotifierProvider<JobsController, List<Job>>(
   JobsController.new,
+);
+
+/// Maximum number of transfers allowed to run at once. `0` means unlimited
+/// (every transfer dispatches immediately — the historical behavior). Persisted.
+class TransferConcurrency extends Notifier<int> {
+  static const _key = 'transfer_concurrency';
+
+  @override
+  int build() {
+    _load();
+    return 0;
+  }
+
+  Future<void> _load() async {
+    try {
+      final p = await SharedPreferences.getInstance();
+      state = p.getInt(_key) ?? 0;
+    } catch (_) {
+      // keep default (unlimited)
+    }
+  }
+
+  Future<void> set(int value) async {
+    final v = value < 0 ? 0 : value;
+    state = v;
+    try {
+      final p = await SharedPreferences.getInstance();
+      await p.setInt(_key, v);
+    } catch (_) {
+      // best-effort
+    }
+    // A higher limit may free capacity for queued transfers.
+    ref.read(jobsControllerProvider.notifier).pumpQueue();
+  }
+}
+
+final transferConcurrencyProvider = NotifierProvider<TransferConcurrency, int>(
+  TransferConcurrency.new,
 );

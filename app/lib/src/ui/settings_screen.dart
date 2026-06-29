@@ -9,6 +9,7 @@ import '../state/cache_crypto.dart';
 import '../state/download_settings.dart';
 import '../state/engine_controller.dart';
 import '../state/engine_flags.dart';
+import '../state/jobs_controller.dart';
 import '../state/settings_controller.dart';
 import 'theme/tokens.dart';
 
@@ -50,6 +51,8 @@ class SettingsDialog extends ConsumerWidget {
                 const SizedBox(height: Space.x5),
                 _RclonePathSection(),
                 if (advanced) ...[
+                  const SizedBox(height: Space.x5),
+                  _ConcurrencySection(),
                   const SizedBox(height: Space.x5),
                   _EngineFlagsSection(),
                 ],
@@ -421,6 +424,60 @@ class _RclonePathSectionState extends ConsumerState<_RclonePathSection> {
             ),
           ),
           onChanged: ctrl.setRclonePath,
+        ),
+      ],
+    );
+  }
+}
+
+/// Advanced: how many transfers may run at once (0 = unlimited).
+class _ConcurrencySection extends ConsumerWidget {
+  static const _options = [0, 1, 2, 3, 4, 6, 8];
+
+  String _label(int v) => v == 0 ? 'Unlimited' : '$v at a time';
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final c = AircloneTheme.of(context);
+    final value = ref.watch(transferConcurrencyProvider);
+    // Guard against a persisted value that isn't in the preset list.
+    final current = _options.contains(value) ? value : 0;
+    return Row(
+      children: [
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Concurrent transfers',
+                style: TextStyle(
+                  color: c.text,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              Text(
+                'Run a limited number of transfers at once; the rest wait in '
+                'the queue.',
+                style: TextStyle(color: c.textFaint, fontSize: 11),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(width: Space.x3),
+        DropdownButton<int>(
+          value: current,
+          underline: const SizedBox.shrink(),
+          borderRadius: BorderRadius.circular(Radii.md),
+          items: [
+            for (final v in _options)
+              DropdownMenuItem(value: v, child: Text(_label(v))),
+          ],
+          onChanged: (v) {
+            if (v != null) {
+              ref.read(transferConcurrencyProvider.notifier).set(v);
+            }
+          },
         ),
       ],
     );

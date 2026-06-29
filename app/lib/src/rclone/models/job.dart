@@ -3,9 +3,10 @@ import 'package:flutter/foundation.dart';
 /// What kind of transfer a [Job] represents. Drives the row label in the UI.
 enum JobType { copy, move, sync, delete, upload, download }
 
-/// Lifecycle of a [Job]. A job is [running] until the underlying rclone job
-/// finishes, then it settles into one of the terminal states.
-enum JobStatus { running, success, failed, canceled }
+/// Lifecycle of a [Job]. A job may sit [queued] (waiting for a transfer slot
+/// when a concurrency limit is set), runs as [running] until the underlying
+/// rclone job finishes, then settles into one of the terminal states.
+enum JobStatus { queued, running, success, failed, canceled }
 
 /// A single in-flight (or finished) transfer tracked by the Jobs engine.
 ///
@@ -59,8 +60,18 @@ class Job {
   /// Whether the job is still actively transferring.
   bool get isRunning => status == JobStatus.running;
 
+  /// Whether the job is waiting for a free transfer slot.
+  bool get isQueued => status == JobStatus.queued;
+
+  /// Whether the job is still pending or in flight (not yet terminal).
+  bool get isActive =>
+      status == JobStatus.queued || status == JobStatus.running;
+
   /// Whether the job has reached a terminal state.
-  bool get isFinished => status != JobStatus.running;
+  bool get isFinished =>
+      status == JobStatus.success ||
+      status == JobStatus.failed ||
+      status == JobStatus.canceled;
 
   /// Fraction complete in `[0, 1]`. `0` while [total] is unknown.
   double get progress {
