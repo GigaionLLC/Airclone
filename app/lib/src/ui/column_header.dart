@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../rclone/models/rclone_file.dart';
 import 'theme/tokens.dart';
@@ -56,13 +58,100 @@ int compareRcloneFiles(
   return a.name.toLowerCase().compareTo(b.name.toLowerCase());
 }
 
+/// User-adjustable widths (in logical pixels) for the two fixed Details
+/// columns. The Name column is flexible and takes the remaining space.
+class ColumnWidths {
+  const ColumnWidths({required this.size, required this.modified});
+
+  /// Width of the "Size" column.
+  final double size;
+
+  /// Width of the "Modified" column.
+  final double modified;
+
+  ColumnWidths copyWith({double? size, double? modified}) => ColumnWidths(
+    size: size ?? this.size,
+    modified: modified ?? this.modified,
+  );
+}
+
+/// Persisted controller for the resizable Details column widths.
+///
+/// Widths are clamped to sane ranges and saved to [SharedPreferences] under
+/// [_keySize] / [_keyModified]. The prefs-load idiom mirrors
+/// `advanced_mode.dart`.
+class ColumnWidthsController extends Notifier<ColumnWidths> {
+  static const _keySize = 'col_w_size';
+  static const _keyModified = 'col_w_modified';
+
+  static const _defaultSize = 92.0;
+  static const _defaultModified = 132.0;
+
+  static const _minSize = 60.0;
+  static const _maxSize = 220.0;
+  static const _minModified = 90.0;
+  static const _maxModified = 260.0;
+
+  @override
+  ColumnWidths build() {
+    _load();
+    return const ColumnWidths(size: _defaultSize, modified: _defaultModified);
+  }
+
+  Future<void> _load() async {
+    try {
+      final p = await SharedPreferences.getInstance();
+      final size = (p.getDouble(_keySize) ?? _defaultSize).clamp(
+        _minSize,
+        _maxSize,
+      );
+      final modified = (p.getDouble(_keyModified) ?? _defaultModified).clamp(
+        _minModified,
+        _maxModified,
+      );
+      state = ColumnWidths(size: size, modified: modified);
+    } catch (_) {
+      // keep defaults
+    }
+  }
+
+  Future<void> setSize(double v) async {
+    final clamped = v.clamp(_minSize, _maxSize);
+    state = state.copyWith(size: clamped);
+    try {
+      final p = await SharedPreferences.getInstance();
+      await p.setDouble(_keySize, clamped);
+    } catch (_) {
+      // best-effort
+    }
+  }
+
+  Future<void> setModified(double v) async {
+    final clamped = v.clamp(_minModified, _maxModified);
+    state = state.copyWith(modified: clamped);
+    try {
+      final p = await SharedPreferences.getInstance();
+      await p.setDouble(_keyModified, clamped);
+    } catch (_) {
+      // best-effort
+    }
+  }
+}
+
+final columnWidthsProvider =
+    NotifierProvider<ColumnWidthsController, ColumnWidths>(
+      ColumnWidthsController.new,
+    );
+
 /// A 28px-tall header row that sits directly above the file [ListView] and
 /// mirrors its column layout (checkbox slot, name, size, modified).
 ///
 /// Tapping a label invokes [onSort] with that column's [SortKey]. The active
 /// column is tinted with the primary color and shows an up/down arrow matching
-/// [ascending].
-class ColumnHeader extends StatelessWidget {
+/// [ascending]. The Size and Modified columns are user-resizable via the thin
+/// draggable divider on each cell's left edge; widths are read from
+/// [columnWidthsProvider].
+class ColumnHeader extends ConsumerWidget {
   const ColumnHeader({
     super.key,
     required this.sortKey,
@@ -80,8 +169,10 @@ class ColumnHeader extends StatelessWidget {
   final void Function(SortKey) onSort;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final c = AircloneTheme.of(context);
+    final widths = ref.watch(columnWidthsProvider);
+    final controller = ref.read(columnWidthsProvider.notifier);
 
     return Container(
       height: 28,
@@ -105,8 +196,12 @@ class ColumnHeader extends StatelessWidget {
               colors: c,
             ),
           ),
+          _ResizeHandle(
+            colors: c,
+            onDelta: (d) => controller.setSize(widths.size - d),
+          ),
           SizedBox(
-            width: 80,
+            width: widths.size,
             child: _HeaderLabel(
               label: 'Size',
               column: SortKey.size,
@@ -117,8 +212,12 @@ class ColumnHeader extends StatelessWidget {
               alignEnd: true,
             ),
           ),
+          _ResizeHandle(
+            colors: c,
+            onDelta: (d) => controller.setModified(widths.modified - d),
+          ),
           SizedBox(
-            width: 50,
+            width: widths.modified,
             child: _HeaderLabel(
               label: 'Modified',
               column: SortKey.modified,
@@ -129,7 +228,38 @@ class ColumnHeader extends StatelessWidget {
               alignEnd: true,
             ),
           ),
+          // Mirrors the per-row actions button so columns line up with the list.
+          const SizedBox(width: 28),
         ],
+      ),
+    );
+  }
+}
+
+/// A thin draggable vertical divider placed on the LEFT edge of a fixed
+/// column. Dragging horizontally reports the pointer delta via [onDelta];
+/// a rightward drag (positive delta) shrinks the column to its right, so
+/// callers subtract the delta from the current width.
+class _ResizeHandle extends StatelessWidget {
+  const _ResizeHandle({required this.colors, required this.onDelta});
+
+  final AircloneColors colors;
+  final void Function(double delta) onDelta;
+
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      cursor: SystemMouseCursors.resizeColumn,
+      child: GestureDetector(
+        behavior: HitTestBehavior.translucent,
+        onHorizontalDragUpdate: (d) => onDelta(d.delta.dx),
+        child: SizedBox(
+          width: Space.x2,
+          height: double.infinity,
+          child: Center(
+            child: Container(width: 1, height: 14, color: colors.border),
+          ),
+        ),
       ),
     );
   }

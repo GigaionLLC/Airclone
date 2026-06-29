@@ -5,6 +5,7 @@ import '../rclone/http_rclone_client.dart';
 import '../rclone/rclone_client.dart';
 import '../rclone/rclone_engine.dart';
 import 'cache_crypto.dart';
+import 'engine_flags.dart';
 
 enum EnginePhase {
   idle,
@@ -90,6 +91,16 @@ class EngineController extends Notifier<EngineUi> {
     }
   }
 
+  /// Stop and re-spawn the engine with current settings (e.g. after changing the
+  /// global engine flags). Reuses the unlocked config password if one is held.
+  Future<void> restartEngine() async {
+    final path = _rclonePath;
+    if (path == null) return;
+    final password = ref.read(cachePassphraseProvider);
+    await state.client?.quit();
+    await _startWith(path, password: password);
+  }
+
   /// Provided by the password gate when the config is encrypted.
   Future<void> unlockAndStart(String password) async {
     final path = _rclonePath;
@@ -119,6 +130,7 @@ class EngineController extends Notifier<EngineUi> {
     final client = HttpRcloneClient(
       rclonePath: rclonePath,
       configPassword: password,
+      extraArgs: parseEngineFlags(ref.read(engineFlagsProvider)),
     );
     try {
       await client.start();

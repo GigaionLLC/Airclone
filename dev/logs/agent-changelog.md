@@ -6,6 +6,34 @@ All changes made by AI agents are tracked chronologically below (most recent fir
 
 <!-- New entries go above this line, most recent first -->
 
+## [2026-06-28] - v0.1.0-alpha.23: morphing breadcrumb + resizable columns + engine flags
+
+**Agent:** Airclone Build (Claude Opus 4.8) — 3-agent parallel workflow + integration
+**Files Modified:**
+- `ui/path_bar.dart` (rewrite): morphing address bar — clickable breadcrumb segments (remote chip ›
+  folders) with middle-overflow `…` menu; click empty area / pencil to edit as a path TextField (Enter
+  navigates, Esc/blur reverts). Public `PathBar` constructor unchanged.
+- New `state/engine_flags.dart`: `engineFlagsProvider` (persisted raw string) + `parseEngineFlags()`
+  (quote-aware argv tokenizer)
+- New resizable columns in `ui/column_header.dart`: `ColumnWidths` + `columnWidthsProvider` (persisted,
+  clamped), draggable dividers on the Size/Modified headers; `ColumnHeader` → ConsumerWidget; trailing
+  28px slot to align with row action button
+- `rclone/http_rclone_client.dart`: `extraArgs` appended to the `rcd` argv (after rc-binding flags)
+- `state/engine_controller.dart`: passes `parseEngineFlags(engineFlagsProvider)` into the client; new
+  `restartEngine()` (reuses held config password)
+- `ui/browser_pane.dart`: `_FileRow` → ConsumerWidget, Size/Modified cells track `columnWidthsProvider`
+  (with matching resize-handle gaps + trailing slot)
+- `ui/settings_screen.dart`: advanced-only `_EngineFlagsSection` (field + Apply & restart engine);
+  dialog wrapped in a height-capped `SingleChildScrollView`
+- pubspec → alpha.23
+
+**Database/API Changes:** None
+**Summary:** alpha.23 — three Explorer-native features authored in parallel then integrated. The address
+bar **morphs** between native-style breadcrumbs and an editable path field. **Details columns resize**
+by dragging the header dividers (persisted; rows stay aligned). Power users can pass **global rclone
+engine flags** from Settings and apply them with a one-click engine restart. analyze (0) / test (16) /
+Windows build green.
+
 ## [2026-06-28] - v0.1.0-alpha.22: easy/advanced mode + saved transfer tasks
 
 **Agent:** Airclone Build (Claude Opus 4.8)

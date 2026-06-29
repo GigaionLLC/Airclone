@@ -7,6 +7,8 @@ import '../state/advanced_mode.dart';
 import '../state/app_info.dart';
 import '../state/cache_crypto.dart';
 import '../state/download_settings.dart';
+import '../state/engine_controller.dart';
+import '../state/engine_flags.dart';
 import '../state/settings_controller.dart';
 import 'theme/tokens.dart';
 
@@ -22,33 +24,43 @@ class SettingsDialog extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final c = AircloneTheme.of(context);
+    final advanced = ref.watch(advancedModeProvider);
     return Dialog(
       backgroundColor: c.surfaceRaised,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(Radii.lg),
       ),
-      child: SizedBox(
-        width: 480,
-        child: Padding(
-          padding: const EdgeInsets.all(Space.x5),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _Header(),
-              const SizedBox(height: Space.x5),
-              _ThemeSection(),
-              const SizedBox(height: Space.x5),
-              _ModeSection(),
-              const SizedBox(height: Space.x5),
-              _RclonePathSection(),
-              const SizedBox(height: Space.x5),
-              _DownloadsSection(),
-              const SizedBox(height: Space.x5),
-              _CacheSection(),
-              const SizedBox(height: Space.x5),
-              _UpdatesSection(),
-            ],
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxWidth: 480,
+          maxHeight: MediaQuery.of(context).size.height * 0.85,
+        ),
+        child: SingleChildScrollView(
+          child: Padding(
+            padding: const EdgeInsets.all(Space.x5),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _Header(),
+                const SizedBox(height: Space.x5),
+                _ThemeSection(),
+                const SizedBox(height: Space.x5),
+                _ModeSection(),
+                const SizedBox(height: Space.x5),
+                _RclonePathSection(),
+                if (advanced) ...[
+                  const SizedBox(height: Space.x5),
+                  _EngineFlagsSection(),
+                ],
+                const SizedBox(height: Space.x5),
+                _DownloadsSection(),
+                const SizedBox(height: Space.x5),
+                _CacheSection(),
+                const SizedBox(height: Space.x5),
+                _UpdatesSection(),
+              ],
+            ),
           ),
         ),
       ),
@@ -409,6 +421,80 @@ class _RclonePathSectionState extends ConsumerState<_RclonePathSection> {
             ),
           ),
           onChanged: ctrl.setRclonePath,
+        ),
+      ],
+    );
+  }
+}
+
+/// Advanced: extra flags appended to the rclone engine command line.
+class _EngineFlagsSection extends ConsumerStatefulWidget {
+  @override
+  ConsumerState<_EngineFlagsSection> createState() =>
+      _EngineFlagsSectionState();
+}
+
+class _EngineFlagsSectionState extends ConsumerState<_EngineFlagsSection> {
+  late final TextEditingController _c = TextEditingController(
+    text: ref.read(engineFlagsProvider),
+  );
+  bool _dirty = false;
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  Future<void> _apply() async {
+    await ref.read(engineFlagsProvider.notifier).set(_c.text.trim());
+    setState(() => _dirty = false);
+    await ref.read(engineControllerProvider.notifier).restartEngine();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final c = AircloneTheme.of(context);
+    // Reflect the async-loaded value until the user starts editing.
+    ref.listen(engineFlagsProvider, (prev, next) {
+      if (!_dirty && next != _c.text) _c.text = next;
+    });
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const _SectionLabel(
+          'Engine flags',
+          help:
+              'Optional global flags added to the rclone engine, e.g. '
+              '--transfers 8 --fast-list. Applied when the engine restarts.',
+        ),
+        TextField(
+          controller: _c,
+          style: const TextStyle(fontSize: 13),
+          decoration: InputDecoration(
+            isDense: true,
+            hintText: r'--transfers 8 --checkers 16',
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(Radii.md),
+            ),
+          ),
+          onChanged: (_) {
+            if (!_dirty) setState(() => _dirty = true);
+          },
+          onSubmitted: (_) => _apply(),
+        ),
+        const SizedBox(height: Space.x2),
+        Align(
+          alignment: Alignment.centerRight,
+          child: FilledButton.icon(
+            onPressed: _dirty ? _apply : null,
+            icon: const Icon(Icons.restart_alt, size: 16),
+            label: const Text('Apply & restart engine'),
+            style: FilledButton.styleFrom(
+              visualDensity: VisualDensity.compact,
+              backgroundColor: c.primary,
+            ),
+          ),
         ),
       ],
     );

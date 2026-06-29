@@ -1140,7 +1140,7 @@ class _PaneToolbar extends ConsumerWidget {
   }
 }
 
-class _FileRow extends StatelessWidget {
+class _FileRow extends ConsumerWidget {
   const _FileRow({
     required this.file,
     required this.state,
@@ -1161,8 +1161,9 @@ class _FileRow extends StatelessWidget {
   final void Function(PaneDragData) onDropInto;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final c = AircloneTheme.of(context);
+    final widths = ref.watch(columnWidthsProvider);
     final selected = state.isSelected(file.name);
 
     // What gets dragged: the whole selection if this row is selected, else just this row.
@@ -1203,35 +1204,40 @@ class _FileRow extends StatelessWidget {
                   style: TextStyle(color: c.text, fontSize: 13),
                 ),
               ),
+              const SizedBox(width: Space.x2),
               SizedBox(
-                width: 80,
+                width: widths.size,
                 child: Text(
                   file.isDir ? '' : humanSize(file.size),
                   textAlign: TextAlign.right,
                   style: TextStyle(color: c.textFaint, fontSize: 12),
                 ),
               ),
+              const SizedBox(width: Space.x2),
               SizedBox(
-                width: 50,
+                width: widths.modified,
                 child: Text(
                   relativeTime(file.modTime),
                   textAlign: TextAlign.right,
                   style: TextStyle(color: c.textFaint, fontSize: 12),
                 ),
               ),
-              Builder(
-                builder: (bctx) => IconButton(
-                  icon: Icon(Icons.more_vert, size: 15, color: c.textFaint),
-                  tooltip: 'Actions',
-                  padding: EdgeInsets.zero,
-                  visualDensity: VisualDensity.compact,
-                  onPressed: () {
-                    final box = bctx.findRenderObject() as RenderBox?;
-                    final pos = box == null
-                        ? Offset.zero
-                        : box.localToGlobal(box.size.center(Offset.zero));
-                    onContextMenu(pos);
-                  },
+              SizedBox(
+                width: 28,
+                child: Builder(
+                  builder: (bctx) => IconButton(
+                    icon: Icon(Icons.more_vert, size: 15, color: c.textFaint),
+                    tooltip: 'Actions',
+                    padding: EdgeInsets.zero,
+                    visualDensity: VisualDensity.compact,
+                    onPressed: () {
+                      final box = bctx.findRenderObject() as RenderBox?;
+                      final pos = box == null
+                          ? Offset.zero
+                          : box.localToGlobal(box.size.center(Offset.zero));
+                      onContextMenu(pos);
+                    },
+                  ),
                 ),
               ),
             ],

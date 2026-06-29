@@ -14,6 +14,7 @@ class HttpRcloneClient implements RcloneClient {
     required this.rclonePath,
     this.configPath,
     this.configPassword,
+    this.extraArgs = const <String>[],
   });
 
   /// Path to the rclone binary (from [RcloneEngine]).
@@ -25,6 +26,10 @@ class HttpRcloneClient implements RcloneClient {
   /// Config-encryption password, passed via `RCLONE_CONFIG_PASS` (never persisted,
   /// never on the command line). Null for unencrypted configs.
   final String? configPassword;
+
+  /// User-supplied global flags appended to the `rcd` command line (advanced).
+  /// Already tokenized argv-style. The rc binding/auth flags above always win.
+  final List<String> extraArgs;
 
   Process? _process;
   int? _port;
@@ -102,6 +107,8 @@ class HttpRcloneClient implements RcloneClient {
         '--config',
         configPath!,
       ],
+      // Advanced: user-supplied global flags, last so the rc binding stays intact.
+      ...extraArgs,
     ];
 
     _process = await Process.start(
