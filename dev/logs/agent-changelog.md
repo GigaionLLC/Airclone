@@ -6,6 +6,27 @@ All changes made by AI agents are tracked chronologically below (most recent fir
 
 <!-- New entries go above this line, most recent first -->
 
+## [2026-06-28] - v0.1.0-alpha.14: Explorer-style command toolbar + view-size presets
+
+**Agent:** Airclone Build (Claude Opus 4.8)
+**Files Modified:**
+- `ui/browser_pane.dart`: rebuilt `_PaneToolbar` into a two-row header — **address row** (active dot ·
+  back/fwd/up/refresh · breadcrumb PathBar · filter · close) and a **command bar** (`_commandRow`): New
+  folder · Cut · Copy · Paste · Rename · Delete (selection-aware enable/disable) · **Sort ▾** menu
+  (Name/Size/Modified + direction arrow) · **View ▾** menu (Extra-large/Large/Medium/Small icon presets
+  → grid `maxCrossAxisExtent`, List, Media gallery, + Thumbnails toggle). Command bar handlers
+  (`_clip`/`_paste`/`_rename`/`_delete`) call the existing clipboard/file-ops/transfer providers; horizontal
+  scroll prevents overflow in narrow/dual-pane. Removed the old `_ViewControls`/`_ViewSettingsPanel`
+  (folded into the View menu).
+- pubspec → alpha.14
+
+**Database/API Changes:** None
+**Summary:** alpha.14 — the pane header now reads like a native file manager: a top **address row** and a
+**command toolbar** beneath it. File verbs (New/Cut/Copy/Paste/Rename/Delete) enable based on the
+selection + clipboard; **Sort** and **View** are proper dropdown menus, and **View** exposes the
+Windows-style icon-size presets (Extra-large → Small) plus List/Media and the per-remote Thumbnails
+toggle. analyze (0) / test (16) / Windows build green locally.
+
 ## [2026-06-28] - v0.1.0-alpha.13: instant context menu + resizable/hideable sidebar
 
 **Agent:** Airclone Build (Claude Opus 4.8)

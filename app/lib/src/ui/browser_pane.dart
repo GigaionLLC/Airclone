@@ -583,6 +583,25 @@ class BrowserPane extends ConsumerWidget {
 }
 
 /// Toolbar above a pane: nav buttons + editable path bar + selection actions.
+/// Icon-size presets for the View menu (label → grid `maxCrossAxisExtent`).
+const List<(String, double)> _viewSizePresets = [
+  ('Extra large icons', 168.0),
+  ('Large icons', 128.0),
+  ('Medium icons', 96.0),
+  ('Small icons', 72.0),
+];
+
+double _nearestPreset(double size) {
+  var best = _viewSizePresets.first.$2;
+  for (final (_, s) in _viewSizePresets) {
+    if ((s - size).abs() < (best - size).abs()) best = s;
+  }
+  return best;
+}
+
+/// The per-pane header — two Explorer-style rows: an **address row** (nav +
+/// breadcrumb path + filter) and a **command bar** (New · Cut/Copy/Paste ·
+/// Rename · Delete · Sort ▾ · View ▾).
 class _PaneToolbar extends ConsumerWidget {
   const _PaneToolbar({
     required this.index,
@@ -596,117 +615,373 @@ class _PaneToolbar extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final c = AircloneTheme.of(context);
-    final ctrl = ref.read(paneProvider(index).notifier);
-    final segs = state.segments;
-    final hasSel = state.selected.isNotEmpty;
-    final other = ref.watch(paneProvider(index == 0 ? 1 : 0));
-
     return Container(
-      height: 40,
       color: active ? c.surfaceRaised : c.surface,
-      padding: const EdgeInsets.symmetric(horizontal: Space.x2),
-      child: Row(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          Container(
-            width: 6,
-            height: 6,
-            margin: const EdgeInsets.only(right: Space.x2),
-            decoration: BoxDecoration(
-              color: active ? c.primary : c.border,
-              shape: BoxShape.circle,
-            ),
-          ),
-          IconButton(
-            onPressed: ctrl.canBack ? ctrl.back : null,
-            icon: const Icon(Icons.arrow_back, size: 15),
-            tooltip: 'Back (Alt+←)',
-            visualDensity: VisualDensity.compact,
-          ),
-          IconButton(
-            onPressed: ctrl.canForward ? ctrl.forward : null,
-            icon: const Icon(Icons.arrow_forward, size: 15),
-            tooltip: 'Forward (Alt+→)',
-            visualDensity: VisualDensity.compact,
-          ),
-          IconButton(
-            onPressed: segs.isEmpty ? null : ctrl.up,
-            icon: const Icon(Icons.arrow_upward, size: 15),
-            tooltip: 'Up (Alt+↑)',
-            visualDensity: VisualDensity.compact,
-          ),
-          IconButton(
-            onPressed: state.remote == null ? null : ctrl.refresh,
-            icon: const Icon(Icons.refresh, size: 15),
-            tooltip: 'Refresh',
-            visualDensity: VisualDensity.compact,
-          ),
-          IconButton(
-            onPressed: state.remote == null
-                ? null
-                : () => _newFolder(context, ref),
-            icon: const Icon(Icons.create_new_folder_outlined, size: 15),
-            tooltip: 'New folder',
-            visualDensity: VisualDensity.compact,
-          ),
-          if (state.remote != null) _ViewControls(index: index),
-          const SizedBox(width: Space.x1),
-          Expanded(
-            child: PathBar(
-              remote: state.remote,
-              path: state.path,
-              onSegment: ctrl.goToSegment,
-              onNavigate: ctrl.navigateTo,
-            ),
-          ),
-          if (state.remote != null) _FilterBox(index: index),
-          if (hasSel) ...[
-            Text(
-              '${state.selected.length}',
-              style: TextStyle(
-                color: c.primary,
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            IconButton(
-              tooltip: 'Copy selected to the other pane',
-              onPressed: other.remote == null
-                  ? null
-                  : () => _transferToOther(ref, JobType.copy),
-              icon: const Icon(Icons.copy_all, size: 15),
-              visualDensity: VisualDensity.compact,
-            ),
-            IconButton(
-              tooltip: 'Move selected to the other pane',
-              onPressed: other.remote == null
-                  ? null
-                  : () => _transferToOther(ref, JobType.move),
-              icon: const Icon(Icons.drive_file_move_outline, size: 15),
-              visualDensity: VisualDensity.compact,
-            ),
-            IconButton(
-              tooltip: 'Clear selection',
-              onPressed: ctrl.clearSelection,
-              icon: const Icon(Icons.close, size: 15),
-              visualDensity: VisualDensity.compact,
-            ),
-          ],
-          if (state.remote != null)
-            IconButton(
-              tooltip: 'Close pane (deselect remote)',
-              onPressed: ctrl.clear,
-              icon: const Icon(Icons.cancel_outlined, size: 15),
-              visualDensity: VisualDensity.compact,
-            ),
+          _addressRow(context, ref, c),
+          Divider(height: 1, color: c.border),
+          _commandRow(context, ref, c),
         ],
       ),
     );
   }
 
+  // ── Row 1: nav + breadcrumb path + filter ────────────────────────────────
+  Widget _addressRow(BuildContext context, WidgetRef ref, AircloneColors c) {
+    final ctrl = ref.read(paneProvider(index).notifier);
+    final segs = state.segments;
+    return SizedBox(
+      height: 38,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: Space.x2),
+        child: Row(
+          children: [
+            Container(
+              width: 6,
+              height: 6,
+              margin: const EdgeInsets.only(right: Space.x2),
+              decoration: BoxDecoration(
+                color: active ? c.primary : c.border,
+                shape: BoxShape.circle,
+              ),
+            ),
+            IconButton(
+              onPressed: ctrl.canBack ? ctrl.back : null,
+              icon: const Icon(Icons.arrow_back, size: 15),
+              tooltip: 'Back (Alt+←)',
+              visualDensity: VisualDensity.compact,
+            ),
+            IconButton(
+              onPressed: ctrl.canForward ? ctrl.forward : null,
+              icon: const Icon(Icons.arrow_forward, size: 15),
+              tooltip: 'Forward (Alt+→)',
+              visualDensity: VisualDensity.compact,
+            ),
+            IconButton(
+              onPressed: segs.isEmpty ? null : ctrl.up,
+              icon: const Icon(Icons.arrow_upward, size: 15),
+              tooltip: 'Up (Alt+↑)',
+              visualDensity: VisualDensity.compact,
+            ),
+            IconButton(
+              onPressed: state.remote == null ? null : ctrl.refresh,
+              icon: const Icon(Icons.refresh, size: 15),
+              tooltip: 'Refresh',
+              visualDensity: VisualDensity.compact,
+            ),
+            const SizedBox(width: Space.x1),
+            Expanded(
+              child: PathBar(
+                remote: state.remote,
+                path: state.path,
+                onSegment: ctrl.goToSegment,
+                onNavigate: ctrl.navigateTo,
+              ),
+            ),
+            if (state.remote != null) _FilterBox(index: index),
+            if (state.remote != null)
+              IconButton(
+                tooltip: 'Close pane (deselect remote)',
+                onPressed: ctrl.clear,
+                icon: const Icon(Icons.cancel_outlined, size: 15),
+                visualDensity: VisualDensity.compact,
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ── Row 2: command bar (file verbs + Sort/View menus) ────────────────────
+  Widget _commandRow(BuildContext context, WidgetRef ref, AircloneColors c) {
+    final ctrl = ref.read(paneProvider(index).notifier);
+    final hasRemote = state.remote != null;
+    final hasSel = state.selected.isNotEmpty;
+    final oneSel = state.selected.length == 1;
+    final clipFull = ref.watch(clipboardControllerProvider).isNotEmpty;
+    final other = ref.watch(paneProvider(index == 0 ? 1 : 0));
+
+    return SizedBox(
+      height: 38,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: Space.x1),
+        child: Row(
+          children: [
+            Expanded(
+              child: SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  children: [
+                    _cmd(
+                      c,
+                      Icons.create_new_folder_outlined,
+                      'New folder',
+                      enabled: hasRemote,
+                      onTap: () => _newFolder(context, ref),
+                    ),
+                    _sep(c),
+                    _cmd(
+                      c,
+                      Icons.content_cut,
+                      'Cut',
+                      enabled: hasSel,
+                      onTap: () => _clip(ref, cut: true),
+                    ),
+                    _cmd(
+                      c,
+                      Icons.copy_outlined,
+                      'Copy',
+                      enabled: hasSel,
+                      onTap: () => _clip(ref, cut: false),
+                    ),
+                    _cmd(
+                      c,
+                      Icons.content_paste,
+                      'Paste',
+                      enabled: clipFull && hasRemote,
+                      onTap: () => _paste(ref),
+                    ),
+                    _sep(c),
+                    _cmd(
+                      c,
+                      Icons.drive_file_rename_outline,
+                      'Rename',
+                      enabled: oneSel,
+                      onTap: () => _rename(context, ref),
+                    ),
+                    _cmd(
+                      c,
+                      Icons.delete_outline,
+                      'Delete',
+                      enabled: hasSel,
+                      danger: true,
+                      onTap: () => _delete(context, ref),
+                    ),
+                    _sep(c),
+                    _sortMenu(context, ref, c),
+                    _viewMenu(context, ref, c),
+                  ],
+                ),
+              ),
+            ),
+            if (hasSel) ...[
+              Text(
+                '${state.selected.length} selected',
+                style: TextStyle(
+                  color: c.primary,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              _cmd(
+                c,
+                Icons.copy_all,
+                'Copy to other pane',
+                enabled: other.remote != null,
+                onTap: () => _transferToOther(ref, JobType.copy),
+              ),
+              _cmd(
+                c,
+                Icons.drive_file_move_outline,
+                'Move to other pane',
+                enabled: other.remote != null,
+                onTap: () => _transferToOther(ref, JobType.move),
+              ),
+              _cmd(
+                c,
+                Icons.close,
+                'Clear selection',
+                enabled: true,
+                onTap: ctrl.clearSelection,
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _cmd(
+    AircloneColors c,
+    IconData icon,
+    String tip, {
+    required bool enabled,
+    required VoidCallback onTap,
+    bool danger = false,
+  }) => IconButton(
+    onPressed: enabled ? onTap : null,
+    icon: Icon(icon, size: 16),
+    color: danger ? c.error : c.textMuted,
+    tooltip: tip,
+    visualDensity: VisualDensity.compact,
+  );
+
+  Widget _sep(AircloneColors c) => Padding(
+    padding: const EdgeInsets.symmetric(horizontal: Space.x1),
+    child: Container(width: 1, height: 18, color: c.border),
+  );
+
+  Widget _menuButton(
+    AircloneColors c,
+    String label,
+    IconData icon,
+    MenuController controller,
+  ) => InkWell(
+    borderRadius: BorderRadius.circular(Radii.sm),
+    onTap: () => controller.isOpen ? controller.close() : controller.open(),
+    child: Padding(
+      padding: const EdgeInsets.symmetric(horizontal: Space.x2, vertical: 6),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 15, color: c.textMuted),
+          const SizedBox(width: 4),
+          Text(label, style: TextStyle(color: c.text, fontSize: 12)),
+          Icon(Icons.arrow_drop_down, size: 16, color: c.textMuted),
+        ],
+      ),
+    ),
+  );
+
+  Widget _check(AircloneColors c, bool on) => on
+      ? Icon(Icons.check, size: 16, color: c.primary)
+      : const SizedBox(width: 16);
+
+  Widget _sortMenu(BuildContext context, WidgetRef ref, AircloneColors c) {
+    final ctrl = ref.read(paneProvider(index).notifier);
+    return MenuAnchor(
+      menuChildren: [
+        for (final (key, label) in const [
+          (SortKey.name, 'Name'),
+          (SortKey.size, 'Size'),
+          (SortKey.modified, 'Modified'),
+        ])
+          MenuItemButton(
+            leadingIcon: _check(c, state.sortKey == key),
+            trailingIcon: state.sortKey == key
+                ? Icon(
+                    state.ascending ? Icons.arrow_upward : Icons.arrow_downward,
+                    size: 14,
+                    color: c.textMuted,
+                  )
+                : null,
+            onPressed: () => ctrl.setSort(key),
+            child: Text(label),
+          ),
+      ],
+      builder: (context, controller, _) =>
+          _menuButton(c, 'Sort', Icons.swap_vert, controller),
+    );
+  }
+
+  Widget _viewMenu(BuildContext context, WidgetRef ref, AircloneColors c) {
+    final ctrl = ref.read(paneProvider(index).notifier);
+    final remote = state.remote;
+    final isGrid = state.viewMode == ViewMode.grid;
+    final near = _nearestPreset(state.gridSize);
+    final disabled = ref.watch(thumbnailsDisabledProvider);
+    final thumbsOn = remote != null && thumbnailsOn(remote, disabled);
+
+    return MenuAnchor(
+      menuChildren: [
+        for (final (label, size) in _viewSizePresets)
+          MenuItemButton(
+            leadingIcon: _check(c, isGrid && near == size),
+            onPressed: () {
+              ctrl.setViewMode(ViewMode.grid);
+              ctrl.setGridSize(size);
+            },
+            child: Text(label),
+          ),
+        MenuItemButton(
+          leadingIcon: _check(c, state.viewMode == ViewMode.list),
+          onPressed: () => ctrl.setViewMode(ViewMode.list),
+          child: const Text('List'),
+        ),
+        MenuItemButton(
+          leadingIcon: _check(c, state.viewMode == ViewMode.media),
+          onPressed: () => ctrl.setViewMode(ViewMode.media),
+          child: const Text('Media gallery'),
+        ),
+        const Divider(height: 8),
+        MenuItemButton(
+          leadingIcon: _check(c, thumbsOn),
+          onPressed: (remote == null || remote.isLocal)
+              ? null
+              : () => ref
+                    .read(thumbnailsDisabledProvider.notifier)
+                    .toggle(remote.fs),
+          child: Text(
+            remote != null && remote.isLocal
+                ? 'Thumbnails (always on)'
+                : 'Thumbnails',
+          ),
+        ),
+      ],
+      builder: (context, controller, _) =>
+          _menuButton(c, 'View', Icons.grid_view_rounded, controller),
+    );
+  }
+
+  // ── handlers ─────────────────────────────────────────────────────────────
   Future<void> _newFolder(BuildContext context, WidgetRef ref) async {
     final name = await showNewFolderDialog(context);
     if (name == null || state.remote == null) return;
     await ref.read(fileOpsProvider).newFolder(state.remote!, state.path, name);
+    await ref.read(paneProvider(index).notifier).refresh();
+  }
+
+  void _clip(WidgetRef ref, {required bool cut}) {
+    if (state.remote == null || state.selectedEntries.isEmpty) return;
+    final clip = ref.read(clipboardControllerProvider.notifier);
+    final files = state.selectedEntries;
+    cut
+        ? clip.cut(state.remote!, state.path, files)
+        : clip.copy(state.remote!, state.path, files);
+  }
+
+  Future<void> _paste(WidgetRef ref) async {
+    final clip = ref.read(clipboardControllerProvider);
+    if (clip.isEmpty || clip.remote == null || state.remote == null) return;
+    final svc = ref.read(transferServiceProvider);
+    for (final f in clip.files) {
+      await svc.transfer(
+        srcRemote: clip.remote!,
+        srcPath: joinPath(clip.parentPath, f.name),
+        dstRemote: state.remote!,
+        dstPath: joinPath(state.path, f.name),
+        type: clip.isCut ? JobType.move : JobType.copy,
+      );
+    }
+    if (clip.isCut) ref.read(clipboardControllerProvider.notifier).clear();
+    await ref.read(paneProvider(index).notifier).refresh();
+  }
+
+  Future<void> _rename(BuildContext context, WidgetRef ref) async {
+    final files = state.selectedEntries;
+    if (files.length != 1 || state.remote == null) return;
+    final f = files.first;
+    final name = await showRenameDialog(context, f.name);
+    if (name == null || name == f.name) return;
+    await ref.read(fileOpsProvider).rename(state.remote!, f.path, name);
+    await ref.read(paneProvider(index).notifier).refresh();
+  }
+
+  Future<void> _delete(BuildContext context, WidgetRef ref) async {
+    final files = state.selectedEntries;
+    if (files.isEmpty || state.remote == null) return;
+    final ok = await showDeleteConfirm(
+      context,
+      files.length == 1 ? files.first.name : '${files.length} items',
+      isDir: files.length == 1 && files.first.isDir,
+    );
+    if (!ok) return;
+    final ops = ref.read(fileOpsProvider);
+    for (final f in files) {
+      await ops.deleteEntry(state.remote!, f, state.path);
+    }
     await ref.read(paneProvider(index).notifier).refresh();
   }
 
@@ -725,137 +1000,6 @@ class _PaneToolbar extends ConsumerWidget {
       );
     }
     ref.read(paneProvider(index).notifier).clearSelection();
-  }
-}
-
-/// Compact list/grid toggle + a popover with grid density and the per-remote
-/// Thumbnails switch. Lives in the pane toolbar (one per pane).
-class _ViewControls extends ConsumerWidget {
-  const _ViewControls({required this.index});
-  final int index;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final c = AircloneTheme.of(context);
-    final ctrl = ref.read(paneProvider(index).notifier);
-    final mode = ref.watch(paneProvider(index).select((s) => s.viewMode));
-
-    Widget seg(ViewMode m, IconData icon, String tip) {
-      final on = mode == m;
-      return IconButton(
-        tooltip: tip,
-        icon: Icon(icon, size: 15),
-        color: on ? c.primary : c.textMuted,
-        visualDensity: VisualDensity.compact,
-        onPressed: () => ctrl.setViewMode(m),
-      );
-    }
-
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        seg(ViewMode.list, Icons.view_list_rounded, 'List view'),
-        seg(ViewMode.grid, Icons.grid_view_rounded, 'Grid view'),
-        seg(ViewMode.media, Icons.photo_library_rounded, 'Media view'),
-        MenuAnchor(
-          menuChildren: [_ViewSettingsPanel(index: index)],
-          builder: (context, controller, _) => IconButton(
-            tooltip: 'View settings',
-            icon: const Icon(Icons.tune_rounded, size: 15),
-            visualDensity: VisualDensity.compact,
-            onPressed: () =>
-                controller.isOpen ? controller.close() : controller.open(),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-/// The popover body: grid-size slider + per-remote Thumbnails switch.
-class _ViewSettingsPanel extends ConsumerWidget {
-  const _ViewSettingsPanel({required this.index});
-  final int index;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final c = AircloneTheme.of(context);
-    final state = ref.watch(paneProvider(index));
-    final ctrl = ref.read(paneProvider(index).notifier);
-    final remote = state.remote;
-    final disabled = ref.watch(thumbnailsDisabledProvider);
-    final isLocal = remote?.isLocal ?? false;
-    final thumbsOn = remote != null && thumbnailsOn(remote, disabled);
-
-    return SizedBox(
-      width: 248,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(
-          Space.x4,
-          Space.x3,
-          Space.x4,
-          Space.x3,
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'GRID SIZE',
-              style: TextStyle(
-                color: c.textFaint,
-                fontSize: 11,
-                fontWeight: FontWeight.w600,
-                letterSpacing: 0.6,
-              ),
-            ),
-            Slider(
-              value: state.gridSize.clamp(80, 180),
-              min: 80,
-              max: 180,
-              onChanged: ctrl.setGridSize,
-            ),
-            Divider(height: Space.x4, color: c.border),
-            Row(
-              children: [
-                Icon(
-                  Icons.photo_library_outlined,
-                  size: 16,
-                  color: thumbsOn ? c.primary : c.textMuted,
-                ),
-                const SizedBox(width: Space.x2),
-                Expanded(
-                  child: Text(
-                    'Thumbnails',
-                    style: TextStyle(color: c.text, fontSize: 13),
-                  ),
-                ),
-                Switch(
-                  // Local folders are always on (no bandwidth cost); the toggle
-                  // disables previews for a cloud remote.
-                  value: thumbsOn,
-                  onChanged: (remote == null || isLocal)
-                      ? null
-                      : (_) => ref
-                            .read(thumbnailsDisabledProvider.notifier)
-                            .toggle(remote.fs),
-                ),
-              ],
-            ),
-            Text(
-              remote == null
-                  ? 'Image & video previews.'
-                  : isLocal
-                  ? 'Always on for local folders.'
-                  : thumbsOn
-                  ? 'On for "${remote.name}" · turn off to save bandwidth.'
-                  : 'Off for "${remote.name}" · no preview downloads.',
-              style: TextStyle(color: c.textFaint, fontSize: 11),
-            ),
-          ],
-        ),
-      ),
-    );
   }
 }
 
