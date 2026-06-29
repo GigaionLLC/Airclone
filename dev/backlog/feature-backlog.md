@@ -91,13 +91,13 @@ Prioritized roadmap distilled from competitive + engine research. Tags: `[D]` de
 - [x] **Type-to-navigate** (typeahead) — a20; **keyboard map** F2 · Del · Enter · Ctrl+A · Esc — a26
   (Ctrl+C/X/V clipboard keys still to wire to the existing cut/copy/paste).
 - [x] **Morphing breadcrumb path bar** (breadcrumbs ⇄ editable type-to-go) — a23.
-- [~] **Drag-out to OS** — **local files done a28**: select a file on a local disk → its **Details**
-  preview is a native drag source (`super_drag_and_drop`, `Formats.fileUri`, copy) → drop on
-  Explorer/Finder/desktop. Scoped to the inspector preview (not the rows) so the in-app pane drag is
-  untouched. **Still open:** (1) **cloud files** need download-on-drop (materialization / virtual-file
-  promises) — the hard part; (2) drag *from the file rows* would need migrating the in-app DnD off Flutter
-  `Draggable` onto super_native_extensions. **Cost incurred:** desktop builds now require a **Rust toolchain**
-  (cargokit) — see [[airclone-build-setup]].
+- [x] **OS interop for local files** (replaces drag-out) — a30. Right-click + Details pills: **Open with
+  default app** (url_launcher), **Show in File Explorer/Finder** (documented OS commands via a pure,
+  unit-tested per-OS argv builder), **Copy path** (Clipboard). Download remains for cloud. Chosen because a
+  verified research pass found **Flutter has NO official drag-out** (its docs redirect to the community
+  `super_drag_and_drop`, which needs a Rust build and whose drag can't be agent-verified). The earlier a28
+  native drag-out was **removed** (Rust toolchain dropped). Still open if ever wanted: true OS drag-out
+  (community-only, unverifiable) and cloud→OS via the existing Download.
 - [x] **Resizable + sortable columns** in Details view — sortable since a6, resizable a23.
 - [x] **Status bar** — item count + selection size + free/used space (`operations/about`) — a20.
 - [x] **Per-remote view memory** (remember view mode + sort + density per remote, restored on open) — a26.

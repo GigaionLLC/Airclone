@@ -6,6 +6,9 @@ import 'theme/tokens.dart';
 enum FileMenuAction {
   open,
   preview,
+  openWith,
+  revealInFolder,
+  copyPath,
   download,
   copy,
   cut,
@@ -56,13 +59,29 @@ Future<FileMenuAction?> showFileContextMenu(
   required bool canPaste,
   required bool hasOtherPane,
   bool canPublicLink = false,
+  bool isLocal = false,
 }) {
   final entries = <_Entry<FileMenuAction>>[
     if (isDir)
       _item(FileMenuAction.open, Icons.folder_open_outlined, 'Open')
     else
       _item(FileMenuAction.preview, Icons.visibility_outlined, 'Preview'),
-    _item(FileMenuAction.download, Icons.download_outlined, 'Download'),
+    // Local files/folders interop with the OS via official, verifiable actions.
+    if (isLocal) ...[
+      if (!isDir)
+        _item(
+          FileMenuAction.openWith,
+          Icons.open_in_new_outlined,
+          'Open with default app',
+        ),
+      _item(
+        FileMenuAction.revealInFolder,
+        Icons.folder_open_outlined,
+        'Show in File Explorer',
+      ),
+    ] else
+      _item(FileMenuAction.download, Icons.download_outlined, 'Download'),
+    _item(FileMenuAction.copyPath, Icons.content_copy_outlined, 'Copy path'),
     const _Entry.divider(),
     _item(FileMenuAction.copy, Icons.copy_outlined, 'Copy'),
     _item(FileMenuAction.cut, Icons.content_cut_outlined, 'Cut'),

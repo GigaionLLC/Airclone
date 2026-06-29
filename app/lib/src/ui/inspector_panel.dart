@@ -1,8 +1,5 @@
-import 'dart:io' show Platform;
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:super_drag_and_drop/super_drag_and_drop.dart';
 
 import '../rclone/models/job.dart';
 import '../rclone/models/rclone_file.dart';
@@ -11,6 +8,7 @@ import '../rclone/rclone_client.dart';
 import '../state/browser_controller.dart';
 import '../state/download_settings.dart';
 import '../state/engine_controller.dart';
+import '../state/os_integration.dart';
 import '../state/remote_features.dart';
 import '../state/thumbnail_prefs.dart';
 import '../state/thumbnail_service.dart';
@@ -201,26 +199,10 @@ class _InspectorPanelState extends ConsumerState<InspectorPanel> {
         : '${kindName[0].toUpperCase()}${kindName.substring(1)}';
     final sub = f.size < 0 ? kindLabel : '$kindLabel · ${humanSize(f.size)}';
 
-    final localPath = _localOsPath(state, f);
-
     return ListView(
       padding: const EdgeInsets.all(Space.x4),
       children: [
-        _maybeDraggable(_preview(c, state, f), f, localPath),
-        if (localPath != null) ...[
-          const SizedBox(height: Space.x1),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(Icons.drag_indicator, size: 13, color: c.textFaint),
-              const SizedBox(width: 2),
-              Text(
-                'Drag out to copy elsewhere',
-                style: TextStyle(color: c.textFaint, fontSize: 11),
-              ),
-            ],
-          ),
-        ],
+        _preview(c, state, f),
         const SizedBox(height: Space.x3),
         Text(
           f.name,
@@ -252,35 +234,12 @@ class _InspectorPanelState extends ConsumerState<InspectorPanel> {
   }
 
   /// The real on-disk path for [f] when it lives on a synthetic local-disk
-  /// remote, else null (cloud files have no local path to drag out — yet).
+  /// remote, else null (cloud files have no local OS path).
   String? _localOsPath(BrowserState state, RcloneFile f) {
     final remote = state.remote;
     if (remote == null || !remote.isLocal) return null;
-    // Local remote fs is an absolute root ending in '/'; append the in-remote
-    // path. Folders are draggable too (the OS copies the whole directory).
+    // Local remote fs is an absolute root ending in '/'; append the in-remote path.
     return '${remote.fs}${joinPath(state.path, f.name)}';
-  }
-
-  /// Wraps [child] so it can be dragged OUT to the OS as a real file copy, but
-  /// only for local files ([osPath] non-null). Uses the native drag backend so
-  /// dropping onto Explorer/Finder/desktop performs a copy. Does not interfere
-  /// with the in-app pane drag (the file rows own that gesture, not this panel).
-  Widget _maybeDraggable(Widget child, RcloneFile f, String? osPath) {
-    if (osPath == null) return child;
-    final uri = Uri.file(
-      Platform.isWindows ? osPath.replaceAll('/', r'\') : osPath,
-      windows: Platform.isWindows,
-    );
-    return DragItemWidget(
-      allowedOperations: () => const [DropOperation.copy],
-      canAddItemToExistingSession: true,
-      dragItemProvider: (request) async {
-        final item = DragItem(suggestedName: f.name);
-        item.add(Formats.fileUri(uri));
-        return item;
-      },
-      child: DraggableWidget(child: child),
-    );
   }
 
   /// Big square thumbnail/icon preview box.
@@ -324,7 +283,7 @@ class _InspectorPanelState extends ConsumerState<InspectorPanel> {
     );
   }
 
-  /// Quick-action pills: Preview, Download, and Copy link (when supported).
+  /// Quick-action pills: Preview, Download, OS interop (local), Copy link.
   Widget _pills(AircloneColors c, BrowserState state, RcloneFile f) {
     final remote = state.remote!;
     final feats = ref.watch(remoteFeaturesProvider(remote.fs));
@@ -332,6 +291,7 @@ class _InspectorPanelState extends ConsumerState<InspectorPanel> {
       data: (m) => m['PublicLink'] == true,
       orElse: () => false,
     );
+    final localPath = _localOsPath(state, f);
 
     return Wrap(
       spacing: Space.x2,
@@ -341,16 +301,64 @@ class _InspectorPanelState extends ConsumerState<InspectorPanel> {
         _pill(c, Icons.visibility, 'Preview', () {
           showPreviewDialog(context, ref, remote, state.path, f);
         }),
+        // Local files: open in the default app + reveal in the OS file manager.
+        if (localPath != null) ...[
+          if (!f.isDir)
+            _pill(c, Icons.open_in_new, 'Open', () => _openLocal(localPath)),
+          _pill(
+            c,
+            Icons.folder_open,
+            'Show in folder',
+            () => _revealLocal(localPath),
+          ),
+        ] else
+          _pill(
+            c,
+            Icons.download,
+            'Download',
+            () => _downloadSelection(state, [f]),
+          ),
         _pill(
           c,
-          Icons.download,
-          'Download',
-          () => _downloadSelection(state, [f]),
+          Icons.content_copy,
+          'Copy path',
+          () => _copyPath(
+            localPath ?? '${remote.name}:${joinPath(state.path, f.name)}',
+          ),
         ),
         if (canLink)
           _pill(c, Icons.link, 'Copy link', () => _publicLink(state, f)),
       ],
     );
+  }
+
+  Future<void> _openLocal(String osPath) async {
+    final ok = await ref.read(osIntegrationProvider).openWithDefaultApp(osPath);
+    if (!ok && mounted) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Could not open the file.')));
+    }
+  }
+
+  Future<void> _revealLocal(String osPath) async {
+    final ok = await ref
+        .read(osIntegrationProvider)
+        .revealInFileManager(osPath);
+    if (!ok && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not open the file manager.')),
+      );
+    }
+  }
+
+  Future<void> _copyPath(String path) async {
+    await ref.read(osIntegrationProvider).copyToClipboard(path);
+    if (mounted) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Path copied')));
+    }
   }
 
   Widget _pill(

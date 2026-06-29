@@ -11,6 +11,7 @@ import '../state/clipboard_controller.dart';
 import '../state/download_settings.dart';
 import '../state/engine_controller.dart';
 import '../state/file_ops.dart';
+import '../state/os_integration.dart';
 import '../state/remote_features.dart';
 import '../state/thumbnail_prefs.dart';
 import '../state/thumbnail_service.dart';
@@ -299,6 +300,7 @@ class BrowserPane extends ConsumerWidget {
       canPaste: clip.isNotEmpty,
       hasOtherPane: hasOther,
       canPublicLink: feats?['PublicLink'] == true,
+      isLocal: state.remote!.isLocal,
     );
     if (action == null || state.remote == null) return;
     final files = _targetFiles(state, file);
@@ -316,6 +318,12 @@ class BrowserPane extends ConsumerWidget {
             state.visibleEntries.indexOf(file),
           );
         }
+      case FileMenuAction.openWith:
+        await _openLocal(ref, state, file);
+      case FileMenuAction.revealInFolder:
+        await _revealLocal(ref, state, file);
+      case FileMenuAction.copyPath:
+        await _copyPath(ref, state, file);
       case FileMenuAction.download:
         await _download(ref, state, files);
       case FileMenuAction.copy:
@@ -536,6 +544,45 @@ class BrowserPane extends ConsumerWidget {
         context,
       ).showSnackBar(SnackBar(content: Text('Public link failed: $e')));
     }
+  }
+
+  /// The real on-disk path for [f] on a local-disk remote (else null).
+  String? _localOsPath(BrowserState state, RcloneFile f) {
+    final remote = state.remote;
+    if (remote == null || !remote.isLocal) return null;
+    return '${remote.fs}${joinPath(state.path, f.name)}';
+  }
+
+  Future<void> _openLocal(
+    WidgetRef ref,
+    BrowserState state,
+    RcloneFile f,
+  ) async {
+    final p = _localOsPath(state, f);
+    if (p == null) return;
+    await ref.read(osIntegrationProvider).openWithDefaultApp(p);
+  }
+
+  Future<void> _revealLocal(
+    WidgetRef ref,
+    BrowserState state,
+    RcloneFile f,
+  ) async {
+    final p = _localOsPath(state, f);
+    if (p == null) return;
+    await ref.read(osIntegrationProvider).revealInFileManager(p);
+  }
+
+  Future<void> _copyPath(
+    WidgetRef ref,
+    BrowserState state,
+    RcloneFile f,
+  ) async {
+    // Local → OS path; cloud → the rclone `remote:path` form.
+    final p =
+        _localOsPath(state, f) ??
+        '${state.remote!.name}:${joinPath(state.path, f.name)}';
+    await ref.read(osIntegrationProvider).copyToClipboard(p);
   }
 
   Future<void> _dropOnto(

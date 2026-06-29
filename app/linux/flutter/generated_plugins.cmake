@@ -6,10 +6,8 @@ list(APPEND FLUTTER_PLUGIN_LIST
   desktop_drop
   file_selector_linux
   flutter_acrylic
-  irondash_engine_context
   media_kit_libs_linux
   media_kit_video
-  super_native_extensions
   url_launcher_linux
   volume_controller
 )

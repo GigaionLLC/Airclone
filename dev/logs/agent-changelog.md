@@ -6,6 +6,41 @@ All changes made by AI agents are tracked chronologically below (most recent fir
 
 <!-- New entries go above this line, most recent first -->
 
+## [2026-06-28] - v0.1.0-alpha.30: official OS interop (Open/Reveal/Copy-path) replaces native drag-out
+
+**Agent:** Airclone Build (Claude Opus 4.8) — preceded by a 4-agent research+verify workflow
+**Why:** the user asked for an OS-interop method that is **verifiable by the agent** + **official** +
+**maintainable** cross-platform. A verified research pass confirmed **Flutter has no first-party drag-out**
+(its own docs redirect to the community `super_drag_and_drop`, which needs a Rust/cargokit build and whose
+drag gesture cannot be verified by an agent that can't see the screen). So we removed it and replaced it
+with documented, unit-testable actions.
+
+**Files Modified:**
+- New `state/os_integration.dart`: pure `revealCommand(TargetPlatform, absPath)` (Windows
+  `explorer.exe /select,<path>` as ONE argv elem; macOS `open -R`; Linux `dbus-send`
+  FileManager1.ShowItems) + `revealFallbackCommand` (xdg-open parent dir) + `isSpawnSuccess` (per-OS
+  exit-code policy — Windows explorer returns nonzero on success, so ignore it) + `OsIntegration`
+  (revealInFileManager / openWithDefaultApp via url_launcher / copyToClipboard) + provider. ProcessRunner +
+  launch seams for testing.
+- New `test/os_integration_test.dart`: 16 tests (argv per OS, comma-quoting, exit-code policy, Linux
+  dbus→xdg-open fallback, Uri.file build + round-trip, clipboard channel).
+- `ui/context_menu.dart`: `FileMenuAction.openWith/revealInFolder/copyPath` + `isLocal` gating
+  (Open/Show-in-Explorer for local files; Copy path always).
+- `ui/browser_pane.dart`: pass `isLocal`, dispatch the 3 actions via `osIntegrationProvider`.
+- `ui/inspector_panel.dart`: removed the super_drag_and_drop drag code; added **Open** / **Show in folder** /
+  **Copy path** pills for local files (Download still shown for cloud).
+- `pubspec.yaml`: removed `super_drag_and_drop` (→ alpha.30). `.github/workflows/release.yml`: removed the
+  three `dtolnay/rust-toolchain` steps (no longer needed).
+
+**Toolchain:** desktop builds no longer require Rust — verified `flutter build windows` succeeds with cargo
+NOT on PATH. (Rust stays installed locally but is unused; ci.yml unaffected.)
+
+**Database/API Changes:** None
+**Summary:** alpha.30 — replaced the unverifiable, Rust-backed native drag-out with the **official,
+agent-verifiable trio**: Open (url_launcher), Show in File Explorer/Finder (documented OS commands behind a
+pure per-OS argv builder), Copy path (Clipboard) — on local files, via the right-click menu and the Details
+pills; Download remains for cloud. analyze (0) / test (39, +16 new) / Windows build green **without Rust**.
+
 ## [2026-06-28] - v0.1.0-alpha.29: fix in-app drag self-reupload
 
 **Agent:** Airclone Build (Claude Opus 4.8)
