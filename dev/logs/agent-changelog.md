@@ -6,6 +6,27 @@ All changes made by AI agents are tracked chronologically below (most recent fir
 
 <!-- New entries go above this line, most recent first -->
 
+## [2026-06-28] - v0.1.0-alpha.26: Explorer keyboard shortcuts + per-location view memory
+
+**Agent:** Airclone Build (Claude Opus 4.8)
+**Files Modified:**
+- `ui/home_screen.dart`: CallbackShortcuts for **F2** (rename selected) · **Delete** (confirm + delete
+  selection) · **Enter** (open folder / Quick Look file) · **Ctrl+A** (select all) · **Esc** (clear
+  selection); handlers operate on the active pane. (Focused text fields still consume these keys, so the
+  filter box is unaffected — same pattern as the existing Space binding.)
+- New `state/view_memory.dart`: `ViewPref` (viewMode/sortKey/ascending/gridSize as `.name` strings, JSON
+  round-trip) + persisted `viewMemoryProvider` (`ViewMemory.remember`/`prefFor`, no-op on unchanged)
+- `state/browser_controller.dart`: `open()` restores a remote's saved `ViewPref` (else keeps the pane's
+  current view); `setViewMode`/`setSort`/`setGridSize` now call `_rememberView()`
+- New `test/view_memory_test.dart`: 4 tests (round-trip, partial-map defaults, remember/read-back, no-op)
+- pubspec → alpha.26
+
+**Database/API Changes:** None
+**Summary:** alpha.26 — two "feels like the native file manager" wins. **Keyboard shortcuts** complete the
+Explorer key map (F2 / Delete / Enter / Ctrl+A / Esc on the active pane). **Per-location view memory**: each
+remote remembers its last view mode, sort, and grid density and restores it on open (persisted). analyze (0)
+/ test (23, +4 new) / Windows build green.
+
 ## [2026-06-28] - v0.1.0-alpha.25: native window backdrop (Mica/Acrylic, opt-in)
 
 **Agent:** Airclone Build (Claude Opus 4.8) — background agent drafted the state file; integration by main

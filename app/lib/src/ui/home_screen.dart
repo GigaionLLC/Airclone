@@ -13,6 +13,7 @@ import '../state/advanced_mode.dart';
 import '../state/app_info.dart';
 import '../state/browser_controller.dart';
 import '../state/engine_controller.dart';
+import '../state/file_ops.dart';
 import '../state/local_locations.dart';
 import '../state/remote_about.dart';
 import '../state/remotes_provider.dart';
@@ -21,6 +22,7 @@ import '../state/transfer_service.dart';
 import 'add_remote_dialog.dart';
 import 'bandwidth_control.dart';
 import 'browser_pane.dart';
+import 'file_op_dialogs.dart';
 import 'format.dart';
 import 'inspector_panel.dart';
 import 'jobs_panel.dart';
@@ -129,6 +131,56 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     showQuickLook(context, remote, st.path, entries, start < 0 ? 0 : start);
   }
 
+  /// Enter on the active pane: open the single selected folder, else Quick Look
+  /// the selected file(s).
+  void _openActiveSelection() {
+    final idx = ref.read(activePaneProvider);
+    final st = ref.read(paneProvider(idx));
+    if (st.remote == null) return;
+    final sel = st.selectedEntries;
+    if (sel.length == 1 && sel.first.isDir) {
+      ref.read(paneProvider(idx).notifier).enterDir(sel.first);
+    } else {
+      _quickLookActive();
+    }
+  }
+
+  /// F2 on the active pane: rename the single selected entry.
+  Future<void> _renameActiveSelection() async {
+    final idx = ref.read(activePaneProvider);
+    final st = ref.read(paneProvider(idx));
+    if (st.remote == null) return;
+    final sel = st.selectedEntries;
+    if (sel.length != 1) return; // rename targets exactly one entry
+    final f = sel.first;
+    final name = await showRenameDialog(context, f.name);
+    if (name == null || name == f.name) return;
+    await ref.read(fileOpsProvider).rename(st.remote!, f.path, name);
+    await ref.read(paneProvider(idx).notifier).refresh();
+  }
+
+  /// Delete on the active pane: confirm, then delete every selected entry.
+  Future<void> _deleteActiveSelection() async {
+    final idx = ref.read(activePaneProvider);
+    final st = ref.read(paneProvider(idx));
+    if (st.remote == null) return;
+    final sel = st.selectedEntries;
+    if (sel.isEmpty) return;
+    final ok = sel.length == 1
+        ? await showDeleteConfirm(
+            context,
+            sel.first.name,
+            isDir: sel.first.isDir,
+          )
+        : await showDeleteConfirm(context, '${sel.length} items');
+    if (!ok) return;
+    final ops = ref.read(fileOpsProvider);
+    for (final f in sel) {
+      await ops.deleteEntry(st.remote!, f, st.path);
+    }
+    await ref.read(paneProvider(idx).notifier).refresh();
+  }
+
   @override
   Widget build(BuildContext context) {
     BrowserController activePane() =>
@@ -157,6 +209,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 .closeTab(ref.read(paneProvider(idx)).activeTab);
           },
           const SingleActivator(LogicalKeyboardKey.space): _quickLookActive,
+          const SingleActivator(LogicalKeyboardKey.keyA, control: true): () =>
+              activePane().selectAll(),
+          const SingleActivator(LogicalKeyboardKey.escape): () =>
+              activePane().clearSelection(),
+          const SingleActivator(LogicalKeyboardKey.enter): _openActiveSelection,
+          const SingleActivator(LogicalKeyboardKey.f2): _renameActiveSelection,
+          const SingleActivator(LogicalKeyboardKey.delete):
+              _deleteActiveSelection,
         },
         child: Focus(
           autofocus: true,

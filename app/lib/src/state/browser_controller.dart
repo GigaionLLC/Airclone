@@ -5,6 +5,7 @@ import '../rclone/models/rclone_file.dart';
 import '../rclone/models/remote.dart';
 import '../ui/column_header.dart' show SortKey, compareRcloneFiles;
 import 'engine_controller.dart';
+import 'view_memory.dart';
 
 /// How a pane renders its directory: classic detail list, icon/thumbnail grid,
 /// or a date-grouped media gallery (images + video only).
@@ -192,16 +193,49 @@ class BrowserController extends Notifier<BrowserState> {
   Future<void> open(Remote remote) async {
     _s.history = [''];
     _s.idx = 0;
-    // Keep the pane's view preference (list/grid + density) across remotes.
+    // Restore how this remote was last viewed; otherwise keep the pane's
+    // current view preference (list/grid + density + sort) across remotes.
+    final saved = ref.read(viewMemoryProvider)[remote.name];
     _set(
       BrowserState(
         remote: remote,
         loading: true,
-        viewMode: state.viewMode,
-        gridSize: state.gridSize,
+        viewMode: saved != null
+            ? _viewModeFrom(saved.viewMode)
+            : state.viewMode,
+        gridSize: saved?.gridSize ?? state.gridSize,
+        sortKey: saved != null ? _sortKeyFrom(saved.sortKey) : state.sortKey,
+        ascending: saved?.ascending ?? state.ascending,
       ),
     );
     await _load();
+  }
+
+  static ViewMode _viewModeFrom(String name) => ViewMode.values.firstWhere(
+    (v) => v.name == name,
+    orElse: () => ViewMode.list,
+  );
+
+  static SortKey _sortKeyFrom(String name) => SortKey.values.firstWhere(
+    (v) => v.name == name,
+    orElse: () => SortKey.name,
+  );
+
+  /// Persist the active remote's current view settings (mode/sort/density).
+  void _rememberView() {
+    final r = state.remote;
+    if (r == null) return;
+    ref
+        .read(viewMemoryProvider.notifier)
+        .remember(
+          r.name,
+          ViewPref(
+            viewMode: state.viewMode.name,
+            sortKey: state.sortKey.name,
+            ascending: state.ascending,
+            gridSize: state.gridSize,
+          ),
+        );
   }
 
   Future<void> enterDir(RcloneFile dir) async {
@@ -284,11 +318,16 @@ class BrowserController extends Notifier<BrowserState> {
   );
 
   /// Switch this pane between list and grid rendering.
-  void setViewMode(ViewMode mode) => _set(state.copyWith(viewMode: mode));
+  void setViewMode(ViewMode mode) {
+    _set(state.copyWith(viewMode: mode));
+    _rememberView();
+  }
 
   /// Set the grid tile target width (density), clamped to a sane range.
-  void setGridSize(double px) =>
-      _set(state.copyWith(gridSize: px.clamp(80, 180).toDouble()));
+  void setGridSize(double px) {
+    _set(state.copyWith(gridSize: px.clamp(80, 180).toDouble()));
+    _rememberView();
+  }
 
   /// Sort by [key]; tapping the active column flips direction.
   void setSort(SortKey key) {
@@ -296,6 +335,7 @@ class BrowserController extends Notifier<BrowserState> {
     final sorted = [...state.entries]
       ..sort((a, b) => compareRcloneFiles(a, b, key, asc));
     _set(state.copyWith(sortKey: key, ascending: asc, entries: sorted));
+    _rememberView();
   }
 
   Future<void> _load() async {
