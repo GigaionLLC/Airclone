@@ -88,7 +88,8 @@ Prioritized roadmap distilled from competitive + engine research. Tags: `[D]` de
   app at the OS level (Windows Job Object / `CREATE_BREAKAWAY` off; POSIX `PR_SET_PDEATHSIG`).
 
 ### 💡 Recommended additions (proposed)
-- [x] **Type-to-navigate** (typeahead) — a20. Full keyboard map (F2 · Del · Ctrl+C/X/V/A · Enter) partial.
+- [x] **Type-to-navigate** (typeahead) — a20; **keyboard map** F2 · Del · Enter · Ctrl+A · Esc — a26
+  (Ctrl+C/X/V clipboard keys still to wire to the existing cut/copy/paste).
 - [x] **Morphing breadcrumb path bar** (breadcrumbs ⇄ editable type-to-go) — a23.
 - [ ] **Drag-out to OS** — drag a remote file to Explorer/Finder to download it there.
   > ⚠️ **Deferred / needs collaboration.** Highest-risk remaining item: needs a native drag package
@@ -99,7 +100,8 @@ Prioritized roadmap distilled from competitive + engine research. Tags: `[D]` de
   > materialization — with the user verifying drag behavior on-screen.
 - [x] **Resizable + sortable columns** in Details view — sortable since a6, resizable a23.
 - [x] **Status bar** — item count + selection size + free/used space (`operations/about`) — a20.
-- [ ] **Per-tab / per-remote view memory** (remember view mode + sort per location).
+- [x] **Per-remote view memory** (remember view mode + sort + density per remote, restored on open) — a26.
+  (Per-*tab* state is already inherent — each tab is its own session.)
 
 ---
 
