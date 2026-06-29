@@ -716,6 +716,8 @@ Future<void> _copyToRemoteRoot(
   PaneDragData data,
   Remote dst,
 ) async {
+  // No-op: dropping a remote's own root items back onto that same remote.
+  if (data.remote == dst && data.parentPath.isEmpty) return;
   final svc = ref.read(transferServiceProvider);
   for (final f in data.files) {
     await svc.transfer(

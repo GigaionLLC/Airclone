@@ -6,6 +6,24 @@ All changes made by AI agents are tracked chronologically below (most recent fir
 
 <!-- New entries go above this line, most recent first -->
 
+## [2026-06-28] - v0.1.0-alpha.29: fix in-app drag self-reupload
+
+**Agent:** Airclone Build (Claude Opus 4.8)
+**Files Modified:**
+- `ui/browser_pane.dart` `_dropOnto`: early-return when `data.remote == dstRemote && data.parentPath ==
+  dstPath` (dropping items back into their current folder); per-file skip when `dstPath == srcPath` or
+  `dstPath.startsWith('$srcPath/')` (folder onto itself / into its own subtree)
+- `ui/home_screen.dart` `_copyToRemoteRoot`: no-op when dropping a remote's own root items back onto that
+  same remote (`data.remote == dst && data.parentPath.isEmpty`)
+- pubspec → alpha.29
+
+**Database/API Changes:** None
+**Summary:** alpha.29 — fixes the user-reported bug where dragging an already-present file inside a pane and
+releasing it re-uploaded the file onto its own location. Same-folder and folder-into-itself drops are now
+no-ops across list/grid/media (all route through `_dropOnto`) plus the sidebar remote-root drop. Pure
+in-app-drag fix; the separate question of dragging the file *rows* out to the OS (vs the alpha.28 inspector
+preview) is unchanged and tracked in the backlog. analyze (0) / test (23) / Windows build green.
+
 ## [2026-06-28] - v0.1.0-alpha.28: drag a local file out to the OS
 
 **Agent:** Airclone Build (Claude Opus 4.8)

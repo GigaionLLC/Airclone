@@ -544,11 +544,21 @@ class BrowserPane extends ConsumerWidget {
     Remote dstRemote,
     String dstPath,
   ) async {
+    final sameRemote = data.remote == dstRemote;
+    // No-op: dropping items back into the folder they already live in
+    // (e.g. releasing a drag over the current pane) — avoids a copy-to-self.
+    if (sameRemote && data.parentPath == dstPath) return;
     final svc = ref.read(transferServiceProvider);
     for (final f in data.files) {
+      final srcPath = joinPath(data.parentPath, f.name);
+      // No-op: dropping a folder onto itself or into its own subtree.
+      if (sameRemote &&
+          (dstPath == srcPath || dstPath.startsWith('$srcPath/'))) {
+        continue;
+      }
       await svc.transfer(
         srcRemote: data.remote,
-        srcPath: joinPath(data.parentPath, f.name),
+        srcPath: srcPath,
         dstRemote: dstRemote,
         dstPath: joinPath(dstPath, f.name),
         type: JobType.copy,
