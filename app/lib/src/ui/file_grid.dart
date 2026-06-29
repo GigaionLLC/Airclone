@@ -7,6 +7,7 @@ import '../state/browser_controller.dart';
 import '../state/thumbnail_service.dart';
 import 'file_icon.dart';
 import 'folder_thumbnail.dart';
+import 'native_drag.dart';
 import 'thumbnail_image.dart';
 import 'pane_drag.dart';
 import 'theme/tokens.dart';
@@ -123,34 +124,19 @@ class _GridTile extends StatelessWidget {
       selected ? state.selectedEntries : [file],
     );
 
-    final tile = _tile(selected);
-
-    final draggable = Draggable<PaneDragData>(
+    final draggable = NativePaneDraggable(
       data: payload,
-      dragAnchorStrategy: pointerDragAnchorStrategy,
-      feedback: _feedback(payload),
-      child: tile,
+      child: _tile(selected),
     );
 
     if (!file.isDir) return draggable;
 
-    return DragTarget<PaneDragData>(
-      onAcceptWithDetails: (d) => onDropInto(file, d.data),
-      builder: (context, candidate, rejected) => Stack(
-        fit: StackFit.expand,
-        children: [
-          draggable,
-          if (candidate.isNotEmpty)
-            IgnorePointer(
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  color: c.primary.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(Radii.md),
-                ),
-              ),
-            ),
-        ],
-      ),
+    // Folder tiles also accept in-app drops (copy INTO the folder).
+    return NativePaneDropRegion(
+      onDrop: (data) => onDropInto(file, data),
+      highlightColor: c.primary,
+      borderRadius: BorderRadius.circular(Radii.md),
+      child: draggable,
     );
   }
 
@@ -232,32 +218,6 @@ class _GridTile extends StatelessWidget {
                 child: Icon(Icons.check_circle, color: c.primary, size: 16),
               ),
           ],
-        ),
-      ),
-    );
-  }
-
-  Widget _feedback(PaneDragData payload) {
-    final count = payload.files.length;
-    final label = count > 1 ? '$count items' : file.name;
-    return Material(
-      color: Colors.transparent,
-      child: Container(
-        constraints: const BoxConstraints(maxWidth: 220),
-        padding: const EdgeInsets.symmetric(
-          horizontal: Space.x3,
-          vertical: Space.x1,
-        ),
-        decoration: BoxDecoration(
-          color: c.primary,
-          borderRadius: BorderRadius.circular(Radii.full),
-        ),
-        child: Text(
-          label,
-          maxLines: 1,
-          softWrap: false,
-          overflow: TextOverflow.ellipsis,
-          style: TextStyle(fontSize: 11, color: c.onPrimary),
         ),
       ),
     );

@@ -6,6 +6,7 @@ import '../rclone/models/remote.dart';
 import '../state/browser_controller.dart';
 import '../state/thumbnail_service.dart';
 import 'file_icon.dart';
+import 'native_drag.dart';
 import 'thumbnail_image.dart';
 import 'pane_drag.dart';
 import 'theme/tokens.dart';
@@ -288,37 +289,6 @@ class _MediaTile extends StatelessWidget {
       ),
     );
 
-    return Draggable<PaneDragData>(
-      data: payload,
-      dragAnchorStrategy: pointerDragAnchorStrategy,
-      feedback: _feedback(payload),
-      child: gestures,
-    );
-  }
-
-  Widget _feedback(PaneDragData payload) {
-    final count = payload.files.length;
-    final label = count > 1 ? '$count items' : file.name;
-    return Material(
-      color: Colors.transparent,
-      child: Container(
-        constraints: const BoxConstraints(maxWidth: 220),
-        padding: const EdgeInsets.symmetric(
-          horizontal: Space.x3,
-          vertical: Space.x1,
-        ),
-        decoration: BoxDecoration(
-          color: c.primary,
-          borderRadius: BorderRadius.circular(Radii.full),
-        ),
-        child: Text(
-          label,
-          maxLines: 1,
-          softWrap: false,
-          overflow: TextOverflow.ellipsis,
-          style: TextStyle(fontSize: 11, color: c.onPrimary),
-        ),
-      ),
-    );
+    return NativePaneDraggable(data: payload, child: gestures);
   }
 }

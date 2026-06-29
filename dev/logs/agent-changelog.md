@@ -6,6 +6,32 @@ All changes made by AI agents are tracked chronologically below (most recent fir
 
 <!-- New entries go above this line, most recent first -->
 
+## [2026-06-28] - v0.1.0-alpha.34: whole-file drag — full migration of in-app DnD to the native engine
+
+**Agent:** Airclone Build (Claude Opus 4.8)
+**Why:** the user wanted to drag the WHOLE file (not a grip), and diagnosed that the "view jumps to top on
+drag" came from Flutter's `Draggable` (the super_native grip didn't jump). One widget can't run both drag
+systems, so the in-app drag/drop is migrated onto `super_drag_and_drop` — the same gesture now serves both
+an in-app drop and an OS drag-out, and the scroll-jump goes away.
+**Files Modified:**
+- New `ui/native_drag.dart`: `NativePaneDraggable` (whole-widget drag → `localData` = PaneDragData JSON +
+  `Formats.plainText` marker + `Formats.fileUri` for local files = OS drag-out) and `NativePaneDropRegion`
+  (DropRegion accepting only in-app drags via localData; OS-file drops fall through to `desktop_drop`;
+  hover highlight).
+- `ui/pane_drag.dart`: `PaneDragData.toJson`/`fromJson` (rides as native localData).
+- `ui/browser_pane.dart`: list `_FileRow` source + folder drop + pane drop migrated; removed the grip +
+  Flutter `Draggable`/feedback; deleted `ui/os_drag_handle.dart`.
+- `ui/file_grid.dart`, `ui/media_gallery.dart`: tile sources (+ grid folder drop) migrated; removed feedbacks.
+- `ui/home_screen.dart`: sidebar remote tile drop migrated; dropped the now-unused `_RemoteTile.dropHover`.
+- New `test/pane_drag_test.dart`: 2 round-trip tests. pubspec → alpha.34.
+
+**Database/API Changes:** None
+**Summary:** alpha.34 — the entire file is the drag handle. Grab a row/tile and drop it onto a folder, the
+other pane, a sidebar remote (in-app copy) **or** onto the OS (local files copy out) in one gesture; the
+list no longer jumps to the top. OS→app uploads unchanged (`desktop_drop`). analyze (0) / test (42, +2) /
+Windows build green. **Needs the user to verify the actual drags** (in-app pane/folder/sidebar, OS drag-out,
+and that OS-file upload still works) since drag behavior isn't agent-observable.
+
 ## [2026-06-28] - v0.1.0-alpha.32: drag a local file out to the OS from a row grip (super_drag_and_drop returns)
 
 **Agent:** Airclone Build (Claude Opus 4.8)

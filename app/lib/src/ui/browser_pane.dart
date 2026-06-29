@@ -24,7 +24,7 @@ import 'file_icon.dart';
 import 'file_op_dialogs.dart';
 import 'format.dart';
 import 'media_gallery.dart';
-import 'os_drag_handle.dart';
+import 'native_drag.dart';
 import 'pane_drag.dart';
 import 'path_bar.dart';
 import 'quick_look.dart';
@@ -58,16 +58,19 @@ class BrowserPane extends ConsumerWidget {
               child: state.remote == null
                   ? _empty(c)
                   : DropTarget(
+                      // OS files dropped from outside → upload (kept on
+                      // desktop_drop; in-app drags are handled natively below).
                       onDragDone: (d) => _uploadLocal(
                         ref,
                         d.files.map((f) => f.path).toList(),
                         state.remote!,
                         state.path,
                       ),
-                      child: DragTarget<PaneDragData>(
-                        onAcceptWithDetails: (d) =>
-                            _dropOnto(ref, d.data, state.remote!, state.path),
-                        builder: (_, cand, _) => GestureDetector(
+                      child: NativePaneDropRegion(
+                        onDrop: (data) =>
+                            _dropOnto(ref, data, state.remote!, state.path),
+                        highlightColor: c.primary,
+                        child: GestureDetector(
                           behavior: HitTestBehavior.translucent,
                           onSecondaryTapUp: (d) => _showEmptyMenu(
                             context,
@@ -75,12 +78,7 @@ class BrowserPane extends ConsumerWidget {
                             state,
                             d.globalPosition,
                           ),
-                          child: _body(
-                            context,
-                            ref,
-                            state,
-                            highlight: cand.isNotEmpty,
-                          ),
+                          child: _body(context, ref, state, highlight: false),
                         ),
                       ),
                     ),
@@ -1304,78 +1302,19 @@ class _FileRow extends ConsumerWidget {
       ),
     );
 
-    // Folders are drop targets (drop INTO the folder); everything is draggable.
+    // Folders accept in-app drops (copy INTO the folder). The whole row is the
+    // drag source — drop it in-app OR onto the OS (local files copy out).
     Widget row = base;
     if (file.isDir) {
-      row = DragTarget<PaneDragData>(
-        onAcceptWithDetails: (d) => onDropInto(d.data),
-        builder: (_, cand, _) => Container(
-          decoration: cand.isNotEmpty
-              ? BoxDecoration(color: c.primary.withValues(alpha: 0.10))
-              : null,
-          child: base,
-        ),
+      row = NativePaneDropRegion(
+        onDrop: onDropInto,
+        highlightColor: c.primary,
+        child: base,
       );
     }
 
-    final draggableRow = Draggable<PaneDragData>(
-      data: payload,
-      dragAnchorStrategy: pointerDragAnchorStrategy,
-      feedback: _dragFeedback(c, dragFiles.length),
-      child: row,
-    );
-
-    // Local files get a native drag-OUT grip at the left edge, OUTSIDE the
-    // in-app Draggable (overlaid via a Stack) so the two drag gestures don't
-    // compete. Cloud files have no OS path to hand the desktop.
-    final osPath = paneRemote.isLocal
-        ? '${paneRemote.fs}${joinPath(state.path, file.name)}'
-        : null;
-    if (osPath == null) return draggableRow;
-    return Stack(
-      children: [
-        draggableRow,
-        Positioned(
-          left: 0,
-          top: 0,
-          bottom: 0,
-          width: 16,
-          child: Center(
-            child: OsDragHandle(
-              osPath: osPath,
-              fileName: file.name,
-              color: c.textFaint,
-            ),
-          ),
-        ),
-      ],
-    );
+    return NativePaneDraggable(data: payload, child: row);
   }
-
-  Widget _dragFeedback(AircloneColors c, int count) => Material(
-    color: Colors.transparent,
-    child: Container(
-      padding: const EdgeInsets.symmetric(
-        horizontal: Space.x3,
-        vertical: Space.x2,
-      ),
-      decoration: BoxDecoration(
-        color: c.primary,
-        borderRadius: BorderRadius.circular(Radii.md),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(Icons.drive_file_move, size: 16, color: c.onPrimary),
-          const SizedBox(width: Space.x2),
-          Text(
-            count == 1 ? file.name : '$count items',
-            style: TextStyle(color: c.onPrimary, fontSize: 12),
-          ),
-        ],
-      ),
-    ),
-  );
 }
 
 /// Compact client-side filter box (Ctrl+F focuses the active pane's box).

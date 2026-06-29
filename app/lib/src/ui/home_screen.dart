@@ -25,6 +25,7 @@ import 'bandwidth_control.dart';
 import 'browser_pane.dart';
 import 'file_op_dialogs.dart';
 import 'format.dart';
+import 'native_drag.dart';
 import 'inspector_panel.dart';
 import 'jobs_panel.dart';
 import 'pane_drag.dart';
@@ -467,12 +468,13 @@ class _Sidebar extends ConsumerWidget {
       IconData icon, {
       VoidCallback? onDelete,
       String deleteLabel = 'Remove',
-    }) => DragTarget<PaneDragData>(
-      onAcceptWithDetails: (d) => _copyToRemoteRoot(ref, d.data, r),
-      builder: (_, cand, _) => _RemoteTile(
+    }) => NativePaneDropRegion(
+      onDrop: (data) => _copyToRemoteRoot(ref, data, r),
+      highlightColor: c.primary,
+      borderRadius: BorderRadius.circular(Radii.sm),
+      child: _RemoteTile(
         remote: r,
         selected: r == selectedRemote,
-        dropHover: cand.isNotEmpty,
         leadingIcon: icon,
         onTap: () => _openOrToggle(ref, active, r),
         onDelete: onDelete,
@@ -736,7 +738,6 @@ class _RemoteTile extends StatelessWidget {
     required this.selected,
     required this.onTap,
     this.onDelete,
-    this.dropHover = false,
     this.leadingIcon,
     this.deleteLabel = 'Delete remote',
   });
@@ -744,7 +745,6 @@ class _RemoteTile extends StatelessWidget {
   final bool selected;
   final VoidCallback onTap;
   final VoidCallback? onDelete;
-  final bool dropHover;
 
   /// Overrides the default cloud/computer icon (used for local locations).
   final IconData? leadingIcon;
@@ -762,11 +762,7 @@ class _RemoteTile extends StatelessWidget {
         padding: const EdgeInsets.only(left: Space.x2, top: 2, bottom: 2),
         margin: const EdgeInsets.symmetric(vertical: 1),
         decoration: BoxDecoration(
-          color: dropHover
-              ? c.primary.withValues(alpha: 0.18)
-              : selected
-              ? c.primary.withValues(alpha: 0.12)
-              : null,
+          color: selected ? c.primary.withValues(alpha: 0.12) : null,
           borderRadius: BorderRadius.circular(Radii.md),
           border: Border(
             left: BorderSide(
