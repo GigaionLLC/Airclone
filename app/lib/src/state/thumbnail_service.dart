@@ -9,6 +9,7 @@ import 'package:flutter/foundation.dart' show immutable;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:http/http.dart' as http;
 import 'package:media_kit/media_kit.dart';
+import 'package:media_kit_video/media_kit_video.dart';
 import 'package:path_provider/path_provider.dart';
 
 /// Immutable request describing one thumbnail to fetch/decode.
@@ -116,17 +117,23 @@ class ThumbnailService {
     }
   }
 
-  /// Open the video headlessly, wait for the first decoded frame, and screenshot
-  /// it via libmpv. Falls back to null (→ kind icon) on any failure/timeout.
+  /// Capture a video keyframe via libmpv. A [VideoController] must be attached
+  /// (and a frame actually rendered) for `screenshot` to return pixels, so we
+  /// create one, play muted until the first frame renders, then grab it. Falls
+  /// back to null (→ kind icon) on any failure/timeout.
   Future<Uint8List?> _captureVideoFrame(ThumbRequest req) async {
     Player? player;
     try {
       player = Player();
-      await player.open(Media(req.url, httpHeaders: req.headers), play: false);
-      // Wait until libmpv reports a non-zero video size (a frame is decoded).
-      await player.stream.width
-          .firstWhere((w) => (w ?? 0) > 0)
-          .timeout(const Duration(seconds: 12));
+      // Attach an off-screen video output so libmpv decodes + renders frames.
+      final controller = VideoController(player);
+      await player.setVolume(0);
+      await player.open(Media(req.url, httpHeaders: req.headers), play: true);
+      // Wait until a frame is actually on the output, then pause on it.
+      await controller.waitUntilFirstFrameRendered.timeout(
+        const Duration(seconds: 12),
+      );
+      await player.pause();
       final raw = await player
           .screenshot(format: 'image/png')
           .timeout(const Duration(seconds: 6));

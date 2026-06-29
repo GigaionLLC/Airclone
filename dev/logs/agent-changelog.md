@@ -6,6 +6,16 @@ All changes made by AI agents are tracked chronologically below (most recent fir
 
 <!-- New entries go above this line, most recent first -->
 
+## [2026-06-28] - v0.1.0-alpha.18: fix video thumbnails (attach VideoController)
+
+**Agent:** Airclone Build (Claude Opus 4.8)
+**Files Modified:** `state/thumbnail_service.dart` — `_captureVideoFrame` now creates a `VideoController`
+for the headless `Player`, sets volume 0, plays until `controller.waitUntilFirstFrameRendered`, pauses, then
+`screenshot`s. libmpv only renders a frame when a video output is attached, so the previous (controller-less)
+capture always returned null and videos fell back to the movie icon.
+**Summary:** alpha.18 — mp4/mov/mkv/etc. now show real keyframe thumbnails in grid/media views (images were
+already working). Bounded to 4 concurrent + disk-cached as before. analyze (0) green.
+
 ## [2026-06-28] - v0.1.0-alpha.17: tabs (multiple locations per pane)
 
 **Agent:** Airclone Build (Claude Opus 4.8)
