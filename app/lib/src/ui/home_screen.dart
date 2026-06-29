@@ -18,6 +18,7 @@ import '../state/jobs_controller.dart';
 import '../state/local_locations.dart';
 import '../state/remote_about.dart';
 import '../state/remotes_provider.dart';
+import '../state/skin.dart';
 import '../state/stats_controller.dart';
 import '../state/transfer_service.dart';
 import 'add_remote_dialog.dart';
@@ -475,12 +476,15 @@ class _Sidebar extends ConsumerWidget {
     final active = ref.watch(activePaneProvider);
     final selectedRemote = ref.watch(paneProvider(active)).remote;
     final engineReady = ref.watch(engineControllerProvider).isReady;
+    // Windows Explorer skin: coloured known-folder icons + rounded selection.
+    final explorer = ref.watch(skinProvider) == Skin.windows;
 
     Widget tile(
       Remote r,
       IconData icon, {
       VoidCallback? onDelete,
       String deleteLabel = 'Remove',
+      Color? iconColor,
     }) => NativePaneDropRegion(
       onDrop: (data) => _copyToRemoteRoot(ref, data, r),
       highlightColor: c.primary,
@@ -489,6 +493,8 @@ class _Sidebar extends ConsumerWidget {
         remote: r,
         selected: r == selectedRemote,
         leadingIcon: icon,
+        leadingIconColor: iconColor,
+        roundedSelection: explorer,
         onTap: () => _openOrToggle(ref, active, r),
         onDelete: onDelete,
         deleteLabel: deleteLabel,
@@ -521,6 +527,7 @@ class _Sidebar extends ConsumerWidget {
                 tile(
                   loc.remote,
                   _localIcon(loc.kind),
+                  iconColor: explorer ? _localAccent(loc.kind) : null,
                   onDelete: () => ref
                       .read(userLocationsProvider.notifier)
                       .remove(loc.remote.fs),
@@ -533,7 +540,12 @@ class _Sidebar extends ConsumerWidget {
       // ── Disks (auto-detected) ────────────────────────────────────────────────
       const _SectionHeader(label: 'DISKS', sectionKey: 'disks'),
       if (!collapsed.contains('disks'))
-        for (final d in drives) tile(d.remote, _localIcon(d.kind)),
+        for (final d in drives)
+          tile(
+            d.remote,
+            _localIcon(d.kind),
+            iconColor: explorer ? _localAccent(d.kind) : null,
+          ),
 
       // ── Cloud (rclone remotes) ───────────────────────────────────────────────
       _SectionHeader(
@@ -716,6 +728,21 @@ IconData _localIcon(LocalKind kind) => switch (kind) {
   LocalKind.folder => Icons.folder_outlined,
 };
 
+/// Win11-style coloured "known folder" tints, used by the Windows Explorer skin
+/// to make the sidebar read like Explorer's Quick Access.
+Color _localAccent(LocalKind kind) => switch (kind) {
+  LocalKind.home => const Color(0xFF4DA3E0),
+  LocalKind.desktop => const Color(0xFF4DA3E0),
+  LocalKind.documents => const Color(0xFF4DA3E0),
+  LocalKind.downloads => const Color(0xFF5BB561),
+  LocalKind.pictures => const Color(0xFF5DB6A8),
+  LocalKind.videos => const Color(0xFF6E8FE0),
+  LocalKind.music => const Color(0xFFE06A9E),
+  LocalKind.drive => const Color(0xFFB0B4BA),
+  LocalKind.root => const Color(0xFFB0B4BA),
+  LocalKind.folder => const Color(0xFFE8C15A),
+};
+
 /// Open [r] in the active pane, or clear the pane if it's already showing [r].
 void _openOrToggle(WidgetRef ref, int active, Remote r) {
   final notifier = ref.read(paneProvider(active).notifier);
@@ -752,6 +779,8 @@ class _RemoteTile extends StatelessWidget {
     required this.onTap,
     this.onDelete,
     this.leadingIcon,
+    this.leadingIconColor,
+    this.roundedSelection = false,
     this.deleteLabel = 'Delete remote',
   });
   final Remote remote;
@@ -761,6 +790,12 @@ class _RemoteTile extends StatelessWidget {
 
   /// Overrides the default cloud/computer icon (used for local locations).
   final IconData? leadingIcon;
+
+  /// Tints the icon (Explorer skin's coloured known-folder icons).
+  final Color? leadingIconColor;
+
+  /// Explorer-style rounded selection fill (no left accent bar).
+  final bool roundedSelection;
 
   /// Label for the tile's delete/remove menu item.
   final String deleteLabel;
@@ -772,17 +807,23 @@ class _RemoteTile extends StatelessWidget {
       onTap: onTap,
       borderRadius: BorderRadius.circular(Radii.md),
       child: Container(
-        padding: const EdgeInsets.only(left: Space.x2, top: 2, bottom: 2),
+        padding: EdgeInsets.only(
+          left: roundedSelection ? Space.x3 : Space.x2,
+          top: 2,
+          bottom: 2,
+        ),
         margin: const EdgeInsets.symmetric(vertical: 1),
         decoration: BoxDecoration(
           color: selected ? c.primary.withValues(alpha: 0.12) : null,
           borderRadius: BorderRadius.circular(Radii.md),
-          border: Border(
-            left: BorderSide(
-              color: selected ? c.primary : Colors.transparent,
-              width: 2,
-            ),
-          ),
+          border: roundedSelection
+              ? null
+              : Border(
+                  left: BorderSide(
+                    color: selected ? c.primary : Colors.transparent,
+                    width: 2,
+                  ),
+                ),
         ),
         child: Row(
           children: [
@@ -792,7 +833,7 @@ class _RemoteTile extends StatelessWidget {
                       ? Icons.computer_outlined
                       : Icons.cloud_outlined),
               size: 18,
-              color: selected ? c.primary : c.textMuted,
+              color: leadingIconColor ?? (selected ? c.primary : c.textMuted),
             ),
             const SizedBox(width: Space.x2),
             Expanded(

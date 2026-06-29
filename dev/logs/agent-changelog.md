@@ -6,6 +6,25 @@ All changes made by AI agents are tracked chronologically below (most recent fir
 
 <!-- New entries go above this line, most recent first -->
 
+## [2026-06-29] - v0.1.0-alpha.43: Windows Explorer skin — sidebar styling (Phase F, part 3)
+
+**Agent:** Airclone Build (Claude Opus 4.8)
+**Why:** user feedback (with a real Explorer screenshot) — colors+rows matched but it still didn't read as
+Explorer because the chrome (sidebar especially) was unchanged. Sidebar is always visible → highest impact.
+**Files Modified:**
+- `ui/home_screen.dart`: `_localAccent(LocalKind)` (Win11 known-folder tints); `_Sidebar` reads
+  `skinProvider`; `tile()` gains `iconColor`, passes coloured icons (local locations + disks) + a
+  `roundedSelection` flag when the Explorer skin is active. `_RemoteTile` gains `leadingIconColor` +
+  `roundedSelection` (rounded fill, no left accent bar; icon tinted).
+- pubspec → alpha.43 (built after the bump).
+
+**Database/API Changes:** None
+**Summary:** alpha.43 — Explorer skin's sidebar now mirrors Quick Access: coloured folder icons + rounded
+selection. Airclone/other skins unchanged. analyze (0) / Windows build green. Honest note to user: fully
+matching Explorer's chrome (command bar, Mica translucency, title-bar tabs) is a larger iterative job done
+in pieces with their screenshots; title-bar tabs in particular aren't really feasible in Flutter without a
+custom window frame. **Needs the user's eyes.**
+
 ## [2026-06-29] - v0.1.0-alpha.42: Windows Explorer skin — Win11 color palette (Phase F, part 2)
 
 **Agent:** Airclone Build (Claude Opus 4.8)
