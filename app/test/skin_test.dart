@@ -19,6 +19,30 @@ void main() {
     expect(ext.colors.primary, AircloneColors.light.primary);
   });
 
+  test('Windows skin uses its own palette; others fall back to Airclone', () {
+    expect(
+      AircloneColors.forSkin(Skin.windows, Brightness.dark),
+      AircloneColors.windowsDark,
+    );
+    expect(
+      AircloneColors.forSkin(Skin.windows, Brightness.light),
+      AircloneColors.windowsLight,
+    );
+    expect(
+      AircloneColors.forSkin(Skin.airclone, Brightness.dark),
+      AircloneColors.dark,
+    );
+    expect(
+      AircloneColors.forSkin(Skin.macos, Brightness.light),
+      AircloneColors.light,
+    );
+    // The Windows palette really differs from the default.
+    expect(
+      AircloneColors.windowsDark.surface,
+      isNot(AircloneColors.dark.surface),
+    );
+  });
+
   test('SkinTokens.of returns the right bundle per skin', () {
     expect(SkinTokens.of(Skin.airclone).rowHeight, 36);
     expect(SkinTokens.of(Skin.windows).rowHeight, 28);

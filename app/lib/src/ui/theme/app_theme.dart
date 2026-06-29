@@ -8,9 +8,7 @@ abstract final class AppTheme {
   static ThemeData dark() => build(Skin.airclone, Brightness.dark);
 
   static ThemeData build(Skin skin, Brightness brightness) {
-    final c = brightness == Brightness.dark
-        ? AircloneColors.dark
-        : AircloneColors.light;
+    final c = AircloneColors.forSkin(skin, brightness);
     final t = SkinTokens.of(skin);
 
     final scheme = ColorScheme(

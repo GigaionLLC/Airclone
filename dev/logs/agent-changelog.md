@@ -6,6 +6,25 @@ All changes made by AI agents are tracked chronologically below (most recent fir
 
 <!-- New entries go above this line, most recent first -->
 
+## [2026-06-29] - v0.1.0-alpha.42: Windows Explorer skin — Win11 color palette (Phase F, part 2)
+
+**Agent:** Airclone Build (Claude Opus 4.8)
+**Why:** user feedback on a41 — the Explorer skin changed font/density/rows but still used the Airclone blue
+palette, so it didn't read as Explorer. (Also their app showed `alpha.40` because the a41 binary was built
+one step before the pubspec bump; fixed by building after the bump here.)
+**Files Modified:**
+- `ui/theme/tokens.dart`: `AircloneColors.windowsLight` + `windowsDark` (Win11 Explorer palette) and
+  `AircloneColors.forSkin(skin, brightness)` (Windows → its palette; other skins → Airclone).
+- `ui/theme/app_theme.dart`: `build()` now picks the palette via `forSkin`.
+- `test/skin_test.dart`: asserts the Windows palette is used + differs from default; others fall back.
+- pubspec → alpha.42 (bumped BEFORE building this time).
+
+**Database/API Changes:** None
+**Summary:** alpha.42 — the Windows Explorer skin now has its own neutral-gray + Windows-blue palette, so
+the whole app (not just the file rows) shifts toward an Explorer look when selected; Airclone and the other
+skins are unchanged. analyze (0) / test (55) / Windows build green. **Needs the user's eyes** to tune the
+exact grays/accent.
+
 ## [2026-06-29] - v0.1.0-alpha.41: Windows Explorer skin — row styling (Phase F, part 1)
 
 **Agent:** Airclone Build (Claude Opus 4.8)

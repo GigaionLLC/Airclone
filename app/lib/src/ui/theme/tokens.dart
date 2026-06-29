@@ -111,6 +111,61 @@ class AircloneColors {
     info: Color(0xFF6BA6E0),
   );
 
+  /// Windows 11 File Explorer palette — neutral grays + the Windows blue accent.
+  static const windowsLight = AircloneColors(
+    surface: Color(0xFFF3F3F3),
+    surfaceRaised: Color(0xFFFBFBFB),
+    surfaceSunken: Color(0xFFEAEAEA),
+    border: Color(0xFFE2E2E2),
+    borderStrong: Color(0xFFCCCCCC),
+    text: Color(0xFF1B1B1B),
+    textMuted: Color(0xFF5A5A5A),
+    textFaint: Color(0xFF8A8A8A),
+    primary: Color(0xFF005FB8),
+    primaryHover: Color(0xFF0078D4),
+    onPrimary: Color(0xFFFFFFFF),
+    secondary: Color(0xFF005FB8),
+    success: Color(0xFF0F7B0F),
+    successBg: Color(0xFFE3F2E3),
+    warning: Color(0xFF9D5D00),
+    warningBg: Color(0xFFFBF0E1),
+    error: Color(0xFFC42B1C),
+    errorBg: Color(0xFFFDE7E9),
+    info: Color(0xFF005FB8),
+  );
+
+  static const windowsDark = AircloneColors(
+    surface: Color(0xFF202020),
+    surfaceRaised: Color(0xFF2B2B2B),
+    surfaceSunken: Color(0xFF303030),
+    border: Color(0xFF393939),
+    borderStrong: Color(0xFF4A4A4A),
+    text: Color(0xFFFFFFFF),
+    textMuted: Color(0xFFC8C8C8),
+    textFaint: Color(0xFF919191),
+    primary: Color(0xFF4CC2FF),
+    primaryHover: Color(0xFF6FD0FF),
+    onPrimary: Color(0xFF00344D),
+    secondary: Color(0xFF4CC2FF),
+    success: Color(0xFF6CCB5F),
+    successBg: Color(0xFF11301B),
+    warning: Color(0xFFFCE100),
+    warningBg: Color(0xFF3A3416),
+    error: Color(0xFFFF99A4),
+    errorBg: Color(0xFF442726),
+    info: Color(0xFF4CC2FF),
+  );
+
+  /// The palette for a given [skin] + [brightness]. Skins without a dedicated
+  /// palette fall back to the default Airclone look.
+  static AircloneColors forSkin(Skin skin, Brightness brightness) {
+    final dark = brightness == Brightness.dark;
+    return switch (skin) {
+      Skin.windows => dark ? windowsDark : windowsLight,
+      _ => dark ? AircloneColors.dark : AircloneColors.light,
+    };
+  }
+
   /// Interpolates every channel — used by [AircloneTheme.lerp] so theme/skin
   /// switches animate smoothly instead of snapping.
   static AircloneColors lerp(AircloneColors a, AircloneColors b, double t) =>
