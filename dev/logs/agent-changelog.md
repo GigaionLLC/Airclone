@@ -6,6 +6,25 @@ All changes made by AI agents are tracked chronologically below (most recent fir
 
 <!-- New entries go above this line, most recent first -->
 
+## [2026-06-28] - v0.1.0-alpha.40: skin selector + token routing (Phase E — first visible skins)
+
+**Agent:** Airclone Build (Claude Opus 4.8)
+**Files Modified:**
+- `ui/settings_screen.dart`: new `_SkinSection` (a `Skin` dropdown under Appearance) → `skinProvider.set`;
+  imported `state/skin.dart`
+- `ui/browser_pane.dart`: `_FileRow` reads `AircloneTheme.tokensOf(context)` — row `height` = `tokens.rowHeight`
+  and the name uses `tokens.bodySize` (so list density changes per skin). Font + `visualDensity` already
+  flow app-wide from `AppTheme.build`.
+- pubspec → alpha.40
+
+**Database/API Changes:** None
+**Summary:** alpha.40 — the skins are now **selectable and visibly different**. Settings → Skin switches
+Airclone (default) / Windows Explorer / macOS Finder / GNOME; each changes the UI font, density, and
+list-row height (Explorer 28px / Finder 24px / GNOME 38px vs Airclone 36px). This is the first visible cut —
+the deeper per-skin chrome (toolbar layout, sidebar, selection shape, Mica/vibrancy) is Phase F/G, to be
+shaped by the user's feedback on how each should look. analyze (0) / test (54) / Windows build green.
+**Needs the user's eyes** to judge each skin's feel.
+
 ## [2026-06-28] - v0.1.0-alpha.39: skin foundation (Phase D — zero visual change)
 
 **Agent:** Airclone Build (Claude Opus 4.8)

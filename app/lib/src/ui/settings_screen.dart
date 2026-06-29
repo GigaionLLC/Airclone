@@ -11,6 +11,7 @@ import '../state/engine_controller.dart';
 import '../state/engine_flags.dart';
 import '../state/jobs_controller.dart';
 import '../state/settings_controller.dart';
+import '../state/skin.dart';
 import '../state/window_backdrop.dart';
 import 'theme/tokens.dart';
 
@@ -47,6 +48,8 @@ class SettingsDialog extends ConsumerWidget {
                 _Header(),
                 const SizedBox(height: Space.x5),
                 _ThemeSection(),
+                const SizedBox(height: Space.x5),
+                _SkinSection(),
                 const SizedBox(height: Space.x5),
                 _BackdropSection(),
                 const SizedBox(height: Space.x5),
@@ -385,6 +388,40 @@ class _ThemeSection extends ConsumerWidget {
 }
 
 /// Desktop window background material (Mica/Acrylic on Windows 11).
+/// Optional visual skin: Airclone (default brand look) + native-feel OS skins.
+class _SkinSection extends ConsumerWidget {
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final skin = ref.watch(skinProvider);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const _SectionLabel(
+          'Skin',
+          help:
+              'Airclone is the default look; the others approximate each '
+              "OS's native file manager (optional).",
+        ),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: DropdownButton<Skin>(
+            value: skin,
+            underline: const SizedBox.shrink(),
+            borderRadius: BorderRadius.circular(Radii.md),
+            items: [
+              for (final s in Skin.values)
+                DropdownMenuItem(value: s, child: Text(s.label)),
+            ],
+            onChanged: (v) {
+              if (v != null) ref.read(skinProvider.notifier).set(v);
+            },
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 class _BackdropSection extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {

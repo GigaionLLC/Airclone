@@ -1223,6 +1223,7 @@ class _FileRow extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final c = AircloneTheme.of(context);
+    final t = AircloneTheme.tokensOf(context);
     final widths = ref.watch(columnWidthsProvider);
     final selected = state.isSelected(file.name);
 
@@ -1236,7 +1237,7 @@ class _FileRow extends ConsumerWidget {
         onTap: file.isDir ? onOpen : onToggle,
         onDoubleTap: file.isDir ? onOpen : onPreview,
         child: Container(
-          height: 36,
+          height: t.rowHeight,
           padding: const EdgeInsets.symmetric(horizontal: Space.x3),
           decoration: BoxDecoration(
             color: selected ? c.primary.withValues(alpha: 0.12) : null,
@@ -1261,7 +1262,7 @@ class _FileRow extends ConsumerWidget {
                 child: Text(
                   file.name,
                   overflow: TextOverflow.ellipsis,
-                  style: TextStyle(color: c.text, fontSize: 13),
+                  style: TextStyle(color: c.text, fontSize: t.bodySize),
                 ),
               ),
               const SizedBox(width: Space.x2),
