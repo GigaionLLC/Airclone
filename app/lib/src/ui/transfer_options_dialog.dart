@@ -363,9 +363,9 @@ class _SettingsTab extends StatelessWidget {
 
   Widget _compareDropdown(AircloneColors c) {
     const items = <(CompareMode?, String)>[
-      (null, '(off) — size + mod-time'),
-      (CompareMode.size, 'Size only'),
-      (CompareMode.checksum, 'Checksum'),
+      (null, '(default) — size + mod-time'),
+      (CompareMode.size, 'Size only (--size-only)'),
+      (CompareMode.checksum, 'Checksum (--checksum)'),
     ];
     return DropdownButtonFormField<CompareMode?>(
       initialValue: options.compare,
@@ -411,15 +411,37 @@ class _FiltersTab extends StatelessWidget {
       padding: const EdgeInsets.all(Space.x5),
       children: [
         Text(
-          'One pattern per line. Empty lines are ignored.',
+          'One glob pattern per line (e.g. *.jpg, photos/**). '
+          'Empty lines are ignored.',
           style: TextStyle(color: c.textFaint, fontSize: 11),
         ),
         const SizedBox(height: Space.x3),
-        _field(c, 'Include', '*.jpg', includes),
+        _field(
+          c,
+          'Include',
+          '--include',
+          'Only transfer matching files.',
+          '*.jpg',
+          includes,
+        ),
         const SizedBox(height: Space.x4),
-        _field(c, 'Exclude', '*.tmp', excludes),
+        _field(
+          c,
+          'Exclude',
+          '--exclude',
+          'Skip matching files.',
+          '*.tmp',
+          excludes,
+        ),
         const SizedBox(height: Space.x4),
-        _field(c, 'Filter', '+ *.png', filters),
+        _field(
+          c,
+          'Filter',
+          '--filter',
+          'Combined rules, prefixed + (include) or - (exclude).',
+          '+ *.png',
+          filters,
+        ),
       ],
     );
   }
@@ -427,18 +449,36 @@ class _FiltersTab extends StatelessWidget {
   Widget _field(
     AircloneColors c,
     String label,
+    String flag,
+    String help,
     String hint,
     TextEditingController controller,
   ) => Column(
     crossAxisAlignment: CrossAxisAlignment.start,
     children: [
-      Text(
-        label,
-        style: TextStyle(
-          color: c.text,
-          fontSize: 13,
-          fontWeight: FontWeight.w600,
-        ),
+      Row(
+        children: [
+          Text(
+            label,
+            style: TextStyle(
+              color: c.text,
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(width: Space.x2),
+          Tooltip(
+            message: '$flag — $help',
+            child: Text(
+              flag,
+              style: TextStyle(
+                color: c.textFaint,
+                fontSize: 11,
+                fontFamily: 'monospace',
+              ),
+            ),
+          ),
+        ],
       ),
       const SizedBox(height: Space.x2),
       TextField(

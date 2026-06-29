@@ -4,7 +4,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../rclone/models/job.dart';
 import '../rclone/models/rclone_file.dart';
 import '../rclone/models/remote.dart';
-import '../state/advanced_mode.dart';
 import '../state/browser_controller.dart';
 import '../state/clipboard_controller.dart';
 import '../state/download_settings.dart';
@@ -852,7 +851,6 @@ class _PaneToolbar extends ConsumerWidget {
     final oneSel = state.selected.length == 1;
     final clipFull = ref.watch(clipboardControllerProvider).isNotEmpty;
     final other = ref.watch(paneProvider(index == 0 ? 1 : 0));
-    final advanced = ref.watch(advancedModeProvider);
 
     return SizedBox(
       height: 38,
@@ -940,14 +938,13 @@ class _PaneToolbar extends ConsumerWidget {
                 enabled: other.remote != null,
                 onTap: () => _transferToOther(ref, JobType.move),
               ),
-              if (advanced)
-                _cmd(
-                  c,
-                  Icons.tune,
-                  'Advanced transfer to other pane…',
-                  enabled: other.remote != null,
-                  onTap: () => _advancedTransfer(context, ref),
-                ),
+              _cmd(
+                c,
+                Icons.tune,
+                'Transfer with options… (Copy/Move/Sync · filters · dry-run)',
+                enabled: hasSel,
+                onTap: () => _advancedTransfer(context, ref),
+              ),
               _cmd(
                 c,
                 Icons.close,
@@ -1162,19 +1159,31 @@ class _PaneToolbar extends ConsumerWidget {
   }
 
   /// Opens the advanced Copy/Move/Sync options dialog and runs the chosen
-  /// transfer of the selection into the other pane.
+  /// transfer of the selection. Destination is the OTHER pane when it has a
+  /// remote open, otherwise the user picks one — so this works in single-pane
+  /// mode too (no Advanced Mode required).
   Future<void> _advancedTransfer(BuildContext context, WidgetRef ref) async {
     final from = ref.read(paneProvider(index));
-    final to = ref.read(paneProvider(index == 0 ? 1 : 0));
-    if (from.remote == null ||
-        to.remote == null ||
-        from.selectedEntries.isEmpty) {
-      return;
+    if (from.remote == null || from.selectedEntries.isEmpty) return;
+
+    final other = ref.read(paneProvider(index == 0 ? 1 : 0));
+    Remote dstRemote;
+    String dstPath;
+    if (other.remote != null) {
+      dstRemote = other.remote!;
+      dstPath = other.path;
+    } else {
+      final dst = await showDestinationPicker(context, title: 'Transfer to…');
+      if (dst == null) return;
+      dstRemote = dst.remote;
+      dstPath = dst.path;
     }
+    if (!context.mounted) return;
+
     final options = await showTransferOptionsDialog(
       context,
       fromLabel: '${from.remote!.name}:${from.path}',
-      toLabel: '${to.remote!.name}:${to.path}',
+      toLabel: '${dstRemote.name}:$dstPath',
     );
     if (options == null) return;
     final svc = ref.read(transferServiceProvider);
@@ -1182,8 +1191,8 @@ class _PaneToolbar extends ConsumerWidget {
       await svc.transferAdvanced(
         srcRemote: from.remote!,
         srcPath: joinPath(from.path, f.name),
-        dstRemote: to.remote!,
-        dstPath: joinPath(to.path, f.name),
+        dstRemote: dstRemote,
+        dstPath: joinPath(dstPath, f.name),
         options: options,
       );
     }

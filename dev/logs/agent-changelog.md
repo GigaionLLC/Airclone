@@ -6,6 +6,27 @@ All changes made by AI agents are tracked chronologically below (most recent fir
 
 <!-- New entries go above this line, most recent first -->
 
+## [2026-06-28] - v0.1.0-alpha.37: discoverable advanced transfer options (Phase A+B of the discoverability track)
+
+**Agent:** Airclone Build (Claude Opus 4.8) — preceded by a 4-agent audit/research/plan workflow
+**Why:** the user couldn't tell how to reach advanced upload/download options. The audit found the whole
+tabbed transfer dialog was gated behind Advanced Mode, and some controls didn't name their rclone flag.
+**Files Modified:**
+- `ui/browser_pane.dart`: the command-bar advanced-transfer button is **ungated** (shown whenever there's a
+  selection, not just in Advanced Mode) and relabeled "Transfer with options…"; `_advancedTransfer` now
+  **falls back to a destination picker** when there's no second pane, so it works in single-pane mode.
+  Removed the now-unused `advanced_mode` import/var.
+- `ui/transfer_options_dialog.dart`: compare dropdown shows `--size-only`/`--checksum`; Include/Exclude/Filter
+  fields are labelled with their flag (`--include`/`--exclude`/`--filter`) + a tooltip + a glob-pattern hint.
+- New `test/transfer_options_dialog_test.dart`: asserts the flag labels + Dry-run/Run buttons render.
+- pubspec → alpha.37
+
+**Database/API Changes:** None
+**Summary:** alpha.37 — Phase A (teach the flag) + Phase B (ungate the dialog) of the discoverability plan.
+The advanced Copy/Move/Sync dialog is reachable for everyone via a command-bar "Transfer with options…"
+button (single-pane friendly), and each control names its rclone flag. analyze (0) / test (44, +2) /
+Windows build green. Next: Settings reorganization + engine-flag preset chips (Phase C), then the skins track.
+
 ## [2026-06-28] - v0.1.0-alpha.36: auto-refresh panes after a transfer completes
 
 **Agent:** Airclone Build (Claude Opus 4.8)
