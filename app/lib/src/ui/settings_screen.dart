@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../state/app_info.dart';
+import '../state/cache_crypto.dart';
 import '../state/settings_controller.dart';
 import 'theme/tokens.dart';
 
@@ -37,11 +38,109 @@ class SettingsDialog extends ConsumerWidget {
               const SizedBox(height: Space.x5),
               _RclonePathSection(),
               const SizedBox(height: Space.x5),
+              _CacheSection(),
+              const SizedBox(height: Space.x5),
               _UpdatesSection(),
             ],
           ),
         ),
       ),
+    );
+  }
+}
+
+/// Preview-cache controls: size, clear, and a memory-only privacy toggle.
+class _CacheSection extends ConsumerStatefulWidget {
+  @override
+  ConsumerState<_CacheSection> createState() => _CacheSectionState();
+}
+
+class _CacheSectionState extends ConsumerState<_CacheSection> {
+  int? _size;
+  bool _clearing = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _refreshSize();
+  }
+
+  Future<void> _refreshSize() async {
+    final s = await diskCacheSize();
+    if (mounted) setState(() => _size = s);
+  }
+
+  Future<void> _clear() async {
+    setState(() => _clearing = true);
+    await clearDiskCaches();
+    if (!mounted) return;
+    setState(() => _clearing = false);
+    _refreshSize();
+  }
+
+  static String _human(int b) {
+    if (b < 1024) return '$b B';
+    const u = ['KB', 'MB', 'GB'];
+    var v = b / 1024;
+    var i = 0;
+    while (v >= 1024 && i < u.length - 1) {
+      v /= 1024;
+      i++;
+    }
+    return '${v.toStringAsFixed(1)} ${u[i]}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final c = AircloneTheme.of(context);
+    final memoryOnly = ref.watch(cacheMemoryOnlyProvider);
+    final ctrl = ref.read(cacheMemoryOnlyProvider.notifier);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const _SectionLabel(
+          'Preview cache',
+          help:
+              'Thumbnails are encrypted at rest — bound to your rclone config '
+              'password when the config is encrypted.',
+        ),
+        Row(
+          children: [
+            Icon(Icons.image_outlined, size: 16, color: c.textMuted),
+            const SizedBox(width: Space.x2),
+            Text(
+              _size == null ? 'Calculating…' : 'On disk: ${_human(_size!)}',
+              style: TextStyle(color: c.textMuted, fontSize: 13),
+            ),
+            const Spacer(),
+            TextButton(
+              onPressed: _clearing ? null : _clear,
+              child: Text(_clearing ? 'Clearing…' : 'Clear cache'),
+            ),
+          ],
+        ),
+        const SizedBox(height: Space.x1),
+        Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Keep cache in memory only',
+                    style: TextStyle(color: c.text, fontSize: 13),
+                  ),
+                  Text(
+                    'Never write previews to disk (highest privacy).',
+                    style: TextStyle(color: c.textFaint, fontSize: 11),
+                  ),
+                ],
+              ),
+            ),
+            Switch(value: memoryOnly, onChanged: ctrl.set),
+          ],
+        ),
+      ],
     );
   }
 }

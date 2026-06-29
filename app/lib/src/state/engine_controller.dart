@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../rclone/http_rclone_client.dart';
 import '../rclone/rclone_client.dart';
 import '../rclone/rclone_engine.dart';
+import 'cache_crypto.dart';
 
 enum EnginePhase {
   idle,
@@ -122,6 +123,9 @@ class EngineController extends Notifier<EngineUi> {
     try {
       await client.start();
       final status = await client.status();
+      // Bind the at-rest cache key to the config password (null when the config
+      // is unencrypted → the cache falls back to a per-remote-name key).
+      ref.read(cachePassphraseProvider.notifier).state = password;
       state = EngineUi(
         phase: EnginePhase.ready,
         version: status.version,

@@ -257,6 +257,7 @@ class _InspectorPanelState extends ConsumerState<InspectorPanel> {
           url: oref.url,
           headers: oref.headers,
           cacheKey: thumbCacheKey(remote.fs, f.path, f.modTime, f.size, 512),
+          cacheSecret: remote.name,
           size: 512,
           isVideo: isVideoThumbnailable(f),
         ),

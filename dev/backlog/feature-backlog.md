@@ -54,6 +54,16 @@ Prioritized roadmap distilled from competitive + engine research. Tags: `[D]` de
 - [ ] **Global settings window** — custom rclone flags · VFS · bandwidth · performance presets.
 - [ ] **Easy ⇄ Advanced mode** toggle (progressive disclosure of the above).
 
+### 🔒 Cache & privacy
+- [ ] **Clear cache** — one-click "Clear thumbnail/preview cache" in Settings (delete `airclone_thumbs` +
+  `airclone_folderthumbs`, reset in-memory caches); show cache size.
+- [ ] **Encrypt the on-disk cache at rest** (thumbnails now; file/VFS cache later). AES-256-GCM per blob.
+  Key derivation: **PBKDF2 from the rclone config password** when the config is encrypted (so no config
+  password ⇒ no remotes ⇒ no cache — coherent). **Fallback when the config is NOT password-encrypted:**
+  a random key sealed in the **OS secure store** (Windows DPAPI / macOS Keychain / Linux Secret Service)
+  — *stronger than a remote-name hash, which is not secret and gives only obfuscation*. Also offer a
+  **memory-only / no-disk-cache** mode for the paranoid.
+
 ### 🐞 Known robustness bugs
 - [ ] **Orphaned engine processes** — force-killing `airclone.exe` leaves its spawned `rclone rcd`
   child running (observed 15+ stray `rcd` accumulating). On desktop, tie `rcd`'s lifetime to the app

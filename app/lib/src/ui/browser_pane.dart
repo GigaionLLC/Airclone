@@ -166,6 +166,7 @@ class BrowserPane extends ConsumerWidget {
             f.size,
             256,
           ),
+          cacheSecret: state.remote!.name,
           isVideo: isVideoThumbnailable(f),
         );
       }

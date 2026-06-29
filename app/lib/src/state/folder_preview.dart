@@ -10,6 +10,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 
+import 'cache_crypto.dart';
+
 /// An authenticated reference to one image inside a folder, for thumbnailing.
 @immutable
 class FolderImageRef {
@@ -21,6 +23,9 @@ class FolderImageRef {
 /// Builds a Windows-style folder thumbnail by compositing a few of the
 /// folder's images into a 2x2 grid on a subtle card background, disk-cached.
 class FolderPreviewService {
+  FolderPreviewService(this._ref);
+  final Ref _ref;
+
   static const _bg = Color(0xFF101216); // surfaceSunken-ish
   static const _maxConcurrent = 3;
   static const _gap = 2.0;
@@ -28,40 +33,57 @@ class FolderPreviewService {
   int _active = 0;
   final _queue = <Completer<void>>[];
 
-  /// Composite up to 4 [images] into a square [size] PNG. Returns cached bytes
-  /// on a disk hit, else fetches/decodes/draws/writes. Null on any failure or
-  /// when no image could be loaded.
+  /// Composite up to 4 [images] into a square [size] PNG. Returns the cached
+  /// (decrypted) bytes on a disk hit, else fetches/decodes/draws/seals/writes.
+  /// Null on any failure or when no image could be loaded. [remoteSecret] seeds
+  /// the at-rest key when the rclone config has no password.
   Future<Uint8List?> compose({
     required String cacheKey,
     required List<FolderImageRef> images,
+    String remoteSecret = '',
     int size = 256,
   }) async {
-    try {
-      final file = await _cacheFile(cacheKey);
-      if (await file.exists()) {
-        return await file.readAsBytes();
+    final memoryOnly = _ref.read(cacheMemoryOnlyProvider);
+
+    if (!memoryOnly) {
+      try {
+        final file = await _cacheFile(cacheKey);
+        if (await file.exists()) {
+          final blob = await file.readAsBytes();
+          final png = await _ref
+              .read(cacheCryptoProvider)
+              .open(blob, remoteSecret);
+          if (png != null) return png;
+        }
+      } catch (_) {
+        // Fall through to recompute on any cache-read failure.
       }
-    } catch (_) {
-      // Fall through to recompute on any cache-read failure.
     }
 
     await _acquire();
+    Uint8List? bytes;
     try {
-      final bytes = await _build(images, size);
-      if (bytes == null) return null;
-      try {
-        final file = await _cacheFile(cacheKey);
-        await file.parent.create(recursive: true);
-        await file.writeAsBytes(bytes, flush: true);
-      } catch (_) {
-        // Cache write is best-effort; still return the bytes.
-      }
-      return bytes;
+      bytes = await _build(images, size);
     } catch (_) {
-      return null;
+      bytes = null;
     } finally {
       _release();
     }
+    if (bytes == null) return null;
+
+    if (!memoryOnly) {
+      try {
+        final blob = await _ref
+            .read(cacheCryptoProvider)
+            .seal(bytes, remoteSecret);
+        final file = await _cacheFile(cacheKey);
+        await file.parent.create(recursive: true);
+        await file.writeAsBytes(blob, flush: true);
+      } catch (_) {
+        // Cache write is best-effort; still return the bytes.
+      }
+    }
+    return bytes;
   }
 
   /// Fetch + decode the first 4 images and draw them into a grid.
@@ -163,7 +185,7 @@ class FolderPreviewService {
   Future<File> _cacheFile(String cacheKey) async {
     final dir = await getApplicationCacheDirectory();
     final safe = sha1.convert(utf8.encode(cacheKey)).toString();
-    return File('${dir.path}/airclone_folderthumbs/$safe.png');
+    return File('${dir.path}/airclone_folderthumbs/$safe.bin');
   }
 
   /// Concurrency gate: at most [_maxConcurrent] composites at once.
@@ -199,5 +221,5 @@ String folderThumbCacheKey(
 }
 
 final folderPreviewServiceProvider = Provider<FolderPreviewService>(
-  (ref) => FolderPreviewService(),
+  (ref) => FolderPreviewService(ref),
 );

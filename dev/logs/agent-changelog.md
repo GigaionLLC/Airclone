@@ -6,6 +6,31 @@ All changes made by AI agents are tracked chronologically below (most recent fir
 
 <!-- New entries go above this line, most recent first -->
 
+## [2026-06-28] - v0.1.0-alpha.19: encrypted preview cache + clear-cache + memory-only
+
+**Agent:** Airclone Build (Claude Opus 4.8)
+**Files Modified:**
+- New: `state/cache_crypto.dart` — `CacheCrypto` (AES-256-GCM seal/open, key via PBKDF2-HMAC-SHA256 from
+  `cachePassphraseProvider` else a per-remote-name seed; `cryptography` pkg), `cacheMemoryOnlyProvider`
+  (persisted), `diskCacheSize()` / `clearDiskCaches()`
+- `state/thumbnail_service.dart`: takes `Ref`; `ThumbRequest.cacheSecret`; cache blobs are now `*.bin`
+  sealed/opened via `CacheCrypto`; generators downscale only, `load()` handles encrypted read/write;
+  memory-only skips disk entirely
+- `state/folder_preview.dart`: same — `compose(remoteSecret:)`, encrypted `*.bin`, memory-only
+- `state/engine_controller.dart`: sets `cachePassphraseProvider` to the config password on engine start
+- `ui/browser_pane.dart` + `ui/inspector_panel.dart` + `ui/folder_thumbnail.dart`: pass `cacheSecret` /
+  `remoteSecret` = remote name
+- `ui/settings_screen.dart`: **Preview cache** section — size, **Clear cache**, **memory-only** toggle
+- pubspec → `cryptography: ^2.7.0`, alpha.19
+
+**Database/API Changes:** None
+**Summary:** alpha.19 — the on-disk preview cache is now **encrypted at rest**. When your rclone config is
+password-encrypted, the cache key is derived from that password (PBKDF2), so the cached blobs are unreadable
+without it. With an unencrypted config it falls back to a per-remote-name key (obfuscation only, by design —
+the name isn't secret). Settings gains a **Preview cache** panel: see the size, **clear** it, or flip
+**memory-only** to never write previews to disk. All failures degrade safely (wrong key → regenerate).
+analyze (0) / test (16) / Windows build green.
+
 ## [2026-06-28] - v0.1.0-alpha.18: fix video thumbnails (attach VideoController)
 
 **Agent:** Airclone Build (Claude Opus 4.8)

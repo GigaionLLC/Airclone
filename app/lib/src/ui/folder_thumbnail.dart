@@ -82,7 +82,7 @@ class _FolderThumbnailState extends ConsumerState<FolderThumbnail> {
       );
       final bytes = await ref
           .read(folderPreviewServiceProvider)
-          .compose(cacheKey: key, images: refs);
+          .compose(cacheKey: key, images: refs, remoteSecret: remote.name);
       if (bytes != null && mounted) {
         setState(() => _bytes = bytes);
       }
