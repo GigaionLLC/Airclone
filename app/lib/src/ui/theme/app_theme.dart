@@ -1,12 +1,18 @@
 import 'package:flutter/material.dart';
 import 'tokens.dart';
 
-/// Builds [ThemeData] for light/dark from the Airclone design tokens.
+/// Builds [ThemeData] for a [Skin] × light/dark from the Airclone design tokens.
 abstract final class AppTheme {
-  static ThemeData light() => _build(Brightness.light, AircloneColors.light);
-  static ThemeData dark() => _build(Brightness.dark, AircloneColors.dark);
+  /// Default (Airclone) skin — kept for call sites/tests that don't pick a skin.
+  static ThemeData light() => build(Skin.airclone, Brightness.light);
+  static ThemeData dark() => build(Skin.airclone, Brightness.dark);
 
-  static ThemeData _build(Brightness brightness, AircloneColors c) {
+  static ThemeData build(Skin skin, Brightness brightness) {
+    final c = brightness == Brightness.dark
+        ? AircloneColors.dark
+        : AircloneColors.light;
+    final t = SkinTokens.of(skin);
+
     final scheme = ColorScheme(
       brightness: brightness,
       primary: c.primary,
@@ -31,9 +37,11 @@ abstract final class AppTheme {
       brightness: brightness,
       colorScheme: scheme,
       scaffoldBackgroundColor: c.surface,
-      fontFamily: 'Segoe UI',
+      fontFamily: t.fontFamily,
+      fontFamilyFallback: t.fontFamilyFallback,
+      visualDensity: t.density,
       dividerColor: c.border,
-      extensions: [AircloneTheme(colors: c)],
+      extensions: [AircloneTheme(colors: c, tokens: t)],
       textTheme: baseText.apply(bodyColor: c.text, displayColor: c.text),
     );
   }

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../state/settings_controller.dart';
+import '../state/skin.dart';
 import '../state/window_backdrop.dart';
 import 'home_screen.dart';
 import 'theme/app_theme.dart';
@@ -15,6 +16,7 @@ class AircloneApp extends ConsumerWidget {
     final mode = ref.watch(
       settingsControllerProvider.select((s) => s.themeMode),
     );
+    final skin = ref.watch(skinProvider);
     final backdrop = ref.watch(windowBackdropProvider);
     // A translucent backdrop (Mica/Acrylic) only shows if the app paints behind
     // it transparently — drop the scaffold/canvas fill so the OS material reads.
@@ -29,8 +31,8 @@ class AircloneApp extends ConsumerWidget {
     return MaterialApp(
       title: 'Airclone',
       debugShowCheckedModeBanner: false,
-      theme: withBackdrop(AppTheme.light()),
-      darkTheme: withBackdrop(AppTheme.dark()),
+      theme: withBackdrop(AppTheme.build(skin, Brightness.light)),
+      darkTheme: withBackdrop(AppTheme.build(skin, Brightness.dark)),
       themeMode: mode,
       home: const HomeScreen(),
     );

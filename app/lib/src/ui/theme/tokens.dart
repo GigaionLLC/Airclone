@@ -110,21 +110,164 @@ class AircloneColors {
     errorBg: Color(0xFF3A1A1A),
     info: Color(0xFF6BA6E0),
   );
+
+  /// Interpolates every channel — used by [AircloneTheme.lerp] so theme/skin
+  /// switches animate smoothly instead of snapping.
+  static AircloneColors lerp(AircloneColors a, AircloneColors b, double t) =>
+      AircloneColors(
+        surface: Color.lerp(a.surface, b.surface, t)!,
+        surfaceRaised: Color.lerp(a.surfaceRaised, b.surfaceRaised, t)!,
+        surfaceSunken: Color.lerp(a.surfaceSunken, b.surfaceSunken, t)!,
+        border: Color.lerp(a.border, b.border, t)!,
+        borderStrong: Color.lerp(a.borderStrong, b.borderStrong, t)!,
+        text: Color.lerp(a.text, b.text, t)!,
+        textMuted: Color.lerp(a.textMuted, b.textMuted, t)!,
+        textFaint: Color.lerp(a.textFaint, b.textFaint, t)!,
+        primary: Color.lerp(a.primary, b.primary, t)!,
+        primaryHover: Color.lerp(a.primaryHover, b.primaryHover, t)!,
+        onPrimary: Color.lerp(a.onPrimary, b.onPrimary, t)!,
+        secondary: Color.lerp(a.secondary, b.secondary, t)!,
+        success: Color.lerp(a.success, b.success, t)!,
+        successBg: Color.lerp(a.successBg, b.successBg, t)!,
+        warning: Color.lerp(a.warning, b.warning, t)!,
+        warningBg: Color.lerp(a.warningBg, b.warningBg, t)!,
+        error: Color.lerp(a.error, b.error, t)!,
+        errorBg: Color.lerp(a.errorBg, b.errorBg, t)!,
+        info: Color.lerp(a.info, b.info, t)!,
+      );
 }
 
-/// Exposes [AircloneColors] through the widget tree via `Theme.of`.
+/// A visual "skin". [Skin.airclone] is the default brand look; the others are
+/// optional, opt-in approximations of each OS's native file manager.
+enum Skin {
+  airclone,
+  windows,
+  macos,
+  gnome;
+
+  String get label => switch (this) {
+    Skin.airclone => 'Airclone',
+    Skin.windows => 'Windows Explorer',
+    Skin.macos => 'macOS Finder',
+    Skin.gnome => 'Linux (GNOME)',
+  };
+}
+
+/// Per-skin visual axes that the file managers actually differ on (typography,
+/// density). Folded into [AircloneTheme]; the default [SkinTokens.airclone]
+/// reproduces today's exact look. The OS variants are starting points, refined
+/// when each skin is built out.
+@immutable
+class SkinTokens {
+  const SkinTokens({
+    required this.fontFamily,
+    required this.fontFamilyFallback,
+    required this.bodySize,
+    required this.rowHeight,
+    required this.density,
+    required this.selectionRadius,
+  });
+
+  /// Primary UI font (falls back through [fontFamilyFallback] when absent).
+  final String fontFamily;
+  final List<String> fontFamilyFallback;
+
+  /// List/Details body text size.
+  final double bodySize;
+
+  /// Details-row height.
+  final double rowHeight;
+
+  final VisualDensity density;
+
+  /// Corner radius of the row-selection highlight.
+  final double selectionRadius;
+
+  static SkinTokens of(Skin skin) => switch (skin) {
+    Skin.airclone => airclone,
+    Skin.windows => windows,
+    Skin.macos => macos,
+    Skin.gnome => gnome,
+  };
+
+  /// Discrete axes (font family) can't interpolate, so snap at the midpoint.
+  static SkinTokens lerp(SkinTokens a, SkinTokens b, double t) =>
+      t < 0.5 ? a : b;
+
+  static const airclone = SkinTokens(
+    fontFamily: 'Segoe UI',
+    fontFamilyFallback: ['Segoe UI', 'Inter', 'Roboto'],
+    bodySize: 13,
+    rowHeight: 36,
+    density: VisualDensity.standard,
+    selectionRadius: 0,
+  );
+
+  static const windows = SkinTokens(
+    fontFamily: 'Segoe UI Variable Text',
+    fontFamilyFallback: ['Segoe UI Variable Text', 'Segoe UI', 'Inter'],
+    bodySize: 13,
+    rowHeight: 28,
+    density: VisualDensity.compact,
+    selectionRadius: 4,
+  );
+
+  static const macos = SkinTokens(
+    fontFamily: 'SF Pro Text',
+    fontFamilyFallback: [
+      'SF Pro Text',
+      '.AppleSystemUIFont',
+      'Helvetica Neue',
+      'Inter',
+    ],
+    bodySize: 13,
+    rowHeight: 24,
+    density: VisualDensity.compact,
+    selectionRadius: 6,
+  );
+
+  static const gnome = SkinTokens(
+    fontFamily: 'Adwaita Sans',
+    fontFamilyFallback: ['Adwaita Sans', 'Cantarell', 'Inter', 'Roboto'],
+    bodySize: 14,
+    rowHeight: 38,
+    density: VisualDensity.standard,
+    selectionRadius: 8,
+  );
+}
+
+/// Exposes [AircloneColors] + the active skin's [SkinTokens] through the widget
+/// tree via `Theme.of`.
 @immutable
 class AircloneTheme extends ThemeExtension<AircloneTheme> {
-  const AircloneTheme({required this.colors});
+  const AircloneTheme({
+    required this.colors,
+    this.tokens = SkinTokens.airclone,
+  });
   final AircloneColors colors;
+  final SkinTokens tokens;
 
+  /// The semantic palette (the common lookup — most widgets use `c.primary`).
   static AircloneColors of(BuildContext context) =>
       Theme.of(context).extension<AircloneTheme>()!.colors;
 
-  @override
-  AircloneTheme copyWith({AircloneColors? colors}) =>
-      AircloneTheme(colors: colors ?? this.colors);
+  /// The active skin's layout/typography tokens.
+  static SkinTokens tokensOf(BuildContext context) =>
+      Theme.of(context).extension<AircloneTheme>()!.tokens;
 
   @override
-  AircloneTheme lerp(ThemeExtension<AircloneTheme>? other, double t) => this;
+  AircloneTheme copyWith({AircloneColors? colors, SkinTokens? tokens}) =>
+      AircloneTheme(
+        colors: colors ?? this.colors,
+        tokens: tokens ?? this.tokens,
+      );
+
+  @override
+  AircloneTheme lerp(ThemeExtension<AircloneTheme>? other, double t) {
+    if (other is! AircloneTheme) return this;
+    return AircloneTheme(
+      colors: AircloneColors.lerp(colors, other.colors, t),
+      tokens: SkinTokens.lerp(tokens, other.tokens, t),
+    );
+  }
 }

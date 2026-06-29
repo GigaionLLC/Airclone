@@ -6,6 +6,30 @@ All changes made by AI agents are tracked chronologically below (most recent fir
 
 <!-- New entries go above this line, most recent first -->
 
+## [2026-06-28] - v0.1.0-alpha.39: skin foundation (Phase D — zero visual change)
+
+**Agent:** Airclone Build (Claude Opus 4.8)
+**Files Modified:**
+- `ui/theme/tokens.dart`: new `Skin` enum (`airclone` default + `windows`/`macos`/`gnome`) with labels;
+  `SkinTokens` (fontFamily/fallback, bodySize, rowHeight, density, selectionRadius) with `.of(skin)` +
+  `.lerp`; per-skin instances (airclone = today's values; OS variants are starting points). `AircloneColors`
+  gains a real `lerp`. `AircloneTheme` now carries `colors` + `tokens`, with `tokensOf(context)` and a
+  proper `copyWith`/`lerp` (the old `lerp` returned `this`).
+- `ui/theme/app_theme.dart`: `AppTheme.build(Skin, Brightness)` sets fontFamily/fallback/visualDensity +
+  the extension from the skin's tokens; `light()`/`dark()` keep working (Airclone skin).
+- New `state/skin.dart`: persisted `skinProvider` (`SkinController`, key `skin`, default `Skin.airclone`).
+- `ui/app.dart`: watches `skinProvider`, builds light/dark themes per skin.
+- New `test/skin_test.dart`: 5 tests (default reproduces today's look, per-skin token bundles, lerp
+  interpolates, provider persistence round-trip, labels).
+- pubspec → alpha.39
+
+**Database/API Changes:** None
+**Summary:** alpha.39 — the safe scaffolding for optional native skins. The default **Airclone** skin renders
+exactly as before (verified: fontFamily 'Segoe UI', rowHeight 36, today's palette), so this is a no-visible-
+change release. Next: route `_FileRow`/sidebar/toolbar through `SkinTokens` + add the Settings skin selector
+(Phase E), then build out the Explorer/Finder/GNOME looks (Phase F/G, user-verified). analyze (0) /
+test (54, +5) / Windows build green.
+
 ## [2026-06-28] - v0.1.0-alpha.38: engine-flag preset chips (discoverability Phase C)
 
 **Agent:** Airclone Build (Claude Opus 4.8)
