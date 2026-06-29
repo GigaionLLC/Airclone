@@ -8,7 +8,12 @@ import 'package:flutter_test/flutter_test.dart';
 void main() {
   test('PaneDragData survives a JSON round-trip (in-app drop payload)', () {
     final data = PaneDragData(
-      const Remote(name: 'gdrive', type: 'drive', fs: 'gdrive:', isLocal: false),
+      const Remote(
+        name: 'gdrive',
+        type: 'drive',
+        fs: 'gdrive:',
+        isLocal: false,
+      ),
       'Work/Q1',
       [
         RcloneFile(

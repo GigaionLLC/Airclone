@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:io';
 
-import 'package:desktop_drop/desktop_drop.dart';
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -496,9 +495,9 @@ class _Sidebar extends ConsumerWidget {
         ),
       ),
       if (!collapsed.contains('locations'))
-        DropTarget(
-          onDragDone: (d) =>
-              _addDroppedFolders(ref, d.files.map((f) => f.path).toList()),
+        NativePaneDropRegion(
+          // OS folders dropped here are added to the sidebar (no in-app drop).
+          onOsFiles: (paths) => _addDroppedFolders(ref, paths),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [

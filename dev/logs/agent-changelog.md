@@ -6,6 +6,30 @@ All changes made by AI agents are tracked chronologically below (most recent fir
 
 <!-- New entries go above this line, most recent first -->
 
+## [2026-06-28] - v0.1.0-alpha.35: restore OS→app upload + drag auto-scroll (post-migration fixes)
+
+**Agent:** Airclone Build (Claude Opus 4.8)
+**Why:** user testing of alpha.34 confirmed whole-file drag-out, no scroll-jump, and in-app drag all work,
+but found two issues: (1) dragging files FROM Explorer INTO the app stopped uploading (super_native owns
+native drops once a DropRegion exists, so `desktop_drop` no longer fired); (2) no auto-scroll while
+in-app-dragging, so off-screen folders were unreachable.
+**Files Modified:**
+- `ui/native_drag.dart` `NativePaneDropRegion`: now also handles **OS-file drops** — `onOsFiles(paths)`
+  reads each dropped `Formats.fileUri` via the `DataReader` and returns absolute paths; added **edge
+  auto-scroll** (a 60 fps timer scrolls `scrollController` while an in-app drag hovers within 52 px of the
+  top/bottom). `onDrop` made optional (locations region is OS-files-only).
+- `ui/browser_pane.dart`: pane region gains `onOsFiles` (→ `_uploadLocal`) + `scrollController`
+  (→ `paneScrollProvider`); removed the `desktop_drop` `DropTarget` + import.
+- `ui/home_screen.dart`: LOCATIONS folder-drop migrated to `NativePaneDropRegion(onOsFiles: …)`; removed
+  the `desktop_drop` import.
+- `pubspec.yaml`: **removed `desktop_drop`** (fully replaced) → alpha.35.
+
+**Database/API Changes:** None
+**Summary:** alpha.35 — OS→app file upload works again (now through the native DropRegion; `desktop_drop`
+gone), and in-app dragging auto-scrolls near the list edges to reach off-screen folders. analyze (0) /
+test (42) / Windows build green. **Needs user re-test** of upload + auto-scroll (drop behavior isn't
+agent-observable).
+
 ## [2026-06-28] - v0.1.0-alpha.34: whole-file drag — full migration of in-app DnD to the native engine
 
 **Agent:** Airclone Build (Claude Opus 4.8)

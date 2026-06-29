@@ -1,4 +1,3 @@
-import 'package:desktop_drop/desktop_drop.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -57,29 +56,25 @@ class BrowserPane extends ConsumerWidget {
             Expanded(
               child: state.remote == null
                   ? _empty(c)
-                  : DropTarget(
-                      // OS files dropped from outside → upload (kept on
-                      // desktop_drop; in-app drags are handled natively below).
-                      onDragDone: (d) => _uploadLocal(
-                        ref,
-                        d.files.map((f) => f.path).toList(),
-                        state.remote!,
-                        state.path,
-                      ),
-                      child: NativePaneDropRegion(
-                        onDrop: (data) =>
-                            _dropOnto(ref, data, state.remote!, state.path),
-                        highlightColor: c.primary,
-                        child: GestureDetector(
-                          behavior: HitTestBehavior.translucent,
-                          onSecondaryTapUp: (d) => _showEmptyMenu(
-                            context,
-                            ref,
-                            state,
-                            d.globalPosition,
-                          ),
-                          child: _body(context, ref, state, highlight: false),
+                  : NativePaneDropRegion(
+                      // In-app drag → copy into this pane.
+                      onDrop: (data) =>
+                          _dropOnto(ref, data, state.remote!, state.path),
+                      // OS files dragged in from Explorer/Finder → upload.
+                      onOsFiles: (paths) =>
+                          _uploadLocal(ref, paths, state.remote!, state.path),
+                      // Auto-scroll the list while dragging near its edges.
+                      scrollController: ref.watch(paneScrollProvider(index)),
+                      highlightColor: c.primary,
+                      child: GestureDetector(
+                        behavior: HitTestBehavior.translucent,
+                        onSecondaryTapUp: (d) => _showEmptyMenu(
+                          context,
+                          ref,
+                          state,
+                          d.globalPosition,
                         ),
+                        child: _body(context, ref, state, highlight: false),
                       ),
                     ),
             ),
