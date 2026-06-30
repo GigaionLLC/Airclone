@@ -21,7 +21,6 @@ import '../state/file_ops.dart';
 import '../state/jobs_controller.dart';
 import '../state/local_locations.dart';
 import '../state/mount_policy.dart';
-import '../state/name_conflict.dart';
 import '../state/remote_about.dart';
 import '../state/remotes_provider.dart';
 import '../state/scheduler_controller.dart';
@@ -32,7 +31,6 @@ import 'add_remote_dialog.dart';
 import 'bandwidth_control.dart';
 import 'browser_pane.dart';
 import 'command_palette.dart';
-import 'copy_conflict_dialog.dart';
 import 'dedupe_dialog.dart';
 import 'encrypt_remote_dialog.dart';
 import 'file_op_dialogs.dart';
@@ -42,6 +40,7 @@ import 'inspector_panel.dart';
 import 'jobs_panel.dart';
 import 'mount_panel.dart';
 import 'pane_drag.dart';
+import 'paste_action.dart';
 import 'quick_look.dart';
 import 'recent_activity_panel.dart';
 import 'search_dialog.dart';
@@ -197,49 +196,16 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         : clip.copy(st.remote!, st.path, sel);
   }
 
-  /// Ctrl+V: paste the clipboard into the active pane (copy, or move for a cut).
-  /// When pasted names already exist here, ask whether to skip / replace / keep
-  /// both (rename) — "keep both" is the gap rclone can't fill on its own.
+  /// Ctrl+V: paste the clipboard into the active pane (copy, or move for a cut),
+  /// asking how to resolve name collisions. Shared with the per-pane menu.
   Future<void> _pasteIntoActive() async {
     final idx = ref.read(activePaneProvider);
-    final st = ref.read(paneProvider(idx));
-    if (st.remote == null) return;
-    final clip = ref.read(clipboardControllerProvider);
-    if (clip.isEmpty || clip.remote == null) return;
-
-    final destNames = st.entries.map((e) => e.name).toSet();
-    final collisions = [
-      for (final f in clip.files)
-        if (destNames.contains(f.name)) f.name,
-    ];
-
-    var choice = ConflictChoice.overwrite; // no collisions ⇒ plain copy/move
-    if (collisions.isNotEmpty) {
-      choice = await showCopyConflictDialog(
-        context,
-        collisions: collisions,
-        total: clip.files.length,
-      );
-      if (!mounted || choice == ConflictChoice.cancel) return;
-    }
-
-    final svc = ref.read(transferServiceProvider);
-    final plan = planPaste(
-      clip.files.map((f) => f.name).toList(),
-      destNames,
-      choice,
+    await pasteClipboardInto(
+      context,
+      ref,
+      dest: ref.read(paneProvider(idx)),
+      paneIndex: idx,
     );
-    for (final step in plan) {
-      await svc.transfer(
-        srcRemote: clip.remote!,
-        srcPath: joinPath(clip.parentPath, step.src),
-        dstRemote: st.remote!,
-        dstPath: joinPath(st.path, step.dst),
-        type: clip.isCut ? JobType.move : JobType.copy,
-      );
-    }
-    if (clip.isCut) ref.read(clipboardControllerProvider.notifier).clear();
-    await ref.read(paneProvider(idx).notifier).refresh();
   }
 
   /// Delete on the active pane: confirm, then delete every selected entry.

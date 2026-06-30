@@ -26,6 +26,7 @@ import 'inspector_panel.dart';
 import 'media_gallery.dart';
 import 'native_drag.dart';
 import 'pane_drag.dart';
+import 'paste_action.dart';
 import 'path_bar.dart';
 import 'public_link_dialog.dart';
 import 'quick_look.dart';
@@ -1027,7 +1028,7 @@ class _PaneToolbar extends ConsumerWidget {
                           Icons.content_paste,
                           'Paste',
                           enabled: clipFull && hasRemote,
-                          onTap: () => _paste(ref),
+                          onTap: () => _paste(context, ref),
                         ),
                         _sep(c),
                         _cmd(
@@ -1314,7 +1315,7 @@ class _PaneToolbar extends ConsumerWidget {
         item(
           Icons.content_paste,
           'Paste',
-          (clipFull && hasRemote) ? () => _paste(ref) : null,
+          (clipFull && hasRemote) ? () => _paste(context, ref) : null,
         ),
         const Divider(height: 8),
         item(
@@ -1635,21 +1636,8 @@ class _PaneToolbar extends ConsumerWidget {
         : clip.copy(state.remote!, state.path, files);
   }
 
-  Future<void> _paste(WidgetRef ref) async {
-    final clip = ref.read(clipboardControllerProvider);
-    if (clip.isEmpty || clip.remote == null || state.remote == null) return;
-    final svc = ref.read(transferServiceProvider);
-    for (final f in clip.files) {
-      await svc.transfer(
-        srcRemote: clip.remote!,
-        srcPath: joinPath(clip.parentPath, f.name),
-        dstRemote: state.remote!,
-        dstPath: joinPath(state.path, f.name),
-        type: clip.isCut ? JobType.move : JobType.copy,
-      );
-    }
-    if (clip.isCut) ref.read(clipboardControllerProvider.notifier).clear();
-    await ref.read(paneProvider(index).notifier).refresh();
+  Future<void> _paste(BuildContext context, WidgetRef ref) async {
+    await pasteClipboardInto(context, ref, dest: state, paneIndex: index);
   }
 
   Future<void> _rename(BuildContext context, WidgetRef ref) async {

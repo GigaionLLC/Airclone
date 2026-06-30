@@ -6,6 +6,25 @@ All changes made by AI agents are tracked chronologically below (most recent fir
 
 <!-- New entries go above this line, most recent first -->
 
+## [2026-06-30] - v0.1.0-alpha.73: unify paste — context-menu paste is now conflict-aware too
+
+**Agent:** Airclone Build (Claude Opus 4.8) — branch `backlog-features`. Completes a72: the keyboard paste got the
+Skip/Replace/Keep-both prompt, but the per-pane **context-menu** "Paste" still had its own older implementation
+that silently overwrote. Both now share one routine.
+**Files Added:**
+- `ui/paste_action.dart`: `pasteClipboardInto(context, ref, {dest, paneIndex})` — the single conflict-aware paste
+  used by both entry points (collision check → prompt → `planPaste` → transfer → refresh), with a
+  `context.mounted` guard after the dialog.
+**Files Modified:**
+- `ui/home_screen.dart`: `_pasteIntoActive` (Ctrl+V) now delegates to the shared helper (dropped its inline copy
+  + the now-unused imports).
+- `ui/browser_pane.dart`: the menu `_paste` delegates to the same helper (so right-click → Paste now prompts on
+  collisions identically); updated its two call sites to pass `context`.
+**Database/API Changes:** None.
+**Summary:** alpha.73 (branch) — paste behaves identically (and conflict-aware) whether triggered by **Ctrl+V** or
+**right-click → Paste**; one implementation instead of two. analyze (0) / test (174) green; build in progress.
+**Needs the user's eyes.**
+
 ## [2026-06-30] - v0.1.0-alpha.72: conflict-aware paste (skip / replace / keep both)
 
 **Agent:** Airclone Build (Claude Opus 4.8) — branch `backlog-features`. (Note: the "storage tiers" backlog item
