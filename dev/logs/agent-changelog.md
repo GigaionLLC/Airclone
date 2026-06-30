@@ -6,6 +6,34 @@ All changes made by AI agents are tracked chronologically below (most recent fir
 
 <!-- New entries go above this line, most recent first -->
 
+## [2026-06-30] - v0.1.0-alpha.62: Mount manager (mount remotes as drives)
+
+**Agent:** Airclone Build (Claude Opus 4.8) — branch `explorer-finder-chrome`. The design workflow failed on a
+transient server-side rate-limit (all 3 agents), so it was built directly by **cloning the verified Serve
+feature's structure** + confirming the `mount/*` RC contracts against the docs.
+**Files Added:**
+- `rclone/models/mount_info.dart`: `MountInfo` (mountPoint/fs) + defensive `fromList` (string OR `{MountPoint,
+  Fs}`); `mountCacheModes` + `cacheModeValue` (off=0/minimal=1/writes=2/full=3 — the RC takes the **numeric**
+  `vfsOpt.CacheMode`).
+- `state/mount_policy.dart`: `mountEnabledProvider` kill-switch.
+- `state/mount_controller.dart`: `MountController` (Notifier, 2s `mount/listmounts` poll like ServeController) +
+  `mountTypesProvider` (`mount/types` — empty ⇒ WinFsp missing). `mount()` enforces the policy in code, defaults
+  cache mode **writes**, never sets a shared cache dir (rclone picks per-mount → no corruption); `unmount` /
+  `unmountAll`.
+- `ui/mount_panel.dart`: advanced+policy-gated dialog — start form (remote · subfolder · drive letter or Auto ·
+  cache mode) with a **WinFsp-missing banner**, + a polled mounted-drives list (unmount / unmount-all).
+- `test/mount_test.dart`: 8 tests (fromList variants, cache-mode mapping, mount params + numeric CacheMode,
+  policy refusal, unmount).
+**Files Modified:**
+- `ui/home_screen.dart`: an advanced + mount-policy gated **"Mount as a drive"** toolbar button (usb icon).
+- pubspec → alpha.62.
+
+**Database/API Changes:** None (mounts live in rcd; nothing persisted — never auto-resurrects).
+**Summary:** alpha.62 (branch) — **mount any remote as a Windows drive** (needs WinFsp; guided when missing) so
+other apps see it in Explorer. Mirrors the serve security posture (policy kill-switch, code-enforced, no
+auto-resurrect). analyze (0) / test (126) green; build in progress. **Needs the user's eyes** (+ WinFsp
+installed) — advanced mode → the usb icon → mount a remote.
+
 ## [2026-06-30] - v0.1.0-alpha.61: make Sync discoverable (folder-level advanced transfer)
 
 **Agent:** Airclone Build (Claude Opus 4.8) — branch `explorer-finder-chrome`. Fixes a user-reported gap: after

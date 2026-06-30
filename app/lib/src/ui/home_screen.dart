@@ -17,6 +17,7 @@ import '../state/engine_controller.dart';
 import '../state/file_ops.dart';
 import '../state/jobs_controller.dart';
 import '../state/local_locations.dart';
+import '../state/mount_policy.dart';
 import '../state/remote_about.dart';
 import '../state/remotes_provider.dart';
 import '../state/scheduler_controller.dart';
@@ -32,6 +33,7 @@ import 'format.dart';
 import 'native_drag.dart';
 import 'inspector_panel.dart';
 import 'jobs_panel.dart';
+import 'mount_panel.dart';
 import 'pane_drag.dart';
 import 'quick_look.dart';
 import 'recent_activity_panel.dart';
@@ -569,6 +571,14 @@ class _TopBar extends ConsumerWidget {
               onPressed: () => showServeDialog(context),
               icon: const Icon(Icons.cast_connected, size: 18),
               tooltip: 'Serve / Share on LAN',
+              color: c.textMuted,
+            ),
+          // Mount manager — advanced-gated AND hidden when disabled by policy.
+          if (advanced && ref.watch(mountEnabledProvider))
+            IconButton(
+              onPressed: () => showMountDialog(context),
+              icon: const Icon(Icons.usb, size: 18),
+              tooltip: 'Mount as a drive',
               color: c.textMuted,
             ),
           IconButton(
