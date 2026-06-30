@@ -6,6 +6,25 @@ All changes made by AI agents are tracked chronologically below (most recent fir
 
 <!-- New entries go above this line, most recent first -->
 
+## [2026-06-30] - v0.1.0-alpha.59: advanced performance & safety controls
+
+**Agent:** Airclone Build (Claude Opus 4.8) — branch `explorer-finder-chrome`. The batch design agent for this
+one hit a StructuredOutput retry-cap, so it was built directly: the `_config` (fs.ConfigInfo) field names were
+confirmed against rclone's rc docs (Transfers/Checkers/OrderBy/TrackRenames/Immutable) before coding.
+**Files Modified:**
+- `state/transfer_options.dart`: `TransferOptions` gains `transfers`/`checkers` (int, 0 = rclone default),
+  `orderBy` (string), `trackRenames`/`immutable` (bool) — with guarded-omit JSON. `buildRcCall` maps them into
+  `_config` (one-way path only; bisync returns early), `rcloneCmdPreview` shows the flags.
+- `ui/transfer_options_dialog.dart`: a **Performance** group in the one-way Settings tab — parallel
+  transfers/checkers fields, a sort-order dropdown (`--order-by`), and Track-renames / Immutable toggles.
+- `test/transfer_options_build_test.dart`: +3 tests (config mapping, preview, JSON omit-defaults).
+- pubspec → alpha.59.
+
+**Database/API Changes:** None
+**Summary:** alpha.59 (branch) — the advanced transfer dialog can now tune **throughput + safety**: parallel
+transfers/checkers, transfer order, server-side rename detection, and an immutable guard. analyze (0) /
+test (114) green; build in progress. **Needs the user's eyes** — Transfer with options → Performance section.
+
 ## [2026-06-30] - v0.1.0-alpha.58: transfer history — "Recent activity" tab
 
 **Agent:** Airclone Build (Claude Opus 4.8) — branch `explorer-finder-chrome`. From a batch design→verify

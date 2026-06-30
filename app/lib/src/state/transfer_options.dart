@@ -22,6 +22,11 @@ class TransferOptions {
     this.compare,
     this.dryRun = false,
     this.keepReplaced = false,
+    this.transfers = 0,
+    this.checkers = 0,
+    this.orderBy = '',
+    this.trackRenames = false,
+    this.immutable = false,
     this.resyncMode = 'path1',
     this.conflictResolve = 'none',
     this.conflictLoser = 'num',
@@ -55,6 +60,25 @@ class TransferOptions {
   /// rclone renames them in place with a `.replaced` suffix (`--suffix` +
   /// `--suffix-keep-extension`). Makes a sync/move recoverable.
   final bool keepReplaced;
+
+  // ── Performance & safety (one-way copy/move/sync) ─────────────────────────
+
+  /// Parallel file transfers (`--transfers`); 0 = rclone's default.
+  final int transfers;
+
+  /// Parallel checkers (`--checkers`); 0 = rclone's default.
+  final int checkers;
+
+  /// Sort order for transfers (`--order-by`, e.g. `size,descending`); empty =
+  /// rclone's default.
+  final String orderBy;
+
+  /// Detect server-side renames instead of re-uploading (`--track-renames`).
+  final bool trackRenames;
+
+  /// Refuse to modify already-existing files — abort on any change
+  /// (`--immutable`).
+  final bool immutable;
 
   // ── Two-way sync (bisync) settings — only used when mode == bisync ─────────
 
@@ -109,6 +133,11 @@ class TransferOptions {
     CompareMode? compare,
     bool? dryRun,
     bool? keepReplaced,
+    int? transfers,
+    int? checkers,
+    String? orderBy,
+    bool? trackRenames,
+    bool? immutable,
     String? resyncMode,
     String? conflictResolve,
     String? conflictLoser,
@@ -128,6 +157,11 @@ class TransferOptions {
     compare: compare ?? this.compare,
     dryRun: dryRun ?? this.dryRun,
     keepReplaced: keepReplaced ?? this.keepReplaced,
+    transfers: transfers ?? this.transfers,
+    checkers: checkers ?? this.checkers,
+    orderBy: orderBy ?? this.orderBy,
+    trackRenames: trackRenames ?? this.trackRenames,
+    immutable: immutable ?? this.immutable,
     resyncMode: resyncMode ?? this.resyncMode,
     conflictResolve: conflictResolve ?? this.conflictResolve,
     conflictLoser: conflictLoser ?? this.conflictLoser,
@@ -149,6 +183,12 @@ class TransferOptions {
     'compare': compare?.name,
     'dryRun': dryRun,
     'keepReplaced': keepReplaced,
+    // Performance: omit at default so legacy/simple task JSON is unchanged.
+    if (transfers != 0) 'transfers': transfers,
+    if (checkers != 0) 'checkers': checkers,
+    if (orderBy.isNotEmpty) 'orderBy': orderBy,
+    if (trackRenames) 'trackRenames': trackRenames,
+    if (immutable) 'immutable': immutable,
     // bisync settings: omit when at their defaults so legacy task JSON (which
     // never had these keys) round-trips byte-identical.
     if (resyncMode != 'path1') 'resyncMode': resyncMode,
@@ -183,6 +223,11 @@ class TransferOptions {
             ),
       dryRun: j['dryRun'] == true,
       keepReplaced: j['keepReplaced'] == true,
+      transfers: (j['transfers'] as num?)?.toInt() ?? 0,
+      checkers: (j['checkers'] as num?)?.toInt() ?? 0,
+      orderBy: (j['orderBy'] as String?) ?? '',
+      trackRenames: j['trackRenames'] == true,
+      immutable: j['immutable'] == true,
       resyncMode: (j['resyncMode'] as String?) ?? 'path1',
       conflictResolve: (j['conflictResolve'] as String?) ?? 'none',
       conflictLoser: (j['conflictLoser'] as String?) ?? 'num',
@@ -228,6 +273,11 @@ String rcloneCmdPreview(TransferOptions o, String src, String dst) {
   }
   if (o.dryRun) parts.add('--dry-run');
   if (o.keepReplaced) parts.add('--suffix .replaced --suffix-keep-extension');
+  if (o.transfers > 0) parts.add('--transfers ${o.transfers}');
+  if (o.checkers > 0) parts.add('--checkers ${o.checkers}');
+  if (o.orderBy.isNotEmpty) parts.add('--order-by ${o.orderBy}');
+  if (o.trackRenames) parts.add('--track-renames');
+  if (o.immutable) parts.add('--immutable');
 
   for (final p in o.includes) {
     if (p.trim().isEmpty) continue;
@@ -319,6 +369,11 @@ List<String> _clean(List<String> patterns) => [
     config['Suffix'] = '.replaced';
     config['SuffixKeepExtension'] = true;
   }
+  if (o.transfers > 0) config['Transfers'] = o.transfers;
+  if (o.checkers > 0) config['Checkers'] = o.checkers;
+  if (o.orderBy.isNotEmpty) config['OrderBy'] = o.orderBy;
+  if (o.trackRenames) config['TrackRenames'] = true;
+  if (o.immutable) config['Immutable'] = true;
   switch (o.compare) {
     case CompareMode.size:
       config['SizeOnly'] = true;

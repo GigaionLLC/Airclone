@@ -272,7 +272,99 @@ class _SettingsTab extends ConsumerWidget {
     _label(c, 'Compare by'),
     const SizedBox(height: Space.x2),
     _compareDropdown(c),
+    const SizedBox(height: Space.x4),
+    _label(c, 'Performance'),
+    const SizedBox(height: Space.x2),
+    Row(
+      children: [
+        Expanded(
+          child: _intField(
+            c,
+            'Parallel transfers',
+            options.transfers,
+            (v) => onChanged(options.copyWith(transfers: v)),
+          ),
+        ),
+        const SizedBox(width: Space.x3),
+        Expanded(
+          child: _intField(
+            c,
+            'Parallel checkers',
+            options.checkers,
+            (v) => onChanged(options.copyWith(checkers: v)),
+          ),
+        ),
+      ],
+    ),
+    const SizedBox(height: Space.x3),
+    Text('Sort order', style: TextStyle(color: c.textMuted, fontSize: 12)),
+    const SizedBox(height: 4),
+    _strDropdown(
+      c,
+      options.orderBy,
+      const [
+        '',
+        'name',
+        'name,descending',
+        'size',
+        'size,descending',
+        'modtime',
+        'modtime,descending',
+      ],
+      (v) => onChanged(options.copyWith(orderBy: v)),
+      labels: const {
+        '': 'Default order',
+        'name': 'Name (A→Z)',
+        'name,descending': 'Name (Z→A)',
+        'size': 'Size (small → large)',
+        'size,descending': 'Size (large → small)',
+        'modtime': 'Oldest first',
+        'modtime,descending': 'Newest first',
+      },
+    ),
+    const SizedBox(height: Space.x2),
+    _check(
+      c,
+      'Track renames',
+      'Detect server-side renames instead of re-uploading (--track-renames).',
+      options.trackRenames,
+      (v) => onChanged(options.copyWith(trackRenames: v)),
+    ),
+    _check(
+      c,
+      'Immutable',
+      'Abort rather than modify any file that already exists (--immutable).',
+      options.immutable,
+      (v) => onChanged(options.copyWith(immutable: v)),
+    ),
   ];
+
+  Widget _intField(
+    AircloneColors c,
+    String label,
+    int value,
+    ValueChanged<int> onPick,
+  ) => Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Text(label, style: TextStyle(color: c.textMuted, fontSize: 12)),
+      const SizedBox(height: 4),
+      TextFormField(
+        initialValue: value == 0 ? '' : '$value',
+        keyboardType: TextInputType.number,
+        style: TextStyle(color: c.text, fontSize: 13),
+        decoration: InputDecoration(
+          isDense: true,
+          hintText: 'default',
+          hintStyle: TextStyle(color: c.textFaint, fontSize: 12),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(Radii.md),
+          ),
+        ),
+        onChanged: (v) => onPick(int.tryParse(v) ?? 0),
+      ),
+    ],
+  );
 
   List<Widget> _bisyncSection(AircloneColors c) => [
     Container(

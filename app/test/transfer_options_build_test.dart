@@ -41,4 +41,52 @@ void main() {
     expect(TransferOptions.fromJson(o.toJson()).keepReplaced, isTrue);
     expect(const TransferOptions().toJson()['keepReplaced'], isFalse);
   });
+
+  group('performance controls', () {
+    test('map to the right _config keys (omitted at default)', () {
+      final dflt = buildRcCall(const TransferOptions(), 'a:', 'b:');
+      expect(dflt.params.containsKey('_config'), isFalse);
+
+      final call = buildRcCall(
+        const TransferOptions(
+          transfers: 8,
+          checkers: 16,
+          orderBy: 'size,descending',
+          trackRenames: true,
+          immutable: true,
+        ),
+        'a:',
+        'b:',
+      );
+      final cfg = call.params['_config'] as Map<String, dynamic>;
+      expect(cfg['Transfers'], 8);
+      expect(cfg['Checkers'], 16);
+      expect(cfg['OrderBy'], 'size,descending');
+      expect(cfg['TrackRenames'], true);
+      expect(cfg['Immutable'], true);
+    });
+
+    test('preview shows the flags', () {
+      const o = TransferOptions(
+        transfers: 8,
+        orderBy: 'size',
+        trackRenames: true,
+      );
+      final cmd = rcloneCmdPreview(o, 'a:', 'b:');
+      expect(cmd, contains('--transfers 8'));
+      expect(cmd, contains('--order-by size'));
+      expect(cmd, contains('--track-renames'));
+    });
+
+    test('JSON round-trips + omits defaults', () {
+      const o = TransferOptions(transfers: 4, orderBy: 'name');
+      final j = o.toJson();
+      expect(j['transfers'], 4);
+      expect(j.containsKey('checkers'), isFalse); // default 0 omitted
+      final back = TransferOptions.fromJson(j);
+      expect(back.transfers, 4);
+      expect(back.orderBy, 'name');
+      expect(back.checkers, 0);
+    });
+  });
 }
