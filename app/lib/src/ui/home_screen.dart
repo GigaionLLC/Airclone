@@ -12,6 +12,7 @@ import '../rclone/models/remote.dart';
 import '../rclone/rclone_client.dart';
 import '../state/advanced_mode.dart';
 import '../state/app_info.dart';
+import '../state/bookmarks_controller.dart';
 import '../state/browser_controller.dart';
 import '../state/bw_schedule_controller.dart';
 import '../state/clipboard_controller.dart';
@@ -83,6 +84,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       // schedule) so they tick while the app is open.
       ref.read(schedulerProvider);
       ref.read(bwScheduleControllerProvider);
+      // Load persisted favorites so the command palette has them ready.
+      ref.read(bookmarksProvider);
     });
   }
 
@@ -267,21 +270,62 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   /// The Ctrl+K command-palette catalogue: app actions (gated the same way as
   /// their toolbar buttons) followed by a "Go to" entry per remote.
   List<PaletteAction> _paletteActions(BuildContext context) {
-    BrowserController pane() =>
-        ref.read(paneProvider(ref.read(activePaneProvider)).notifier);
+    final idx = ref.read(activePaneProvider);
+    BrowserController pane() => ref.read(paneProvider(idx).notifier);
     final advanced = ref.read(advancedModeProvider);
     final remotes = ref.read(remotesProvider).valueOrNull ?? const [];
-    final activeHasRemote =
-        ref.read(paneProvider(ref.read(activePaneProvider))).remote != null;
+    final active = ref.read(paneProvider(idx));
+    final activeRemote = active.remote;
+    final bookmarks = ref.read(bookmarksProvider);
+    final pinned =
+        activeRemote != null &&
+        ref
+            .read(bookmarksProvider.notifier)
+            .isPinned(activeRemote.fs, active.path);
 
     return [
-      if (activeHasRemote)
+      if (activeRemote != null)
         PaletteAction(
           label: 'Search this folder…',
           icon: Icons.search,
           hint: 'Ctrl+Shift+F',
           keywords: 'find recursive subfolders',
           run: _openSearch,
+        ),
+      if (activeRemote != null)
+        PaletteAction(
+          label: pinned
+              ? 'Remove this folder from Favorites'
+              : 'Pin this folder to Favorites',
+          icon: pinned ? Icons.star : Icons.star_border,
+          keywords: 'bookmark favourite pin shortcut',
+          run: () {
+            final b = ref.read(bookmarksProvider.notifier);
+            if (pinned) {
+              b.remove(activeRemote.fs, active.path);
+            } else {
+              b.add(
+                Bookmark(
+                  name: activeRemote.name,
+                  type: activeRemote.type,
+                  fs: activeRemote.fs,
+                  path: active.path,
+                  isLocal: activeRemote.isLocal,
+                ),
+              );
+            }
+          },
+        ),
+      for (final bm in bookmarks)
+        PaletteAction(
+          label: '★ ${bm.label}',
+          icon: Icons.star,
+          hint: 'Favorite',
+          keywords: 'bookmark favourite pinned ${bm.type}',
+          run: () async {
+            await pane().open(bm.remote);
+            if (bm.path.isNotEmpty) await pane().navigateTo(bm.path);
+          },
         ),
       PaletteAction(
         label: 'Add or encrypt a remote',

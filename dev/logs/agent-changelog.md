@@ -6,6 +6,27 @@ All changes made by AI agents are tracked chronologically below (most recent fir
 
 <!-- New entries go above this line, most recent first -->
 
+## [2026-06-30] - v0.1.0-alpha.69: favorites (pin folders, reachable from Ctrl+K)
+
+**Agent:** Airclone Build (Claude Opus 4.8) — branch `backlog-features`. Quick re-navigation to deep folders.
+Surfaced through the command palette (a67) rather than the OS-skinned sidebar — keeps the native-look chrome
+untouched (I can't see the GUI to verify a sidebar change) while still delivering the capability.
+**Files Added:**
+- `state/bookmarks_controller.dart`: `Bookmark{name,type,fs,path,isLocal}` (carries enough to rebuild its
+  `Remote` and navigate back in) + `BookmarksController` — SharedPreferences-persisted (key `bookmarks`,
+  newest-first), `add` (dedup by fs+path), `remove`, `isPinned`.
+- `test/bookmarks_test.dart`: 5 tests — JSON round-trip, label/remote derivation, add/dedup/remove + isPinned,
+  newest-first ordering, cross-container persistence.
+**Files Modified:**
+- `ui/home_screen.dart`: command palette gained **Pin / Remove this folder** (reflects the active pane's pinned
+  state) and a **★ <remote>/<path>** entry per favorite that opens the remote and `navigateTo`s the path.
+  Favorites are armed at launch so they're ready on first Ctrl+K.
+- pubspec → alpha.69.
+
+**Database/API Changes:** None (local SharedPreferences only; no RC calls).
+**Summary:** alpha.69 (branch) — pin any folder (Ctrl+K → "Pin this folder to Favorites") and jump back to it
+from the palette. analyze (0) / test (145, +5) green; build in progress. **Needs the user's eyes.**
+
 ## [2026-06-30] - v0.1.0-alpha.68: recursive search (find under a folder)
 
 **Agent:** Airclone Build (Claude Opus 4.8) — branch `backlog-features`. The pane filter (Ctrl+F) only matches the
