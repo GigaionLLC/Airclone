@@ -19,6 +19,7 @@ import '../state/local_locations.dart';
 import '../state/remote_about.dart';
 import '../state/remotes_provider.dart';
 import '../state/scheduler_controller.dart';
+import '../state/serve_policy.dart';
 import '../state/stats_controller.dart';
 import '../state/transfer_service.dart';
 import 'add_remote_dialog.dart';
@@ -32,6 +33,7 @@ import 'inspector_panel.dart';
 import 'jobs_panel.dart';
 import 'pane_drag.dart';
 import 'quick_look.dart';
+import 'serve_panel.dart';
 import 'settings_screen.dart';
 import 'stats_panel.dart';
 import 'tasks_panel.dart';
@@ -496,6 +498,14 @@ class _TopBar extends ConsumerWidget {
               onPressed: () => showTasksDialog(context),
               icon: const Icon(Icons.checklist_rounded, size: 18),
               tooltip: 'Saved tasks',
+              color: c.textMuted,
+            ),
+          // Serve/share — advanced-gated AND hidden when disabled by policy.
+          if (advanced && ref.watch(serveEnabledProvider))
+            IconButton(
+              onPressed: () => showServeDialog(context),
+              icon: const Icon(Icons.cast_connected, size: 18),
+              tooltip: 'Serve / Share on LAN',
               color: c.textMuted,
             ),
           IconButton(

@@ -6,6 +6,37 @@ All changes made by AI agents are tracked chronologically below (most recent fir
 
 <!-- New entries go above this line, most recent first -->
 
+## [2026-06-30] - v0.1.0-alpha.57: serve / share a remote on the LAN
+
+**Agent:** Airclone Build (Claude Opus 4.8) — branch `explorer-finder-chrome`. Designed via a 3-agent Workflow
+(design → correctness + **security** verifiers, both go-with-fixes; serve RC params confirmed vs rclone source).
+Pick #4 (final) of the user's four feature tracks. Folds in every security fix.
+**Files Added:**
+- `rclone/models/serve_server.dart`: `ServeServer` (id/addr/type/fs) + `fromList` (parses serve/list's nested
+  params defensively). `isLoopback` classifies `[::]`/`0.0.0.0`/bare-`:port`/any literal IP as **exposed**;
+  `requiresAuth`; `displayUrl(lanIp)`.
+- `state/serve_policy.dart`: `serveEnabledProvider` — the single enterprise **kill-switch** seam.
+- `state/serve_controller.dart`: `ServeController` (Notifier, 2s `serve/list` poll like StatsController) +
+  `serveTypesProvider` (curated ∩ serve/types) + `lanIpProvider`. **All security enforced in `start()`**: reads
+  the policy at call-time; default bind `127.0.0.1`; **refuses** an exposed auth-capable serve without user+pass
+  and DLNA without acknowledgement (throws before rpc); whitelisted flat snake_case params (no rc creds/config
+  password). `stop`/`panicStopAll` (serve/stopall).
+- `ui/serve_panel.dart`: the manager dialog — start form (remote · protocol from serve/types · loopback-vs-LAN ·
+  port · auth · read-only · DLNA ack) with a pre-start network warning, + a polled running-servers list
+  (reachable URL with this-device-only/LAN labels · copy · Stop · Stop all).
+- `test/serve_test.dart`: 9 tests (fromList, exposed-classification incl. `[::]:4321`, displayUrl, and the
+  in-code refusals: LAN-no-auth, DLNA-no-ack, policy kill-switch).
+**Files Modified:**
+- `ui/home_screen.dart`: an advanced-gated **+ serveEnabled-gated** "Serve / Share on LAN" toolbar button.
+- pubspec → alpha.57.
+
+**Database/API Changes:** None (servers live in the rcd process; nothing persisted — never auto-resurrects).
+**Summary:** alpha.57 (branch) — **share a remote on your network** (HTTP/WebDAV/FTP/SFTP/DLNA): cast to a TV,
+mount on a phone, etc. Security-first and enforced in code, not just the UI — loopback by default, mandatory
+auth off-loopback, DLNA-no-password acknowledgement, a policy kill-switch, never auto-started. This **completes
+all four of the user's picked feature tracks.** analyze (0) / test (104) green; build in progress. **Needs the
+user's eyes** — advanced mode → the cast icon → start a loopback HTTP server, then try LAN.
+
 ## [2026-06-30] - v0.1.0-alpha.56: encrypt-a-remote (crypt) wizard
 
 **Agent:** Airclone Build (Claude Opus 4.8) — branch `explorer-finder-chrome`. Designed via a 3-agent Workflow
