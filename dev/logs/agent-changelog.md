@@ -6,6 +6,22 @@ All changes made by AI agents are tracked chronologically below (most recent fir
 
 <!-- New entries go above this line, most recent first -->
 
+## [2026-06-30] - v0.1.0-alpha.63: storage breakdown ("what's using my space")
+
+**Agent:** Airclone Build (Claude Opus 4.8) — branch `explorer-finder-chrome`. Self-contained visual feature;
+reuses the already-shipped `operations/size` op (a53), no new RC surface.
+**Files Added:**
+- `ui/storage_breakdown.dart`: a dialog that sizes each subfolder of the current folder (via
+  `FileOps.folderSize` → `operations/size`, fetched in parallel), sorts largest-first, and shows a relative
+  bar + size per folder with a total. Loading / error / empty states.
+**Files Modified:**
+- `ui/browser_pane.dart`: Tools menu gains **"Storage breakdown…"** (after Folder size). pubspec → alpha.63.
+
+**Database/API Changes:** None
+**Summary:** alpha.63 (branch) — Tools → **Storage breakdown…** shows where space goes in the current folder
+(subfolders sorted by size with bars). analyze (0) / test (126) green; build in progress. **Needs the user's
+eyes.**
+
 ## [2026-06-30] - v0.1.0-alpha.62: Mount manager (mount remotes as drives)
 
 **Agent:** Airclone Build (Claude Opus 4.8) — branch `explorer-finder-chrome`. The design workflow failed on a

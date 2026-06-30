@@ -28,6 +28,7 @@ import 'native_drag.dart';
 import 'pane_drag.dart';
 import 'path_bar.dart';
 import 'quick_look.dart';
+import 'storage_breakdown.dart';
 import 'theme/tokens.dart';
 import 'transfer_options_dialog.dart';
 
@@ -1534,6 +1535,13 @@ class _PaneToolbar extends ConsumerWidget {
               ? () => showFolderSizeDialog(context, ref, index)
               : null,
           child: const Text('Folder size'),
+        ),
+        MenuItemButton(
+          leadingIcon: Icon(Icons.donut_small, size: 16, color: c.textMuted),
+          onPressed: hasRemote
+              ? () => showStorageBreakdown(context, ref, index)
+              : null,
+          child: const Text('Storage breakdown…'),
         ),
         MenuItemButton(
           leadingIcon: Icon(
