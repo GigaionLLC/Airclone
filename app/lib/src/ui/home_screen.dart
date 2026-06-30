@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../rclone/models/job.dart';
+import '../rclone/models/rclone_file.dart';
 import '../rclone/models/remote.dart';
 import '../rclone/rclone_client.dart';
 import '../state/advanced_mode.dart';
@@ -39,6 +40,7 @@ import 'mount_panel.dart';
 import 'pane_drag.dart';
 import 'quick_look.dart';
 import 'recent_activity_panel.dart';
+import 'search_dialog.dart';
 import 'serve_panel.dart';
 import 'settings_screen.dart';
 import 'shortcuts_dialog.dart';
@@ -232,6 +234,36 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     await ref.read(paneProvider(idx).notifier).refresh();
   }
 
+  /// Ctrl+Shift+F: recursively search the active pane's current folder, then
+  /// reveal the chosen match (navigate into a folder, or open the file's parent
+  /// folder and select it).
+  void _openSearch() {
+    final idx = ref.read(activePaneProvider);
+    final st = ref.read(paneProvider(idx));
+    final remote = st.remote;
+    final client = ref.read(engineControllerProvider).client;
+    if (remote == null || client == null) return;
+    final basePath = st.path;
+    showSearchDialog(
+      context,
+      client: client,
+      fs: remote.fs,
+      label: basePath.isEmpty ? remote.name : '${remote.name}/$basePath',
+      basePath: basePath,
+      onOpen: (RcloneFile m) async {
+        final pane = ref.read(paneProvider(idx).notifier);
+        final abs = basePath.isEmpty ? m.path : '$basePath/${m.path}';
+        if (m.isDir) {
+          await pane.navigateTo(abs);
+        } else {
+          final slash = abs.lastIndexOf('/');
+          await pane.navigateTo(slash < 0 ? '' : abs.substring(0, slash));
+          pane.selectOnly(m.name);
+        }
+      },
+    );
+  }
+
   /// The Ctrl+K command-palette catalogue: app actions (gated the same way as
   /// their toolbar buttons) followed by a "Go to" entry per remote.
   List<PaletteAction> _paletteActions(BuildContext context) {
@@ -239,8 +271,18 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         ref.read(paneProvider(ref.read(activePaneProvider)).notifier);
     final advanced = ref.read(advancedModeProvider);
     final remotes = ref.read(remotesProvider).valueOrNull ?? const [];
+    final activeHasRemote =
+        ref.read(paneProvider(ref.read(activePaneProvider))).remote != null;
 
     return [
+      if (activeHasRemote)
+        PaletteAction(
+          label: 'Search this folder…',
+          icon: Icons.search,
+          hint: 'Ctrl+Shift+F',
+          keywords: 'find recursive subfolders',
+          run: _openSearch,
+        ),
       PaletteAction(
         label: 'Add or encrypt a remote',
         icon: Icons.add,
@@ -381,6 +423,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               showShortcutsDialog(context),
           const SingleActivator(LogicalKeyboardKey.keyK, control: true): () =>
               showCommandPalette(context, _paletteActions(context)),
+          const SingleActivator(
+            LogicalKeyboardKey.keyF,
+            control: true,
+            shift: true,
+          ): _openSearch,
         },
         child: Focus(
           autofocus: true,

@@ -6,6 +6,32 @@ All changes made by AI agents are tracked chronologically below (most recent fir
 
 <!-- New entries go above this line, most recent first -->
 
+## [2026-06-30] - v0.1.0-alpha.68: recursive search (find under a folder)
+
+**Agent:** Airclone Build (Claude Opus 4.8) — branch `backlog-features`. The pane filter (Ctrl+F) only matches the
+*current* folder; this finds files anywhere beneath it. RC contract confirmed against rclone.org/rc.
+**Files Added:**
+- `ui/search_dialog.dart`: `showSearchDialog` — one `operations/list {opt:{recurse:true, noMimeType:true,
+  noModTime:true}}` over the chosen folder, then client-side token filtering on name+path. Folders-first sorted
+  results show name · parent · size; a **generation counter** drops a slow scan that returns after the dialog
+  moved on; results are display-capped at 500 with a "first 500 of N — refine" note. Selecting a match invokes an
+  `onOpen` callback (the caller reveals it).
+- `test/search_dialog_test.dart`: 3 tests — recurse params + name filtering, tap→onOpen(path relative to base)
+  +close, no-match copy.
+**Files Modified:**
+- `ui/home_screen.dart`: `_openSearch()` scans the active pane's current folder and **reveals** the pick —
+  `navigateTo` into a folder, or into a file's parent + `selectOnly`. Bound **Ctrl+Shift+F**; added a
+  "Search this folder…" command-palette entry (shown only when the active pane has a remote).
+- `ui/shortcuts_dialog.dart`: cheat-sheet lists **Ctrl+Shift+F — Search subfolders**.
+- pubspec → alpha.68.
+
+**Database/API Changes:** Uses existing `operations/list` with `recurse` (read-only). No new RC surface.
+**Note:** rclone's `operations/list` is synchronous and loads the whole subtree at once, so a giant folder
+returns a large response — the dialog labels it ("Scans every file and folder under this location.") and caps the
+render. A future pass could switch to `_async` + a jobid for cancellable scans.
+**Summary:** alpha.68 (branch) — **Ctrl+Shift+F** (or the palette) recursively searches the current folder and
+reveals the chosen result. analyze (0) / test (140, +3) green; build in progress. **Needs the user's eyes.**
+
 ## [2026-06-30] - v0.1.0-alpha.67: command palette (Ctrl+K)
 
 **Agent:** Airclone Build (Claude Opus 4.8) — branch `backlog-features`. Ties every action built across a50–a66

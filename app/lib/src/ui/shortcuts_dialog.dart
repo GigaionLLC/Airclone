@@ -7,6 +7,7 @@ const _groups = <(String, List<(String, String)>)>[
     'Navigate',
     [
       ('Ctrl + K', 'Command palette'),
+      ('Ctrl + Shift + F', 'Search subfolders'),
       ('Alt + ←', 'Back'),
       ('Alt + →', 'Forward'),
       ('Alt + ↑', 'Up a folder'),
