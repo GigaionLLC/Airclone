@@ -33,6 +33,7 @@ import 'inspector_panel.dart';
 import 'jobs_panel.dart';
 import 'pane_drag.dart';
 import 'quick_look.dart';
+import 'recent_activity_panel.dart';
 import 'serve_panel.dart';
 import 'settings_screen.dart';
 import 'stats_panel.dart';
@@ -386,24 +387,85 @@ class _WorkArea extends ConsumerWidget {
         ),
         if (jobsExpanded) ...[
           Divider(height: 1, color: c.border),
-          SizedBox(
-            height: 220,
-            child: Column(
-              children: [
-                if (ref.watch(statsProvider.select((s) => s.isActive)))
-                  const SizedBox(
-                    height: 100,
-                    child: Padding(
-                      padding: EdgeInsets.all(Space.x2),
-                      child: StatsPanel(),
-                    ),
-                  ),
-                const Expanded(child: JobsPanel()),
-              ],
-            ),
-          ),
+          const SizedBox(height: 240, child: _JobsDock()),
         ],
       ],
+    );
+  }
+}
+
+/// The bottom dock: a "Transfers" tab (live stats + jobs) and a "Recent
+/// activity" tab (completed-transfer history). Defaults to Transfers so the
+/// Airclone default look is unchanged.
+class _JobsDock extends ConsumerStatefulWidget {
+  const _JobsDock();
+  @override
+  ConsumerState<_JobsDock> createState() => _JobsDockState();
+}
+
+class _JobsDockState extends ConsumerState<_JobsDock> {
+  int _tab = 0;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = AircloneTheme.of(context);
+    return Column(
+      children: [
+        SizedBox(
+          height: 30,
+          child: Row(
+            children: [
+              _tabButton(c, 0, 'Transfers'),
+              _tabButton(c, 1, 'Recent activity'),
+            ],
+          ),
+        ),
+        Divider(height: 1, color: c.border),
+        Expanded(
+          child: _tab == 0
+              ? Column(
+                  children: [
+                    if (ref.watch(statsProvider.select((s) => s.isActive)))
+                      const SizedBox(
+                        height: 100,
+                        child: Padding(
+                          padding: EdgeInsets.all(Space.x2),
+                          child: StatsPanel(),
+                        ),
+                      ),
+                    const Expanded(child: JobsPanel()),
+                  ],
+                )
+              : const RecentActivityPanel(),
+        ),
+      ],
+    );
+  }
+
+  Widget _tabButton(AircloneColors c, int index, String label) {
+    final on = _tab == index;
+    return InkWell(
+      onTap: () => setState(() => _tab = index),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: Space.x4),
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          border: Border(
+            bottom: BorderSide(
+              color: on ? c.primary : Colors.transparent,
+              width: 2,
+            ),
+          ),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            color: on ? c.primary : c.textMuted,
+            fontSize: 12,
+            fontWeight: on ? FontWeight.w600 : FontWeight.w400,
+          ),
+        ),
+      ),
     );
   }
 }

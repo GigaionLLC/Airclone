@@ -6,6 +6,31 @@ All changes made by AI agents are tracked chronologically below (most recent fir
 
 <!-- New entries go above this line, most recent first -->
 
+## [2026-06-30] - v0.1.0-alpha.58: transfer history — "Recent activity" tab
+
+**Agent:** Airclone Build (Claude Opus 4.8) — branch `explorer-finder-chrome`. From a batch design→verify
+workflow; the history verifier confirmed every field against rclone **master source** (and flagged that the
+public rc docs page is stale — no `jobid`/`timestamp`; the real shape is `started_at`/`completed_at` strings +
+an always-present `error`).
+**Files Added:**
+- `rclone/models/transferred_item.dart`: `TransferredItem` (name/size/bytes/checked/what/group/srcFs?/dstFs?/
+  error?/startedAt?/completedAt?) + `failed`/`succeeded` + defensive `fromJson` (Go zero-time → null) +
+  `listFromResponse` (newest-first, tolerant of a missing key).
+- `state/recent_activity_controller.dart`: `recentTransfersProvider` (`FutureProvider.autoDispose` over
+  `core/transferred` — fetch-on-open, no extra poller).
+- `ui/recent_activity_panel.dart`: read-only list with a per-file success/error indicator + error text + size,
+  with refresh/loading/error/empty states.
+- `test/transferred_item_test.dart`: 7 tests (success/fail parse, omitted fields, zero-time→null,
+  nanosecond+offset RFC3339, missing key, newest-first ordering).
+**Files Modified:**
+- `ui/home_screen.dart`: the bottom dock is now a 2-tab `_JobsDock` — **Transfers** (live stats + jobs, default)
+  and **Recent activity** (history). pubspec → alpha.58.
+
+**Database/API Changes:** None (read-only; rclone keeps a rolling ~100-item window).
+**Summary:** alpha.58 (branch) — a **Recent activity** tab in the transfers dock showing recently completed
+transfers with per-file success/failure (+ the error). analyze (0) / test (111) green; build in progress.
+**Needs the user's eyes** — run a transfer, then open the dock's "Recent activity" tab.
+
 ## [2026-06-30] - v0.1.0-alpha.57: serve / share a remote on the LAN
 
 **Agent:** Airclone Build (Claude Opus 4.8) — branch `explorer-finder-chrome`. Designed via a 3-agent Workflow
