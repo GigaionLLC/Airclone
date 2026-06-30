@@ -6,6 +6,34 @@ All changes made by AI agents are tracked chronologically below (most recent fir
 
 <!-- New entries go above this line, most recent first -->
 
+## [2026-06-30] - v0.1.0-alpha.71: find duplicate files (safe, client-side dedupe)
+
+**Agent:** Airclone Build (Claude Opus 4.8) — branch `backlog-features`. A backlog item (reclaim space from
+redundant copies). **There is no `operations/dedupe` RC** — native dedupe only runs via `core/command` (arbitrary
+CLI execution, a surface this project avoids). So this is built from safe primitives the app already uses:
+`operations/list {showHash}` to detect, `operations/deletefile` to remove. Vetted by a 12-agent adversarial
+**safety** review (data-loss / rc-correctness / lifecycle × verify): **4 findings, ZERO data-loss** — the
+keep-one / only-non-kept / unique-path invariants held; all 4 (robustness/UX) fixed before commit.
+**Files Added:**
+- `state/dedupe.dart`: pure, testable core. `DupFile.fromJson` (null for dirs + hash-less files — never dedupe by
+  size alone), content `signature` = size + sorted non-empty hashes; `findDuplicateGroups` buckets by signature,
+  keeps only groups with ≥2 **distinct** paths (so Drive same-name-same-dir dupes, which share a path and can't be
+  safely targeted by `deletefile`, are excluded), sorted largest-reclaimable-first.
+- `ui/dedupe_dialog.dart`: scan a folder (recurse + showHash), per group pick the copy to **keep** (default first)
+  or **skip** the group; a confirm dialog precedes deletion; each delete targets a unique path; re-scans after.
+- `test/dedupe_test.dart` (8) + `test/dedupe_dialog_test.dart` (4) — incl. the safety assertion that only the
+  non-kept copy is deleted and changing "keep" changes the target.
+**Files Modified:**
+- `ui/home_screen.dart`: `_openDedupe()` + a "Find duplicate files…" command-palette entry (active remote only).
+**Safety-review fixes folded in:** dialog is **non-dismissible while busy** (PopScope `canPop:!busy` +
+`barrierDismissible:false` + guarded X) so a mid-delete close can't silently continue; `onChanged` wrapped so a
+refresh failure can't strand the dialog busy; the first delete error is surfaced in the status (not just a count).
+**Database/API Changes:** Uses existing `operations/list` (read) + `operations/deletefile`. No new/dangerous RC
+surface; no `core/command`.
+**Summary:** alpha.71 (branch) — **Ctrl+K → "Find duplicate files…"** scans for content-identical copies and lets
+you reclaim space, keeping one of each. analyze (0) / test (162, +12) green; build in progress. **Needs the
+user's eyes.**
+
 ## [2026-06-30] - v0.1.0-alpha.70: review fixes for the a65–a69 batch
 
 **Agent:** Airclone Build (Claude Opus 4.8) — branch `backlog-features`. Acts on a 36-agent adversarial review

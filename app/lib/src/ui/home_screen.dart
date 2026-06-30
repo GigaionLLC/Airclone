@@ -31,6 +31,7 @@ import 'add_remote_dialog.dart';
 import 'bandwidth_control.dart';
 import 'browser_pane.dart';
 import 'command_palette.dart';
+import 'dedupe_dialog.dart';
 import 'encrypt_remote_dialog.dart';
 import 'file_op_dialogs.dart';
 import 'format.dart';
@@ -294,6 +295,24 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     }
   }
 
+  /// Scan the active pane's folder for content-identical duplicate files and
+  /// let the user delete redundant copies. Refreshes the pane after deletes.
+  void _openDedupe() {
+    final idx = ref.read(activePaneProvider);
+    final st = ref.read(paneProvider(idx));
+    final remote = st.remote;
+    final client = ref.read(engineControllerProvider).client;
+    if (remote == null || client == null) return;
+    showDedupeDialog(
+      context,
+      client: client,
+      fs: remote.fs,
+      label: st.path.isEmpty ? remote.name : '${remote.name}/${st.path}',
+      basePath: st.path,
+      onChanged: () => ref.read(paneProvider(idx).notifier).refresh(),
+    );
+  }
+
   /// The Ctrl+K command-palette catalogue: app actions (gated the same way as
   /// their toolbar buttons) followed by a "Go to" entry per remote.
   List<PaletteAction> _paletteActions(BuildContext context) {
@@ -318,6 +337,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           hint: 'Ctrl+Shift+F',
           keywords: 'find recursive subfolders',
           run: _openSearch,
+        ),
+      if (activeRemote != null)
+        PaletteAction(
+          label: 'Find duplicate files…',
+          icon: Icons.content_copy_outlined,
+          keywords: 'dedupe duplicates redundant copies reclaim space',
+          run: _openDedupe,
         ),
       // Only offer to pin a real subfolder (a remote's root is already one tap
       // away via "Go to <remote>"). Unpin stays available wherever it's pinned.
