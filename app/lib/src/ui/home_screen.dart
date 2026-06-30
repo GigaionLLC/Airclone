@@ -40,6 +40,7 @@ import 'quick_look.dart';
 import 'recent_activity_panel.dart';
 import 'serve_panel.dart';
 import 'settings_screen.dart';
+import 'shortcuts_dialog.dart';
 import 'stats_panel.dart';
 import 'tasks_panel.dart';
 import 'theme/tokens.dart';
@@ -285,6 +286,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               _clipboardStage(cut: true),
           const SingleActivator(LogicalKeyboardKey.keyV, control: true):
               _pasteIntoActive,
+          const SingleActivator(LogicalKeyboardKey.f1): () =>
+              showShortcutsDialog(context),
         },
         child: Focus(
           autofocus: true,
@@ -583,6 +586,12 @@ class _TopBar extends ConsumerWidget {
               tooltip: 'Mount as a drive',
               color: c.textMuted,
             ),
+          IconButton(
+            onPressed: () => showShortcutsDialog(context),
+            icon: const Icon(Icons.keyboard_outlined, size: 18),
+            tooltip: 'Keyboard shortcuts (F1)',
+            color: c.textMuted,
+          ),
           IconButton(
             onPressed: () => showSettingsDialog(context),
             icon: const Icon(Icons.settings_outlined, size: 18),

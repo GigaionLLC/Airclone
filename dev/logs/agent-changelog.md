@@ -6,6 +6,22 @@ All changes made by AI agents are tracked chronologically below (most recent fir
 
 <!-- New entries go above this line, most recent first -->
 
+## [2026-06-30] - v0.1.0-alpha.66: keyboard shortcut cheat-sheet (F1)
+
+**Agent:** Airclone Build (Claude Opus 4.8) — branch `backlog-features`. Discoverability win: the Explorer has
+grown a full key map (a26 + a27) but nothing surfaced it. This is a read-only reference.
+**Files Added:**
+- `ui/shortcuts_dialog.dart`: `showShortcutsDialog` — a four-column cheat-sheet (Navigate / Tabs & panes /
+  Select / Edit) of every shortcut, styled with the design tokens so it tracks the active skin.
+**Files Modified:**
+- `ui/home_screen.dart`: bound **F1** to open it (the standard Windows help key), and added a keyboard-glyph
+  button beside the Settings cog (`tooltip: Keyboard shortcuts (F1)`) so it's reachable by mouse too.
+- pubspec → alpha.66.
+
+**Database/API Changes:** None (pure UI; no RC calls).
+**Summary:** alpha.66 (branch) — press **F1** (or the new keyboard button) for a cheat-sheet of every Explorer
+shortcut. analyze (0) / test (131) green; build in progress. **Needs the user's eyes.**
+
 ## [2026-06-30] - v0.1.0-alpha.65: public links — expiry + revoke + copy
 
 **Agent:** Airclone Build (Claude Opus 4.8) — branch `backlog-features` (off the freshly-merged `main`; the
