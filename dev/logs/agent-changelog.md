@@ -6,6 +6,26 @@ All changes made by AI agents are tracked chronologically below (most recent fir
 
 <!-- New entries go above this line, most recent first -->
 
+## [2026-06-30] - v0.1.0-alpha.61: make Sync discoverable (folder-level advanced transfer)
+
+**Agent:** Airclone Build (Claude Opus 4.8) — branch `explorer-finder-chrome`. Fixes a user-reported gap: after
+enabling advanced mode, **Sync wasn't findable** — the advanced Copy/Move/Sync dialog was only reachable via
+"Transfer with options…", which only appeared when files were selected, and `_advancedTransfer` early-returned
+on an empty selection.
+**Files Modified:**
+- `ui/browser_pane.dart`: `_advancedTransfer` is now **folder-aware** — with no selection it transfers the whole
+  current folder → destination (the natural target for Sync / Two-way); with a selection it transfers the
+  selected entries (unchanged). The dialog's From label shows "(whole folder)" vs "(N selected)". Added a
+  selection-free entry **"Copy / Move / Sync this folder…"** at the top of the **Tools** menu (and in the ⋯
+  overflow, now `hasRemote`-gated not `hasSel`-gated). Relabeled the selection-block + overflow items with a
+  sync icon for clarity.
+- pubspec → alpha.61.
+
+**Database/API Changes:** None
+**Summary:** alpha.61 (branch) — **Sync is now discoverable**: Tools menu → "Copy / Move / Sync this folder…"
+opens the Copy/Move/Sync/Two-way dialog without needing a selection, operating folder-to-folder. analyze (0) /
+test (119) green; build in progress. **Needs the user's eyes** — Tools menu → "Copy / Move / Sync this folder…".
+
 ## [2026-06-30] - v0.1.0-alpha.60: edit + duplicate a remote
 
 **Agent:** Airclone Build (Claude Opus 4.8) — branch `explorer-finder-chrome`. Built from a focused design agent

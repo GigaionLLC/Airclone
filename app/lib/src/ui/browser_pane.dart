@@ -1106,8 +1106,8 @@ class _PaneToolbar extends ConsumerWidget {
                   ),
                   _cmd(
                     c,
-                    Icons.tune,
-                    'Transfer with options… (Copy/Move/Sync · filters · dry-run)',
+                    Icons.sync,
+                    'Copy / Move / Sync selection… (filters · dry-run)',
                     enabled: hasSel,
                     onTap: () => _advancedTransfer(context, ref),
                   ),
@@ -1356,9 +1356,11 @@ class _PaneToolbar extends ConsumerWidget {
           toOther ? () => _transferToOther(ref, JobType.move) : null,
         ),
         item(
-          Icons.tune,
-          'Transfer with options…',
-          hasSel ? () => _advancedTransfer(context, ref) : null,
+          Icons.sync,
+          hasSel
+              ? 'Copy / Move / Sync selection…'
+              : 'Copy / Move / Sync this folder…',
+          hasRemote ? () => _advancedTransfer(context, ref) : null,
         ),
         const Divider(height: 8),
         // Sort stays reachable here (the inline Sort menu is dropped when the
@@ -1504,6 +1506,12 @@ class _PaneToolbar extends ConsumerWidget {
     final hasRemote = state.remote != null;
     return MenuAnchor(
       menuChildren: [
+        MenuItemButton(
+          leadingIcon: Icon(Icons.sync, size: 16, color: c.textMuted),
+          onPressed: hasRemote ? () => _advancedTransfer(context, ref) : null,
+          child: const Text('Copy / Move / Sync this folder…'),
+        ),
+        const Divider(height: 8),
         MenuItemButton(
           leadingIcon: Icon(Icons.compare_arrows, size: 16, color: c.textMuted),
           onPressed: () => showCompareDialog(context, ref),
@@ -1697,13 +1705,14 @@ class _PaneToolbar extends ConsumerWidget {
     ref.read(paneProvider(index).notifier).clearSelection();
   }
 
-  /// Opens the advanced Copy/Move/Sync options dialog and runs the chosen
-  /// transfer of the selection. Destination is the OTHER pane when it has a
-  /// remote open, otherwise the user picks one — so this works in single-pane
-  /// mode too (no Advanced Mode required).
+  /// Opens the advanced Copy/Move/Sync (and Two-way) options dialog and runs it.
+  /// With a selection it transfers the selected entries; with NO selection it
+  /// transfers the whole current folder → destination (the natural target for
+  /// Sync / Two-way). Destination is the OTHER pane when it has a remote open,
+  /// otherwise the user picks one — so this works in single-pane mode too.
   Future<void> _advancedTransfer(BuildContext context, WidgetRef ref) async {
     final from = ref.read(paneProvider(index));
-    if (from.remote == null || from.selectedEntries.isEmpty) return;
+    if (from.remote == null) return;
 
     final other = ref.read(paneProvider(index == 0 ? 1 : 0));
     Remote dstRemote;
@@ -1719,23 +1728,38 @@ class _PaneToolbar extends ConsumerWidget {
     }
     if (!context.mounted) return;
 
+    final selected = from.selectedEntries;
+    final whole =
+        selected.isEmpty; // no selection ⇒ whole-folder (Sync) transfer
     final options = await showTransferOptionsDialog(
       context,
-      fromLabel: '${from.remote!.name}:${from.path}',
+      fromLabel: whole
+          ? '${from.remote!.name}:${from.path}  (whole folder)'
+          : '${from.remote!.name}:${from.path}  (${selected.length} selected)',
       toLabel: '${dstRemote.name}:$dstPath',
     );
     if (options == null) return;
     final svc = ref.read(transferServiceProvider);
-    for (final f in from.selectedEntries) {
+    if (whole) {
       await svc.transferAdvanced(
         srcRemote: from.remote!,
-        srcPath: joinPath(from.path, f.name),
+        srcPath: from.path,
         dstRemote: dstRemote,
-        dstPath: joinPath(dstPath, f.name),
+        dstPath: dstPath,
         options: options,
       );
+    } else {
+      for (final f in selected) {
+        await svc.transferAdvanced(
+          srcRemote: from.remote!,
+          srcPath: joinPath(from.path, f.name),
+          dstRemote: dstRemote,
+          dstPath: joinPath(dstPath, f.name),
+          options: options,
+        );
+      }
+      ref.read(paneProvider(index).notifier).clearSelection();
     }
-    ref.read(paneProvider(index).notifier).clearSelection();
   }
 }
 
