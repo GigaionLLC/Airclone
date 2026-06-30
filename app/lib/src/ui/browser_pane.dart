@@ -27,6 +27,7 @@ import 'media_gallery.dart';
 import 'native_drag.dart';
 import 'pane_drag.dart';
 import 'path_bar.dart';
+import 'public_link_dialog.dart';
 import 'quick_look.dart';
 import 'storage_breakdown.dart';
 import 'theme/tokens.dart';
@@ -520,33 +521,14 @@ class BrowserPane extends ConsumerWidget {
     RcloneFile f,
   ) async {
     final client = ref.read(engineControllerProvider).client;
-    if (client == null) return;
-    try {
-      final res = await client.rpc('operations/publiclink', {
-        'fs': state.remote!.fs,
-        'remote': joinPath(state.path, f.name),
-      });
-      final url = (res['url'] ?? '').toString();
-      if (!context.mounted) return;
-      await showDialog<void>(
-        context: context,
-        builder: (dctx) => AlertDialog(
-          title: const Text('Public link'),
-          content: SelectableText(url.isEmpty ? 'No link returned.' : url),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dctx),
-              child: const Text('Close'),
-            ),
-          ],
-        ),
-      );
-    } catch (e) {
-      if (!context.mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Public link failed: $e')));
-    }
+    if (client == null || state.remote == null) return;
+    await showPublicLinkDialog(
+      context,
+      client,
+      fs: state.remote!.fs,
+      remote: joinPath(state.path, f.name),
+      name: f.name,
+    );
   }
 
   /// The real on-disk path for [f] on a local-disk remote (else null).

@@ -17,6 +17,7 @@ import 'file_icon.dart';
 import 'format.dart';
 import 'pane_drag.dart';
 import 'preview_dialog.dart';
+import 'public_link_dialog.dart';
 import 'theme/tokens.dart';
 import 'thumbnail_image.dart';
 
@@ -539,42 +540,17 @@ class _InspectorPanelState extends ConsumerState<InspectorPanel> {
     }
   }
 
-  /// Request a public link for [f] and surface it in a small dialog.
+  /// Open the public-link dialog (create with optional expiry · copy · revoke).
   Future<void> _publicLink(BrowserState state, RcloneFile f) async {
     final remote = state.remote;
     final client = ref.read(engineControllerProvider).client;
     if (remote == null || client == null) return;
-    try {
-      final res = await client.rpc('operations/publiclink', {
-        'fs': remote.fs,
-        'remote': joinPath(state.path, f.name),
-      });
-      final url = (res['url'] ?? '').toString();
-      if (!mounted) return;
-      if (url.isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('No public link available.')),
-        );
-        return;
-      }
-      await showDialog<void>(
-        context: context,
-        builder: (_) => AlertDialog(
-          title: const Text('Public link'),
-          content: SelectableText(url),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('Close'),
-            ),
-          ],
-        ),
-      );
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Could not create link: $e')));
-    }
+    await showPublicLinkDialog(
+      context,
+      client,
+      fs: remote.fs,
+      remote: joinPath(state.path, f.name),
+      name: f.name,
+    );
   }
 }

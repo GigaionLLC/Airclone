@@ -6,6 +6,24 @@ All changes made by AI agents are tracked chronologically below (most recent fir
 
 <!-- New entries go above this line, most recent first -->
 
+## [2026-06-30] - v0.1.0-alpha.65: public links — expiry + revoke + copy
+
+**Agent:** Airclone Build (Claude Opus 4.8) — branch `backlog-features` (off the freshly-merged `main`; the
+chrome rework + a50–a64 are now on `main`). Extends the basic share-link.
+**Files Added:**
+- `ui/public_link_dialog.dart`: a shared `showPublicLinkDialog` — pick an **expiry** (none / 1h / 1d / 1w / 1mo →
+  `operations/publiclink {expire}`), **Create**, **Copy**, and **Revoke** (`{unlink:true}`). Backend support
+  varies → the engine error is surfaced cleanly.
+**Files Modified:**
+- `ui/browser_pane.dart` + `ui/inspector_panel.dart`: both `_publicLink` methods now call the shared dialog
+  (de-duplicated the two near-identical implementations).
+- pubspec → alpha.65.
+
+**Database/API Changes:** None
+**Summary:** alpha.65 (branch) — share links now support **expiry + revoke + copy** (right-click "Get public
+link", or the inspector's Copy-link pill). analyze (0) / test (131) green; build in progress. **Needs the user's
+eyes.**
+
 ## [2026-06-30] - v0.1.0-alpha.64: bandwidth schedule (daily timetable)
 
 **Agent:** Airclone Build (Claude Opus 4.8) — branch `explorer-finder-chrome`. Extends the live `core/bwlimit`
