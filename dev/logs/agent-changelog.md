@@ -6,6 +6,28 @@ All changes made by AI agents are tracked chronologically below (most recent fir
 
 <!-- New entries go above this line, most recent first -->
 
+## [2026-06-30] - v0.1.0-alpha.72: conflict-aware paste (skip / replace / keep both)
+
+**Agent:** Airclone Build (Claude Opus 4.8) — branch `backlog-features`. (Note: the "storage tiers" backlog item
+was **vetted and skipped** — S3 exposes no `settier` backend command, so changing tier over RC needs
+`core/command`, the arbitrary-CLI surface this project avoids; see [[airclone-avoid-command-rc]]. Pivoted to this
+broadly-useful, safe feature instead.)
+**Files Added:**
+- `state/name_conflict.dart`: pure helpers. `uniqueName(name, existing)` → desktop-style `report (2).pdf`
+  (suffix before the extension; dotfiles/extension-less handled). `planPaste(names, destNames, choice)` resolves
+  a paste under a [ConflictChoice] into the concrete src→dst transfers (skip drops collisions; overwrite keeps
+  names; keep-both routes every name through `uniqueName` against a running set so nothing is clobbered).
+- `ui/copy_conflict_dialog.dart`: lists the colliding names and offers **Skip these / Replace / Keep both**.
+- `test/name_conflict_test.dart` (11) + `test/copy_conflict_dialog_test.dart` (1).
+**Files Modified:**
+- `ui/home_screen.dart`: `_pasteIntoActive` (Ctrl+V) now detects collisions for free against the destination
+  pane's already-loaded listing; with none it pastes as before, otherwise it prompts and runs `planPaste`.
+  "Keep both" fills the gap rclone can't (it overwrites and can't auto-rename).
+**Database/API Changes:** None (reuses the existing transfer service; detection is in-memory).
+**Summary:** alpha.72 (branch) — pasting files whose names already exist now asks **Skip / Replace / Keep both**
+instead of silently overwriting. analyze (0) / test (174, +12) green; build in progress. **Needs the user's
+eyes.** (Drag-drop paste still goes straight through — a follow-up could route it through the same prompt.)
+
 ## [2026-06-30] - v0.1.0-alpha.71: find duplicate files (safe, client-side dedupe)
 
 **Agent:** Airclone Build (Claude Opus 4.8) — branch `backlog-features`. A backlog item (reclaim space from
