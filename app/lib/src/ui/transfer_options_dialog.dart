@@ -242,6 +242,14 @@ class _SettingsTab extends StatelessWidget {
         ),
         _check(
           c,
+          'Keep replaced files',
+          'Rename overwritten/deleted files (.replaced) instead of losing '
+              'them — makes Move/Sync recoverable (--suffix).',
+          options.keepReplaced,
+          (v) => onChanged(options.copyWith(keepReplaced: v)),
+        ),
+        _check(
+          c,
           'Dry run',
           'Report what would happen without changing anything (--dry-run).',
           options.dryRun,

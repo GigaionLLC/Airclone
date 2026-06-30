@@ -65,7 +65,8 @@ Prioritized roadmap distilled from competitive + engine research. Tags: `[D]` de
 ### ⚙️ Advanced power (optional "advanced mode")
 - [x] **Advanced transfer dialog** — Copy/Move/Sync · skip rules · compare · Include/Exclude/Filter tabs ·
   rclone-cmd preview · Dry-run/Run — a15 (gated behind advanced mode a22).
-- [x] **Transfer queue** (a24) + "**save as task**" (a22). **Scheduler** still open (needs background exec).
+- [x] **Transfer queue** (a24) + "**save as task**" (a22) + **scheduler** (a50 — interval/daily/weekly, in-app,
+  app-open-only). OS-level background execution still open.
 - [x] **Statistics** strip — live transfer stats (`core/stats`), per-job + aggregate, speeds/ETA — a15.
 - [~] **Global settings** — custom rclone **engine flags** shipped a23; VFS · bandwidth · performance
   presets still open.
@@ -184,7 +185,8 @@ Prioritized roadmap distilled from competitive + engine research. Tags: `[D]` de
   is only an optional org/fleet target, never required.
 
 ## 🟨 COULD — v2
-- `[D+M]` Scheduling: named jobs, cron (5-field, prose-rendered) + intervals, run history/logs.
+- `[D+M]` Scheduling: **interval/daily/weekly shipped a50** (in-app scheduler, honest app-open-only + missed-slot
+  catch-up). Still open: cron (5-field, prose-rendered), run history/logs, OS-level background execution.
 - `[D]` Real-time FS watcher with net-change debounce.
 - `[D+M]` Dynamic-path macros (`$(date)`, `$(hostname)` — resolved internally, no shell).
 - `[D+M]` Multi-backend / remote-`rcd` profiles (manage a NAS/remote rclone from one UI).
@@ -192,6 +194,71 @@ Prioritized roadmap distilled from competitive + engine research. Tags: `[D]` de
 - `[D+M]` Reusable filter profiles; alert channels beyond toast (webhook → email/Telegram/MQTT).
 - `[D]` Clean headless/server mode (real server binary) with SSE + Basic-auth + TLS.
 - `[M]` Media auto-backup; `[D+M]` recoverable-delete/trash tier where the backend supports it.
+
+## 🛠️ RC-GROUNDED BUILD QUEUE — engine capability mining (2026-06-29)
+
+> Distilled from a deep-dive feature-mining pass (rclone core/backends/RC-API/serve-mount + competitive scan).
+> Every item is confirmed reachable through the existing `RcloneClient.rpc()` seam (pure RC pass-through, so
+> anything on rclone.org/rc is callable). Ordered by value ÷ effort. Mechanisms are exact so a build can start
+> from here. (Generic capability framing only — research notes live gitignored under `reference/`.)
+
+1. **Recoverable transfers — "Keep replaced files"** `[D+M]` · **S** · *shipping a52.* A toggle in the transfer
+   dialog so a sync/move never silently loses data: overwritten/deleted files are preserved. Mechanism:
+   `_config.Suffix` + `_config.SuffixKeepExtension` (robust across cloud + local; no path math). Optional later:
+   `_config.BackupDir` to a separate versions folder for remotes.
+2. **Verify / compare two locations** `[D]` · **M**. Compare src vs dst by size/hash → match / differ / missing
+   buckets without copying; pairs with commander mode. Mechanism: `operations/check {srcFs,dstFs,oneWay}`;
+   `download:true` fallback for hashless backends (detect via `operations/fsinfo` Hashes — warn, it streams
+   bytes); `operations/hashsum` for on-demand checksums of a selection.
+3. **Two-way sync (bisync)** `[D+M]` · **L** — *marquee gap.* A "sync pair" object with a guarded one-time
+   **Resync (establish baseline)**, conflict handling, and the `--max-delete` safety abort surfaced. Mechanism:
+   `sync/bisync` (RC-exposed) with `_config` conflict-resolve `newer|older|larger|smaller|path1|path2`,
+   conflict-suffix/loser, `MaxDelete`. **Resync is destructive on misuse → one-time + guarded.**
+4. **Structured filter / include-exclude builder** `[D+M]` · **M**. A chip-based rule editor reused across
+   copy/move/sync/bisync/check. Mechanism: the `_filter` object (`IncludeRule/ExcludeRule/FilterRule`,
+   `MinSize/MaxSize/MinAge/MaxAge`) — already partially passed today; this makes it a first-class builder.
+5. **Empty trash / reclaim space** `[D+M]` · **S**. Capability-gated (`operations/fsinfo` Features.CleanUp).
+   Mechanism: `operations/cleanup {fs}` (empties backend trash / aborts incomplete S3 multipart) +
+   `operations/rmdirs` (remove empty dirs). Feeds off the already-shipped quota/`about` view.
+6. **Advanced performance & safety controls** `[D]` · **S–M**. An "Advanced" section of per-call `_config`
+   keys: `Transfers`, `Checkers`, `MaxTransfer`+`CutoffMode`, `MaxDuration`, `Order` (--order-by),
+   `IgnoreExisting/UpdateOlder/Immutable/NoTraverse/FastList`. Cheap, broadly useful (overlaps SHOULD presets).
+7. **Encrypt-a-remote (crypt) wizard** `[D+M]` · **M** · *security-gated.* Wrap any existing remote with
+   client-side encryption. Mechanism: `config/create type=crypt` (remote=`<existing>:subdir`,
+   filename/dir encryption, password via `core/obscure`); verify with cryptcheck. **Never persist the crypt
+   password; require/encourage config encryption (`RCLONE_CONFIG_PASS`).**
+8. **Bandwidth schedule (timetable)** `[D+M]` · **M**. Extend the shipped live `core/bwlimit` cap with a
+   time-window editor. Mechanism: a clock that re-issues `core/bwlimit` at slot boundaries (live RC takes one
+   rate), or a `--bwlimit` timetable string on restart. (Not S — needs a clock.)
+9. **Import from URL + browser uploads** `[D+M]` · **S**. Paste a link → rclone streams it straight into the
+   remote (no local round-trip). Mechanism: `operations/copyurl {fs,remote,url,autoFilename}` /
+   `operations/uploadfile`. *(copyurl fetches server-side — fine for a user-driven desktop app; gate in any
+   future headless mode.)*
+10. **Edit / duplicate a remote** `[D+M]` · **S**. Today config is create + delete only. Mechanism:
+    `config/get` + `config/update` for an Edit/Clone flow.
+11. **Storage analysis (folder sizes)** `[D]` · **S–M**. "What's using space?" — sizes/object counts per
+    folder, a size column or treemap. Mechanism: `operations/size {fs}` (+ local `core/du`/`core/disks`).
+12. **Find & resolve duplicates** `[D]` · **M** · *core/command*. Duplicate scan + per-group resolution.
+    Mechanism: `dedupe` via `core/command` (no `operations/dedupe`); `--by-hash` for hashed backends.
+    Capability-gate (no-op where duplicate names aren't allowed).
+13. **Storage-tier / archive class** `[D]` · **M**. Move objects to/from cold tiers for cost control.
+    Mechanism: `operations/settier`/`settierfile`; gate on fsinfo Features.SetTier; tier list is
+    **backend-specific** (enumerate per backend — no universal list).
+14. **Serve a remote on the LAN** `[D]` · **M–L** · *security-sensitive.* Turn a remote into a local server
+    (DLNA cast / WebDAV / SFTP …). Mechanism: `serve/start|list|stop`, `serve/types`. **Binds a network
+    listener → default loopback, require auth off-loopback, never auto-start, clear "reachable on your
+    network" warning, honor enterprise kill-switches.**
+15. **Mounts manager (over RC)** `[D]` · **M+** · WinFsp dep. Mount any remote as a drive/folder with a VFS
+    cache-mode preset (off/minimal/writes/full). Mechanism: `mount/mount|listmounts|unmount|types`, shared
+    `vfsOpt` with Serve. **Never share a VFS cache dir between engines (corruption).**
+16. **Transfer history / recent activity** `[D+M]` · **S**. A "recently completed / failed items" view.
+    Mechanism: `core/transferred` (last-100 with per-file errors) + `core/stats-reset`/`job/stopgroup`.
+
+**Cross-cutting:** keep every long action `_async` (drops into the existing Jobs panel); use `core/obscure`
+for any password we hand to `config/create`. **Security invariants to preserve:** loopback-only `rcd` +
+per-session `--rc-user`/`--rc-pass`; `RCLONE_CONFIG_PASS` env-only (never logged/persisted); `core/command`
+and `options/set` must use a GUI-built allow-list (never free-form user input) — that's the surface of the
+published rclone RC CVEs; pin rclone ≥ 1.73.5.
 
 ## ⬜ WON'T (v1)
 - `[M]` FUSE mount on mobile (needs root — steer to SAF/File Provider; document the rooted path only).

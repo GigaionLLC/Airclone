@@ -6,6 +6,27 @@ All changes made by AI agents are tracked chronologically below (most recent fir
 
 <!-- New entries go above this line, most recent first -->
 
+## [2026-06-29] - v0.1.0-alpha.52: recoverable transfers ("Keep replaced files") + RC-grounded backlog
+
+**Agent:** Airclone Build (Claude Opus 4.8) — branch `explorer-finder-chrome`. First build from the
+**feature-mining** workflow's backlog (its synthesize step stubbed, but the critique agent recovered the full
+RC-grounded gap backlog; zero competitor-name leaks).
+**Files Modified:**
+- `state/transfer_options.dart`: `TransferOptions` gains `keepReplaced` (+ copyWith/JSON). `buildRcCall` sets
+  `_config.Suffix = '.replaced'` + `SuffixKeepExtension` (chosen over `--backup-dir` because `fs` is `gdrive:`
+  vs local `C:/` — suffix needs no fragile path math); preview shows `--suffix .replaced --suffix-keep-extension`.
+- `ui/transfer_options_dialog.dart`: a "Keep replaced files" toggle (Move/Sync become recoverable).
+- `dev/backlog/feature-backlog.md`: new **RC-grounded build queue** section (16 features, exact RC mechanisms,
+  value÷effort order, security invariants) distilled from the mining workflow; scheduling marked shipped (a50).
+- `test/transfer_options_build_test.dart`: 5 tests (buildRcCall config, preview, JSON).
+- pubspec → alpha.52.
+
+**Database/API Changes:** None
+**Summary:** alpha.52 (branch) — overwritten/deleted files in a Move/Sync can now be **preserved** (renamed
+`.replaced`) instead of lost, via one toggle in the transfer dialog. Plus the durable, prioritized feature
+backlog from the research workflow. analyze (0) / test (79) green. **Needs the user's eyes** — advanced mode →
+Transfer with options → "Keep replaced files".
+
 ## [2026-06-29] - v0.1.0-alpha.51: easier advanced-mode access + grouped settings
 
 **Agent:** Airclone Build (Claude Opus 4.8) — branch `explorer-finder-chrome`.

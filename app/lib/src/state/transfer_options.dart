@@ -20,6 +20,7 @@ class TransferOptions {
     this.skipExisting = false,
     this.compare,
     this.dryRun = false,
+    this.keepReplaced = false,
     this.includes = const [],
     this.excludes = const [],
     this.filters = const [],
@@ -41,6 +42,11 @@ class TransferOptions {
   /// Report-only run (`--dry-run`).
   final bool dryRun;
 
+  /// Preserve overwritten/deleted destination files instead of losing them:
+  /// rclone renames them in place with a `.replaced` suffix (`--suffix` +
+  /// `--suffix-keep-extension`). Makes a sync/move recoverable.
+  final bool keepReplaced;
+
   /// `--include` patterns.
   final List<String> includes;
 
@@ -59,6 +65,7 @@ class TransferOptions {
     bool? skipExisting,
     CompareMode? compare,
     bool? dryRun,
+    bool? keepReplaced,
     List<String>? includes,
     List<String>? excludes,
     List<String>? filters,
@@ -69,6 +76,7 @@ class TransferOptions {
     skipExisting: skipExisting ?? this.skipExisting,
     compare: compare ?? this.compare,
     dryRun: dryRun ?? this.dryRun,
+    keepReplaced: keepReplaced ?? this.keepReplaced,
     includes: includes ?? this.includes,
     excludes: excludes ?? this.excludes,
     filters: filters ?? this.filters,
@@ -81,6 +89,7 @@ class TransferOptions {
     'skipExisting': skipExisting,
     'compare': compare?.name,
     'dryRun': dryRun,
+    'keepReplaced': keepReplaced,
     'includes': includes,
     'excludes': excludes,
     'filters': filters,
@@ -104,6 +113,7 @@ class TransferOptions {
               orElse: () => CompareMode.sizeModTime,
             ),
       dryRun: j['dryRun'] == true,
+      keepReplaced: j['keepReplaced'] == true,
       includes: list(j['includes']),
       excludes: list(j['excludes']),
       filters: list(j['filters']),
@@ -137,6 +147,7 @@ String rcloneCmdPreview(TransferOptions o, String src, String dst) {
       break;
   }
   if (o.dryRun) parts.add('--dry-run');
+  if (o.keepReplaced) parts.add('--suffix .replaced --suffix-keep-extension');
 
   for (final p in o.includes) {
     if (p.trim().isEmpty) continue;
@@ -180,6 +191,11 @@ List<String> _clean(List<String> patterns) => [
   if (o.dryRun) config['DryRun'] = true;
   if (o.skipExisting) config['IgnoreExisting'] = true;
   if (o.skipNewer) config['UpdateOlder'] = true;
+  // Recoverable transfer: rename (don't delete/overwrite) replaced files.
+  if (o.keepReplaced) {
+    config['Suffix'] = '.replaced';
+    config['SuffixKeepExtension'] = true;
+  }
   switch (o.compare) {
     case CompareMode.size:
       config['SizeOnly'] = true;
