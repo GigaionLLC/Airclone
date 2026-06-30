@@ -1,6 +1,7 @@
 import 'package:airclone/src/ui/theme/app_theme.dart';
 import 'package:airclone/src/ui/transfer_options_dialog.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -59,5 +60,28 @@ void main() {
     expect(find.text('--include'), findsOneWidget);
     expect(find.text('--exclude'), findsOneWidget);
     expect(find.text('--filter'), findsOneWidget);
+  });
+
+  testWidgets('rclone cmd tab shows the command and Copy puts it on the '
+      'clipboard', (tester) async {
+    final clip = <MethodCall>[];
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(SystemChannels.platform, (call) async {
+          if (call.method == 'Clipboard.setData') clip.add(call);
+          return null;
+        });
+    await _open(tester);
+    await tester.tap(find.text('rclone cmd'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('rclone copy'), findsOneWidget);
+
+    await tester.tap(find.widgetWithText(TextButton, 'Copy'));
+    await tester.pumpAndSettle();
+    expect(find.text('Copied'), findsOneWidget);
+    expect(clip, isNotEmpty);
+    expect(
+      (clip.first.arguments['text'] as String).startsWith('rclone copy'),
+      isTrue,
+    );
   });
 }

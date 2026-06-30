@@ -6,6 +6,20 @@ All changes made by AI agents are tracked chronologically below (most recent fir
 
 <!-- New entries go above this line, most recent first -->
 
+## [2026-06-30] - v0.1.0-alpha.74: "Copy command" on the transfer preview
+
+**Agent:** Airclone Build (Claude Opus 4.8) — branch `backlog-features`. The advanced transfer dialog's "rclone
+cmd" tab already rendered the equivalent CLI; this makes it actionable for scripting/cron.
+**Files Modified:**
+- `ui/transfer_options_dialog.dart`: `_CmdTab` is now stateful with a **Copy** button (→ Clipboard, flips to a
+  "Copied" check; resets if the command changes via `didUpdateWidget`) and a one-line "Run this yourself from a
+  terminal or a cron job" caption above the command box.
+- `test/transfer_options_dialog_test.dart`: +1 — the tab shows `rclone copy …` and Copy writes it to the
+  clipboard.
+**Database/API Changes:** None (pure UI; reuses `rcloneCmdPreview`).
+**Summary:** alpha.74 (branch) — copy the exact `rclone …` command for any configured transfer straight from the
+dialog. analyze (0) / test (175, +1) green; build in progress. **Needs the user's eyes.**
+
 ## [2026-06-30] - v0.1.0-alpha.73: unify paste — context-menu paste is now conflict-aware too
 
 **Agent:** Airclone Build (Claude Opus 4.8) — branch `backlog-features`. Completes a72: the keyboard paste got the

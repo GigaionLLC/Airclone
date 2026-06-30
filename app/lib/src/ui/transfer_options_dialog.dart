@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../state/advanced_mode.dart';
@@ -729,35 +730,73 @@ class _FiltersTab extends StatelessWidget {
 
 // ── rclone cmd tab ────────────────────────────────────────────────────────────
 
-class _CmdTab extends StatelessWidget {
+class _CmdTab extends StatefulWidget {
   const _CmdTab({required this.cmd});
 
   final String cmd;
+
+  @override
+  State<_CmdTab> createState() => _CmdTabState();
+}
+
+class _CmdTabState extends State<_CmdTab> {
+  bool _copied = false;
+
+  @override
+  void didUpdateWidget(_CmdTab old) {
+    super.didUpdateWidget(old);
+    if (old.cmd != widget.cmd && _copied) setState(() => _copied = false);
+  }
 
   @override
   Widget build(BuildContext context) {
     final c = AircloneTheme.of(context);
     return Padding(
       padding: const EdgeInsets.all(Space.x5),
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.all(Space.x4),
-        decoration: BoxDecoration(
-          color: c.surfaceSunken,
-          borderRadius: BorderRadius.circular(Radii.md),
-          border: Border.all(color: c.border),
-        ),
-        child: SingleChildScrollView(
-          child: SelectableText(
-            cmd,
-            style: TextStyle(
-              color: c.text,
-              fontSize: 12,
-              height: 1.5,
-              fontFamily: 'monospace',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'Run this yourself from a terminal or a cron job:',
+                  style: TextStyle(color: c.textMuted, fontSize: 12),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              TextButton.icon(
+                onPressed: () {
+                  Clipboard.setData(ClipboardData(text: widget.cmd));
+                  setState(() => _copied = true);
+                },
+                icon: Icon(_copied ? Icons.check : Icons.copy, size: 15),
+                label: Text(_copied ? 'Copied' : 'Copy'),
+              ),
+            ],
+          ),
+          const SizedBox(height: Space.x2),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(Space.x4),
+            decoration: BoxDecoration(
+              color: c.surfaceSunken,
+              borderRadius: BorderRadius.circular(Radii.md),
+              border: Border.all(color: c.border),
+            ),
+            child: SingleChildScrollView(
+              child: SelectableText(
+                widget.cmd,
+                style: TextStyle(
+                  color: c.text,
+                  fontSize: 12,
+                  height: 1.5,
+                  fontFamily: 'monospace',
+                ),
+              ),
             ),
           ),
-        ),
+        ],
       ),
     );
   }
