@@ -6,6 +6,28 @@ All changes made by AI agents are tracked chronologically below (most recent fir
 
 <!-- New entries go above this line, most recent first -->
 
+## [2026-06-30] - v0.1.0-alpha.64: bandwidth schedule (daily timetable)
+
+**Agent:** Airclone Build (Claude Opus 4.8) — branch `explorer-finder-chrome`. Extends the live `core/bwlimit`
+control (rclone's live limit takes a single rate, so Airclone holds the clock and re-applies at each boundary —
+same honest in-app-only model as scheduled tasks).
+**Files Added:**
+- `state/bw_schedule.dart`: `BwWindow` (hour/minute/rate) + `BwSchedule` (enabled + windows) + JSON + a pure,
+  tested `activeRate(windows, now)` (daily cycle; before the first window wraps to the last).
+- `state/bw_schedule_controller.dart`: `BwScheduleController` (Notifier, SharedPreferences-persisted) with a 60s
+  ticker that applies the active window's rate via `BandwidthController.setLimit` when it changes (+ immediately
+  on edits); skipped when disabled (leaves the manual rate).
+- `test/bw_schedule_test.dart`: 5 tests (active window, wrap, empty, unsorted, JSON).
+**Files Modified:**
+- `ui/bandwidth_control.dart`: the bandwidth popup gains a **Schedule…** item (marked "on" when active) →
+  `_BwScheduleDialog` (toggle + add/edit/remove time→rate windows + an "applies only while open" note).
+- `ui/home_screen.dart`: arm the ticker in `initState`. pubspec → alpha.64.
+
+**Database/API Changes:** None (persists the timetable in SharedPreferences).
+**Summary:** alpha.64 (branch) — a **daily bandwidth timetable** (e.g. 08:00 → 512k, 18:00 → off) that the app
+applies live to `core/bwlimit` while open. analyze (0) / test (131) green; build in progress. **Needs the
+user's eyes** — the bandwidth (speed) control in the top bar → Schedule…
+
 ## [2026-06-30] - v0.1.0-alpha.63: storage breakdown ("what's using my space")
 
 **Agent:** Airclone Build (Claude Opus 4.8) — branch `explorer-finder-chrome`. Self-contained visual feature;

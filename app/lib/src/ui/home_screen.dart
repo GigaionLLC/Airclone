@@ -12,6 +12,7 @@ import '../rclone/rclone_client.dart';
 import '../state/advanced_mode.dart';
 import '../state/app_info.dart';
 import '../state/browser_controller.dart';
+import '../state/bw_schedule_controller.dart';
 import '../state/clipboard_controller.dart';
 import '../state/engine_controller.dart';
 import '../state/file_ops.dart';
@@ -74,9 +75,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(engineControllerProvider.notifier).bootstrap();
-      // Arm the scheduler (Riverpod providers are lazy — force its timer to
-      // start so scheduled tasks fire while the app is open).
+      // Arm the lazy timer-owning providers (scheduled tasks + bandwidth
+      // schedule) so they tick while the app is open.
       ref.read(schedulerProvider);
+      ref.read(bwScheduleControllerProvider);
     });
   }
 
