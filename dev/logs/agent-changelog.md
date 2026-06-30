@@ -6,6 +6,29 @@ All changes made by AI agents are tracked chronologically below (most recent fir
 
 <!-- New entries go above this line, most recent first -->
 
+## [2026-06-30] - v0.1.0-alpha.67: command palette (Ctrl+K)
+
+**Agent:** Airclone Build (Claude Opus 4.8) — branch `backlog-features`. Ties every action built across a50–a66
+into one searchable launcher — the strongest remaining discoverability win.
+**Files Added:**
+- `ui/command_palette.dart`: `PaletteAction` (label / icon / hint / keywords / run) + `showCommandPalette` — a
+  Spotlight-style overlay. Type to fuzzy-filter (every space-separated token must hit label+keywords); ↑/↓ to
+  move, Enter to run, click or hover to select, Esc (barrier) to dismiss. The chosen action runs *after* the
+  palette closes so actions that open their own dialog aren't dismissed with it.
+- `test/command_palette_test.dart`: 6 tests — `matches` token logic, type-to-filter, tap-runs-and-closes,
+  Enter-runs-top-match, arrow-down-then-Enter.
+**Files Modified:**
+- `ui/home_screen.dart`: bound **Ctrl+K**; `_paletteActions(context)` builds the catalogue — Add/encrypt remote,
+  Settings, Keyboard shortcuts, New tab, toggle details/sidebar/dual-pane, and (advanced + policy-gated, exactly
+  like their toolbar buttons) Saved tasks / Serve / Mount — then a **"Go to <remote>"** entry per configured
+  remote (`activePane().open(r)`). No new RC surface; reuses existing handlers + `remotesProvider`.
+- `ui/shortcuts_dialog.dart`: cheat-sheet now lists **Ctrl+K — Command palette** at the top of Navigate.
+- pubspec → alpha.67.
+
+**Database/API Changes:** None (pure UI; reuses existing providers/dialogs).
+**Summary:** alpha.67 (branch) — press **Ctrl+K** for a searchable launcher of every action plus jump-to-remote.
+analyze (0) / test (137, +6) green; build in progress. **Needs the user's eyes.**
+
 ## [2026-06-30] - v0.1.0-alpha.66: keyboard shortcut cheat-sheet (F1)
 
 **Agent:** Airclone Build (Claude Opus 4.8) — branch `backlog-features`. Discoverability win: the Explorer has

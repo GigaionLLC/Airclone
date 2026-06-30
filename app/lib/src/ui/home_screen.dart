@@ -28,6 +28,7 @@ import '../state/transfer_service.dart';
 import 'add_remote_dialog.dart';
 import 'bandwidth_control.dart';
 import 'browser_pane.dart';
+import 'command_palette.dart';
 import 'encrypt_remote_dialog.dart';
 import 'file_op_dialogs.dart';
 import 'format.dart';
@@ -231,6 +232,96 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     await ref.read(paneProvider(idx).notifier).refresh();
   }
 
+  /// The Ctrl+K command-palette catalogue: app actions (gated the same way as
+  /// their toolbar buttons) followed by a "Go to" entry per remote.
+  List<PaletteAction> _paletteActions(BuildContext context) {
+    BrowserController pane() =>
+        ref.read(paneProvider(ref.read(activePaneProvider)).notifier);
+    final advanced = ref.read(advancedModeProvider);
+    final remotes = ref.read(remotesProvider).valueOrNull ?? const [];
+
+    return [
+      PaletteAction(
+        label: 'Add or encrypt a remote',
+        icon: Icons.add,
+        keywords: 'new cloud connection account crypt',
+        run: () => showAddRemoteDialog(context),
+      ),
+      PaletteAction(
+        label: 'Settings',
+        icon: Icons.settings_outlined,
+        keywords: 'preferences options theme skin advanced config',
+        run: () => showSettingsDialog(context),
+      ),
+      PaletteAction(
+        label: 'Keyboard shortcuts',
+        icon: Icons.keyboard_outlined,
+        hint: 'F1',
+        keywords: 'help keys cheat sheet',
+        run: () => showShortcutsDialog(context),
+      ),
+      PaletteAction(
+        label: 'New tab',
+        icon: Icons.tab,
+        hint: 'Ctrl+T',
+        run: () => pane().newTab(),
+      ),
+      PaletteAction(
+        label: 'Toggle details pane',
+        icon: Icons.info_outline,
+        hint: 'Ctrl+I',
+        keywords: 'inspector properties',
+        run: () => ref.read(inspectorVisibleProvider.notifier).state = !ref
+            .read(inspectorVisibleProvider),
+      ),
+      PaletteAction(
+        label: 'Toggle sidebar',
+        icon: Icons.menu,
+        keywords: 'locations remotes show hide',
+        run: () => ref.read(sidebarVisibleProvider.notifier).state = !ref.read(
+          sidebarVisibleProvider,
+        ),
+      ),
+      PaletteAction(
+        label: 'Toggle dual-pane view',
+        icon: Icons.splitscreen,
+        keywords: 'commander split two panes',
+        run: () => ref.read(singlePaneProvider.notifier).state = !ref.read(
+          singlePaneProvider,
+        ),
+      ),
+      if (advanced)
+        PaletteAction(
+          label: 'Saved tasks',
+          icon: Icons.checklist_rounded,
+          keywords: 'schedule jobs recurring',
+          run: () => showTasksDialog(context),
+        ),
+      if (advanced && ref.read(serveEnabledProvider))
+        PaletteAction(
+          label: 'Serve / Share on LAN',
+          icon: Icons.cast_connected,
+          keywords: 'http webdav share network',
+          run: () => showServeDialog(context),
+        ),
+      if (advanced && ref.read(mountEnabledProvider))
+        PaletteAction(
+          label: 'Mount as a drive',
+          icon: Icons.usb,
+          keywords: 'drive letter winfsp vfs',
+          run: () => showMountDialog(context),
+        ),
+      for (final r in remotes)
+        PaletteAction(
+          label: 'Go to ${r.name}',
+          icon: r.isLocal ? Icons.computer : Icons.cloud_outlined,
+          hint: r.type,
+          keywords: 'open browse remote location ${r.type}',
+          run: () => pane().open(r),
+        ),
+    ];
+  }
+
   @override
   Widget build(BuildContext context) {
     BrowserController activePane() =>
@@ -288,6 +379,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               _pasteIntoActive,
           const SingleActivator(LogicalKeyboardKey.f1): () =>
               showShortcutsDialog(context),
+          const SingleActivator(LogicalKeyboardKey.keyK, control: true): () =>
+              showCommandPalette(context, _paletteActions(context)),
         },
         child: Focus(
           autofocus: true,
