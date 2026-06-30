@@ -392,6 +392,7 @@ class _ThemeSection extends ConsumerWidget {
 class _SkinSection extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final c = AircloneTheme.of(context);
     final skin = ref.watch(skinProvider);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -406,6 +407,7 @@ class _SkinSection extends ConsumerWidget {
           alignment: Alignment.centerLeft,
           child: DropdownButton<Skin>(
             value: skin,
+            dropdownColor: c.surfaceRaised,
             underline: const SizedBox.shrink(),
             borderRadius: BorderRadius.circular(Radii.md),
             items: [
@@ -440,6 +442,7 @@ class _BackdropSection extends ConsumerWidget {
           alignment: Alignment.centerLeft,
           child: DropdownButton<WindowBackdrop>(
             value: backdrop,
+            dropdownColor: c.surfaceRaised,
             underline: const SizedBox.shrink(),
             borderRadius: BorderRadius.circular(Radii.md),
             items: [
@@ -553,6 +556,7 @@ class _ConcurrencySection extends ConsumerWidget {
         const SizedBox(width: Space.x3),
         DropdownButton<int>(
           value: current,
+          dropdownColor: c.surfaceRaised,
           underline: const SizedBox.shrink(),
           borderRadius: BorderRadius.circular(Radii.md),
           items: [

@@ -6,6 +6,32 @@ All changes made by AI agents are tracked chronologically below (most recent fir
 
 <!-- New entries go above this line, most recent first -->
 
+## [2026-06-29] - v0.1.0-alpha.49: bugfixes — opaque popups over Mica/Acrylic + responsive toolbar
+
+**Agent:** Airclone Build (Claude Opus 4.8) — branch `explorer-finder-chrome`. Fixes two issues the user spotted
+on alpha.48: (1) settings dropdowns rendered see-through over a translucent backdrop; (2) toolbar verbs became
+inaccessible when the window was small.
+**Files Modified:**
+- `ui/theme/app_theme.dart`: add `menuTheme` / `popupMenuTheme` / `dropdownMenuTheme` with an opaque
+  `surfaceRaised` background (+ transparent surfaceTint) so every popup stays readable even though
+  `app.dart`'s Mica/Acrylic path drops `canvasColor` to transparent.
+- `ui/settings_screen.dart`: set `dropdownColor: c.surfaceRaised` on the three `DropdownButton`s (Skin,
+  Window background, concurrency) — the legacy widget ignores menu themes and falls back to `canvasColor`.
+- `ui/browser_pane.dart`: `_FilterBox` now fills the width its caller gives it. New top-level `_searchWidth()`
+  → the OS-skin search shrinks (clamped 120–220) as the pane narrows instead of crowding out the breadcrumb;
+  Airclone keeps its fixed 150. `_addressRow` + `_unifiedRow` compute it via `LayoutBuilder`. `_commandRow`
+  gains a **compact mode** (< 600 px): it collapses the file verbs into the `⋯` overflow (new
+  `_compactCommandBar`) so nothing hides behind a non-obvious side-scroll. `_overflowMenu` gains a **Sort by**
+  submenu so the collapsed/unified paths keep sort reachable.
+- pubspec → alpha.49.
+
+**Database/API Changes:** None
+**Summary:** alpha.49 (branch) — popups (settings dropdowns + the toolbar menus) are opaque again under
+Mica/Acrylic, and the toolbar degrades gracefully in narrow windows (responsive search + a `⋯` overflow that
+keeps every verb reachable). analyze (0) / test (57) green; build in progress. **Needs the user's eyes** —
+shrink the window and confirm nothing in the toolbar becomes unreachable; open Settings over Mica and confirm
+the dropdowns are solid.
+
 ## [2026-06-29] - v0.1.0-alpha.48: per-skin chrome — Finder unified toolbar + OS-skin de-brand (chrome P4)
 
 **Agent:** Airclone Build (Claude Opus 4.8) — branch `explorer-finder-chrome`. Designed via a 6-agent Workflow

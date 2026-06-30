@@ -39,6 +39,25 @@ abstract final class AppTheme {
       fontFamilyFallback: t.fontFamilyFallback,
       visualDensity: t.density,
       dividerColor: c.border,
+      // Popup surfaces must stay opaque even under a translucent Mica/Acrylic
+      // backdrop (which drops canvasColor to transparent in app.dart). Without
+      // this, menus + dropdowns render see-through and unreadable.
+      menuTheme: MenuThemeData(
+        style: MenuStyle(
+          backgroundColor: WidgetStatePropertyAll(c.surfaceRaised),
+          surfaceTintColor: const WidgetStatePropertyAll(Colors.transparent),
+        ),
+      ),
+      popupMenuTheme: PopupMenuThemeData(
+        color: c.surfaceRaised,
+        surfaceTintColor: Colors.transparent,
+      ),
+      dropdownMenuTheme: DropdownMenuThemeData(
+        menuStyle: MenuStyle(
+          backgroundColor: WidgetStatePropertyAll(c.surfaceRaised),
+          surfaceTintColor: const WidgetStatePropertyAll(Colors.transparent),
+        ),
+      ),
       extensions: [
         AircloneTheme(colors: c, tokens: t, chrome: SkinChrome.of(skin)),
       ],

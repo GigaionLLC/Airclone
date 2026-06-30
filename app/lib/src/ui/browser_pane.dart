@@ -660,6 +660,13 @@ double _nearestPreset(double size) {
   return best;
 }
 
+/// Width for a toolbar search/filter field in a row [avail] px wide. The OS
+/// skins dock a wide search that shrinks (but stays usable) as the pane
+/// narrows so it never crowds out the breadcrumb; Airclone keeps its fixed
+/// compact filter box (its look is unchanged).
+double _searchWidth(double avail, {required bool alwaysVisible}) =>
+    alwaysVisible ? (avail * 0.28).clamp(120.0, 220.0) : 150.0;
+
 /// A Finder/Adwaita-style segmented view switcher — three icon cells
 /// (List · Icons · Gallery) with the active one highlighted. Pure presentation:
 /// the caller passes its own pane's [mode] + [onChanged] so it stays
@@ -883,73 +890,81 @@ class _PaneToolbar extends ConsumerWidget {
     final segs = state.segments;
     return SizedBox(
       height: 38,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: Space.x2),
-        child: Row(
-          children: [
-            if (chrome.showActivePaneDot)
-              Container(
-                width: 6,
-                height: 6,
-                margin: const EdgeInsets.only(right: Space.x2),
-                decoration: BoxDecoration(
-                  color: active ? c.primary : c.border,
-                  shape: BoxShape.circle,
+      child: LayoutBuilder(
+        builder: (context, cons) {
+          final searchW = _searchWidth(
+            cons.maxWidth,
+            alwaysVisible: chrome.searchAlwaysVisible,
+          );
+          return Padding(
+            padding: const EdgeInsets.symmetric(horizontal: Space.x2),
+            child: Row(
+              children: [
+                if (chrome.showActivePaneDot)
+                  Container(
+                    width: 6,
+                    height: 6,
+                    margin: const EdgeInsets.only(right: Space.x2),
+                    decoration: BoxDecoration(
+                      color: active ? c.primary : c.border,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                IconButton(
+                  onPressed: ctrl.canBack ? ctrl.back : null,
+                  icon: const Icon(Icons.arrow_back, size: 15),
+                  tooltip: 'Back (Alt+←)',
+                  visualDensity: VisualDensity.compact,
                 ),
-              ),
-            IconButton(
-              onPressed: ctrl.canBack ? ctrl.back : null,
-              icon: const Icon(Icons.arrow_back, size: 15),
-              tooltip: 'Back (Alt+←)',
-              visualDensity: VisualDensity.compact,
+                IconButton(
+                  onPressed: ctrl.canForward ? ctrl.forward : null,
+                  icon: const Icon(Icons.arrow_forward, size: 15),
+                  tooltip: 'Forward (Alt+→)',
+                  visualDensity: VisualDensity.compact,
+                ),
+                IconButton(
+                  onPressed: segs.isEmpty ? null : ctrl.up,
+                  icon: const Icon(Icons.arrow_upward, size: 15),
+                  tooltip: 'Up (Alt+↑)',
+                  visualDensity: VisualDensity.compact,
+                ),
+                IconButton(
+                  onPressed: state.remote == null ? null : ctrl.refresh,
+                  icon: const Icon(Icons.refresh, size: 15),
+                  tooltip: 'Refresh',
+                  visualDensity: VisualDensity.compact,
+                ),
+                IconButton(
+                  onPressed: ctrl.newTab,
+                  icon: const Icon(Icons.add, size: 15),
+                  tooltip: 'New tab (Ctrl+T)',
+                  visualDensity: VisualDensity.compact,
+                ),
+                const SizedBox(width: Space.x1),
+                Expanded(
+                  child: PathBar(
+                    remote: state.remote,
+                    path: state.path,
+                    onSegment: ctrl.goToSegment,
+                    onNavigate: ctrl.navigateTo,
+                  ),
+                ),
+                if (state.remote != null)
+                  SizedBox(
+                    width: searchW,
+                    child: _FilterBox(index: index),
+                  ),
+                if (state.remote != null)
+                  IconButton(
+                    tooltip: 'Close pane (deselect remote)',
+                    onPressed: ctrl.clear,
+                    icon: const Icon(Icons.cancel_outlined, size: 15),
+                    visualDensity: VisualDensity.compact,
+                  ),
+              ],
             ),
-            IconButton(
-              onPressed: ctrl.canForward ? ctrl.forward : null,
-              icon: const Icon(Icons.arrow_forward, size: 15),
-              tooltip: 'Forward (Alt+→)',
-              visualDensity: VisualDensity.compact,
-            ),
-            IconButton(
-              onPressed: segs.isEmpty ? null : ctrl.up,
-              icon: const Icon(Icons.arrow_upward, size: 15),
-              tooltip: 'Up (Alt+↑)',
-              visualDensity: VisualDensity.compact,
-            ),
-            IconButton(
-              onPressed: state.remote == null ? null : ctrl.refresh,
-              icon: const Icon(Icons.refresh, size: 15),
-              tooltip: 'Refresh',
-              visualDensity: VisualDensity.compact,
-            ),
-            IconButton(
-              onPressed: ctrl.newTab,
-              icon: const Icon(Icons.add, size: 15),
-              tooltip: 'New tab (Ctrl+T)',
-              visualDensity: VisualDensity.compact,
-            ),
-            const SizedBox(width: Space.x1),
-            Expanded(
-              child: PathBar(
-                remote: state.remote,
-                path: state.path,
-                onSegment: ctrl.goToSegment,
-                onNavigate: ctrl.navigateTo,
-              ),
-            ),
-            if (state.remote != null)
-              _FilterBox(
-                index: index,
-                width: chrome.searchAlwaysVisible ? 220 : 150,
-              ),
-            if (state.remote != null)
-              IconButton(
-                tooltip: 'Close pane (deselect remote)',
-                onPressed: ctrl.clear,
-                icon: const Icon(Icons.cancel_outlined, size: 15),
-                visualDensity: VisualDensity.compact,
-              ),
-          ],
-        ),
+          );
+        },
       ),
     );
   }
@@ -966,88 +981,209 @@ class _PaneToolbar extends ConsumerWidget {
 
     return SizedBox(
       height: 38,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: Space.x1),
-        child: Row(
-          children: [
-            Expanded(
-              child: SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: Row(
-                  children: [
-                    if (chrome.newButtonLabel != null)
-                      _cmdLabeled(
-                        c,
-                        Icons.add,
-                        chrome.newButtonLabel!,
-                        enabled: hasRemote,
-                        onTap: () => _newFolder(context, ref),
-                      )
-                    else
-                      _cmd(
-                        c,
-                        Icons.create_new_folder_outlined,
-                        'New folder',
-                        enabled: hasRemote,
-                        onTap: () => _newFolder(context, ref),
-                      ),
-                    _sep(c),
-                    _cmd(
-                      c,
-                      Icons.content_cut,
-                      'Cut',
-                      enabled: hasSel,
-                      onTap: () => _clip(ref, cut: true),
+      child: LayoutBuilder(
+        builder: (context, cons) {
+          // Collapse the file verbs into a ⋯ overflow when the bar is too narrow
+          // to show them inline — otherwise they hide behind a non-obvious
+          // horizontal scroll and read as "missing".
+          if (cons.maxWidth < 600) {
+            return _compactCommandBar(
+              context,
+              ref,
+              c,
+              hasRemote: hasRemote,
+              hasSel: hasSel,
+              oneSel: oneSel,
+              clipFull: clipFull,
+              other: other,
+            );
+          }
+          return Padding(
+            padding: const EdgeInsets.symmetric(horizontal: Space.x1),
+            child: Row(
+              children: [
+                Expanded(
+                  child: SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Row(
+                      children: [
+                        if (chrome.newButtonLabel != null)
+                          _cmdLabeled(
+                            c,
+                            Icons.add,
+                            chrome.newButtonLabel!,
+                            enabled: hasRemote,
+                            onTap: () => _newFolder(context, ref),
+                          )
+                        else
+                          _cmd(
+                            c,
+                            Icons.create_new_folder_outlined,
+                            'New folder',
+                            enabled: hasRemote,
+                            onTap: () => _newFolder(context, ref),
+                          ),
+                        _sep(c),
+                        _cmd(
+                          c,
+                          Icons.content_cut,
+                          'Cut',
+                          enabled: hasSel,
+                          onTap: () => _clip(ref, cut: true),
+                        ),
+                        _cmd(
+                          c,
+                          Icons.copy_outlined,
+                          'Copy',
+                          enabled: hasSel,
+                          onTap: () => _clip(ref, cut: false),
+                        ),
+                        _cmd(
+                          c,
+                          Icons.content_paste,
+                          'Paste',
+                          enabled: clipFull && hasRemote,
+                          onTap: () => _paste(ref),
+                        ),
+                        _sep(c),
+                        _cmd(
+                          c,
+                          Icons.drive_file_rename_outline,
+                          'Rename',
+                          enabled: oneSel,
+                          onTap: () => _rename(context, ref),
+                        ),
+                        _cmd(
+                          c,
+                          Icons.delete_outline,
+                          'Delete',
+                          enabled: hasSel,
+                          danger: true,
+                          onTap: () => _delete(context, ref),
+                        ),
+                        _sep(c),
+                        _sortMenu(context, ref, c),
+                        // OS skins get the segmented List·Icons·Gallery switcher; the
+                        // "View" menu stays alongside for icon-size + Thumbnails.
+                        if (chrome.segmentedViewSwitcher) ...[
+                          _ViewSegmented(
+                            mode: state.viewMode,
+                            onChanged: ctrl.setViewMode,
+                            c: c,
+                          ),
+                          _viewMenu(context, ref, c),
+                        ] else
+                          _viewMenu(context, ref, c),
+                      ],
                     ),
-                    _cmd(
-                      c,
-                      Icons.copy_outlined,
-                      'Copy',
-                      enabled: hasSel,
-                      onTap: () => _clip(ref, cut: false),
-                    ),
-                    _cmd(
-                      c,
-                      Icons.content_paste,
-                      'Paste',
-                      enabled: clipFull && hasRemote,
-                      onTap: () => _paste(ref),
-                    ),
-                    _sep(c),
-                    _cmd(
-                      c,
-                      Icons.drive_file_rename_outline,
-                      'Rename',
-                      enabled: oneSel,
-                      onTap: () => _rename(context, ref),
-                    ),
-                    _cmd(
-                      c,
-                      Icons.delete_outline,
-                      'Delete',
-                      enabled: hasSel,
-                      danger: true,
-                      onTap: () => _delete(context, ref),
-                    ),
-                    _sep(c),
-                    _sortMenu(context, ref, c),
-                    // OS skins get the segmented List·Icons·Gallery switcher; the
-                    // "View" menu stays alongside for icon-size + Thumbnails.
-                    if (chrome.segmentedViewSwitcher) ...[
-                      _ViewSegmented(
-                        mode: state.viewMode,
-                        onChanged: ctrl.setViewMode,
-                        c: c,
-                      ),
-                      _viewMenu(context, ref, c),
-                    ] else
-                      _viewMenu(context, ref, c),
-                  ],
+                  ),
                 ),
-              ),
+                if (hasSel) ...[
+                  Text(
+                    '${state.selected.length} selected',
+                    style: TextStyle(
+                      color: c.primary,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  _cmd(
+                    c,
+                    Icons.copy_all,
+                    'Copy to other pane',
+                    enabled: other.remote != null,
+                    onTap: () => _transferToOther(ref, JobType.copy),
+                  ),
+                  _cmd(
+                    c,
+                    Icons.drive_file_move_outline,
+                    'Move to other pane',
+                    enabled: other.remote != null,
+                    onTap: () => _transferToOther(ref, JobType.move),
+                  ),
+                  _cmd(
+                    c,
+                    Icons.tune,
+                    'Transfer with options… (Copy/Move/Sync · filters · dry-run)',
+                    enabled: hasSel,
+                    onTap: () => _advancedTransfer(context, ref),
+                  ),
+                  _cmd(
+                    c,
+                    Icons.close,
+                    'Clear selection',
+                    enabled: true,
+                    onTap: ctrl.clearSelection,
+                  ),
+                ],
+                // Explorer pins a "Details" pane toggle at the far right.
+                if (chrome.showDetailsToggle)
+                  _cmdLabeled(
+                    c,
+                    Icons.view_sidebar_outlined,
+                    'Details',
+                    enabled: true,
+                    onTap: () => ref
+                        .read(inspectorVisibleProvider.notifier)
+                        .update((v) => !v),
+                  ),
+              ],
             ),
-            if (hasSel) ...[
-              Text(
+          );
+        },
+      ),
+    );
+  }
+
+  /// The narrow-pane command bar: a couple of inline essentials (New + the view
+  /// switcher) plus a ⋯ overflow holding every remaining verb, so nothing is
+  /// hidden behind a side-scroll when the pane is too small.
+  Widget _compactCommandBar(
+    BuildContext context,
+    WidgetRef ref,
+    AircloneColors c, {
+    required bool hasRemote,
+    required bool hasSel,
+    required bool oneSel,
+    required bool clipFull,
+    required BrowserState other,
+  }) {
+    final ctrl = ref.read(paneProvider(index).notifier);
+    final chrome = AircloneTheme.chromeOf(context);
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: Space.x1),
+      child: Row(
+        children: [
+          if (chrome.newButtonLabel != null)
+            _cmdLabeled(
+              c,
+              Icons.add,
+              chrome.newButtonLabel!,
+              enabled: hasRemote,
+              onTap: () => _newFolder(context, ref),
+            )
+          else
+            _cmd(
+              c,
+              Icons.create_new_folder_outlined,
+              'New folder',
+              enabled: hasRemote,
+              onTap: () => _newFolder(context, ref),
+            ),
+          if (chrome.segmentedViewSwitcher) ...[
+            _ViewSegmented(
+              mode: state.viewMode,
+              onChanged: ctrl.setViewMode,
+              c: c,
+            ),
+            _viewMenu(context, ref, c),
+          ] else
+            _viewMenu(context, ref, c),
+          const Spacer(),
+          if (hasSel)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: Space.x1),
+              child: Text(
                 '${state.selected.length} selected',
                 style: TextStyle(
                   color: c.primary,
@@ -1055,48 +1191,27 @@ class _PaneToolbar extends ConsumerWidget {
                   fontWeight: FontWeight.w600,
                 ),
               ),
-              _cmd(
-                c,
-                Icons.copy_all,
-                'Copy to other pane',
-                enabled: other.remote != null,
-                onTap: () => _transferToOther(ref, JobType.copy),
-              ),
-              _cmd(
-                c,
-                Icons.drive_file_move_outline,
-                'Move to other pane',
-                enabled: other.remote != null,
-                onTap: () => _transferToOther(ref, JobType.move),
-              ),
-              _cmd(
-                c,
-                Icons.tune,
-                'Transfer with options… (Copy/Move/Sync · filters · dry-run)',
-                enabled: hasSel,
-                onTap: () => _advancedTransfer(context, ref),
-              ),
-              _cmd(
-                c,
-                Icons.close,
-                'Clear selection',
-                enabled: true,
-                onTap: ctrl.clearSelection,
-              ),
-            ],
-            // Explorer pins a "Details" pane toggle at the far right.
-            if (chrome.showDetailsToggle)
-              _cmdLabeled(
-                c,
-                Icons.view_sidebar_outlined,
-                'Details',
-                enabled: true,
-                onTap: () => ref
-                    .read(inspectorVisibleProvider.notifier)
-                    .update((v) => !v),
-              ),
-          ],
-        ),
+            ),
+          _overflowMenu(
+            context,
+            ref,
+            c,
+            hasRemote: hasRemote,
+            hasSel: hasSel,
+            oneSel: oneSel,
+            clipFull: clipFull,
+            other: other,
+          ),
+          if (chrome.showDetailsToggle)
+            _cmdLabeled(
+              c,
+              Icons.view_sidebar_outlined,
+              'Details',
+              enabled: true,
+              onTap: () =>
+                  ref.read(inspectorVisibleProvider.notifier).update((v) => !v),
+            ),
+        ],
       ),
     );
   }
@@ -1114,52 +1229,61 @@ class _PaneToolbar extends ConsumerWidget {
     final other = ref.watch(paneProvider(index == 0 ? 1 : 0));
     return SizedBox(
       height: 44,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: Space.x2),
-        child: Row(
-          children: [
-            IconButton(
-              onPressed: ctrl.canBack ? ctrl.back : null,
-              icon: const Icon(Icons.arrow_back, size: 15),
-              tooltip: 'Back (Alt+←)',
-              visualDensity: VisualDensity.compact,
+      child: LayoutBuilder(
+        builder: (context, cons) {
+          final searchW = _searchWidth(cons.maxWidth, alwaysVisible: true);
+          return Padding(
+            padding: const EdgeInsets.symmetric(horizontal: Space.x2),
+            child: Row(
+              children: [
+                IconButton(
+                  onPressed: ctrl.canBack ? ctrl.back : null,
+                  icon: const Icon(Icons.arrow_back, size: 15),
+                  tooltip: 'Back (Alt+←)',
+                  visualDensity: VisualDensity.compact,
+                ),
+                IconButton(
+                  onPressed: ctrl.canForward ? ctrl.forward : null,
+                  icon: const Icon(Icons.arrow_forward, size: 15),
+                  tooltip: 'Forward (Alt+→)',
+                  visualDensity: VisualDensity.compact,
+                ),
+                const SizedBox(width: Space.x1),
+                Expanded(
+                  child: PathBar(
+                    remote: state.remote,
+                    path: state.path,
+                    onSegment: ctrl.goToSegment,
+                    onNavigate: ctrl.navigateTo,
+                  ),
+                ),
+                const SizedBox(width: Space.x1),
+                _ViewSegmented(
+                  mode: state.viewMode,
+                  onChanged: ctrl.setViewMode,
+                  c: c,
+                ),
+                _viewMenu(context, ref, c),
+                _sortMenu(context, ref, c),
+                _overflowMenu(
+                  context,
+                  ref,
+                  c,
+                  hasRemote: hasRemote,
+                  hasSel: hasSel,
+                  oneSel: oneSel,
+                  clipFull: clipFull,
+                  other: other,
+                ),
+                if (hasRemote)
+                  SizedBox(
+                    width: searchW,
+                    child: _FilterBox(index: index),
+                  ),
+              ],
             ),
-            IconButton(
-              onPressed: ctrl.canForward ? ctrl.forward : null,
-              icon: const Icon(Icons.arrow_forward, size: 15),
-              tooltip: 'Forward (Alt+→)',
-              visualDensity: VisualDensity.compact,
-            ),
-            const SizedBox(width: Space.x1),
-            Expanded(
-              child: PathBar(
-                remote: state.remote,
-                path: state.path,
-                onSegment: ctrl.goToSegment,
-                onNavigate: ctrl.navigateTo,
-              ),
-            ),
-            const SizedBox(width: Space.x1),
-            _ViewSegmented(
-              mode: state.viewMode,
-              onChanged: ctrl.setViewMode,
-              c: c,
-            ),
-            _viewMenu(context, ref, c),
-            _sortMenu(context, ref, c),
-            _overflowMenu(
-              context,
-              ref,
-              c,
-              hasRemote: hasRemote,
-              hasSel: hasSel,
-              oneSel: oneSel,
-              clipFull: clipFull,
-              other: other,
-            ),
-            if (hasRemote) _FilterBox(index: index, width: 220),
-          ],
-        ),
+          );
+        },
       ),
     );
   }
@@ -1232,6 +1356,34 @@ class _PaneToolbar extends ConsumerWidget {
           Icons.tune,
           'Transfer with options…',
           hasSel ? () => _advancedTransfer(context, ref) : null,
+        ),
+        const Divider(height: 8),
+        // Sort stays reachable here (the inline Sort menu is dropped when the
+        // bar collapses / in the unified Finder row's overflow).
+        SubmenuButton(
+          leadingIcon: Icon(Icons.swap_vert, size: 16, color: c.textMuted),
+          menuChildren: [
+            for (final (key, label) in const [
+              (SortKey.name, 'Name'),
+              (SortKey.size, 'Size'),
+              (SortKey.modified, 'Modified'),
+            ])
+              MenuItemButton(
+                leadingIcon: _check(c, state.sortKey == key),
+                trailingIcon: state.sortKey == key
+                    ? Icon(
+                        state.ascending
+                            ? Icons.arrow_upward
+                            : Icons.arrow_downward,
+                        size: 14,
+                        color: c.textMuted,
+                      )
+                    : null,
+                onPressed: () => ctrl.setSort(key),
+                child: Text(label),
+              ),
+          ],
+          child: const Text('Sort by'),
         ),
         const Divider(height: 8),
         item(Icons.refresh, 'Refresh', hasRemote ? ctrl.refresh : null),
@@ -1677,9 +1829,8 @@ class _FileRowState extends ConsumerState<_FileRow> {
 
 /// Compact client-side filter box (Ctrl+F focuses the active pane's box).
 class _FilterBox extends ConsumerStatefulWidget {
-  const _FilterBox({required this.index, this.width = 150});
+  const _FilterBox({required this.index});
   final int index;
-  final double width;
 
   @override
   ConsumerState<_FilterBox> createState() => _FilterBoxState();
@@ -1706,8 +1857,9 @@ class _FilterBoxState extends ConsumerState<_FilterBox> {
     ref.listen(paneProvider(widget.index).select((s) => s.filter), (_, next) {
       if (next.isEmpty && _controller.text.isNotEmpty) _controller.clear();
     });
+    // Width is set by the caller (fixed for Airclone, responsive for the OS
+    // skins) so the search field shrinks gracefully in a narrow pane.
     return SizedBox(
-      width: widget.width,
       height: 28,
       child: TextField(
         controller: _controller,
