@@ -4,11 +4,18 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'task_schedule.dart';
 import 'transfer_options.dart';
+
+const Object _undef = Object();
 
 /// A saved, re-runnable transfer: a From → To pair plus its [TransferOptions].
 /// [srcFs]/[dstFs] are full `remote:path` strings passed straight to the RC call;
 /// [srcLabel]/[dstLabel] are human-readable for display + job rows.
+///
+/// An optional [schedule] makes the task repeat on a timer (evaluated by the
+/// in-app scheduler while the app is open); [lastRun] is the last time it fired
+/// (persisted so a restart doesn't re-fire a slot that already ran).
 @immutable
 class TransferTask {
   const TransferTask({
@@ -19,6 +26,8 @@ class TransferTask {
     required this.dstFs,
     required this.dstLabel,
     required this.options,
+    this.schedule,
+    this.lastRun,
   });
 
   final String id;
@@ -28,6 +37,28 @@ class TransferTask {
   final String dstFs;
   final String dstLabel;
   final TransferOptions options;
+  final TaskSchedule? schedule;
+  final DateTime? lastRun;
+
+  /// `schedule`/`lastRun` accept an explicit `null` to clear them (via the
+  /// [_undef] sentinel) — `copyWith()` with neither keeps the current value.
+  TransferTask copyWith({
+    String? name,
+    Object? schedule = _undef,
+    Object? lastRun = _undef,
+  }) => TransferTask(
+    id: id,
+    name: name ?? this.name,
+    srcFs: srcFs,
+    srcLabel: srcLabel,
+    dstFs: dstFs,
+    dstLabel: dstLabel,
+    options: options,
+    schedule: identical(schedule, _undef)
+        ? this.schedule
+        : schedule as TaskSchedule?,
+    lastRun: identical(lastRun, _undef) ? this.lastRun : lastRun as DateTime?,
+  );
 
   Map<String, dynamic> toJson() => {
     'id': id,
@@ -37,6 +68,9 @@ class TransferTask {
     'dstFs': dstFs,
     'dstLabel': dstLabel,
     'options': options.toJson(),
+    // Omit when null so old app versions + payloads round-trip untouched.
+    if (schedule != null) 'schedule': schedule!.toJson(),
+    if (lastRun != null) 'lastRun': lastRun!.toIso8601String(),
   };
 
   factory TransferTask.fromJson(Map<String, dynamic> j) => TransferTask(
@@ -49,6 +83,12 @@ class TransferTask {
     options: TransferOptions.fromJson(
       (j['options'] as Map?)?.cast<String, dynamic>() ?? const {},
     ),
+    schedule: j['schedule'] == null
+        ? null
+        : TaskSchedule.fromJson((j['schedule'] as Map).cast<String, dynamic>()),
+    lastRun: j['lastRun'] == null
+        ? null
+        : DateTime.tryParse(j['lastRun'] as String),
   );
 }
 
@@ -90,6 +130,13 @@ class TasksController extends Notifier<List<TransferTask>> {
 
   void add(TransferTask t) {
     state = [...state, t];
+    _persist();
+  }
+
+  /// Replace the task with the same id (used to set a schedule or stamp the
+  /// last-run time). No-op if the id isn't found.
+  void update(TransferTask t) {
+    state = [for (final x in state) x.id == t.id ? t : x];
     _persist();
   }
 

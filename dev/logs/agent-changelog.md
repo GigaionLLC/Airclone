@@ -6,6 +6,38 @@ All changes made by AI agents are tracked chronologically below (most recent fir
 
 <!-- New entries go above this line, most recent first -->
 
+## [2026-06-29] - v0.1.0-alpha.50: scheduled tasks (in-app scheduler)
+
+**Agent:** Airclone Build (Claude Opus 4.8) — branch `explorer-finder-chrome`. Designed via a 6-agent Workflow
+(audit → synthesize → 2 adversarial verifiers). The synthesize step returned a stub, but the audits + verifiers
+read the real code and produced a complete, line-grounded plan; built to that, fixing every flagged lifecycle
+trap up front.
+**Files Added:**
+- `state/task_schedule.dart`: `TaskSchedule` {kind: interval/daily/weekly, intervalMinutes, hour, minute,
+  weekdays} + pure, unit-tested `isDue()` / `nextRun()` / `describe()` + JSON.
+- `state/scheduler_controller.dart`: `SchedulerController` (Notifier) — a single app-lifetime
+  `Timer.periodic(30s)` in `build()`, cancelled in `ref.onDispose` (mirrors `StatsController`). Each tick:
+  skip unless engine-ready, then for every task whose schedule `isDue`, stamp `lastRun` **before** the async
+  kickoff (no double-fire) and run via the existing `transferAdvancedRaw`.
+- `test/schedule_test.dart`: 17 tests (interval/daily/weekly due-logic incl. missed-slot catch-up, nextRun,
+  describe, JSON round-trip, TransferTask back-compat).
+**Files Modified:**
+- `state/tasks_controller.dart`: `TransferTask` gains nullable `schedule` + `lastRun` + `copyWith` (sentinel so
+  schedule can be cleared); `toJson` omits them when null (old `transfer_tasks` JSON still loads); new
+  `TasksController.update()`.
+- `ui/tasks_panel.dart`: per-task schedule control (alarm button → `_ScheduleDialog`: Interval/Daily/Weekly,
+  interval presets, time picker, weekday chips), a status line ("Every 6 hours · next today 18:00" / "due now"),
+  and an honest "runs only while Airclone is open" caveat.
+- `ui/home_screen.dart`: arm `schedulerProvider` in `initState` postFrame (providers are lazy).
+- pubspec → alpha.50.
+
+**Database/API Changes:** None (SharedPreferences `transfer_tasks` extended, back-compatible).
+**Summary:** alpha.50 (branch) — saved tasks can now run on a **schedule** (every N / daily / weekly), driven by
+an in-app scheduler that's honest about only running while the app is open (with missed-slot catch-up on next
+launch). Gated behind advanced mode like Saved tasks. analyze (0) / test (74) green; build in progress. This is
+the first slice of the broader features push (two design/research workflows informed it). **Needs the user's
+eyes** — turn on advanced mode, open Saved tasks, schedule one.
+
 ## [2026-06-29] - v0.1.0-alpha.49: bugfixes — opaque popups over Mica/Acrylic + responsive toolbar
 
 **Agent:** Airclone Build (Claude Opus 4.8) — branch `explorer-finder-chrome`. Fixes two issues the user spotted

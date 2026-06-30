@@ -18,6 +18,7 @@ import '../state/jobs_controller.dart';
 import '../state/local_locations.dart';
 import '../state/remote_about.dart';
 import '../state/remotes_provider.dart';
+import '../state/scheduler_controller.dart';
 import '../state/stats_controller.dart';
 import '../state/transfer_service.dart';
 import 'add_remote_dialog.dart';
@@ -66,6 +67,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(engineControllerProvider.notifier).bootstrap();
+      // Arm the scheduler (Riverpod providers are lazy — force its timer to
+      // start so scheduled tasks fire while the app is open).
+      ref.read(schedulerProvider);
     });
   }
 

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../state/browser_controller.dart';
+import '../state/task_schedule.dart';
 import '../state/tasks_controller.dart';
 import '../state/transfer_service.dart';
 import 'theme/tokens.dart';
@@ -75,6 +76,28 @@ class _TasksDialog extends ConsumerWidget {
                       itemBuilder: (_, i) => _TaskRow(task: tasks[i]),
                     ),
             ),
+            if (tasks.any((t) => t.schedule != null)) ...[
+              Divider(height: 1, color: c.border),
+              Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: Space.x5,
+                  vertical: Space.x2,
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.info_outline, size: 13, color: c.textFaint),
+                    const SizedBox(width: Space.x2),
+                    Expanded(
+                      child: Text(
+                        'Scheduled tasks run only while Airclone is open. A run '
+                        'missed while it was closed starts once on next launch.',
+                        style: TextStyle(color: c.textFaint, fontSize: 11),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ],
         ),
       ),
@@ -228,10 +251,41 @@ class _TaskRow extends ConsumerWidget {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
+                if (task.schedule != null) ...[
+                  const SizedBox(height: 3),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.schedule, size: 12, color: c.primary),
+                      const SizedBox(width: 4),
+                      Flexible(
+                        child: Text(
+                          '${task.schedule!.describe()} · ${_nextLabel(task)}',
+                          style: TextStyle(
+                            color: c.primary,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w500,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
               ],
             ),
           ),
           const SizedBox(width: Space.x3),
+          IconButton(
+            onPressed: () => showScheduleDialog(context, ref, task),
+            icon: Icon(
+              task.schedule == null ? Icons.alarm_add_outlined : Icons.alarm_on,
+              size: 18,
+            ),
+            color: task.schedule == null ? c.textFaint : c.primary,
+            tooltip: task.schedule == null ? 'Schedule…' : 'Edit schedule',
+          ),
           FilledButton.icon(
             onPressed: () {
               ref
@@ -262,6 +316,242 @@ class _TaskRow extends ConsumerWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// "due now" or "next today 18:00" for a scheduled task's status line.
+String _nextLabel(TransferTask task) {
+  final s = task.schedule!;
+  final now = DateTime.now();
+  if (isDue(s, now: now, lastRun: task.lastRun)) return 'due now';
+  return 'next ${_fmtNext(nextRun(s, from: now, lastRun: task.lastRun))}';
+}
+
+String _fmtNext(DateTime dt) {
+  final now = DateTime.now();
+  final today = DateTime(now.year, now.month, now.day);
+  final day = DateTime(dt.year, dt.month, dt.day);
+  final hh = dt.hour.toString().padLeft(2, '0');
+  final mm = dt.minute.toString().padLeft(2, '0');
+  final diff = day.difference(today).inDays;
+  if (diff == 0) return 'today $hh:$mm';
+  if (diff == 1) return 'tomorrow $hh:$mm';
+  const wd = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  return '${wd[(dt.weekday - 1) % 7]} $hh:$mm';
+}
+
+/// Opens the per-task schedule editor.
+Future<void> showScheduleDialog(
+  BuildContext context,
+  WidgetRef ref,
+  TransferTask task,
+) => showDialog(
+  context: context,
+  builder: (_) => _ScheduleDialog(task: task),
+);
+
+const _intervalPresets = <(int, String)>[
+  (15, '15 minutes'),
+  (30, '30 minutes'),
+  (60, 'hour'),
+  (120, '2 hours'),
+  (360, '6 hours'),
+  (720, '12 hours'),
+  (1440, '24 hours'),
+];
+
+class _ScheduleDialog extends ConsumerStatefulWidget {
+  const _ScheduleDialog({required this.task});
+  final TransferTask task;
+
+  @override
+  ConsumerState<_ScheduleDialog> createState() => _ScheduleDialogState();
+}
+
+class _ScheduleDialogState extends ConsumerState<_ScheduleDialog> {
+  late bool _on;
+  late ScheduleKind _kind;
+  late int _interval;
+  late int _hour;
+  late int _minute;
+  late Set<int> _weekdays;
+
+  @override
+  void initState() {
+    super.initState();
+    final s = widget.task.schedule;
+    _on = s != null;
+    _kind = s?.kind ?? ScheduleKind.interval;
+    _interval = s?.intervalMinutes ?? 360;
+    _hour = s?.hour ?? 9;
+    _minute = s?.minute ?? 0;
+    _weekdays = {...?s?.weekdays};
+    if (_weekdays.isEmpty) _weekdays = {DateTime.now().weekday};
+  }
+
+  void _save() {
+    final notifier = ref.read(tasksProvider.notifier);
+    if (!_on) {
+      notifier.update(widget.task.copyWith(schedule: null));
+    } else {
+      notifier.update(
+        widget.task.copyWith(
+          schedule: TaskSchedule(
+            kind: _kind,
+            intervalMinutes: _interval,
+            hour: _hour,
+            minute: _minute,
+            weekdays: _kind == ScheduleKind.weekly
+                ? (_weekdays.toList()..sort())
+                : const [],
+          ),
+          // Reset the clock so a slot already past today doesn't fire instantly.
+          lastRun: DateTime.now(),
+        ),
+      );
+    }
+    Navigator.of(context).pop();
+  }
+
+  Future<void> _pickTime() async {
+    final picked = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay(hour: _hour, minute: _minute),
+    );
+    if (picked != null) {
+      setState(() {
+        _hour = picked.hour;
+        _minute = picked.minute;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final c = AircloneTheme.of(context);
+    final intervals = {
+      for (final (m, _) in _intervalPresets) m,
+      _interval,
+    }.toList()..sort();
+    final time =
+        '${_hour.toString().padLeft(2, '0')}:${_minute.toString().padLeft(2, '0')}';
+    return AlertDialog(
+      backgroundColor: c.surfaceRaised,
+      title: Text('Schedule "${widget.task.name}"'),
+      content: SizedBox(
+        width: 400,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              dense: true,
+              title: const Text('Run automatically on a schedule'),
+              value: _on,
+              onChanged: (v) => setState(() => _on = v),
+            ),
+            if (_on) ...[
+              const SizedBox(height: Space.x2),
+              Wrap(
+                spacing: Space.x2,
+                children: [
+                  for (final k in ScheduleKind.values)
+                    ChoiceChip(
+                      label: Text(switch (k) {
+                        ScheduleKind.interval => 'Interval',
+                        ScheduleKind.daily => 'Daily',
+                        ScheduleKind.weekly => 'Weekly',
+                      }),
+                      selected: _kind == k,
+                      onSelected: (_) => setState(() => _kind = k),
+                    ),
+                ],
+              ),
+              const SizedBox(height: Space.x3),
+              if (_kind == ScheduleKind.interval)
+                Row(
+                  children: [
+                    Text('Every', style: TextStyle(color: c.textMuted)),
+                    const SizedBox(width: Space.x3),
+                    DropdownButton<int>(
+                      value: _interval,
+                      dropdownColor: c.surfaceRaised,
+                      borderRadius: BorderRadius.circular(Radii.md),
+                      items: [
+                        for (final m in intervals)
+                          DropdownMenuItem(
+                            value: m,
+                            child: Text(
+                              _intervalPresets
+                                      .where((p) => p.$1 == m)
+                                      .map((p) => p.$2)
+                                      .firstOrNull ??
+                                  '$m minutes',
+                            ),
+                          ),
+                      ],
+                      onChanged: (v) =>
+                          setState(() => _interval = v ?? _interval),
+                    ),
+                  ],
+                )
+              else ...[
+                if (_kind == ScheduleKind.weekly) ...[
+                  Text('On days', style: TextStyle(color: c.textMuted)),
+                  const SizedBox(height: Space.x2),
+                  Wrap(
+                    spacing: Space.x1,
+                    children: [
+                      for (var d = 1; d <= 7; d++)
+                        FilterChip(
+                          label: Text(
+                            const ['M', 'T', 'W', 'T', 'F', 'S', 'S'][d - 1],
+                          ),
+                          selected: _weekdays.contains(d),
+                          onSelected: (sel) => setState(() {
+                            sel ? _weekdays.add(d) : _weekdays.remove(d);
+                          }),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: Space.x3),
+                ],
+                Row(
+                  children: [
+                    Text('At', style: TextStyle(color: c.textMuted)),
+                    const SizedBox(width: Space.x3),
+                    OutlinedButton.icon(
+                      onPressed: _pickTime,
+                      icon: const Icon(Icons.schedule, size: 16),
+                      label: Text(time),
+                    ),
+                  ],
+                ),
+              ],
+            ],
+            const SizedBox(height: Space.x3),
+            Text(
+              'Runs only while Airclone is open — there is no background '
+              'service. A missed run starts once on next launch.',
+              style: TextStyle(color: c.textFaint, fontSize: 11),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: (_on && _kind == ScheduleKind.weekly && _weekdays.isEmpty)
+              ? null
+              : _save,
+          child: const Text('Save'),
+        ),
+      ],
     );
   }
 }
