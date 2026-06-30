@@ -20,6 +20,7 @@ import 'destination_picker.dart';
 import 'file_grid.dart';
 import 'file_icon.dart';
 import 'file_op_dialogs.dart';
+import 'folder_tools.dart';
 import 'format.dart';
 import 'inspector_panel.dart';
 import 'media_gallery.dart';
@@ -1074,6 +1075,8 @@ class _PaneToolbar extends ConsumerWidget {
                           _viewMenu(context, ref, c),
                         ] else
                           _viewMenu(context, ref, c),
+                        _sep(c),
+                        _toolsMenu(context, ref, c),
                       ],
                     ),
                   ),
@@ -1386,6 +1389,29 @@ class _PaneToolbar extends ConsumerWidget {
           child: const Text('Sort by'),
         ),
         const Divider(height: 8),
+        // RC-powered folder/remote tools (also available via the Tools menu in
+        // the roomy command bar).
+        item(
+          Icons.compare_arrows,
+          'Compare with other pane',
+          () => showCompareDialog(context, ref),
+        ),
+        item(
+          Icons.cloud_download_outlined,
+          'Upload from URL…',
+          hasRemote ? () => showCopyUrlDialog(context, ref, index) : null,
+        ),
+        item(
+          Icons.straighten,
+          'Folder size',
+          hasRemote ? () => showFolderSizeDialog(context, ref, index) : null,
+        ),
+        item(
+          Icons.delete_sweep_outlined,
+          'Empty trash…',
+          hasRemote ? () => confirmEmptyTrash(context, ref, index) : null,
+        ),
+        const Divider(height: 8),
         item(Icons.refresh, 'Refresh', hasRemote ? ctrl.refresh : null),
         item(Icons.add, 'New tab', ctrl.newTab),
         item(
@@ -1472,6 +1498,51 @@ class _PaneToolbar extends ConsumerWidget {
   Widget _check(AircloneColors c, bool on) => on
       ? Icon(Icons.check, size: 16, color: c.primary)
       : const SizedBox(width: 16);
+
+  /// RC-powered folder/remote tools (compare · upload-from-URL · size · trash).
+  Widget _toolsMenu(BuildContext context, WidgetRef ref, AircloneColors c) {
+    final hasRemote = state.remote != null;
+    return MenuAnchor(
+      menuChildren: [
+        MenuItemButton(
+          leadingIcon: Icon(Icons.compare_arrows, size: 16, color: c.textMuted),
+          onPressed: () => showCompareDialog(context, ref),
+          child: const Text('Compare with other pane'),
+        ),
+        MenuItemButton(
+          leadingIcon: Icon(
+            Icons.cloud_download_outlined,
+            size: 16,
+            color: c.textMuted,
+          ),
+          onPressed: hasRemote
+              ? () => showCopyUrlDialog(context, ref, index)
+              : null,
+          child: const Text('Upload from URL…'),
+        ),
+        MenuItemButton(
+          leadingIcon: Icon(Icons.straighten, size: 16, color: c.textMuted),
+          onPressed: hasRemote
+              ? () => showFolderSizeDialog(context, ref, index)
+              : null,
+          child: const Text('Folder size'),
+        ),
+        MenuItemButton(
+          leadingIcon: Icon(
+            Icons.delete_sweep_outlined,
+            size: 16,
+            color: c.textMuted,
+          ),
+          onPressed: hasRemote
+              ? () => confirmEmptyTrash(context, ref, index)
+              : null,
+          child: const Text('Empty trash…'),
+        ),
+      ],
+      builder: (context, controller, _) =>
+          _menuButton(c, 'Tools', Icons.build_outlined, controller),
+    );
+  }
 
   Widget _sortMenu(BuildContext context, WidgetRef ref, AircloneColors c) {
     final ctrl = ref.read(paneProvider(index).notifier);

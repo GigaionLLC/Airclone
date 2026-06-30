@@ -6,6 +6,31 @@ All changes made by AI agents are tracked chronologically below (most recent fir
 
 <!-- New entries go above this line, most recent first -->
 
+## [2026-06-29] - v0.1.0-alpha.53: folder Tools — Compare/Verify · Upload-from-URL · Folder size · Empty trash
+
+**Agent:** Airclone Build (Claude Opus 4.8) — branch `explorer-finder-chrome`. First batch of the quick-wins
+bundle from the RC-grounded build queue (the user picked all four backlog tracks). RC contracts verified against
+rclone source/docs first (operations/check returns `success=false` + populated arrays on differences — never
+500s — so Compare parses results cleanly; no-common-hash returns the reason in `status`).
+**Files Added:**
+- `ui/folder_tools.dart`: four dialogs/handlers — `showCompareDialog` (match/differ/missing buckets + a
+  "Compare by downloading" fallback for hashless backends), `showCopyUrlDialog`, `showFolderSizeDialog`,
+  `confirmEmptyTrash`.
+- `test/compare_result_test.dart`: 3 tests for `CompareResult` parsing.
+**Files Modified:**
+- `state/file_ops.dart`: `CompareResult` + RC ops `compare` (operations/check), `folderSize` (operations/size),
+  `copyUrl` (operations/copyurl, autoFilename), `cleanup` (operations/cleanup).
+- `ui/browser_pane.dart`: a **Tools** menu in the roomy command bar (Compare · Upload from URL · Folder size ·
+  Empty trash); the same four also added to the ⋯ overflow (so unified/compact layouts have them).
+- pubspec → alpha.53.
+
+**Database/API Changes:** None (read/maintenance RC calls).
+**Summary:** alpha.53 (branch) — four RC-powered folder/remote tools: **compare two locations** (verify a sync
+worked, without copying), **upload from a URL** straight into a remote, **folder size**, and **empty trash**
+(reclaim space). analyze (0) / test (82) green; build in progress. Next from the bundle: storage analysis, then
+the big three (bisync, crypt, serve). **Needs the user's eyes** — open the **Tools** menu (or ⋯) in the command
+bar.
+
 ## [2026-06-29] - v0.1.0-alpha.52: recoverable transfers ("Keep replaced files") + RC-grounded backlog
 
 **Agent:** Airclone Build (Claude Opus 4.8) — branch `explorer-finder-chrome`. First build from the
