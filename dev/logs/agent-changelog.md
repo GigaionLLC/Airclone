@@ -6,6 +6,35 @@ All changes made by AI agents are tracked chronologically below (most recent fir
 
 <!-- New entries go above this line, most recent first -->
 
+## [2026-06-30] - v0.1.0-alpha.56: encrypt-a-remote (crypt) wizard
+
+**Agent:** Airclone Build (Claude Opus 4.8) — branch `explorer-finder-chrome`. Designed via a 3-agent Workflow
+(design → correctness + **security** verifiers, both go-with-fixes, RC params confirmed vs rclone docs/source).
+Pick #3 of the user's four feature tracks.
+**Files Added:**
+- `state/encrypt_remote_controller.dart`: `EncryptRemoteController` (Notifier). **Holds no secrets** — the
+  password is a transient arg to `submit()`, used to build the `config/create {type:'crypt', parameters:{remote,
+  filename_encryption, directory_name_encryption, password[, password2]}, opt:{nonInteractive, obscure}}` body
+  and dropped (rclone obscures server-side; no double-obscure). Then a best-effort `core/command cryptcheck`
+  (keyed on the exit/error field, non-fatal) + `ref.invalidate(remotesProvider)`.
+- `ui/encrypt_remote_dialog.dart`: the curated wizard (name · base-remote picker filtered to non-local/non-crypt
+  · subfolder · password+confirm · filename-encryption · encrypt-dir-names · optional salt). Passwords live only
+  in local controllers (disposed on close). Done panel shows the verify result + an **unconditional
+  config-encryption nudge** ("rclone only lightly obscures this — enable config encryption; Airclone never saves
+  it").
+- `test/encrypt_remote_test.dart`: 5 tests (exact config/create params, no core/obscure double-obscure,
+  password2 omitted when blank, create-error stops before cryptcheck, failed-cryptcheck non-fatal, state carries
+  no password).
+**Files Modified:**
+- `ui/home_screen.dart`: the CLOUD section "+" is now a menu — **Add a remote… / Encrypt a remote…**.
+- pubspec → alpha.56.
+
+**Database/API Changes:** None (creates a crypt remote in rclone.conf via config/create).
+**Summary:** alpha.56 (branch) — you can now **wrap any cloud remote with client-side encryption** from the
+CLOUD "+" menu. Security-first: password never persisted/logged by Airclone, obscured server-side over loopback,
+with a clear nudge to enable rclone config encryption. analyze (0) / test (95) green; build in progress.
+**Needs the user's eyes** — CLOUD "+" → "Encrypt a remote…".
+
 ## [2026-06-30] - v0.1.0-alpha.55: two-way sync (bisync) — guarded UI (now usable)
 
 **Agent:** Airclone Build (Claude Opus 4.8) — branch `explorer-finder-chrome`. Completes bisync (a54 was the

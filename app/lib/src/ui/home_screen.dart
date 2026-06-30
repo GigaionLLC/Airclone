@@ -24,6 +24,7 @@ import '../state/transfer_service.dart';
 import 'add_remote_dialog.dart';
 import 'bandwidth_control.dart';
 import 'browser_pane.dart';
+import 'encrypt_remote_dialog.dart';
 import 'file_op_dialogs.dart';
 import 'format.dart';
 import 'native_drag.dart';
@@ -598,15 +599,32 @@ class _Sidebar extends ConsumerWidget {
       _SectionHeader(
         label: 'CLOUD',
         sectionKey: 'cloud',
-        trailing: IconButton(
-          onPressed: engineReady ? () => showAddRemoteDialog(context) : null,
-          icon: const Icon(Icons.add, size: 16),
-          tooltip: engineReady
-              ? 'Add remote'
-              : 'Start the engine to add a remote',
-          color: c.textMuted,
-          visualDensity: VisualDensity.compact,
-        ),
+        trailing: engineReady
+            ? PopupMenuButton<String>(
+                icon: Icon(Icons.add, size: 16, color: c.textMuted),
+                tooltip: 'Add or encrypt a remote',
+                onSelected: (v) {
+                  if (v == 'add') {
+                    showAddRemoteDialog(context);
+                  } else if (v == 'encrypt') {
+                    showEncryptRemoteDialog(context);
+                  }
+                },
+                itemBuilder: (_) => const [
+                  PopupMenuItem(value: 'add', child: Text('Add a remote…')),
+                  PopupMenuItem(
+                    value: 'encrypt',
+                    child: Text('Encrypt a remote…'),
+                  ),
+                ],
+              )
+            : IconButton(
+                onPressed: null,
+                icon: const Icon(Icons.add, size: 16),
+                tooltip: 'Start the engine to add a remote',
+                color: c.textMuted,
+                visualDensity: VisualDensity.compact,
+              ),
       ),
       if (!collapsed.contains('cloud'))
         ...remotes.when(
