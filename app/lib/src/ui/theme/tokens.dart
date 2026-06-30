@@ -432,6 +432,9 @@ class SkinChrome {
     required this.searchAlwaysVisible,
     required this.showDetailsToggle,
     required this.toolbarAboveSidebar,
+    required this.compactBranding,
+    required this.segmentedViewSwitcher,
+    required this.unifiedToolbar,
   });
 
   /// Sidebar row selection treatment.
@@ -468,6 +471,23 @@ class SkinChrome {
   /// toolbar beside the sidebar (each pane owns its own). Single-pane only.
   final bool toolbarAboveSidebar;
 
+  /// Quiet the app top bar for OS skins: drop the cloud glyph + "Airclone"
+  /// wordmark + version label and use the flat base surface, so the window
+  /// reads like a native file manager rather than a branded app. Functional
+  /// controls (sidebar/bandwidth/pane/details/jobs/settings) are unaffected.
+  final bool compactBranding;
+
+  /// Replace the "View ▾" dropdown in the command bar with a Finder/Adwaita
+  /// segmented control (List · Icons · Gallery). The icon-size presets and
+  /// per-remote Thumbnails toggle stay in the still-rendered "View" menu.
+  final bool segmentedViewSwitcher;
+
+  /// Collapse the (hoisted) pane toolbar's two rows — address + command — into
+  /// a single Finder-style row: Back/Forward, the breadcrumb as the title, the
+  /// view switcher, an overflow (⋯) menu of file verbs, and search. Only takes
+  /// effect on the hoisted top band, so dual-pane never builds a unified bar.
+  final bool unifiedToolbar;
+
   static SkinChrome of(Skin skin) => switch (skin) {
     Skin.airclone => airclone,
     Skin.windows => windows,
@@ -490,6 +510,9 @@ class SkinChrome {
     searchAlwaysVisible: false,
     showDetailsToggle: false,
     toolbarAboveSidebar: false,
+    compactBranding: false,
+    segmentedViewSwitcher: false,
+    unifiedToolbar: false,
   );
 
   static const windows = SkinChrome(
@@ -503,6 +526,9 @@ class SkinChrome {
     searchAlwaysVisible: true,
     showDetailsToggle: true,
     toolbarAboveSidebar: true,
+    compactBranding: true,
+    segmentedViewSwitcher: true,
+    unifiedToolbar: false,
   );
 
   static const macos = SkinChrome(
@@ -516,6 +542,9 @@ class SkinChrome {
     searchAlwaysVisible: true,
     showDetailsToggle: false,
     toolbarAboveSidebar: true,
+    compactBranding: true,
+    segmentedViewSwitcher: true,
+    unifiedToolbar: true,
   );
 
   static const gnome = SkinChrome(
@@ -529,6 +558,9 @@ class SkinChrome {
     searchAlwaysVisible: false,
     showDetailsToggle: false,
     toolbarAboveSidebar: true,
+    compactBranding: true,
+    segmentedViewSwitcher: true,
+    unifiedToolbar: false,
   );
 }
 

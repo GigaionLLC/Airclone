@@ -409,7 +409,11 @@ class _TopBar extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final c = AircloneTheme.of(context);
-    final version = ref.watch(appVersionProvider).valueOrNull;
+    final chrome = AircloneTheme.chromeOf(context);
+    // OS skins quiet the branding; skip the version watch entirely when compact.
+    final version = chrome.compactBranding
+        ? null
+        : ref.watch(appVersionProvider).valueOrNull;
     final inspectorOpen = ref.watch(inspectorVisibleProvider);
     final singlePane = ref.watch(singlePaneProvider);
     final sidebarVisible = ref.watch(sidebarVisibleProvider);
@@ -418,7 +422,8 @@ class _TopBar extends ConsumerWidget {
       height: 44,
       padding: const EdgeInsets.only(left: Space.x2, right: Space.x2),
       decoration: BoxDecoration(
-        color: c.surfaceRaised,
+        // Native file managers don't tint their toolbar as a raised band.
+        color: chrome.compactBranding ? c.surface : c.surfaceRaised,
         border: Border(bottom: BorderSide(color: c.border)),
       ),
       child: Row(
@@ -432,21 +437,23 @@ class _TopBar extends ConsumerWidget {
             visualDensity: VisualDensity.compact,
           ),
           const SizedBox(width: Space.x1),
-          Icon(Icons.cloud_sync_outlined, size: 20, color: c.primary),
-          const SizedBox(width: Space.x2),
-          Text(
-            'Airclone',
-            style: TextStyle(
-              color: c.text,
-              fontWeight: FontWeight.w600,
-              fontSize: 15,
+          if (!chrome.compactBranding) ...[
+            Icon(Icons.cloud_sync_outlined, size: 20, color: c.primary),
+            const SizedBox(width: Space.x2),
+            Text(
+              'Airclone',
+              style: TextStyle(
+                color: c.text,
+                fontWeight: FontWeight.w600,
+                fontSize: 15,
+              ),
             ),
-          ),
-          const SizedBox(width: Space.x2),
-          Text(
-            version != null ? 'v$version' : 'alpha',
-            style: TextStyle(color: c.textFaint, fontSize: 11),
-          ),
+            const SizedBox(width: Space.x2),
+            Text(
+              version != null ? 'v$version' : 'alpha',
+              style: TextStyle(color: c.textFaint, fontSize: 11),
+            ),
+          ],
           const Spacer(),
           const BandwidthButton(),
           IconButton(

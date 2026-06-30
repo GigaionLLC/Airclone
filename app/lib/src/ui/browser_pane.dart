@@ -660,6 +660,69 @@ double _nearestPreset(double size) {
   return best;
 }
 
+/// A Finder/Adwaita-style segmented view switcher — three icon cells
+/// (List · Icons · Gallery) with the active one highlighted. Pure presentation:
+/// the caller passes its own pane's [mode] + [onChanged] so it stays
+/// dual-pane-safe (no Riverpod reads inside). Grid icon-size stays in the
+/// "View" menu — tapping Icons just switches mode, preserving the saved size.
+class _ViewSegmented extends StatelessWidget {
+  const _ViewSegmented({
+    required this.mode,
+    required this.onChanged,
+    required this.c,
+  });
+  final ViewMode mode;
+  final ValueChanged<ViewMode> onChanged;
+  final AircloneColors c;
+
+  static const _segments = <(ViewMode, IconData, String)>[
+    (ViewMode.list, Icons.format_list_bulleted, 'List'),
+    (ViewMode.grid, Icons.grid_view_rounded, 'Icons'),
+    (ViewMode.media, Icons.photo_library_outlined, 'Gallery'),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 28,
+      margin: const EdgeInsets.symmetric(horizontal: Space.x1),
+      decoration: BoxDecoration(
+        border: Border.all(color: c.border),
+        borderRadius: BorderRadius.circular(Radii.md),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          for (var i = 0; i < _segments.length; i++) ...[
+            if (i > 0) Container(width: 1, height: 28, color: c.border),
+            Tooltip(
+              message: _segments[i].$3,
+              child: InkWell(
+                onTap: () => onChanged(_segments[i].$1),
+                child: Container(
+                  color: mode == _segments[i].$1
+                      ? c.primary.withValues(alpha: 0.14)
+                      : null,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: Space.x2,
+                    vertical: 4,
+                  ),
+                  child: Icon(
+                    _segments[i].$2,
+                    size: 15,
+                    color: mode == _segments[i].$1 ? c.primary : c.textMuted,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
 /// The per-pane tab strip (shown only when a pane has more than one tab).
 /// Each chip switches tabs; its ✕ closes it; the trailing + opens a new tab.
 class _TabStrip extends ConsumerWidget {
@@ -766,7 +829,7 @@ class PaneToolbar extends ConsumerWidget {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        _PaneToolbar(index: index, active: active, state: state),
+        _PaneToolbar(index: index, active: active, state: state, hoisted: true),
         Divider(height: 1, color: c.border),
       ],
     );
@@ -781,24 +844,35 @@ class _PaneToolbar extends ConsumerWidget {
     required this.index,
     required this.active,
     required this.state,
+    this.hoisted = false,
   });
   final int index;
   final bool active;
   final BrowserState state;
 
+  /// True only for the full-width band hoisted above the sidebar (the public
+  /// [PaneToolbar] wrapper). The Finder single-row layout is gated on this so a
+  /// narrow per-pane toolbar (dual-pane) never collapses to one row.
+  final bool hoisted;
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final c = AircloneTheme.of(context);
+    final chrome = AircloneTheme.chromeOf(context);
+    final unified = chrome.unifiedToolbar && hoisted;
     return Container(
-      color: active ? c.surfaceRaised : c.surface,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          _addressRow(context, ref, c),
-          Divider(height: 1, color: c.border),
-          _commandRow(context, ref, c),
-        ],
-      ),
+      // Finder's unified bar reads as one flat surface, not a raised band.
+      color: unified ? c.surface : (active ? c.surfaceRaised : c.surface),
+      child: unified
+          ? _unifiedRow(context, ref, c)
+          : Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _addressRow(context, ref, c),
+                Divider(height: 1, color: c.border),
+                _commandRow(context, ref, c),
+              ],
+            ),
     );
   }
 
@@ -957,7 +1031,17 @@ class _PaneToolbar extends ConsumerWidget {
                     ),
                     _sep(c),
                     _sortMenu(context, ref, c),
-                    _viewMenu(context, ref, c),
+                    // OS skins get the segmented List·Icons·Gallery switcher; the
+                    // "View" menu stays alongside for icon-size + Thumbnails.
+                    if (chrome.segmentedViewSwitcher) ...[
+                      _ViewSegmented(
+                        mode: state.viewMode,
+                        onChanged: ctrl.setViewMode,
+                        c: c,
+                      ),
+                      _viewMenu(context, ref, c),
+                    ] else
+                      _viewMenu(context, ref, c),
                   ],
                 ),
               ),
@@ -1013,6 +1097,158 @@ class _PaneToolbar extends ConsumerWidget {
               ),
           ],
         ),
+      ),
+    );
+  }
+
+  // ── Finder unified toolbar: a single row (hoisted full-width band only) ──
+  // Back/Fwd · breadcrumb title · view switcher · size/sort menus · ⋯ overflow
+  // (file verbs) · search. Only built when chrome.unifiedToolbar && hoisted, so
+  // a narrow dual-pane never renders it.
+  Widget _unifiedRow(BuildContext context, WidgetRef ref, AircloneColors c) {
+    final ctrl = ref.read(paneProvider(index).notifier);
+    final hasRemote = state.remote != null;
+    final hasSel = state.selected.isNotEmpty;
+    final oneSel = state.selected.length == 1;
+    final clipFull = ref.watch(clipboardControllerProvider).isNotEmpty;
+    final other = ref.watch(paneProvider(index == 0 ? 1 : 0));
+    return SizedBox(
+      height: 44,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: Space.x2),
+        child: Row(
+          children: [
+            IconButton(
+              onPressed: ctrl.canBack ? ctrl.back : null,
+              icon: const Icon(Icons.arrow_back, size: 15),
+              tooltip: 'Back (Alt+←)',
+              visualDensity: VisualDensity.compact,
+            ),
+            IconButton(
+              onPressed: ctrl.canForward ? ctrl.forward : null,
+              icon: const Icon(Icons.arrow_forward, size: 15),
+              tooltip: 'Forward (Alt+→)',
+              visualDensity: VisualDensity.compact,
+            ),
+            const SizedBox(width: Space.x1),
+            Expanded(
+              child: PathBar(
+                remote: state.remote,
+                path: state.path,
+                onSegment: ctrl.goToSegment,
+                onNavigate: ctrl.navigateTo,
+              ),
+            ),
+            const SizedBox(width: Space.x1),
+            _ViewSegmented(
+              mode: state.viewMode,
+              onChanged: ctrl.setViewMode,
+              c: c,
+            ),
+            _viewMenu(context, ref, c),
+            _sortMenu(context, ref, c),
+            _overflowMenu(
+              context,
+              ref,
+              c,
+              hasRemote: hasRemote,
+              hasSel: hasSel,
+              oneSel: oneSel,
+              clipFull: clipFull,
+              other: other,
+            ),
+            if (hasRemote) _FilterBox(index: index, width: 220),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// The unified toolbar's overflow (⋯) menu — relocates every command-bar verb
+  /// here, reusing the same handlers + enable predicates (no logic fork).
+  Widget _overflowMenu(
+    BuildContext context,
+    WidgetRef ref,
+    AircloneColors c, {
+    required bool hasRemote,
+    required bool hasSel,
+    required bool oneSel,
+    required bool clipFull,
+    required BrowserState other,
+  }) {
+    final ctrl = ref.read(paneProvider(index).notifier);
+    MenuItemButton item(IconData icon, String label, VoidCallback? onPressed) =>
+        MenuItemButton(
+          leadingIcon: Icon(icon, size: 16, color: c.textMuted),
+          onPressed: onPressed,
+          child: Text(label),
+        );
+    final toOther = hasSel && other.remote != null;
+    return MenuAnchor(
+      menuChildren: [
+        item(
+          Icons.create_new_folder_outlined,
+          'New folder',
+          hasRemote ? () => _newFolder(context, ref) : null,
+        ),
+        item(
+          Icons.content_cut,
+          'Cut',
+          hasSel ? () => _clip(ref, cut: true) : null,
+        ),
+        item(
+          Icons.copy_outlined,
+          'Copy',
+          hasSel ? () => _clip(ref, cut: false) : null,
+        ),
+        item(
+          Icons.content_paste,
+          'Paste',
+          (clipFull && hasRemote) ? () => _paste(ref) : null,
+        ),
+        const Divider(height: 8),
+        item(
+          Icons.drive_file_rename_outline,
+          'Rename',
+          oneSel ? () => _rename(context, ref) : null,
+        ),
+        item(
+          Icons.delete_outline,
+          'Delete',
+          hasSel ? () => _delete(context, ref) : null,
+        ),
+        const Divider(height: 8),
+        item(
+          Icons.copy_all,
+          'Copy to other pane',
+          toOther ? () => _transferToOther(ref, JobType.copy) : null,
+        ),
+        item(
+          Icons.drive_file_move_outline,
+          'Move to other pane',
+          toOther ? () => _transferToOther(ref, JobType.move) : null,
+        ),
+        item(
+          Icons.tune,
+          'Transfer with options…',
+          hasSel ? () => _advancedTransfer(context, ref) : null,
+        ),
+        const Divider(height: 8),
+        item(Icons.refresh, 'Refresh', hasRemote ? ctrl.refresh : null),
+        item(Icons.add, 'New tab', ctrl.newTab),
+        item(
+          Icons.view_sidebar_outlined,
+          'Details',
+          () => ref.read(inspectorVisibleProvider.notifier).update((v) => !v),
+        ),
+      ],
+      builder: (context, controller, _) => IconButton(
+        onPressed: () =>
+            controller.isOpen ? controller.close() : controller.open(),
+        icon: const Icon(Icons.more_horiz, size: 18),
+        tooltip: 'More actions',
+        color: c.textMuted,
+        visualDensity: VisualDensity.compact,
       ),
     );
   }

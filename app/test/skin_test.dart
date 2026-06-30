@@ -77,6 +77,9 @@ void main() {
     // hoist the toolbar to a top band above the sidebar (Explorer/Finder);
     // Airclone keeps the toolbar beside the sidebar.
     expect(SkinChrome.airclone.toolbarAboveSidebar, isFalse);
+    expect(SkinChrome.airclone.compactBranding, isFalse);
+    expect(SkinChrome.airclone.segmentedViewSwitcher, isFalse);
+    expect(SkinChrome.airclone.unifiedToolbar, isFalse);
     for (final s in [Skin.windows, Skin.macos, Skin.gnome]) {
       expect(SkinChrome.of(s).tileShowsSubtitle, isFalse, reason: '$s');
       expect(
@@ -85,7 +88,14 @@ void main() {
         reason: '$s',
       );
       expect(SkinChrome.of(s).toolbarAboveSidebar, isTrue, reason: '$s');
+      // OS skins all quiet the branding and use the segmented view switcher.
+      expect(SkinChrome.of(s).compactBranding, isTrue, reason: '$s');
+      expect(SkinChrome.of(s).segmentedViewSwitcher, isTrue, reason: '$s');
     }
+    // The single-row unified toolbar is Finder-only (not Explorer/GNOME).
+    expect(SkinChrome.of(Skin.macos).unifiedToolbar, isTrue);
+    expect(SkinChrome.of(Skin.windows).unifiedToolbar, isFalse);
+    expect(SkinChrome.of(Skin.gnome).unifiedToolbar, isFalse);
     // The theme carries the chrome.
     expect(
       AppTheme.build(

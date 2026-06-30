@@ -6,6 +6,32 @@ All changes made by AI agents are tracked chronologically below (most recent fir
 
 <!-- New entries go above this line, most recent first -->
 
+## [2026-06-29] - v0.1.0-alpha.48: per-skin chrome — Finder unified toolbar + OS-skin de-brand (chrome P4)
+
+**Agent:** Airclone Build (Claude Opus 4.8) — branch `explorer-finder-chrome`. Designed via a 6-agent Workflow
+(audit → synthesize → 2 adversarial verifiers); both verifiers returned go-with-fixes and independently caught
+a dual-pane break — folded the fixes in before implementing.
+**Files Modified:**
+- `ui/theme/tokens.dart`: `SkinChrome` gains `compactBranding`, `segmentedViewSwitcher`, `unifiedToolbar`.
+  Airclone all-false (byte-for-byte unchanged); windows/macos/gnome `compactBranding`+`segmentedViewSwitcher`
+  true; `unifiedToolbar` macOS-only.
+- `ui/home_screen.dart`: `_TopBar` reads chrome — for OS skins it drops the cloud glyph + "Airclone" wordmark +
+  version and flattens the bar surface (`compactBranding`); the version watch is skipped when compact.
+- `ui/browser_pane.dart`: new `_ViewSegmented` (List·Icons·Gallery segmented control, pure-presentation,
+  dual-pane-safe). `_commandRow` swaps the "View ▾" dropdown for the segmented control (keeping the View menu
+  for icon-size + Thumbnails) when `segmentedViewSwitcher`. New `_unifiedRow` + `_overflowMenu` render the
+  Finder single-row toolbar (Back/Fwd · breadcrumb · view switcher · size/sort menus · ⋯ overflow of file verbs
+  · search). `_PaneToolbar` gains `hoisted`; the unified row is gated on `unifiedToolbar && hoisted` so a narrow
+  dual-pane never collapses to one row (the verifiers' key fix). Sort kept reachable in the unified bar.
+- pubspec → alpha.48; `skin_test.dart` asserts the three new flags per skin.
+
+**Database/API Changes:** None
+**Summary:** alpha.48 (branch) — **Finder** now gets a single unified toolbar (macOS skin), all OS skins lose
+the "Airclone" branding on the top bar (reads like a native file manager), and Explorer/Finder/GNOME get a
+segmented view switcher. Airclone default + dual-pane untouched. analyze (0) / test (57) / Windows build green.
+**Needs the user's eyes** — switch to the Finder skin to see the one-row toolbar; check the top bar reads
+cleaner on all OS skins.
+
 ## [2026-06-29] - v0.1.0-alpha.47: per-skin chrome — hoist toolbar above the sidebar (chrome P3.5)
 
 **Agent:** Airclone Build (Claude Opus 4.8) — branch `explorer-finder-chrome`.
