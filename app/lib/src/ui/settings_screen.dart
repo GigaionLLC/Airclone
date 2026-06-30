@@ -46,27 +46,34 @@ class SettingsDialog extends ConsumerWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 _Header(),
-                const SizedBox(height: Space.x5),
-                _ThemeSection(),
-                const SizedBox(height: Space.x5),
-                _SkinSection(),
-                const SizedBox(height: Space.x5),
-                _BackdropSection(),
-                const SizedBox(height: Space.x5),
+                const SizedBox(height: Space.x4),
+                // Advanced mode pinned at the top so it's easy to find/toggle.
                 _ModeSection(),
                 const SizedBox(height: Space.x5),
+                const _GroupHeader('Appearance'),
+                _ThemeSection(),
+                const SizedBox(height: Space.x4),
+                _SkinSection(),
+                const SizedBox(height: Space.x4),
+                _BackdropSection(),
+                const SizedBox(height: Space.x5),
+                const _GroupHeader('Transfers'),
+                _DownloadsSection(),
+                if (advanced) ...[
+                  const SizedBox(height: Space.x4),
+                  _ConcurrencySection(),
+                ],
+                const SizedBox(height: Space.x5),
+                const _GroupHeader('Engine'),
                 _RclonePathSection(),
                 if (advanced) ...[
-                  const SizedBox(height: Space.x5),
-                  _ConcurrencySection(),
-                  const SizedBox(height: Space.x5),
+                  const SizedBox(height: Space.x4),
                   _EngineFlagsSection(),
                 ],
                 const SizedBox(height: Space.x5),
-                _DownloadsSection(),
-                const SizedBox(height: Space.x5),
+                const _GroupHeader('Storage & updates'),
                 _CacheSection(),
-                const SizedBox(height: Space.x5),
+                const SizedBox(height: Space.x4),
                 _UpdatesSection(),
               ],
             ),
@@ -77,39 +84,78 @@ class SettingsDialog extends ConsumerWidget {
   }
 }
 
-/// Easy vs advanced mode toggle.
+/// A small all-caps label that groups the settings sections below it.
+class _GroupHeader extends StatelessWidget {
+  const _GroupHeader(this.label);
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = AircloneTheme.of(context);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: Space.x3),
+      child: Text(
+        label.toUpperCase(),
+        style: TextStyle(
+          color: c.textFaint,
+          fontSize: 11,
+          fontWeight: FontWeight.w700,
+          letterSpacing: 0.6,
+        ),
+      ),
+    );
+  }
+}
+
+/// Easy vs advanced mode toggle — pinned at the top of Settings as a prominent
+/// card so power-user features (Sync, filters, dry-run, saved + scheduled
+/// tasks) are easy to discover and switch on.
 class _ModeSection extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final c = AircloneTheme.of(context);
     final advanced = ref.watch(advancedModeProvider);
-    return Row(
-      children: [
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Advanced mode',
-                style: TextStyle(
-                  color: c.text,
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
+    return Container(
+      padding: const EdgeInsets.all(Space.x3),
+      decoration: BoxDecoration(
+        color: advanced ? c.primary.withValues(alpha: 0.08) : c.surfaceSunken,
+        borderRadius: BorderRadius.circular(Radii.md),
+        border: Border.all(
+          color: advanced ? c.primary.withValues(alpha: 0.40) : c.border,
+        ),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.tune, size: 20, color: advanced ? c.primary : c.textMuted),
+          const SizedBox(width: Space.x3),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Advanced mode',
+                  style: TextStyle(
+                    color: c.text,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
-              ),
-              Text(
-                'Show power-user features: Sync, include/exclude/filter, '
-                'dry-run, and saved tasks.',
-                style: TextStyle(color: c.textFaint, fontSize: 11),
-              ),
-            ],
+                const SizedBox(height: 2),
+                Text(
+                  'Power-user features: Sync, include/exclude/filter, dry-run, '
+                  'and saved + scheduled tasks.',
+                  style: TextStyle(color: c.textFaint, fontSize: 11),
+                ),
+              ],
+            ),
           ),
-        ),
-        Switch(
-          value: advanced,
-          onChanged: ref.read(advancedModeProvider.notifier).set,
-        ),
-      ],
+          const SizedBox(width: Space.x2),
+          Switch(
+            value: advanced,
+            onChanged: ref.read(advancedModeProvider.notifier).set,
+          ),
+        ],
+      ),
     );
   }
 }

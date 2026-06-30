@@ -6,6 +6,24 @@ All changes made by AI agents are tracked chronologically below (most recent fir
 
 <!-- New entries go above this line, most recent first -->
 
+## [2026-06-29] - v0.1.0-alpha.51: easier advanced-mode access + grouped settings
+
+**Agent:** Airclone Build (Claude Opus 4.8) — branch `explorer-finder-chrome`.
+**Files Modified:**
+- `ui/settings_screen.dart`: the **Advanced mode** toggle is now a prominent **card pinned at the top** of
+  Settings (tune icon, accent-tinted when on) with copy that mentions saved + **scheduled** tasks — so the gate
+  to power-user features (incl. scheduling) is easy to find/flip. Settings sections are grouped under
+  lightweight headers (**Appearance · Transfers · Engine · Storage & updates**). All controls preserved; the
+  `if (advanced)` gate on Concurrency + Engine-flags is kept (now placed within their groups). Per the design
+  workflow's verifier, the heavier category-rail refactor was deliberately **not** done (cosmetic / regression
+  risk).
+- pubspec → alpha.51.
+
+**Database/API Changes:** None
+**Summary:** alpha.51 (branch) — advanced mode is far more discoverable (top card) and the long settings scroll
+is scannable via group headers, without touching any existing control. analyze (0) / test (74) green.
+**Needs the user's eyes** — open Settings; the advanced toggle should be the first thing, as a card.
+
 ## [2026-06-29] - v0.1.0-alpha.50: scheduled tasks (in-app scheduler)
 
 **Agent:** Airclone Build (Claude Opus 4.8) — branch `explorer-finder-chrome`. Designed via a 6-agent Workflow
