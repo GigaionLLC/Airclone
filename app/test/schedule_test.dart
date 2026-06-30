@@ -185,5 +185,15 @@ void main() {
       expect(renamed.schedule, s);
       expect(renamed.name, 'X');
     });
+
+    test('copyWith(options:) replaces options, keeps it otherwise', () {
+      final t = base();
+      final flipped = t.copyWith(
+        options: t.options.copyWith(baselineEstablished: true),
+      );
+      expect(flipped.options.baselineEstablished, isTrue);
+      // copyWith() with no options keeps the original instance.
+      expect(t.copyWith(name: 'Y').options.baselineEstablished, isFalse);
+    });
   });
 }

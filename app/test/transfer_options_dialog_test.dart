@@ -1,7 +1,9 @@
 import 'package:airclone/src/ui/theme/app_theme.dart';
 import 'package:airclone/src/ui/transfer_options_dialog.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 /// Pumps a host that opens the transfer-options dialog.
 Future<void> _open(WidgetTester tester) async {
@@ -11,18 +13,20 @@ Future<void> _open(WidgetTester tester) async {
   addTearDown(tester.view.resetPhysicalSize);
   addTearDown(tester.view.resetDevicePixelRatio);
   await tester.pumpWidget(
-    MaterialApp(
-      theme: AppTheme.light(),
-      home: Builder(
-        builder: (ctx) => Scaffold(
-          body: Center(
-            child: ElevatedButton(
-              onPressed: () => showTransferOptionsDialog(
-                ctx,
-                fromLabel: 'gdrive:Work',
-                toLabel: 's3:backup',
+    ProviderScope(
+      child: MaterialApp(
+        theme: AppTheme.light(),
+        home: Builder(
+          builder: (ctx) => Scaffold(
+            body: Center(
+              child: ElevatedButton(
+                onPressed: () => showTransferOptionsDialog(
+                  ctx,
+                  fromLabel: 'gdrive:Work',
+                  toLabel: 's3:backup',
+                ),
+                child: const Text('open'),
               ),
-              child: const Text('open'),
             ),
           ),
         ),
@@ -34,6 +38,8 @@ Future<void> _open(WidgetTester tester) async {
 }
 
 void main() {
+  setUp(() => SharedPreferences.setMockInitialValues({}));
+
   testWidgets('Settings tab teaches the rclone flag on each option', (
     tester,
   ) async {

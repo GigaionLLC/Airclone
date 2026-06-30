@@ -44,6 +44,7 @@ class TransferTask {
   /// [_undef] sentinel) — `copyWith()` with neither keeps the current value.
   TransferTask copyWith({
     String? name,
+    TransferOptions? options,
     Object? schedule = _undef,
     Object? lastRun = _undef,
   }) => TransferTask(
@@ -53,7 +54,7 @@ class TransferTask {
     srcLabel: srcLabel,
     dstFs: dstFs,
     dstLabel: dstLabel,
-    options: options,
+    options: options ?? this.options,
     schedule: identical(schedule, _undef)
         ? this.schedule
         : schedule as TaskSchedule?,

@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../rclone/models/job.dart';
 import '../state/browser_controller.dart';
+import '../state/jobs_controller.dart';
 import '../state/task_schedule.dart';
 import '../state/tasks_controller.dart';
+import '../state/transfer_options.dart';
 import '../state/transfer_service.dart';
 import 'theme/tokens.dart';
 import 'transfer_options_dialog.dart';
@@ -251,6 +254,29 @@ class _TaskRow extends ConsumerWidget {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
+                if (task.options.mode == TransferMode.bisync &&
+                    !task.options.baselineEstablished) ...[
+                  const SizedBox(height: 3),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.warning_amber_rounded,
+                        size: 12,
+                        color: c.warning,
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        'Needs first run — baseline not established',
+                        style: TextStyle(
+                          color: c.warning,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
                 if (task.schedule != null) ...[
                   const SizedBox(height: 3),
                   Row(
@@ -287,20 +313,7 @@ class _TaskRow extends ConsumerWidget {
             tooltip: task.schedule == null ? 'Schedule…' : 'Edit schedule',
           ),
           FilledButton.icon(
-            onPressed: () {
-              ref
-                  .read(transferServiceProvider)
-                  .transferAdvancedRaw(
-                    srcFs: task.srcFs,
-                    dstFs: task.dstFs,
-                    srcLabel: task.srcLabel,
-                    dstLabel: task.dstLabel,
-                    options: task.options,
-                  );
-              ScaffoldMessenger.of(
-                context,
-              ).showSnackBar(SnackBar(content: Text('Started "${task.name}"')));
-            },
+            onPressed: () => _run(context, ref),
             icon: const Icon(Icons.play_arrow, size: 16),
             label: const Text('Run'),
             style: FilledButton.styleFrom(
@@ -318,7 +331,192 @@ class _TaskRow extends ConsumerWidget {
       ),
     );
   }
+
+  /// Runs the task. A two-way (bisync) task that hasn't established its baseline
+  /// shows a guarded confirm first, then runs `--resync`; on a successful
+  /// (non-dry-run) baseline run it flips `baselineEstablished` so later runs are
+  /// normal two-way syncs.
+  Future<void> _run(BuildContext context, WidgetRef ref) async {
+    final svc = ref.read(transferServiceProvider);
+    final messenger = ScaffoldMessenger.of(context);
+    final needsBaseline =
+        task.options.mode == TransferMode.bisync &&
+        !task.options.baselineEstablished;
+
+    if (!needsBaseline) {
+      svc.transferAdvancedRaw(
+        srcFs: task.srcFs,
+        dstFs: task.dstFs,
+        srcLabel: task.srcLabel,
+        dstLabel: task.dstLabel,
+        options: task.options,
+      );
+      messenger.showSnackBar(SnackBar(content: Text('Started "${task.name}"')));
+      return;
+    }
+
+    final choice = await showBaselineDialog(context, task);
+    if (choice == null || !context.mounted) return;
+    final jobId = await svc.transferAdvancedRaw(
+      srcFs: task.srcFs,
+      dstFs: task.dstFs,
+      srcLabel: task.srcLabel,
+      dstLabel: task.dstLabel,
+      options: task.options.copyWith(
+        resyncMode: choice.resyncMode,
+        dryRun: choice.dryRun,
+      ),
+      forceResync: true,
+    );
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text(
+          choice.dryRun
+              ? 'Dry-run baseline for "${task.name}" started'
+              : 'Establishing baseline for "${task.name}"…',
+        ),
+      ),
+    );
+    // A dry-run proves nothing on disk, so it must NOT mark the baseline done.
+    if (!choice.dryRun) _flipBaselineOnSuccess(ref, jobId);
+  }
+
+  /// Watches [jobId] to a terminal state; on success, records that this task's
+  /// two-way baseline is now established (so subsequent runs don't re-resync).
+  void _flipBaselineOnSuccess(WidgetRef ref, int jobId) {
+    late final ProviderSubscription<List<Job>> sub;
+    sub = ref.listenManual(jobsControllerProvider, (_, jobs) {
+      Job? job;
+      for (final j in jobs) {
+        if (j.id == jobId) {
+          job = j;
+          break;
+        }
+      }
+      if (job == null) return;
+      if (job.status == JobStatus.success) {
+        ref
+            .read(tasksProvider.notifier)
+            .update(
+              task.copyWith(
+                options: task.options.copyWith(baselineEstablished: true),
+              ),
+            );
+        sub.close();
+      } else if (job.status == JobStatus.failed ||
+          job.status == JobStatus.canceled) {
+        sub.close();
+      }
+    });
+  }
 }
+
+/// The one-time two-way baseline confirm. Shows which concrete location is
+/// Path1 vs Path2 (and that Path1/active wins by default), a resync-mode
+/// choice, and a Dry-run-first option. Returns null on cancel.
+Future<({String resyncMode, bool dryRun})?> showBaselineDialog(
+  BuildContext context,
+  TransferTask task,
+) {
+  var mode = task.options.resyncMode;
+  return showDialog<({String resyncMode, bool dryRun})>(
+    context: context,
+    builder: (dctx) {
+      final c = AircloneTheme.of(dctx);
+      return StatefulBuilder(
+        builder: (dctx, setState) => AlertDialog(
+          backgroundColor: c.surfaceRaised,
+          title: const Text('Establish two-way baseline'),
+          content: SizedBox(
+            width: 440,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'The first two-way sync matches both sides. The winning side '
+                  'overwrites differing files on the other; deletions are not '
+                  'propagated on this run. This cannot be undone.',
+                  style: TextStyle(color: c.textMuted, fontSize: 12),
+                ),
+                const SizedBox(height: Space.x3),
+                _pathRow(c, 'Path1', task.srcLabel),
+                _pathRow(c, 'Path2', task.dstLabel),
+                const SizedBox(height: Space.x3),
+                Text(
+                  'On conflict, this side wins:',
+                  style: TextStyle(color: c.text, fontSize: 12),
+                ),
+                const SizedBox(height: Space.x1),
+                DropdownButton<String>(
+                  value: mode,
+                  isExpanded: true,
+                  dropdownColor: c.surfaceRaised,
+                  items: const [
+                    DropdownMenuItem(
+                      value: 'path1',
+                      child: Text('Path1 wins (the "From" side)'),
+                    ),
+                    DropdownMenuItem(
+                      value: 'path2',
+                      child: Text('Path2 wins (the other side)'),
+                    ),
+                    DropdownMenuItem(value: 'newer', child: Text('Newer wins')),
+                    DropdownMenuItem(value: 'older', child: Text('Older wins')),
+                  ],
+                  onChanged: (v) => setState(() => mode = v ?? mode),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dctx).pop(),
+              child: const Text('Cancel'),
+            ),
+            OutlinedButton(
+              onPressed: () =>
+                  Navigator.of(dctx).pop((resyncMode: mode, dryRun: true)),
+              child: const Text('Dry run first'),
+            ),
+            FilledButton(
+              onPressed: () =>
+                  Navigator.of(dctx).pop((resyncMode: mode, dryRun: false)),
+              child: const Text('Establish baseline'),
+            ),
+          ],
+        ),
+      );
+    },
+  );
+}
+
+Widget _pathRow(AircloneColors c, String label, String value) => Padding(
+  padding: const EdgeInsets.symmetric(vertical: 2),
+  child: Row(
+    children: [
+      SizedBox(
+        width: 48,
+        child: Text(
+          label,
+          style: TextStyle(
+            color: c.textFaint,
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ),
+      Expanded(
+        child: Text(
+          value,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(color: c.textMuted, fontSize: 12),
+        ),
+      ),
+    ],
+  ),
+);
 
 /// "due now" or "next today 18:00" for a scheduled task's status line.
 String _nextLabel(TransferTask task) {

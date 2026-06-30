@@ -6,6 +6,32 @@ All changes made by AI agents are tracked chronologically below (most recent fir
 
 <!-- New entries go above this line, most recent first -->
 
+## [2026-06-30] - v0.1.0-alpha.55: two-way sync (bisync) — guarded UI (now usable)
+
+**Agent:** Airclone Build (Claude Opus 4.8) — branch `explorer-finder-chrome`. Completes bisync (a54 was the
+engine layer); folds in every verifier safety fix.
+**Files Modified:**
+- `ui/transfer_options_dialog.dart`: `_SettingsTab` → `ConsumerWidget`; the **"Two-way sync" mode radio is
+  advanced-gated** (the dialog itself isn't gated, so this is the safety boundary). A bisync **sub-section**
+  replaces the one-way options when selected: conflict-resolution dropdown (default keep-both), first-run
+  baseline-winner, a **Max-delete % slider** (safety), check-access + create-empty-dirs, dry-run — plus a
+  warning banner.
+- `ui/tasks_panel.dart`: bisync task rows show a **"Needs first run — baseline not established"** badge; the
+  **Run** button opens a guarded **baseline confirm** (`showBaselineDialog`: shows Path1=From / Path2=other +
+  which side wins, with a **Dry-run-first** option) when the baseline isn't set, runs `--resync`, then a
+  **job-success completion hook** flips `baselineEstablished` (never on a dry-run). Safe even if the flip is
+  missed: manual runs always re-confirm and the scheduler skips un-baselined pairs (no silent re-resync).
+- `state/tasks_controller.dart`: `TransferTask.copyWith` gains an `options` param (for the baseline flip).
+- `state/transfer_service.dart` (a54): `transferAdvancedRaw` already returns the job id for the hook.
+- pubspec → alpha.55; tests +1 (copyWith options); dialog test wrapped in `ProviderScope`.
+
+**Database/API Changes:** None
+**Summary:** alpha.55 (branch) — **two-way sync is now usable** (advanced mode → Transfer with options →
+Two-way sync, or save it as a task). Destructive-by-nature, so it's advanced-gated, the first run is a guarded
+confirm that names which side wins + offers a dry run, max-delete % guards bulk deletes, and the scheduler
+never auto-runs an unattended first resync. analyze (0) / test (90) green. **Needs the user's eyes** — turn on
+advanced mode and try a Two-way sync between two panes (try Dry-run first).
+
 ## [2026-06-29] - v0.1.0-alpha.54: two-way sync (bisync) — engine layer (not yet exposed)
 
 **Agent:** Airclone Build (Claude Opus 4.8) — branch `explorer-finder-chrome`. Designed via a 3-agent Workflow

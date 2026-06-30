@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../state/advanced_mode.dart';
 import '../state/transfer_options.dart';
 import 'theme/tokens.dart';
 
@@ -208,63 +210,181 @@ class _TransferOptionsDialogState extends State<_TransferOptionsDialog> {
 
 // ── Settings tab ──────────────────────────────────────────────────────────────
 
-class _SettingsTab extends StatelessWidget {
+class _SettingsTab extends ConsumerWidget {
   const _SettingsTab({required this.options, required this.onChanged});
 
   final TransferOptions options;
   final ValueChanged<TransferOptions> onChanged;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final c = AircloneTheme.of(context);
+    // Two-way sync is destructive on its first run, so only expose it in
+    // advanced mode (this dialog is itself reachable without advanced mode).
+    final advanced = ref.watch(advancedModeProvider);
+    final bisync = options.mode == TransferMode.bisync;
     return ListView(
       padding: const EdgeInsets.all(Space.x5),
       children: [
         _label(c, 'Mode'),
         const SizedBox(height: Space.x2),
-        // bisync (two-way) is wired in the engine layer but exposed in a later
-        // increment (it needs the guarded baseline UI), so it's omitted here.
         for (final m in TransferMode.values)
-          if (m != TransferMode.bisync) _modeRadio(c, m),
+          if (m != TransferMode.bisync || advanced) _modeRadio(c, m),
         const SizedBox(height: Space.x4),
-        _label(c, 'Options'),
-        const SizedBox(height: Space.x1),
-        _check(
-          c,
-          'Skip newer files',
-          'Don\'t overwrite files newer on the destination (--update).',
-          options.skipNewer,
-          (v) => onChanged(options.copyWith(skipNewer: v)),
-        ),
-        _check(
-          c,
-          'Skip existing files',
-          'Leave files that already exist untouched (--ignore-existing).',
-          options.skipExisting,
-          (v) => onChanged(options.copyWith(skipExisting: v)),
-        ),
-        _check(
-          c,
-          'Keep replaced files',
-          'Rename overwritten/deleted files (.replaced) instead of losing '
-              'them — makes Move/Sync recoverable (--suffix).',
-          options.keepReplaced,
-          (v) => onChanged(options.copyWith(keepReplaced: v)),
-        ),
-        _check(
-          c,
-          'Dry run',
-          'Report what would happen without changing anything (--dry-run).',
-          options.dryRun,
-          (v) => onChanged(options.copyWith(dryRun: v)),
-        ),
-        const SizedBox(height: Space.x4),
-        _label(c, 'Compare by'),
-        const SizedBox(height: Space.x2),
-        _compareDropdown(c),
+        if (bisync) ..._bisyncSection(c) else ..._oneWaySection(c),
       ],
     );
   }
+
+  List<Widget> _oneWaySection(AircloneColors c) => [
+    _label(c, 'Options'),
+    const SizedBox(height: Space.x1),
+    _check(
+      c,
+      'Skip newer files',
+      'Don\'t overwrite files newer on the destination (--update).',
+      options.skipNewer,
+      (v) => onChanged(options.copyWith(skipNewer: v)),
+    ),
+    _check(
+      c,
+      'Skip existing files',
+      'Leave files that already exist untouched (--ignore-existing).',
+      options.skipExisting,
+      (v) => onChanged(options.copyWith(skipExisting: v)),
+    ),
+    _check(
+      c,
+      'Keep replaced files',
+      'Rename overwritten/deleted files (.replaced) instead of losing '
+          'them — makes Move/Sync recoverable (--suffix).',
+      options.keepReplaced,
+      (v) => onChanged(options.copyWith(keepReplaced: v)),
+    ),
+    _check(
+      c,
+      'Dry run',
+      'Report what would happen without changing anything (--dry-run).',
+      options.dryRun,
+      (v) => onChanged(options.copyWith(dryRun: v)),
+    ),
+    const SizedBox(height: Space.x4),
+    _label(c, 'Compare by'),
+    const SizedBox(height: Space.x2),
+    _compareDropdown(c),
+  ];
+
+  List<Widget> _bisyncSection(AircloneColors c) => [
+    Container(
+      padding: const EdgeInsets.all(Space.x3),
+      decoration: BoxDecoration(
+        color: c.warningBg,
+        borderRadius: BorderRadius.circular(Radii.md),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.swap_vert, size: 16, color: c.warning),
+          const SizedBox(width: Space.x2),
+          Expanded(
+            child: Text(
+              'Two-way: changes flow both ways. The first run establishes a '
+              'baseline (one side wins on conflicts) and overwrites differing '
+              'files — save this as a task to run it with a confirmation.',
+              style: TextStyle(color: c.textMuted, fontSize: 11),
+            ),
+          ),
+        ],
+      ),
+    ),
+    const SizedBox(height: Space.x4),
+    _label(c, 'When both sides changed'),
+    const SizedBox(height: Space.x2),
+    _strDropdown(
+      c,
+      options.conflictResolve,
+      const ['none', 'newer', 'older', 'larger', 'smaller', 'path1', 'path2'],
+      (v) => onChanged(options.copyWith(conflictResolve: v)),
+      labels: const {'none': 'Keep both versions (numbered)'},
+    ),
+    const SizedBox(height: Space.x3),
+    _label(c, 'First-run baseline winner'),
+    const SizedBox(height: Space.x2),
+    _strDropdown(
+      c,
+      options.resyncMode,
+      const ['path1', 'path2', 'newer', 'older', 'larger', 'smaller'],
+      (v) => onChanged(options.copyWith(resyncMode: v)),
+      labels: const {
+        'path1': 'path1 — the "From" / active side',
+        'path2': 'path2 — the other side',
+      },
+    ),
+    const SizedBox(height: Space.x4),
+    _label(c, 'Max delete: ${options.maxDeletePercent}%'),
+    Slider(
+      value: options.maxDeletePercent.toDouble(),
+      max: 100,
+      divisions: 20,
+      label: '${options.maxDeletePercent}%',
+      onChanged: (v) =>
+          onChanged(options.copyWith(maxDeletePercent: v.round())),
+    ),
+    Text(
+      'Abort a run that would delete more than this share of files (safety).',
+      style: TextStyle(color: c.textFaint, fontSize: 11),
+    ),
+    const SizedBox(height: Space.x3),
+    _check(
+      c,
+      'Check access first',
+      'Require RCLONE_TEST files on both sides before running (--check-access).',
+      options.checkAccess,
+      (v) => onChanged(options.copyWith(checkAccess: v)),
+    ),
+    _check(
+      c,
+      'Create empty directories',
+      'Propagate empty folders (--create-empty-src-dirs).',
+      options.createEmptySrcDirs,
+      (v) => onChanged(options.copyWith(createEmptySrcDirs: v)),
+    ),
+    _check(
+      c,
+      'Dry run',
+      'Report what would happen without changing anything (--dry-run).',
+      options.dryRun,
+      (v) => onChanged(options.copyWith(dryRun: v)),
+    ),
+  ];
+
+  Widget _strDropdown(
+    AircloneColors c,
+    String value,
+    List<String> values,
+    ValueChanged<String> onPick, {
+    Map<String, String> labels = const {},
+  }) => DropdownButtonFormField<String>(
+    initialValue: value,
+    isExpanded: true,
+    dropdownColor: c.surfaceRaised,
+    decoration: InputDecoration(
+      isDense: true,
+      border: OutlineInputBorder(borderRadius: BorderRadius.circular(Radii.md)),
+    ),
+    items: [
+      for (final v in values)
+        DropdownMenuItem(
+          value: v,
+          child: Text(
+            labels[v] ?? v,
+            style: TextStyle(color: c.text, fontSize: 13),
+          ),
+        ),
+    ],
+    onChanged: (v) {
+      if (v != null) onPick(v);
+    },
+  );
 
   Widget _label(AircloneColors c, String text) => Text(
     text,
