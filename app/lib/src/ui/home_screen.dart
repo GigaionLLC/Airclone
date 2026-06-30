@@ -258,13 +258,40 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         final abs = basePath.isEmpty ? m.path : '$basePath/${m.path}';
         if (m.isDir) {
           await pane.navigateTo(abs);
-        } else {
-          final slash = abs.lastIndexOf('/');
-          await pane.navigateTo(slash < 0 ? '' : abs.substring(0, slash));
-          pane.selectOnly(m.name);
+          return;
         }
+        final slash = abs.lastIndexOf('/');
+        final parent = slash < 0 ? '' : abs.substring(0, slash);
+        // Skip the reload when the match is already in the displayed folder.
+        if (parent != ref.read(paneProvider(idx)).path) {
+          await pane.navigateTo(parent);
+        }
+        pane.selectOnly(m.name);
+        // Scroll the revealed row into view once the (possibly new) listing
+        // has laid out — mirrors type-to-navigate.
+        WidgetsBinding.instance.addPostFrameCallback(
+          (_) => _scrollSelectedIntoView(idx),
+        );
       },
     );
+  }
+
+  /// Animate the active pane's list to the first selected row (list view only).
+  void _scrollSelectedIntoView(int idx) {
+    final st = ref.read(paneProvider(idx));
+    if (st.viewMode != ViewMode.list) return;
+    final entries = st.visibleEntries;
+    final i = entries.indexWhere((e) => st.selected.contains(e.name));
+    if (i < 0) return;
+    final sc = ref.read(paneScrollProvider(idx));
+    if (sc.hasClients) {
+      final target = (i * 36.0).clamp(0.0, sc.position.maxScrollExtent);
+      sc.animateTo(
+        target,
+        duration: const Duration(milliseconds: 150),
+        curve: Curves.easeOut,
+      );
+    }
   }
 
   /// The Ctrl+K command-palette catalogue: app actions (gated the same way as
@@ -292,7 +319,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           keywords: 'find recursive subfolders',
           run: _openSearch,
         ),
-      if (activeRemote != null)
+      // Only offer to pin a real subfolder (a remote's root is already one tap
+      // away via "Go to <remote>"). Unpin stays available wherever it's pinned.
+      if (activeRemote != null && (active.path.isNotEmpty || pinned))
         PaletteAction(
           label: pinned
               ? 'Remove this folder from Favorites'
@@ -318,7 +347,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         ),
       for (final bm in bookmarks)
         PaletteAction(
-          label: '★ ${bm.label}',
+          label: bm.label,
           icon: Icons.star,
           hint: 'Favorite',
           keywords: 'bookmark favourite pinned ${bm.type}',

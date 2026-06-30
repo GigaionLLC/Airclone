@@ -62,6 +62,7 @@ class _PublicLinkDialogState extends State<_PublicLinkDialog> {
         'remote': widget.remote,
         if (_expire != 'off') 'expire': _expire,
       });
+      if (!mounted) return;
       final url = (res['url'] ?? '').toString();
       setState(() {
         _busy = false;
@@ -72,6 +73,7 @@ class _PublicLinkDialogState extends State<_PublicLinkDialog> {
         }
       });
     } catch (e) {
+      if (!mounted) return;
       setState(() {
         _busy = false;
         _error = e is RcloneException ? e.message : '$e';
@@ -90,12 +92,14 @@ class _PublicLinkDialogState extends State<_PublicLinkDialog> {
         'remote': widget.remote,
         'unlink': true,
       });
+      if (!mounted) return;
       setState(() {
         _busy = false;
         _url = null;
         _status = 'Link revoked.';
       });
     } catch (e) {
+      if (!mounted) return;
       setState(() {
         _busy = false;
         _error = e is RcloneException ? e.message : '$e';
@@ -145,6 +149,13 @@ class _PublicLinkDialogState extends State<_PublicLinkDialog> {
                 ],
                 onChanged: (v) => setState(() => _expire = v ?? 'off'),
               ),
+              if (_expire != 'off') ...[
+                const SizedBox(height: 4),
+                Text(
+                  'Some backends ignore expiry — treat it as best-effort.',
+                  style: TextStyle(color: c.textFaint, fontSize: 11),
+                ),
+              ],
             ] else
               Container(
                 padding: const EdgeInsets.all(Space.x3),
@@ -176,10 +187,22 @@ class _PublicLinkDialogState extends State<_PublicLinkDialog> {
         if (url != null) ...[
           TextButton(
             onPressed: _busy ? null : _revoke,
-            child: Text('Revoke', style: TextStyle(color: c.error)),
+            child: _busy
+                ? SizedBox(
+                    width: 14,
+                    height: 14,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: c.error,
+                    ),
+                  )
+                : Text('Revoke', style: TextStyle(color: c.error)),
           ),
           FilledButton.icon(
-            onPressed: () => Clipboard.setData(ClipboardData(text: url)),
+            onPressed: () {
+              Clipboard.setData(ClipboardData(text: url));
+              setState(() => _status = 'Link copied.');
+            },
             icon: const Icon(Icons.copy, size: 15),
             label: const Text('Copy'),
           ),

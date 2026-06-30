@@ -75,17 +75,26 @@ class _CommandPaletteState extends State<_CommandPalette> {
     if (n == 0) return;
     // Dart's % is non-negative for a positive divisor, so this wraps both ways.
     setState(() => _selected = (_selected + delta) % n);
-    // Keep the highlighted row in view (rows are ~44px tall).
+    // Scroll only when the highlighted row would fall outside the viewport,
+    // aligning to the nearest edge — so single-step nav doesn't jump the list.
     if (_scroll.hasClients) {
-      final target = (_selected * 44.0).clamp(
-        0.0,
-        _scroll.position.maxScrollExtent,
-      );
-      _scroll.animateTo(
-        target,
-        duration: const Duration(milliseconds: 120),
-        curve: Curves.easeOut,
-      );
+      const rowH = 44.0;
+      final pos = _scroll.position;
+      final top = _selected * rowH;
+      final bottom = top + rowH;
+      double? target;
+      if (top < pos.pixels) {
+        target = top;
+      } else if (bottom > pos.pixels + pos.viewportDimension) {
+        target = bottom - pos.viewportDimension;
+      }
+      if (target != null) {
+        _scroll.animateTo(
+          target.clamp(0.0, pos.maxScrollExtent),
+          duration: const Duration(milliseconds: 120),
+          curve: Curves.easeOut,
+        );
+      }
     }
   }
 
@@ -101,9 +110,8 @@ class _CommandPaletteState extends State<_CommandPalette> {
   Widget build(BuildContext context) {
     final c = AircloneTheme.of(context);
     final list = _filtered;
-    if (_selected >= list.length) {
-      _selected = list.isEmpty ? 0 : list.length - 1;
-    }
+    // Clamp for rendering only — never mutate _selected during build.
+    final sel = list.isEmpty ? 0 : _selected.clamp(0, list.length - 1);
 
     return CallbackShortcuts(
       bindings: {
@@ -178,7 +186,7 @@ class _CommandPaletteState extends State<_CommandPalette> {
                           ),
                           shrinkWrap: true,
                           itemCount: list.length,
-                          itemBuilder: (_, i) => _row(c, list[i], i),
+                          itemBuilder: (_, i) => _row(c, list[i], i, sel),
                         ),
                 ),
               ],
@@ -189,8 +197,8 @@ class _CommandPaletteState extends State<_CommandPalette> {
     );
   }
 
-  Widget _row(AircloneColors c, PaletteAction a, int i) {
-    final active = i == _selected;
+  Widget _row(AircloneColors c, PaletteAction a, int i, int selected) {
+    final active = i == selected;
     return InkWell(
       onTap: () {
         setState(() => _selected = i);

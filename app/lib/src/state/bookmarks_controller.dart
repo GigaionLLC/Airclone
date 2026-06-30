@@ -90,8 +90,12 @@ class BookmarksController extends Notifier<List<Bookmark>> {
     }
   }
 
-  bool isPinned(String fs, String path) =>
-      state.any((b) => b.fs == fs && b.path == path);
+  static String _keyFor(String fs, String path) => '$fs|$path';
+
+  bool isPinned(String fs, String path) {
+    final k = _keyFor(fs, path);
+    return state.any((b) => b.key == k);
+  }
 
   /// Pin a folder (no-op if already pinned). Newest first.
   void add(Bookmark b) {
@@ -102,7 +106,8 @@ class BookmarksController extends Notifier<List<Bookmark>> {
 
   /// Unpin whatever folder matches [fs]+[path].
   void remove(String fs, String path) {
-    state = state.where((b) => !(b.fs == fs && b.path == path)).toList();
+    final k = _keyFor(fs, path);
+    state = state.where((b) => b.key != k).toList();
     _persist();
   }
 }

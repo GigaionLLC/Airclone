@@ -114,4 +114,52 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('No matches.'), findsOneWidget);
   });
+
+  testWidgets('Search button is disabled until a non-empty query is typed', (
+    tester,
+  ) async {
+    await _open(tester, _FakeClient(), onOpen: (_) {});
+    FilledButton btn() =>
+        tester.widget<FilledButton>(find.widgetWithText(FilledButton, 'Search'));
+    expect(btn().onPressed, isNull); // empty → disabled
+
+    await tester.enterText(find.byType(TextField), '   '); // whitespace only
+    await tester.pump();
+    expect(btn().onPressed, isNull);
+
+    await tester.enterText(find.byType(TextField), 'report');
+    await tester.pump();
+    expect(btn().onPressed, isNotNull); // now enabled
+  });
+
+  testWidgets('result list is bounded by the display cap', (tester) async {
+    // The dialog must keep at most 500 rows even if far more match.
+    final client = _ManyClient(1200);
+    await _open(tester, client, onOpen: (_) {});
+    await tester.enterText(find.byType(TextField), 'file');
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pumpAndSettle();
+    // The header reports the true total but only 500 are rendered.
+    expect(find.textContaining('first 500 of 1200'), findsOneWidget);
+  });
+}
+
+/// Returns [n] matching files so the 500-row display cap can be exercised.
+class _ManyClient implements RcloneClient {
+  _ManyClient(this.n);
+  final int n;
+
+  @override
+  Future<Map<String, dynamic>> rpc(
+    String method, [
+    Map<String, dynamic>? params,
+  ]) async => {
+    'list': [
+      for (var i = 0; i < n; i++)
+        {'Name': 'file$i.txt', 'Path': 'd/file$i.txt', 'Size': i, 'IsDir': false},
+    ],
+  };
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }

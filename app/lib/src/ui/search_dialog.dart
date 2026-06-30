@@ -78,28 +78,36 @@ class _SearchDialogState extends State<_SearchDialog> {
       final res = await widget.client.rpc('operations/list', {
         'fs': widget.fs,
         'remote': widget.basePath,
-        'opt': {'recurse': true, 'noMimeType': true, 'noModTime': true},
+        // Keep MimeType so result icons classify extensionless files the same
+        // way the browser does; only drop modtimes (not shown in results).
+        'opt': {'recurse': true, 'noModTime': true},
       });
       if (g != _gen || !mounted) return;
-      final tokens = query.split(RegExp(r'\s+')).where((t) => t.isNotEmpty);
-      final all =
-          (res['list'] as List? ?? const [])
-              .cast<Map<String, dynamic>>()
-              .map(RcloneFile.fromJson)
-              .where((f) {
-                final hay = '${f.name} ${f.path}'.toLowerCase();
-                return tokens.every(hay.contains);
-              })
-              .toList()
-            // Folders first, then by path for a stable, scannable order.
-            ..sort((a, b) {
-              if (a.isDir != b.isDir) return a.isDir ? -1 : 1;
-              return a.path.toLowerCase().compareTo(b.path.toLowerCase());
-            });
+      final tokens = query
+          .split(RegExp(r'\s+'))
+          .where((t) => t.isNotEmpty)
+          .toList();
+      // Filter in one pass, holding at most _displayCap matches in memory while
+      // still counting the true total — so a query that hits a huge subtree
+      // can't balloon the kept list (the cap is a real bound, not just display).
+      var total = 0;
+      final kept = <RcloneFile>[];
+      for (final item in (res['list'] as List? ?? const [])) {
+        final f = RcloneFile.fromJson((item as Map).cast<String, dynamic>());
+        final hay = '${f.name} ${f.path}'.toLowerCase();
+        if (!tokens.every(hay.contains)) continue;
+        total++;
+        if (kept.length < _displayCap) kept.add(f);
+      }
+      // Folders first, then by path for a stable, scannable order.
+      kept.sort((a, b) {
+        if (a.isDir != b.isDir) return a.isDir ? -1 : 1;
+        return a.path.toLowerCase().compareTo(b.path.toLowerCase());
+      });
       setState(() {
         _running = false;
-        _total = all.length;
-        _results = all.length > _displayCap ? all.sublist(0, _displayCap) : all;
+        _total = total;
+        _results = kept;
       });
     } catch (e) {
       if (g != _gen || !mounted) return;
@@ -148,6 +156,7 @@ class _SearchDialogState extends State<_SearchDialog> {
                     child: TextField(
                       controller: _controller,
                       autofocus: true,
+                      onChanged: (_) => setState(() {}),
                       onSubmitted: (_) => _search(),
                       decoration: InputDecoration(
                         isDense: true,
@@ -161,7 +170,9 @@ class _SearchDialogState extends State<_SearchDialog> {
                   ),
                   const SizedBox(width: Space.x2),
                   FilledButton(
-                    onPressed: _running ? null : _search,
+                    onPressed: (_running || _controller.text.trim().isEmpty)
+                        ? null
+                        : _search,
                     child: const Text('Search'),
                   ),
                 ],

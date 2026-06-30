@@ -6,6 +6,37 @@ All changes made by AI agents are tracked chronologically below (most recent fir
 
 <!-- New entries go above this line, most recent first -->
 
+## [2026-06-30] - v0.1.0-alpha.70: review fixes for the a65–a69 batch
+
+**Agent:** Airclone Build (Claude Opus 4.8) — branch `backlog-features`. Acts on a 36-agent adversarial review
+(4 dimensions × verify) of a65–a69: **14 findings confirmed (2 high, 12 low); the security dimension came back
+empty** — policy gating matches the toolbar, no secrets persisted/logged. 2 findings were refuted. Both highs +
+all actionable lows fixed.
+**HIGH fixes:**
+- `public_link_dialog.dart`: added `if (!mounted) return;` after every `await client.rpc(...)` in `_create` and
+  `_revoke` (both success + catch). The always-enabled Close button could dispose the State mid-RPC → a
+  `setState() after dispose()` error. Now guarded (matches the search dialog's pattern).
+- `search_dialog.dart`: the 500 cap is now a **real memory bound** — filtering runs in one pass that keeps at
+  most `_displayCap` matches while still counting the true total, instead of building/sorting the entire matched
+  subtree first.
+**LOW fixes:**
+- `command_palette.dart`: stop mutating `_selected` inside `build()` (render off a local clamp); `_move` now
+  scrolls only when the highlighted row is off-screen, aligning to the nearest edge (no more jump-to-top).
+- `public_link_dialog.dart`: Copy shows "Link copied."; Revoke shows an in-flight spinner; a caveat appears under
+  the expiry dropdown ("Some backends ignore expiry").
+- `search_dialog.dart`: kept `MimeType` (icons classify extensionless files like the browser does); the Search
+  button is disabled until a non-empty query is typed.
+- `home_screen.dart`: search reveal scrolls the matched row into view and skips a redundant reload when the match
+  is already in the open folder; favorites dropped the redundant `★ ` label prefix (the row already shows a star)
+  and no longer offers to pin a remote's root (already one tap away via "Go to <remote>").
+- `bookmarks_controller.dart`: `isPinned`/`remove` now route through `Bookmark.key` (single identity source).
+**Refuted (no change):** raw `$base/$path` vs a joinPath helper (equivalent here); "palette traps arrow keys"
+(single-line field — ↑/↓ don't move the caret).
+**Tests:** +5 (150 total) — public-link Copy/revoke/expire + search empty-query gate + 500-row cap bound.
+**Database/API Changes:** None.
+**Summary:** alpha.70 (branch) — hardening pass on the a65–a69 features from an adversarial self-review. analyze
+(0) / test (150) green; build in progress. **Needs the user's eyes.**
+
 ## [2026-06-30] - v0.1.0-alpha.69: favorites (pin folders, reachable from Ctrl+K)
 
 **Agent:** Airclone Build (Claude Opus 4.8) — branch `backlog-features`. Quick re-navigation to deep folders.
