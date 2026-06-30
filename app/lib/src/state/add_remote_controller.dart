@@ -2,8 +2,10 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../rclone/models/provider.dart';
+import '../rclone/models/remote.dart';
 import '../rclone/rclone_client.dart';
 import 'engine_controller.dart';
+import 'providers_provider.dart';
 import 'remotes_provider.dart';
 
 enum AddPhase { pickProvider, form, question, creating, done, error }
@@ -16,6 +18,8 @@ class AddRemoteState {
     this.name = '',
     this.values = const {},
     this.showAdvanced = false,
+    this.isEdit = false,
+    this.editName,
     this.question,
     this.questionState,
     this.error,
@@ -26,6 +30,12 @@ class AddRemoteState {
   final String name;
   final Map<String, String> values; // option name -> raw string value
   final bool showAdvanced;
+
+  /// True when editing an existing remote (config/update) vs. creating one.
+  final bool isEdit;
+
+  /// The remote being edited (its name is immutable in edit mode).
+  final String? editName;
 
   /// The current interactive question (e.g. OAuth / team-drive picker), if any.
   final ProviderOption? question;
@@ -38,6 +48,8 @@ class AddRemoteState {
     String? name,
     Map<String, String>? values,
     bool? showAdvanced,
+    bool? isEdit,
+    String? editName,
     ProviderOption? question,
     String? questionState,
     String? error,
@@ -47,6 +59,8 @@ class AddRemoteState {
     name: name ?? this.name,
     values: values ?? this.values,
     showAdvanced: showAdvanced ?? this.showAdvanced,
+    isEdit: isEdit ?? this.isEdit,
+    editName: editName ?? this.editName,
     question: question,
     questionState: questionState,
     error: error,
@@ -107,17 +121,93 @@ class AddRemoteController extends Notifier<AddRemoteState> {
     );
   }
 
-  /// Answer the current interactive [question] and continue the flow.
+  /// Loads an existing remote into the form for editing. Non-password fields are
+  /// prefilled; password fields are left BLANK ("leave blank to keep current").
+  Future<void> startEdit(Remote remote) async {
+    state = const AddRemoteState(phase: AddPhase.creating);
+    try {
+      final providers = await ref.read(providersProvider.future);
+      RcloneProvider? p;
+      for (final x in providers) {
+        if (x.name == remote.type) {
+          p = x;
+          break;
+        }
+      }
+      if (p == null) {
+        state = AddRemoteState(
+          phase: AddPhase.error,
+          error: "This remote's type (${remote.type}) can't be edited here.",
+        );
+        return;
+      }
+      final client = ref.read(engineControllerProvider).client;
+      if (client == null) {
+        state = const AddRemoteState(
+          phase: AddPhase.error,
+          error: 'Engine not ready',
+        );
+        return;
+      }
+      final cfg = await client.rpc('config/get', {'name': remote.name});
+      final pwKeys = {
+        for (final o in p.options)
+          if (o.isPassword) o.name,
+      };
+      final values = <String, String>{};
+      cfg.forEach((k, v) {
+        if (k == 'type') return;
+        // Never surface an obscured password token; blank => keep current.
+        values[k] = pwKeys.contains(k) ? '' : (v?.toString() ?? '');
+      });
+      state = AddRemoteState(
+        phase: AddPhase.form,
+        provider: p,
+        name: remote.name,
+        isEdit: true,
+        editName: remote.name,
+        values: values,
+      );
+    } on RcloneException catch (e) {
+      state = AddRemoteState(phase: AddPhase.error, error: e.message);
+    } catch (e) {
+      state = AddRemoteState(phase: AddPhase.error, error: '$e');
+    }
+  }
+
+  /// Saves edits via config/update (MERGE: omitted keys keep their value, so a
+  /// blank password is preserved). Only typed (plaintext) passwords are sent,
+  /// with obscure:true — so an existing obscured value is never double-obscured.
+  Future<void> submitEdit() async {
+    final editName = state.editName;
+    if (editName == null) return;
+    state = state.copyWith(phase: AddPhase.creating, error: null);
+    final params = <String, dynamic>{
+      for (final e in state.values.entries)
+        if (e.value.isNotEmpty) e.key: e.value,
+    };
+    await _call(
+      method: 'config/update',
+      body: {
+        'name': editName,
+        'parameters': params,
+        'opt': {'nonInteractive': true, 'all': true, 'obscure': true},
+      },
+    );
+  }
+
+  /// Answer the current interactive [question] and continue the flow. Routes to
+  /// config/update during an edit (never config/create, which would recreate).
   Future<void> answer(String result) async {
     final p = state.provider;
     final st = state.questionState;
     if (p == null || st == null) return;
     state = state.copyWith(phase: AddPhase.creating, error: null);
     await _call(
-      method: 'config/create',
+      method: state.isEdit ? 'config/update' : 'config/create',
       body: {
-        'name': state.name.trim(),
-        'type': p.name,
+        'name': state.isEdit ? state.editName! : state.name.trim(),
+        if (!state.isEdit) 'type': p.name,
         'opt': {
           'nonInteractive': true,
           'continue': true,

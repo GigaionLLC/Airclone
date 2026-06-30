@@ -8,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../rclone/models/job.dart';
 import '../rclone/models/remote.dart';
+import '../rclone/rclone_client.dart';
 import '../state/advanced_mode.dart';
 import '../state/app_info.dart';
 import '../state/browser_controller.dart';
@@ -604,6 +605,8 @@ class _Sidebar extends ConsumerWidget {
       Remote r,
       IconData icon, {
       VoidCallback? onDelete,
+      VoidCallback? onEdit,
+      VoidCallback? onDuplicate,
       String deleteLabel = 'Remove',
       Color? iconColor,
     }) => NativePaneDropRegion(
@@ -617,6 +620,8 @@ class _Sidebar extends ConsumerWidget {
         leadingIconColor: iconColor,
         onTap: () => _openOrToggle(ref, active, r),
         onDelete: onDelete,
+        onEdit: onEdit,
+        onDuplicate: onDuplicate,
         deleteLabel: deleteLabel,
       ),
     );
@@ -707,6 +712,8 @@ class _Sidebar extends ConsumerWidget {
                     tile(
                       r,
                       Icons.cloud_outlined,
+                      onEdit: () => showEditRemoteDialog(context, r),
+                      onDuplicate: () => _duplicateRemote(context, ref, r),
                       onDelete: () => _confirmDeleteRemote(context, ref, r),
                       deleteLabel: 'Delete remote',
                     ),
@@ -922,6 +929,8 @@ class _RemoteTile extends StatelessWidget {
     required this.selected,
     required this.onTap,
     this.onDelete,
+    this.onEdit,
+    this.onDuplicate,
     this.leadingIcon,
     this.leadingIconColor,
     this.deleteLabel = 'Delete remote',
@@ -930,6 +939,8 @@ class _RemoteTile extends StatelessWidget {
   final bool selected;
   final VoidCallback onTap;
   final VoidCallback? onDelete;
+  final VoidCallback? onEdit;
+  final VoidCallback? onDuplicate;
 
   /// Overrides the default cloud/computer icon (used for local locations).
   final IconData? leadingIcon;
@@ -1013,15 +1024,31 @@ class _RemoteTile extends StatelessWidget {
                 ],
               ),
             ),
-            if (onDelete != null)
+            if (onDelete != null || onEdit != null || onDuplicate != null)
               PopupMenuButton<String>(
                 icon: Icon(Icons.more_vert, size: 16, color: c.textFaint),
                 tooltip: 'Actions',
                 padding: EdgeInsets.zero,
                 itemBuilder: (_) => [
-                  PopupMenuItem(value: 'delete', child: Text(deleteLabel)),
+                  if (onEdit != null)
+                    const PopupMenuItem(
+                      value: 'edit',
+                      child: Text('Edit remote…'),
+                    ),
+                  if (onDuplicate != null)
+                    const PopupMenuItem(
+                      value: 'duplicate',
+                      child: Text('Duplicate remote…'),
+                    ),
+                  if ((onEdit != null || onDuplicate != null) &&
+                      onDelete != null)
+                    const PopupMenuDivider(),
+                  if (onDelete != null)
+                    PopupMenuItem(value: 'delete', child: Text(deleteLabel)),
                 ],
                 onSelected: (v) {
+                  if (v == 'edit') onEdit?.call();
+                  if (v == 'duplicate') onDuplicate?.call();
                   if (v == 'delete') onDelete?.call();
                 },
               )
@@ -1074,6 +1101,92 @@ Future<void> _confirmDeleteRemote(
     if (ref.read(p).remote == remote) ref.read(p.notifier).clear();
   }
   ref.invalidate(remotesProvider);
+}
+
+/// Copies a remote's stored config under a new name. config/get returns its
+/// passwords ALREADY OBSCURED, so config/create is sent with `noObscure: true` —
+/// re-obscuring them (obscure: true) would double-obscure and corrupt them.
+Future<void> duplicateRemoteRpc(
+  RcloneClient client, {
+  required String source,
+  required String newName,
+}) async {
+  final cfg = await client.rpc('config/get', {'name': source});
+  final type = (cfg['type'] as String?) ?? '';
+  final params = <String, dynamic>{
+    for (final e in cfg.entries)
+      if (e.key != 'type') e.key: e.value,
+  };
+  await client.rpc('config/create', {
+    'name': newName,
+    'type': type,
+    'parameters': params,
+    'opt': {'nonInteractive': true, 'all': true, 'noObscure': true},
+  });
+}
+
+/// Prompts for a new name, then duplicates [source] (cloud config copy).
+Future<void> _duplicateRemote(
+  BuildContext context,
+  WidgetRef ref,
+  Remote source,
+) async {
+  final controller = TextEditingController(text: '${source.name}-copy');
+  final existing =
+      ref.read(remotesProvider).valueOrNull?.map((r) => r.name).toSet() ??
+      const {};
+  final newName = await showDialog<String>(
+    context: context,
+    builder: (dctx) {
+      final c = AircloneTheme.of(dctx);
+      return AlertDialog(
+        backgroundColor: c.surfaceRaised,
+        title: const Text('Duplicate remote'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          decoration: InputDecoration(
+            hintText: 'New remote name',
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(Radii.md),
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dctx),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () {
+              final n = controller.text.trim();
+              if (n.isNotEmpty) Navigator.pop(dctx, n);
+            },
+            child: const Text('Duplicate'),
+          ),
+        ],
+      );
+    },
+  );
+  if (newName == null || !context.mounted) return;
+  final messenger = ScaffoldMessenger.of(context);
+  if (existing.contains(newName)) {
+    messenger.showSnackBar(
+      SnackBar(content: Text('A remote named "$newName" already exists.')),
+    );
+    return;
+  }
+  final client = ref.read(engineControllerProvider).client;
+  if (client == null) return;
+  try {
+    await duplicateRemoteRpc(client, source: source.name, newName: newName);
+    ref.invalidate(remotesProvider);
+    messenger.showSnackBar(
+      SnackBar(content: Text('Duplicated to "$newName".')),
+    );
+  } catch (e) {
+    messenger.showSnackBar(SnackBar(content: Text('Duplicate failed: $e')));
+  }
 }
 
 /// Shown until the engine is ready (locating / not-installed / provisioning / error).

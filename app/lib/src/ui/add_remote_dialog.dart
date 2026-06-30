@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../rclone/models/provider.dart';
+import '../rclone/models/remote.dart';
 import '../state/add_remote_controller.dart';
 import '../state/providers_provider.dart';
 import 'theme/tokens.dart';
@@ -9,8 +10,18 @@ import 'theme/tokens.dart';
 Future<void> showAddRemoteDialog(BuildContext context) =>
     showDialog(context: context, builder: (_) => const AddRemoteDialog());
 
+/// Opens the same dialog pre-filled to EDIT an existing remote (config/update).
+Future<void> showEditRemoteDialog(BuildContext context, Remote remote) =>
+    showDialog(
+      context: context,
+      builder: (_) => AddRemoteDialog(editRemote: remote),
+    );
+
 class AddRemoteDialog extends ConsumerStatefulWidget {
-  const AddRemoteDialog({super.key});
+  const AddRemoteDialog({super.key, this.editRemote});
+
+  /// When set, the dialog edits this remote instead of creating a new one.
+  final Remote? editRemote;
 
   @override
   ConsumerState<AddRemoteDialog> createState() => _AddRemoteDialogState();
@@ -23,7 +34,12 @@ class _AddRemoteDialogState extends ConsumerState<AddRemoteDialog> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      ref.read(addRemoteControllerProvider.notifier).reset();
+      final ctrl = ref.read(addRemoteControllerProvider.notifier);
+      if (widget.editRemote != null) {
+        ctrl.startEdit(widget.editRemote!);
+      } else {
+        ctrl.reset();
+      }
     });
   }
 
@@ -174,16 +190,23 @@ class _AddRemoteDialogState extends ConsumerState<AddRemoteDialog> {
         Row(
           children: [
             IconButton(
-              onPressed: () => ref
-                  .read(addRemoteControllerProvider.notifier)
-                  .backToProviders(),
-              icon: const Icon(Icons.arrow_back, size: 18),
+              onPressed: () => state.isEdit
+                  ? Navigator.of(context).pop()
+                  : ref
+                        .read(addRemoteControllerProvider.notifier)
+                        .backToProviders(),
+              icon: Icon(
+                state.isEdit ? Icons.close : Icons.arrow_back,
+                size: 18,
+              ),
               visualDensity: VisualDensity.compact,
             ),
             const SizedBox(width: Space.x1),
             Expanded(
               child: Text(
-                question != null
+                state.isEdit
+                    ? 'Edit ${p?.name ?? ''}'
+                    : question != null
                     ? 'Configure ${p?.name ?? ''}'
                     : 'Set up ${p?.name ?? ''}',
                 style: TextStyle(
@@ -218,12 +241,26 @@ class _AddRemoteDialogState extends ConsumerState<AddRemoteDialog> {
             children: [
               _LabeledField(
                 label: 'Name',
-                help: 'A short name for this remote (e.g. my-drive).',
-                child: _TextEntry(
-                  initial: state.name,
-                  hint: 'my-remote',
-                  onChanged: ctrl.setName,
-                ),
+                help: state.isEdit
+                    ? 'The remote name (fixed while editing).'
+                    : 'A short name for this remote (e.g. my-drive).',
+                child: state.isEdit
+                    ? Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          state.name,
+                          style: TextStyle(
+                            color: c.textMuted,
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      )
+                    : _TextEntry(
+                        initial: state.name,
+                        hint: 'my-remote',
+                        onChanged: ctrl.setName,
+                      ),
               ),
               for (final o in p.standardOptions)
                 _optionField(c, state, o, ctrl),
@@ -244,8 +281,8 @@ class _AddRemoteDialogState extends ConsumerState<AddRemoteDialog> {
           mainAxisAlignment: MainAxisAlignment.end,
           children: [
             FilledButton(
-              onPressed: ctrl.submit,
-              child: const Text('Create remote'),
+              onPressed: state.isEdit ? ctrl.submitEdit : ctrl.submit,
+              child: Text(state.isEdit ? 'Save changes' : 'Create remote'),
             ),
           ],
         ),
@@ -284,7 +321,11 @@ class _AddRemoteDialogState extends ConsumerState<AddRemoteDialog> {
     }
     return _LabeledField(
       label: o.name + (o.required ? ' *' : ''),
-      help: o.summary,
+      help: (state.isEdit && o.isPassword)
+          ? (o.summary.isEmpty
+                ? 'Leave blank to keep the current password.'
+                : '${o.summary} Leave blank to keep current.')
+          : o.summary,
       child: input,
     );
   }

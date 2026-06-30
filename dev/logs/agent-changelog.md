@@ -6,6 +6,32 @@ All changes made by AI agents are tracked chronologically below (most recent fir
 
 <!-- New entries go above this line, most recent first -->
 
+## [2026-06-30] - v0.1.0-alpha.60: edit + duplicate a remote
+
+**Agent:** Airclone Build (Claude Opus 4.8) — branch `explorer-finder-chrome`. Built from a focused design agent
+(text output, dodging the structured-output cap that tripped the batch run); it confirmed `config/get` /
+`config/update` behavior against rclone master source — notably `config/update` **MERGE** semantics and the
+obscure rules.
+**Files Modified:**
+- `state/add_remote_controller.dart`: `AddRemoteState` gains `isEdit`/`editName`. New `startEdit(remote)`
+  (config/get → prefill non-password fields, **blank** password fields) and `submitEdit()` (config/update,
+  `opt.obscure:true`, omits blank values → MERGE keeps existing). `answer()` now routes to config/update during
+  an interactive edit (never config/create, which would recreate the remote).
+- `ui/add_remote_dialog.dart`: `editRemote` param + `showEditRemoteDialog`; the form shows "Edit", a read-only
+  name, a "Save changes" button, and "leave blank to keep the current password" hints.
+- `ui/home_screen.dart`: the per-remote menu gains **Edit remote… / Duplicate remote…** (cloud only). New
+  `duplicateRemoteRpc` (config/get → config/create with **`noObscure:true`** so already-obscured passwords
+  aren't double-obscured) + a name-prompt wrapper.
+- `test/edit_remote_test.dart`: 5 tests — prefill blanks passwords; edit omits a blank password (no
+  double-obscure) + sends only changed fields; a typed password goes plaintext with obscure once (no
+  core/obscure); duplicate copies obscured values verbatim with noObscure.
+- pubspec → alpha.60.
+
+**Database/API Changes:** None (edits/duplicates entries in rclone.conf).
+**Summary:** alpha.60 (branch) — **edit** any remote's settings (passwords optional — blank keeps the current
+one) and **duplicate** a remote, both obscure-safe (never double-obscured, never leaked). analyze (0) /
+test (119) green; build in progress. **Needs the user's eyes** — a cloud remote's ⋮ menu → Edit / Duplicate.
+
 ## [2026-06-30] - v0.1.0-alpha.59: advanced performance & safety controls
 
 **Agent:** Airclone Build (Claude Opus 4.8) — branch `explorer-finder-chrome`. The batch design agent for this
