@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'engine_controller.dart';
 import 'task_schedule.dart';
 import 'tasks_controller.dart';
+import 'transfer_options.dart';
 import 'transfer_service.dart';
 
 /// Drives scheduled saved tasks **while the app is open**. A single app-lifetime
@@ -36,6 +37,12 @@ class SchedulerController extends Notifier<DateTime?> {
     for (final t in tasks) {
       final s = t.schedule;
       if (s == null) continue;
+      // Never auto-run a bisync first --resync unattended (it's destructive) —
+      // the baseline must be established manually once first.
+      if (t.options.mode == TransferMode.bisync &&
+          !t.options.baselineEstablished) {
+        continue;
+      }
       if (!isDue(s, now: now, lastRun: t.lastRun)) continue;
       // Stamp lastRun BEFORE the async kickoff so the next tick can't double-fire.
       ref.read(tasksProvider.notifier).update(t.copyWith(lastRun: now));

@@ -222,7 +222,10 @@ class _SettingsTab extends StatelessWidget {
       children: [
         _label(c, 'Mode'),
         const SizedBox(height: Space.x2),
-        for (final m in TransferMode.values) _modeRadio(c, m),
+        // bisync (two-way) is wired in the engine layer but exposed in a later
+        // increment (it needs the guarded baseline UI), so it's omitted here.
+        for (final m in TransferMode.values)
+          if (m != TransferMode.bisync) _modeRadio(c, m),
         const SizedBox(height: Space.x4),
         _label(c, 'Options'),
         const SizedBox(height: Space.x1),
@@ -275,6 +278,10 @@ class _SettingsTab extends StatelessWidget {
       TransferMode.sync => (
         'Sync',
         'Make destination match source (deletes extras).',
+      ),
+      TransferMode.bisync => (
+        'Two-way sync',
+        'Keep both locations mirrored — changes flow both directions.',
       ),
     };
     return InkWell(

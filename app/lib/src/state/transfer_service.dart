@@ -124,12 +124,16 @@ class TransferService {
 
   /// Advanced transfer from full `fs<path>` strings (used by saved tasks).
   /// [srcLabel]/[dstLabel] are human-readable for the job row.
-  Future<void> transferAdvancedRaw({
+  /// Returns the local job id (so a caller can watch it to terminal state —
+  /// used by the bisync baseline flow). [forceResync] forces a bisync
+  /// `--resync` run regardless of the saved baseline flag.
+  Future<int> transferAdvancedRaw({
     required String srcFs,
     required String dstFs,
     required String srcLabel,
     required String dstLabel,
     required TransferOptions options,
+    bool forceResync = false,
   }) async {
     final client = _ref.read(engineControllerProvider).client;
     final jobs = _ref.read(jobsControllerProvider.notifier);
@@ -137,6 +141,7 @@ class TransferService {
       TransferMode.copy => JobType.copy,
       TransferMode.move => JobType.move,
       TransferMode.sync => JobType.sync,
+      TransferMode.bisync => JobType.sync,
     };
     final job = jobs.add(
       type: jtype,
@@ -146,9 +151,14 @@ class TransferService {
     );
     if (client == null) {
       jobs.markDone(job.id, JobStatus.failed, error: 'Engine not ready');
-      return;
+      return job.id;
     }
-    final call = buildRcCall(options, srcFs, dstFs);
+    // bisync needs the one-time --resync to build its baseline listings, until
+    // a successful baseline run has been recorded for this pair.
+    final resync =
+        forceResync ||
+        (options.mode == TransferMode.bisync && !options.baselineEstablished);
+    final call = buildRcCall(options, srcFs, dstFs, resync: resync);
     final params = <String, dynamic>{
       ...call.params,
       '_group': 'airclone/${job.id}',
@@ -170,6 +180,7 @@ class TransferService {
         jobs.markDone(job.id, JobStatus.failed, error: '$e');
       }
     });
+    return job.id;
   }
 }
 

@@ -1,7 +1,8 @@
 import 'package:flutter/foundation.dart';
 
-/// How a transfer reconciles source and destination.
-enum TransferMode { copy, move, sync }
+/// How a transfer reconciles source and destination. [bisync] is two-way
+/// (keeps both locations mirrored); the rest are one-way.
+enum TransferMode { copy, move, sync, bisync }
 
 /// How rclone decides two files are equal (skip vs. retransfer).
 enum CompareMode { sizeModTime, size, checksum }
@@ -21,6 +22,14 @@ class TransferOptions {
     this.compare,
     this.dryRun = false,
     this.keepReplaced = false,
+    this.resyncMode = 'path1',
+    this.conflictResolve = 'none',
+    this.conflictLoser = 'num',
+    this.conflictSuffix = 'conflict',
+    this.maxDeletePercent = 50,
+    this.checkAccess = false,
+    this.createEmptySrcDirs = false,
+    this.baselineEstablished = false,
     this.includes = const [],
     this.excludes = const [],
     this.filters = const [],
@@ -47,6 +56,40 @@ class TransferOptions {
   /// `--suffix-keep-extension`). Makes a sync/move recoverable.
   final bool keepReplaced;
 
+  // ── Two-way sync (bisync) settings — only used when mode == bisync ─────────
+
+  /// Which side wins during the one-time `--resync` baseline: `path1` (default),
+  /// `path2`, `newer`, `older`, `larger`, `smaller`.
+  final String resyncMode;
+
+  /// How a both-sides-changed conflict is resolved: `none` (keep both, default),
+  /// `newer`, `older`, `larger`, `smaller`, `path1`, `path2`.
+  final String conflictResolve;
+
+  /// What happens to the losing side of a resolved conflict: `num` (auto-number,
+  /// default), `pathname`, `delete`.
+  final String conflictLoser;
+
+  /// Suffix used when both versions are kept (`--conflict-suffix`).
+  final String conflictSuffix;
+
+  /// bisync's own `--max-delete` guard, as a PERCENT 0–100 (default 50). Aborts
+  /// a run that would delete more than this share. Distinct from the global
+  /// `--max-delete` count. (See rclone.org/bisync.)
+  final int maxDeletePercent;
+
+  /// Require `RCLONE_TEST` sentinel files on both sides before running
+  /// (`--check-access`). Opt-in safety; off by default.
+  final bool checkAccess;
+
+  /// Propagate empty directories (`--create-empty-src-dirs`).
+  final bool createEmptySrcDirs;
+
+  /// Whether the one-time `--resync` baseline has been established for this
+  /// (saved) pair. Flips true exactly once, on the first successful non-dry-run
+  /// resync. Until then bisync runs must resync; the scheduler must not fire.
+  final bool baselineEstablished;
+
   /// `--include` patterns.
   final List<String> includes;
 
@@ -66,6 +109,14 @@ class TransferOptions {
     CompareMode? compare,
     bool? dryRun,
     bool? keepReplaced,
+    String? resyncMode,
+    String? conflictResolve,
+    String? conflictLoser,
+    String? conflictSuffix,
+    int? maxDeletePercent,
+    bool? checkAccess,
+    bool? createEmptySrcDirs,
+    bool? baselineEstablished,
     List<String>? includes,
     List<String>? excludes,
     List<String>? filters,
@@ -77,6 +128,14 @@ class TransferOptions {
     compare: compare ?? this.compare,
     dryRun: dryRun ?? this.dryRun,
     keepReplaced: keepReplaced ?? this.keepReplaced,
+    resyncMode: resyncMode ?? this.resyncMode,
+    conflictResolve: conflictResolve ?? this.conflictResolve,
+    conflictLoser: conflictLoser ?? this.conflictLoser,
+    conflictSuffix: conflictSuffix ?? this.conflictSuffix,
+    maxDeletePercent: maxDeletePercent ?? this.maxDeletePercent,
+    checkAccess: checkAccess ?? this.checkAccess,
+    createEmptySrcDirs: createEmptySrcDirs ?? this.createEmptySrcDirs,
+    baselineEstablished: baselineEstablished ?? this.baselineEstablished,
     includes: includes ?? this.includes,
     excludes: excludes ?? this.excludes,
     filters: filters ?? this.filters,
@@ -90,6 +149,16 @@ class TransferOptions {
     'compare': compare?.name,
     'dryRun': dryRun,
     'keepReplaced': keepReplaced,
+    // bisync settings: omit when at their defaults so legacy task JSON (which
+    // never had these keys) round-trips byte-identical.
+    if (resyncMode != 'path1') 'resyncMode': resyncMode,
+    if (conflictResolve != 'none') 'conflictResolve': conflictResolve,
+    if (conflictLoser != 'num') 'conflictLoser': conflictLoser,
+    if (conflictSuffix != 'conflict') 'conflictSuffix': conflictSuffix,
+    if (maxDeletePercent != 50) 'maxDeletePercent': maxDeletePercent,
+    if (checkAccess) 'checkAccess': checkAccess,
+    if (createEmptySrcDirs) 'createEmptySrcDirs': createEmptySrcDirs,
+    if (baselineEstablished) 'baselineEstablished': baselineEstablished,
     'includes': includes,
     'excludes': excludes,
     'filters': filters,
@@ -114,6 +183,14 @@ class TransferOptions {
             ),
       dryRun: j['dryRun'] == true,
       keepReplaced: j['keepReplaced'] == true,
+      resyncMode: (j['resyncMode'] as String?) ?? 'path1',
+      conflictResolve: (j['conflictResolve'] as String?) ?? 'none',
+      conflictLoser: (j['conflictLoser'] as String?) ?? 'num',
+      conflictSuffix: (j['conflictSuffix'] as String?) ?? 'conflict',
+      maxDeletePercent: (j['maxDeletePercent'] as num?)?.toInt() ?? 50,
+      checkAccess: j['checkAccess'] == true,
+      createEmptySrcDirs: j['createEmptySrcDirs'] == true,
+      baselineEstablished: j['baselineEstablished'] == true,
       includes: list(j['includes']),
       excludes: list(j['excludes']),
       filters: list(j['filters']),
@@ -127,12 +204,15 @@ String _modeVerb(TransferMode m) => switch (m) {
   TransferMode.copy => 'copy',
   TransferMode.move => 'move',
   TransferMode.sync => 'sync',
+  TransferMode.bisync => 'bisync',
 };
 
 /// Builds the read-only command shown on the preview tab.
 ///
 /// Mirrors what [buildRcCall] sends, in CLI form — purely for display.
 String rcloneCmdPreview(TransferOptions o, String src, String dst) {
+  if (o.mode == TransferMode.bisync) return _bisyncCmdPreview(o, src, dst);
+
   final parts = <String>['rclone', _modeVerb(o.mode), '"$src"', '"$dst"'];
 
   if (o.skipNewer) parts.add('--update');
@@ -169,6 +249,42 @@ String rcloneCmdPreview(TransferOptions o, String src, String dst) {
   return parts.join(' ');
 }
 
+/// CLI preview for a two-way (bisync) run. Shows `--resync` while the baseline
+/// hasn't been established yet.
+String _bisyncCmdPreview(TransferOptions o, String p1, String p2) {
+  final parts = <String>['rclone', 'bisync', '"$p1"', '"$p2"'];
+  if (!o.baselineEstablished) {
+    parts.add('--resync');
+    if (o.resyncMode != 'path1') parts.add('--resync-mode ${o.resyncMode}');
+  }
+  if (o.conflictResolve != 'none') {
+    parts.add('--conflict-resolve ${o.conflictResolve}');
+  }
+  if (o.conflictLoser != 'num') {
+    parts.add('--conflict-loser ${o.conflictLoser}');
+  }
+  if (o.conflictSuffix != 'conflict') {
+    parts.add('--conflict-suffix ${o.conflictSuffix}');
+  }
+  if (o.maxDeletePercent != 50) parts.add('--max-delete ${o.maxDeletePercent}');
+  if (o.checkAccess) parts.add('--check-access');
+  if (o.createEmptySrcDirs) parts.add('--create-empty-src-dirs');
+  if (o.dryRun) parts.add('--dry-run');
+  for (final p in o.includes) {
+    if (p.trim().isEmpty) continue;
+    parts.add('--include "${p.trim()}"');
+  }
+  for (final p in o.excludes) {
+    if (p.trim().isEmpty) continue;
+    parts.add('--exclude "${p.trim()}"');
+  }
+  for (final p in o.filters) {
+    if (p.trim().isEmpty) continue;
+    parts.add('--filter "${p.trim()}"');
+  }
+  return parts.join(' ');
+}
+
 /// Drops blank lines and trims each entry.
 List<String> _clean(List<String> patterns) => [
   for (final p in patterns)
@@ -183,8 +299,15 @@ List<String> _clean(List<String> patterns) => [
 ({String method, Map<String, dynamic> params}) buildRcCall(
   TransferOptions o,
   String srcFs,
-  String dstFs,
-) {
+  String dstFs, {
+  bool resync = false,
+}) {
+  // Two-way sync takes a different RC method + a top-level param shape (no
+  // _config), so branch out before assembling the one-way call.
+  if (o.mode == TransferMode.bisync) {
+    return _buildBisyncCall(o, srcFs, dstFs, resync: resync);
+  }
+
   final method = 'sync/${_modeVerb(o.mode)}';
 
   final config = <String, dynamic>{};
@@ -206,6 +329,21 @@ List<String> _clean(List<String> patterns) => [
       break;
   }
 
+  final params = <String, dynamic>{
+    'srcFs': srcFs,
+    'dstFs': dstFs,
+    '_async': true,
+  };
+  if (config.isNotEmpty) params['_config'] = config;
+  final filter = _filterBlock(o);
+  if (filter != null) params['_filter'] = filter;
+
+  return (method: method, params: params);
+}
+
+/// The `_filter` block (include/exclude/filter rule lists), or null when empty.
+/// Shared by the one-way and bisync calls (filters apply to both).
+Map<String, dynamic>? _filterBlock(TransferOptions o) {
   final filter = <String, dynamic>{};
   final inc = _clean(o.includes);
   final exc = _clean(o.excludes);
@@ -213,14 +351,42 @@ List<String> _clean(List<String> patterns) => [
   if (inc.isNotEmpty) filter['IncludeRule'] = inc;
   if (exc.isNotEmpty) filter['ExcludeRule'] = exc;
   if (flt.isNotEmpty) filter['FilterRule'] = flt;
+  return filter.isEmpty ? null : filter;
+}
 
+/// Builds the `sync/bisync` call. bisync params are TOP-LEVEL (not `_config`);
+/// only non-default values are sent. [resync] (the one-time baseline run) also
+/// sends [TransferOptions.resyncMode]. Verified against rclone `cmd/bisync/rc.go`.
+({String method, Map<String, dynamic> params}) _buildBisyncCall(
+  TransferOptions o,
+  String path1,
+  String path2, {
+  required bool resync,
+}) {
   final params = <String, dynamic>{
-    'srcFs': srcFs,
-    'dstFs': dstFs,
+    'path1': path1,
+    'path2': path2,
     '_async': true,
   };
-  if (config.isNotEmpty) params['_config'] = config;
-  if (filter.isNotEmpty) params['_filter'] = filter;
+  if (resync) {
+    params['resync'] = true;
+    params['resyncMode'] = o.resyncMode; // only meaningful with resync
+  }
+  if (o.conflictResolve != 'none') {
+    params['conflictResolve'] = o.conflictResolve;
+  }
+  if (o.conflictLoser != 'num') params['conflictLoser'] = o.conflictLoser;
+  if (o.conflictSuffix != 'conflict') {
+    params['conflictSuffix'] = o.conflictSuffix;
+  }
+  // bisync's --max-delete is a PERCENT (default 50); omit at default.
+  if (o.maxDeletePercent != 50) params['maxDelete'] = o.maxDeletePercent;
+  if (o.checkAccess) params['checkAccess'] = true;
+  if (o.createEmptySrcDirs) params['createEmptySrcDirs'] = true;
+  if (o.dryRun) params['dryRun'] = true;
 
-  return (method: method, params: params);
+  final filter = _filterBlock(o);
+  if (filter != null) params['_filter'] = filter;
+
+  return (method: 'sync/bisync', params: params);
 }

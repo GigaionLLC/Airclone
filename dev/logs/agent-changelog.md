@@ -6,6 +6,34 @@ All changes made by AI agents are tracked chronologically below (most recent fir
 
 <!-- New entries go above this line, most recent first -->
 
+## [2026-06-29] - v0.1.0-alpha.54: two-way sync (bisync) — engine layer (not yet exposed)
+
+**Agent:** Airclone Build (Claude Opus 4.8) — branch `explorer-finder-chrome`. Designed via a 3-agent Workflow
+(design → correctness + safety verifiers). Verifiers confirmed every RC param against rclone **source**
+(`cmd/bisync/rc.go`) and flagged the footguns; this increment lands the **deterministic, testable engine layer
+only** — bisync is **not user-reachable yet** (no destructive exposure), so the guarded UI + completion hook
+ship next (a55).
+**Files Modified:**
+- `state/transfer_options.dart`: `TransferMode.bisync`; `TransferOptions` gains the bisync settings (resyncMode,
+  conflictResolve/Loser/Suffix, maxDeletePercent, checkAccess, createEmptySrcDirs, baselineEstablished) with
+  guarded-omit JSON (legacy task JSON byte-identical). `buildRcCall` branches **early** to `sync/bisync` with
+  top-level params (path1/path2, resync+resyncMode only on baseline, conflict/maxDelete only when non-default,
+  `_filter`, `_async`) — **no `_config` leak**. New `rcloneCmdPreview` bisync branch. `_modeVerb` gains a bisync arm.
+- `state/transfer_service.dart`: `transferAdvancedRaw` now returns the local job id + takes `forceResync`;
+  computes resync = forceResync || (bisync && !baselineEstablished); jtype switch handles bisync.
+- `state/scheduler_controller.dart`: **skips** due bisync tasks whose baseline isn't established (never
+  auto-runs a destructive `--resync` unattended).
+- `ui/transfer_options_dialog.dart`: `_modeRadio` switch made exhaustive; the bisync radio is **omitted** from
+  the UI for now (engine-only).
+- `test/bisync_test.dart`: 11 tests (RC params, resync gating, no-_config, defaults omitted, filters, preview,
+  JSON back-compat). pubspec → alpha.54.
+
+**Database/API Changes:** None
+**Summary:** alpha.54 (branch) — the bisync engine plumbing, fully unit-tested and safe (inert until the UI
+lands). analyze (0) / test (89) green. **Next (a55):** the advanced-gated Two-way radio + bisync sub-section,
+the Path1/Path2 baseline-confirm dialog, the job-success hook that flips `baselineEstablished` (never on
+dry-run), and the "Needs first run" badge. No user-facing change to verify yet.
+
 ## [2026-06-29] - v0.1.0-alpha.53: folder Tools — Compare/Verify · Upload-from-URL · Folder size · Empty trash
 
 **Agent:** Airclone Build (Claude Opus 4.8) — branch `explorer-finder-chrome`. First batch of the quick-wins
