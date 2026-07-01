@@ -104,10 +104,11 @@ jobs:
 
   android:
     runs-on: ubuntu-latest
-    # Android is not yet a supported target (mobile is Phase 5). It has failed since
-    # alpha.3 for a not-yet-diagnosed reason; keep it best-effort so a failing APK build
-    # never blocks the desktop release or fires a failure notification. Flip this off
-    # once the android build is fixed.
+    # Android is a Phase-5 target. The APK build was failing because — like the
+    # desktop jobs — super_native_extensions (drag-out) compiles a Rust crate via
+    # cargokit, here for the Android ABIs; the job was the only native one missing
+    # the Rust toolchain. Kept best-effort until a tagged build confirms green, so a
+    # residual mobile issue never blocks the desktop release.
     continue-on-error: true
     steps:
       - uses: actions/checkout@v4
@@ -115,6 +116,9 @@ jobs:
         with: { distribution: temurin, java-version: '17' }
       - uses: subosito/flutter-action@v2
         with: { channel: stable, cache: true }
+      # cargokit cross-compiles the Rust crate to the Android ABIs (rustup adds the
+      # aarch64/armv7/x86_64/i686 -linux-android targets); needs cargo on PATH.
+      - uses: dtolnay/rust-toolchain@stable
       - run: flutter pub get
       - run: flutter build apk --release
       - uses: actions/upload-artifact@v4
