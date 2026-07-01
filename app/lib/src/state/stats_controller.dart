@@ -3,25 +3,10 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../rclone/models/transfer_item.dart';
 import '../state/engine_controller.dart';
 
-/// One in-flight transfer as reported by rclone `core/stats`.
-@immutable
-class TransferItem {
-  const TransferItem({
-    required this.name,
-    this.percentage = 0,
-    this.speed = 0,
-    this.bytes = 0,
-    this.size = 0,
-  });
-
-  final String name;
-  final int percentage;
-  final double speed;
-  final int bytes;
-  final int size;
-}
+export '../rclone/models/transfer_item.dart' show TransferItem;
 
 /// Aggregate engine transfer statistics (a snapshot of `core/stats`).
 @immutable
@@ -77,23 +62,7 @@ class StatsController extends Notifier<CoreStats> {
   }
 
   CoreStats _parse(Map<String, dynamic> m) {
-    final raw = m['transferring'];
-    final transferring = <TransferItem>[];
-    if (raw is List) {
-      for (final e in raw) {
-        if (e is Map) {
-          transferring.add(
-            TransferItem(
-              name: (e['name'] as Object?)?.toString() ?? '',
-              percentage: _int(e['percentage']),
-              speed: _double(e['speed']),
-              bytes: _int(e['bytes']),
-              size: _int(e['size']),
-            ),
-          );
-        }
-      }
-    }
+    final transferring = TransferItem.listFrom(m['transferring']);
     return CoreStats(
       speed: _double(m['speed']),
       bytes: _int(m['bytes']),

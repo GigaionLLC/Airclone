@@ -187,6 +187,44 @@ class _JobRow extends ConsumerWidget {
                     valueColor: AlwaysStoppedAnimation<Color>(barColor),
                   ),
                 ),
+                // Per-file breakdown for a running multi-file job (capped).
+                if (job.isRunning && job.transferring.isNotEmpty) ...[
+                  for (final t in job.transferring.take(3))
+                    Padding(
+                      padding: const EdgeInsets.only(top: 3),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              t.name,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                color: colors.textFaint,
+                                fontSize: 10,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: Space.x2),
+                          Text(
+                            '${t.percentage}%',
+                            style: TextStyle(
+                              color: colors.textFaint,
+                              fontSize: 10,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  if (job.transferring.length > 3)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 3),
+                      child: Text(
+                        '+${job.transferring.length - 3} more',
+                        style: TextStyle(color: colors.textFaint, fontSize: 10),
+                      ),
+                    ),
+                ],
                 if (failed && job.error != null) ...[
                   const SizedBox(height: Space.x1),
                   Text(

@@ -6,6 +6,27 @@ All changes made by AI agents are tracked chronologically below (most recent fir
 
 <!-- New entries go above this line, most recent first -->
 
+## [2026-06-30] - v0.1.0-alpha.82: per-file progress inside a job row
+
+**Agent:** Airclone Build (Claude Opus 4.8) — branch `backlog-features`. Gap-audit pick #4 (completes the batch):
+the jobs poller already fetched `core/stats` scoped to each job's `_group` and read the `transferring` array only
+to sum sizes, then threw it away. Now it surfaces the files.
+**Files Added:**
+- `rclone/models/transfer_item.dart`: `TransferItem` moved out of `stats_controller.dart` into the model layer
+  (so `Job` can hold it without a state→model inversion) + a shared `TransferItem.listFrom(raw)` parser.
+- `test/transfer_item_test.dart`: 4 tests — parse an array, null/non-list → empty, skip non-map entries, missing
+  name → ''.
+**Files Modified:**
+- `state/stats_controller.dart`: re-exports `TransferItem` and uses the shared `listFrom` (dropped its inline
+  parse + copy).
+- `rclone/models/job.dart` + `state/jobs_controller.dart`: `Job` carries a `transferring` list; the poller parses
+  it via `listFrom` (also reused for the total-bytes fallback) and stores it per job.
+- `ui/jobs_panel.dart`: a running multi-file job row now lists up to **3** in-flight files (name + %) with a
+  "+N more", under the aggregate bar.
+**Database/API Changes:** None (reads a field already present in the `core/stats` response it was fetching).
+**Summary:** alpha.82 (branch) — a running sync shows which files are moving right now, per job, instead of a
+single opaque bar. analyze (0) / test (196, +4) green; build in progress. **Needs the user's eyes.**
+
 ## [2026-06-30] - v0.1.0-alpha.81: retry a failed transfer
 
 **Agent:** Airclone Build (Claude Opus 4.8) — branch `backlog-features`. Gap-audit pick #3: a failed/canceled job

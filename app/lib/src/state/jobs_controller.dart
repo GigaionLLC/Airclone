@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../rclone/models/job.dart';
+import '../rclone/models/transfer_item.dart';
 import 'engine_controller.dart';
 
 /// Owns the list of transfer [Job]s and a SINGLE periodic poller that keeps
@@ -93,6 +94,7 @@ class JobsController extends Notifier<List<Job>> {
     int? jobid,
     String? rcMethod,
     Map<String, dynamic>? rcParams,
+    List<TransferItem>? transferring,
   }) {
     state = [
       for (final j in state)
@@ -106,6 +108,7 @@ class JobsController extends Notifier<List<Job>> {
             jobid: jobid,
             rcMethod: rcMethod,
             rcParams: rcParams,
+            transferring: transferring,
           )
         else
           j,
@@ -192,22 +195,18 @@ class JobsController extends Notifier<List<Job>> {
         });
         final bytes = _asInt(stats['bytes']);
         final speed = _asDouble(stats['speed']);
+        final items = TransferItem.listFrom(stats['transferring']);
         var total = _asInt(stats['totalBytes']);
-        if (total <= 0) {
-          final transferring = stats['transferring'];
-          if (transferring is List) {
-            var sum = 0;
-            for (final t in transferring) {
-              if (t is Map) sum += _asInt(t['size']);
-            }
-            if (sum > 0) total = sum;
-          }
+        if (total <= 0 && items.isNotEmpty) {
+          final sum = items.fold<int>(0, (s, t) => s + t.size);
+          if (sum > 0) total = sum;
         }
         update(
           job.id,
           bytes: bytes,
           speedBps: speed,
           total: total > 0 ? total : null,
+          transferring: items,
         );
       } catch (_) {
         // Stats may be unavailable momentarily; skip this field this tick.

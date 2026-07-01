@@ -1,5 +1,7 @@
 import 'package:flutter/foundation.dart';
 
+import 'transfer_item.dart';
+
 /// What kind of transfer a [Job] represents. Drives the row label in the UI.
 enum JobType { copy, move, sync, delete, upload, download }
 
@@ -29,6 +31,7 @@ class Job {
     this.jobid,
     this.rcMethod,
     this.rcParams,
+    this.transferring = const [],
   });
 
   /// Local, app-assigned id (stable for the life of the job).
@@ -64,6 +67,10 @@ class Job {
   /// which also means the job isn't retryable.
   final String? rcMethod;
   final Map<String, dynamic>? rcParams;
+
+  /// Files currently moving within this job (from `core/stats` scoped to the
+  /// job's group). Empty unless it's running with an active per-file breakdown.
+  final List<TransferItem> transferring;
 
   /// Whether this job can be re-run (it reached dispatch, then terminated).
   bool get canRetry =>
@@ -115,6 +122,7 @@ class Job {
     int? jobid,
     String? rcMethod,
     Map<String, dynamic>? rcParams,
+    List<TransferItem>? transferring,
   }) => Job(
     id: id,
     type: type ?? this.type,
@@ -128,5 +136,6 @@ class Job {
     jobid: jobid ?? this.jobid,
     rcMethod: rcMethod ?? this.rcMethod,
     rcParams: rcParams ?? this.rcParams,
+    transferring: transferring ?? this.transferring,
   );
 }
