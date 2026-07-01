@@ -6,6 +6,26 @@ All changes made by AI agents are tracked chronologically below (most recent fir
 
 <!-- New entries go above this line, most recent first -->
 
+## [2026-06-30] - v0.1.0-alpha.80: test a remote's connection
+
+**Agent:** Airclone Build (Claude Opus 4.8) — branch `backlog-features`. Gap-audit pick #2: adding or editing a
+remote gave no feedback until you tried to browse it — `remoteAboutProvider` swallowed every error to null.
+**Files Added:**
+- `ui/connection_test_dialog.dart`: `testRemoteConnection(client, remote)` — tries `operations/about` (reports
+  "Reachable — X free of Y" when the backend supplies usage), falls back to a root `operations/list` for backends
+  without About, and on failure **surfaces the real error string** instead of a silent null. `showConnectionTest`
+  renders it (spinner → check/❌ + message, with a Retry on failure). Read-only.
+- `test/connection_test_test.dart`: 4 tests — about-with-usage, about-without-usage, about-unsupported→list
+  fallback (asserts both calls in order), both-fail→real error surfaced.
+**Files Modified:**
+- `ui/home_screen.dart`: a **Test connection** item on each configured remote's overflow menu (`_RemoteTile`
+  gained an `onTest` callback + menu entry) and a command-palette entry "Test this remote's connection" (active
+  non-local remote).
+**Database/API Changes:** Read-only `operations/about` (+ `operations/list` fallback). No config mutation.
+**Summary:** alpha.80 (branch) — right-click a remote → **Test connection** (or Ctrl+K) to verify it's reachable
+and see free space, or the actual failure reason. analyze (0) / test (190, +4) green; build in progress. **Needs
+the user's eyes.**
+
 ## [2026-06-30] - v0.1.0-alpha.79: collision-aware rename + new folder
 
 **Agent:** Airclone Build (Claude Opus 4.8) — branch `backlog-features`. Found by a 5-agent subsystem gap-audit as

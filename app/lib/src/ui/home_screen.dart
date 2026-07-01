@@ -31,6 +31,7 @@ import 'add_remote_dialog.dart';
 import 'bandwidth_control.dart';
 import 'browser_pane.dart';
 import 'command_palette.dart';
+import 'connection_test_dialog.dart';
 import 'dedupe_dialog.dart';
 import 'encrypt_remote_dialog.dart';
 import 'file_op_dialogs.dart';
@@ -364,6 +365,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           icon: Icons.content_copy_outlined,
           keywords: 'dedupe duplicates redundant copies reclaim space',
           run: _openDedupe,
+        ),
+      if (activeRemote != null && !activeRemote.isLocal)
+        PaletteAction(
+          label: "Test this remote's connection",
+          icon: Icons.wifi_tethering,
+          keywords: 'reachable ping check about connectivity',
+          run: () => _testRemoteConnection(context, ref, activeRemote),
         ),
       // Only offer to pin a real subfolder (a remote's root is already one tap
       // away via "Go to <remote>"). Unpin stays available wherever it's pinned.
@@ -901,6 +909,7 @@ class _Sidebar extends ConsumerWidget {
       VoidCallback? onDelete,
       VoidCallback? onEdit,
       VoidCallback? onDuplicate,
+      VoidCallback? onTest,
       String deleteLabel = 'Remove',
       Color? iconColor,
     }) => NativePaneDropRegion(
@@ -916,6 +925,7 @@ class _Sidebar extends ConsumerWidget {
         onDelete: onDelete,
         onEdit: onEdit,
         onDuplicate: onDuplicate,
+        onTest: onTest,
         deleteLabel: deleteLabel,
       ),
     );
@@ -1006,6 +1016,7 @@ class _Sidebar extends ConsumerWidget {
                     tile(
                       r,
                       Icons.cloud_outlined,
+                      onTest: () => _testRemoteConnection(context, ref, r),
                       onEdit: () => showEditRemoteDialog(context, r),
                       onDuplicate: () => _duplicateRemote(context, ref, r),
                       onDelete: () => _confirmDeleteRemote(context, ref, r),
@@ -1228,6 +1239,7 @@ class _RemoteTile extends StatelessWidget {
     this.onDelete,
     this.onEdit,
     this.onDuplicate,
+    this.onTest,
     this.leadingIcon,
     this.leadingIconColor,
     this.deleteLabel = 'Delete remote',
@@ -1238,6 +1250,7 @@ class _RemoteTile extends StatelessWidget {
   final VoidCallback? onDelete;
   final VoidCallback? onEdit;
   final VoidCallback? onDuplicate;
+  final VoidCallback? onTest;
 
   /// Overrides the default cloud/computer icon (used for local locations).
   final IconData? leadingIcon;
@@ -1321,12 +1334,20 @@ class _RemoteTile extends StatelessWidget {
                 ],
               ),
             ),
-            if (onDelete != null || onEdit != null || onDuplicate != null)
+            if (onDelete != null ||
+                onEdit != null ||
+                onDuplicate != null ||
+                onTest != null)
               PopupMenuButton<String>(
                 icon: Icon(Icons.more_vert, size: 16, color: c.textFaint),
                 tooltip: 'Actions',
                 padding: EdgeInsets.zero,
                 itemBuilder: (_) => [
+                  if (onTest != null)
+                    const PopupMenuItem(
+                      value: 'test',
+                      child: Text('Test connection'),
+                    ),
                   if (onEdit != null)
                     const PopupMenuItem(
                       value: 'edit',
@@ -1337,13 +1358,16 @@ class _RemoteTile extends StatelessWidget {
                       value: 'duplicate',
                       child: Text('Duplicate remote…'),
                     ),
-                  if ((onEdit != null || onDuplicate != null) &&
+                  if ((onEdit != null ||
+                          onDuplicate != null ||
+                          onTest != null) &&
                       onDelete != null)
                     const PopupMenuDivider(),
                   if (onDelete != null)
                     PopupMenuItem(value: 'delete', child: Text(deleteLabel)),
                 ],
                 onSelected: (v) {
+                  if (v == 'test') onTest?.call();
                   if (v == 'edit') onEdit?.call();
                   if (v == 'duplicate') onDuplicate?.call();
                   if (v == 'delete') onDelete?.call();
@@ -1423,6 +1447,13 @@ Future<void> duplicateRemoteRpc(
 }
 
 /// Prompts for a new name, then duplicates [source] (cloud config copy).
+/// Actively checks that [r] is reachable and shows the result (or the error).
+void _testRemoteConnection(BuildContext context, WidgetRef ref, Remote r) {
+  final client = ref.read(engineControllerProvider).client;
+  if (client == null) return;
+  showConnectionTest(context, client, r);
+}
+
 Future<void> _duplicateRemote(
   BuildContext context,
   WidgetRef ref,
