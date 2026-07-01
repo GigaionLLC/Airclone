@@ -27,6 +27,8 @@ class Job {
     this.speedBps = 0,
     this.error,
     this.jobid,
+    this.rcMethod,
+    this.rcParams,
   });
 
   /// Local, app-assigned id (stable for the life of the job).
@@ -56,6 +58,17 @@ class Job {
 
   /// rclone async job id (from the `{jobid}` response). Null until assigned.
   final int? jobid;
+
+  /// The resolved RC method + params this job dispatched, retained so the job
+  /// can be replayed. Null until dispatch (or for jobs that failed before it),
+  /// which also means the job isn't retryable.
+  final String? rcMethod;
+  final Map<String, dynamic>? rcParams;
+
+  /// Whether this job can be re-run (it reached dispatch, then terminated).
+  bool get canRetry =>
+      rcMethod != null &&
+      (status == JobStatus.failed || status == JobStatus.canceled);
 
   /// Whether the job is still actively transferring.
   bool get isRunning => status == JobStatus.running;
@@ -100,6 +113,8 @@ class Job {
     double? speedBps,
     String? error,
     int? jobid,
+    String? rcMethod,
+    Map<String, dynamic>? rcParams,
   }) => Job(
     id: id,
     type: type ?? this.type,
@@ -111,5 +126,7 @@ class Job {
     speedBps: speedBps ?? this.speedBps,
     error: error ?? this.error,
     jobid: jobid ?? this.jobid,
+    rcMethod: rcMethod ?? this.rcMethod,
+    rcParams: rcParams ?? this.rcParams,
   );
 }

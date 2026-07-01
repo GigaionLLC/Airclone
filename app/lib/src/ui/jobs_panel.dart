@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../rclone/models/job.dart';
 import '../state/jobs_controller.dart';
+import '../state/transfer_service.dart';
 import 'format.dart';
 import 'theme/tokens.dart';
 
@@ -210,25 +211,38 @@ class _JobRow extends ConsumerWidget {
           const SizedBox(width: Space.x3),
           _StatusChip(status: job.status, colors: colors),
           const SizedBox(width: Space.x1),
-          SizedBox(
-            width: 32,
-            child: job.isActive
-                ? IconButton(
-                    icon: const Icon(Icons.stop_circle_outlined, size: 18),
+          if (job.isActive)
+            SizedBox(
+              width: 32,
+              child: IconButton(
+                icon: const Icon(Icons.stop_circle_outlined, size: 18),
+                color: colors.textMuted,
+                tooltip: job.isQueued ? 'Cancel' : 'Stop',
+                onPressed: () =>
+                    ref.read(jobsControllerProvider.notifier).stop(job.id),
+              ),
+            )
+          else
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (job.canRetry)
+                  IconButton(
+                    icon: const Icon(Icons.replay, size: 16),
                     color: colors.textMuted,
-                    tooltip: job.isQueued ? 'Cancel' : 'Stop',
+                    tooltip: 'Retry',
                     onPressed: () =>
-                        ref.read(jobsControllerProvider.notifier).stop(job.id),
-                  )
-                : IconButton(
-                    icon: const Icon(Icons.close, size: 16),
-                    color: colors.textFaint,
-                    tooltip: 'Dismiss',
-                    onPressed: () => ref
-                        .read(jobsControllerProvider.notifier)
-                        .remove(job.id),
+                        ref.read(transferServiceProvider).retry(job.id),
                   ),
-          ),
+                IconButton(
+                  icon: const Icon(Icons.close, size: 16),
+                  color: colors.textFaint,
+                  tooltip: 'Dismiss',
+                  onPressed: () =>
+                      ref.read(jobsControllerProvider.notifier).remove(job.id),
+                ),
+              ],
+            ),
         ],
       ),
     );

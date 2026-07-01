@@ -6,6 +6,25 @@ All changes made by AI agents are tracked chronologically below (most recent fir
 
 <!-- New entries go above this line, most recent first -->
 
+## [2026-06-30] - v0.1.0-alpha.81: retry a failed transfer
+
+**Agent:** Airclone Build (Claude Opus 4.8) — branch `backlog-features`. Gap-audit pick #3: a failed/canceled job
+could only be dismissed, never re-run — the transfer service discarded its call info after dispatch.
+**Files Modified:**
+- `rclone/models/job.dart`: `Job` retains the resolved `rcMethod`/`rcParams` it dispatched (mirrors the existing
+  `jobid`), plus a `canRetry` getter (has a dispatch record + terminal failed/canceled).
+- `state/transfer_service.dart`: extracted `_dispatchResolved` (stores the replay params → fires the async call →
+  records jobid/failure; used by both transfer paths) and added `retry(jobId)` — replays the stored call as a
+  **fresh** job (new local id + `_group`), leaving the original untouched. No new RC methods.
+- `state/jobs_controller.dart`: `update` carries `rcMethod`/`rcParams`.
+- `ui/jobs_panel.dart`: a **Retry** (↺) button on failed/canceled rows next to Dismiss.
+- `test/retry_job_test.dart`: 2 tests — retry re-dispatches the exact `operations/copyfile` (same src/dst, only
+  `_group` refreshed) as a new job with the original still failed; retry is a no-op when there's no dispatch
+  record (e.g. "Engine not ready").
+**Database/API Changes:** None (replays an already-vetted `sync/*`|`operations/*file` call; never `core/command`).
+**Summary:** alpha.81 (branch) — a failed or canceled transfer now has a **Retry** button that re-runs the exact
+same operation. analyze (0) / test (192, +2) green; build in progress. **Needs the user's eyes.**
+
 ## [2026-06-30] - v0.1.0-alpha.80: test a remote's connection
 
 **Agent:** Airclone Build (Claude Opus 4.8) — branch `backlog-features`. Gap-audit pick #2: adding or editing a

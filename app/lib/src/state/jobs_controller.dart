@@ -91,6 +91,8 @@ class JobsController extends Notifier<List<Job>> {
     double? speedBps,
     String? error,
     int? jobid,
+    String? rcMethod,
+    Map<String, dynamic>? rcParams,
   }) {
     state = [
       for (final j in state)
@@ -102,6 +104,8 @@ class JobsController extends Notifier<List<Job>> {
             speedBps: speedBps,
             error: error,
             jobid: jobid,
+            rcMethod: rcMethod,
+            rcParams: rcParams,
           )
         else
           j,

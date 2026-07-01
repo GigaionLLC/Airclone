@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../rclone/models/job.dart';
 import '../rclone/models/remote.dart';
+import '../rclone/rclone_client.dart';
 import 'engine_controller.dart';
 import 'jobs_controller.dart';
 import 'transfer_options.dart';
@@ -50,58 +51,103 @@ class TransferService {
 
     // Dispatched by the jobs queue once a transfer slot is free.
     jobs.enqueue(job.id, () async {
+      // Learn whether the source is a directory.
+      var isDir = false;
       try {
-        // Learn whether the source is a directory.
-        var isDir = false;
-        try {
-          final stat = await client.rpc('operations/stat', {
-            'fs': srcRemote.fs,
-            'remote': srcPath,
-          });
-          final item = stat['item'];
-          if (item is Map && item['IsDir'] == true) isDir = true;
-        } catch (_) {
-          // If stat fails, fall back to the directory-safe sync path.
-          isDir = true;
-        }
-
-        final Map<String, dynamic> params;
-        final String method;
-        if (isDir) {
-          method = isMove ? 'sync/move' : 'sync/copy';
-          params = {
-            'srcFs': '${srcRemote.fs}$srcPath',
-            'dstFs': '${dstRemote.fs}$dstPath',
-            '_async': true,
-            '_group': group,
-          };
-        } else {
-          method = isMove ? 'operations/movefile' : 'operations/copyfile';
-          params = {
-            'srcFs': srcRemote.fs,
-            'srcRemote': srcPath,
-            'dstFs': dstRemote.fs,
-            'dstRemote': dstPath,
-            '_async': true,
-            '_group': group,
-          };
-        }
-
-        final res = await client.rpc(method, params);
-        final jobid = res['jobid'];
-        if (jobid is num) {
-          jobs.update(job.id, jobid: jobid.toInt());
-        } else {
-          jobs.markDone(
-            job.id,
-            JobStatus.failed,
-            error: 'rclone did not return a job id',
-          );
-        }
-      } catch (e) {
-        jobs.markDone(job.id, JobStatus.failed, error: '$e');
+        final stat = await client.rpc('operations/stat', {
+          'fs': srcRemote.fs,
+          'remote': srcPath,
+        });
+        final item = stat['item'];
+        if (item is Map && item['IsDir'] == true) isDir = true;
+      } catch (_) {
+        // If stat fails, fall back to the directory-safe sync path.
+        isDir = true;
       }
+
+      final Map<String, dynamic> params;
+      final String method;
+      if (isDir) {
+        method = isMove ? 'sync/move' : 'sync/copy';
+        params = {
+          'srcFs': '${srcRemote.fs}$srcPath',
+          'dstFs': '${dstRemote.fs}$dstPath',
+          '_async': true,
+          '_group': group,
+        };
+      } else {
+        method = isMove ? 'operations/movefile' : 'operations/copyfile';
+        params = {
+          'srcFs': srcRemote.fs,
+          'srcRemote': srcPath,
+          'dstFs': dstRemote.fs,
+          'dstRemote': dstPath,
+          '_async': true,
+          '_group': group,
+        };
+      }
+      await _dispatchResolved(jobs, client, job.id, method, params);
     });
+  }
+
+  /// Stores the resolved [method]/[params] on the job (so it can be replayed by
+  /// [retry]), fires the async RC call, and records the rclone jobid — or marks
+  /// the job failed. Never throws.
+  Future<void> _dispatchResolved(
+    JobsController jobs,
+    RcloneClient client,
+    int jobId,
+    String method,
+    Map<String, dynamic> params,
+  ) async {
+    jobs.update(jobId, rcMethod: method, rcParams: params);
+    try {
+      final res = await client.rpc(method, params);
+      final jobid = res['jobid'];
+      if (jobid is num) {
+        jobs.update(jobId, jobid: jobid.toInt());
+      } else {
+        jobs.markDone(
+          jobId,
+          JobStatus.failed,
+          error: 'rclone did not return a job id',
+        );
+      }
+    } catch (e) {
+      jobs.markDone(jobId, JobStatus.failed, error: '$e');
+    }
+  }
+
+  /// Re-runs a failed/canceled job by replaying its stored RC call as a fresh
+  /// job (new local id + `_group`). No-op if the job never reached dispatch.
+  Future<void> retry(int jobId) async {
+    Job? old;
+    for (final j in _ref.read(jobsControllerProvider)) {
+      if (j.id == jobId) {
+        old = j;
+        break;
+      }
+    }
+    final method = old?.rcMethod;
+    final params = old?.rcParams;
+    if (old == null || method == null || params == null) return;
+    final jobs = _ref.read(jobsControllerProvider.notifier);
+    final job = jobs.add(
+      type: old.type,
+      source: old.source,
+      dest: old.dest,
+      status: JobStatus.queued,
+    );
+    final client = _ref.read(engineControllerProvider).client;
+    if (client == null) {
+      jobs.markDone(job.id, JobStatus.failed, error: 'Engine not ready');
+      return;
+    }
+    final fresh = {...params, '_group': 'airclone/${job.id}'};
+    jobs.enqueue(
+      job.id,
+      () => _dispatchResolved(jobs, client, job.id, method, fresh),
+    );
   }
 
   /// Advanced Copy/Move/Sync of [srcPath] → [dstPath] driven by [options]
@@ -163,23 +209,10 @@ class TransferService {
       ...call.params,
       '_group': 'airclone/${job.id}',
     };
-    jobs.enqueue(job.id, () async {
-      try {
-        final res = await client.rpc(call.method, params);
-        final jobid = res['jobid'];
-        if (jobid is num) {
-          jobs.update(job.id, jobid: jobid.toInt());
-        } else {
-          jobs.markDone(
-            job.id,
-            JobStatus.failed,
-            error: 'rclone did not return a job id',
-          );
-        }
-      } catch (e) {
-        jobs.markDone(job.id, JobStatus.failed, error: '$e');
-      }
-    });
+    jobs.enqueue(
+      job.id,
+      () => _dispatchResolved(jobs, client, job.id, call.method, params),
+    );
     return job.id;
   }
 }
