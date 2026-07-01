@@ -104,11 +104,18 @@ jobs:
 
   android:
     runs-on: ubuntu-latest
-    # Android is a Phase-5 target. The APK build was failing because — like the
-    # desktop jobs — super_native_extensions (drag-out) compiles a Rust crate via
-    # cargokit, here for the Android ABIs; the job was the only native one missing
-    # the Rust toolchain. Kept best-effort until a tagged build confirms green, so a
-    # residual mobile issue never blocks the desktop release.
+    # Android APK build, fixed after being red since alpha.3. Two parts:
+    #  1) This job needs the Rust toolchain (below): super_native_extensions /
+    #     irondash_engine_context compile a Rust crate via cargokit for the Android
+    #     ABIs, so cargo must be on PATH (rustup adds the *-linux-android targets).
+    #  2) The android module is pinned to AGP 8.9.1 / Gradle 8.11.1 (see
+    #     android/settings.gradle.kts + gradle-wrapper.properties) because cargokit's
+    #     Gradle plugin calls Project.exec(), which Gradle 9 removed — and Flutter
+    #     3.44's template defaults to Gradle 9 / AGP 9.
+    # Verified locally: a 119 MB multi-ABI release APK builds with Temurin 17 (this
+    # job's JDK — its jlink is required by AGP's JdkImageTransform). Kept best-effort
+    # until a tagged CI run confirms the NDK auto-provisions on the runner; then this
+    # continue-on-error can be dropped.
     continue-on-error: true
     steps:
       - uses: actions/checkout@v4
@@ -116,8 +123,6 @@ jobs:
         with: { distribution: temurin, java-version: '17' }
       - uses: subosito/flutter-action@v2
         with: { channel: stable, cache: true }
-      # cargokit cross-compiles the Rust crate to the Android ABIs (rustup adds the
-      # aarch64/armv7/x86_64/i686 -linux-android targets); needs cargo on PATH.
       - uses: dtolnay/rust-toolchain@stable
       - run: flutter pub get
       - run: flutter build apk --release

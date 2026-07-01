@@ -6,9 +6,8 @@ plugins {
 
 android {
     namespace = "app.airclone.airclone"
-    // desktop_drop's androidx deps (exifinterface, annotation-experimental) require
-    // consumers to compile against API 34+. Pin explicitly so the APK build doesn't
-    // depend on the toolchain's default compileSdkVersion.
+    // Some transitive androidx deps (e.g. androidx.core 1.17.0) require compiling
+    // against API 36; the AGP 8.9.1 pinned in settings.gradle.kts supports it.
     compileSdk = 36
     ndkVersion = flutter.ndkVersion
 

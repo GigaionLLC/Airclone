@@ -6,6 +6,30 @@ All changes made by AI agents are tracked chronologically below (most recent fir
 
 <!-- New entries go above this line, most recent first -->
 
+## [2026-07-01] - CI: fix the Android APK build (red since alpha.3)
+
+**Agent:** Airclone Build (Claude Opus 4.8) — branch `backlog-features` → `main`. Not an app feature; a
+build/CI fix. Diagnosed by setting up a full Android toolchain locally (SDK 35/36 + NDK 28.2.13676358, Rust
+android targets, Temurin JDK 17) and iterating `flutter build apk` to green.
+**Root cause (layered):**
+1. **cargokit vs Gradle 9.** `super_native_extensions` / `irondash_engine_context` build a Rust crate via
+   cargokit, whose Gradle plugin calls `Project.exec()` — **removed in Gradle 9**. Flutter 3.44's template
+   defaults to Gradle 9.1 / AGP 9.0.1, so the APK build died at `cargokitCargoBuild…` with "Could not find method
+   exec()". This is the actual reason it was red.
+2. **androidx.core 1.17.0** (pulled transitively) requires AGP ≥ 8.9.1 **and** compileSdk 36.
+3. CI's android job was also the only native job missing the **Rust toolchain** cargokit needs.
+**Fix:**
+- `android/settings.gradle.kts` + `gradle/wrapper/gradle-wrapper.properties`: pin the **android module** to
+  **AGP 8.9.1 / Gradle 8.11.1** (Kotlin 2.1.0) — the minimum that still has `Project.exec()` yet supports
+  compileSdk 36. Desktop builds don't use Gradle, so they're unaffected.
+- `android/app/build.gradle.kts`: keep `compileSdk = 36` (now satisfied by AGP 8.9.1).
+- `.github/workflows/release.yml`: add `dtolnay/rust-toolchain@stable` to the android job (already had Temurin
+  17, whose `jlink` AGP's JdkImageTransform needs).
+**Verified:** a **119 MB multi-ABI release APK** (armv7 + arm64 + x86_64) builds locally with this exact toolchain.
+`continue-on-error` kept on the CI android job until a tagged run confirms the NDK auto-provisions on the runner,
+then it can be dropped. (Local-only: `kotlin.incremental=false` in the machine-global `~/.gradle/gradle.properties`
+sidesteps a cross-drive Kotlin cache crash — pub cache on C:, repo on D:; not relevant to CI and not committed.)
+
 ## [2026-06-30] - v0.1.0-alpha.82: per-file progress inside a job row
 
 **Agent:** Airclone Build (Claude Opus 4.8) — branch `backlog-features`. Gap-audit pick #4 (completes the batch):
