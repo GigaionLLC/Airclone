@@ -68,9 +68,16 @@ class BrowserPane extends ConsumerWidget {
               child: state.remote == null
                   ? _empty(c)
                   : NativePaneDropRegion(
-                      // In-app drag → copy into this pane.
-                      onDrop: (data) =>
-                          _dropOnto(ref, data, state.remote!, state.path),
+                      // In-app drag → copy into this pane (its listing is
+                      // loaded, so collisions are detected without a re-list).
+                      onDrop: (data) => _dropOnto(
+                        context,
+                        ref,
+                        data,
+                        state.remote!,
+                        state.path,
+                        knownNames: state.entries.map((e) => e.name),
+                      ),
                       // OS files dragged in from Explorer/Finder → upload.
                       onOsFiles: (paths) =>
                           _uploadLocal(ref, paths, state.remote!, state.path),
@@ -199,6 +206,7 @@ class BrowserPane extends ConsumerWidget {
             onContextMenu: (f, pos) =>
                 _showFileMenu(context, ref, state, f, pos),
             onDropInto: (f, data) => _dropOnto(
+              context,
               ref,
               data,
               state.remote!,
@@ -219,6 +227,7 @@ class BrowserPane extends ConsumerWidget {
             onContextMenu: (f, pos) =>
                 _showFileMenu(context, ref, state, f, pos),
             onDropInto: (f, data) => _dropOnto(
+              context,
               ref,
               data,
               state.remote!,
@@ -242,6 +251,7 @@ class BrowserPane extends ConsumerWidget {
                 onContextMenu: (pos) =>
                     _showFileMenu(context, ref, state, f, pos),
                 onDropInto: (data) => _dropOnto(
+                  context,
                   ref,
                   data,
                   state.remote!,
@@ -583,16 +593,18 @@ class BrowserPane extends ConsumerWidget {
   }
 
   Future<void> _dropOnto(
+    BuildContext context,
     WidgetRef ref,
     PaneDragData data,
     Remote dstRemote,
-    String dstPath,
-  ) async {
+    String dstPath, {
+    Iterable<String>? knownNames,
+  }) async {
     final sameRemote = data.remote == dstRemote;
     // No-op: dropping items back into the folder they already live in
     // (e.g. releasing a drag over the current pane) — avoids a copy-to-self.
     if (sameRemote && data.parentPath == dstPath) return;
-    final svc = ref.read(transferServiceProvider);
+    final names = <String>[];
     for (final f in data.files) {
       final srcPath = joinPath(data.parentPath, f.name);
       // No-op: dropping a folder onto itself or into its own subtree.
@@ -600,14 +612,22 @@ class BrowserPane extends ConsumerWidget {
           (dstPath == srcPath || dstPath.startsWith('$srcPath/'))) {
         continue;
       }
-      await svc.transfer(
-        srcRemote: data.remote,
-        srcPath: srcPath,
-        dstRemote: dstRemote,
-        dstPath: joinPath(dstPath, f.name),
-        type: JobType.copy,
-      );
+      names.add(f.name);
     }
+    // Same conflict-aware core as paste: prompt Skip/Replace/Keep-both on any
+    // name that already exists at the target (listing it when not already held).
+    await transferNamesIntoFolder(
+      context,
+      ref,
+      srcRemote: data.remote,
+      srcParentPath: data.parentPath,
+      names: names,
+      destRemote: dstRemote,
+      destPath: dstPath,
+      type: JobType.copy,
+      refreshPaneIndex: index,
+      knownNames: knownNames,
+    );
   }
 
   Future<void> _uploadLocal(

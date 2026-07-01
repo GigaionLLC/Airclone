@@ -6,6 +6,29 @@ All changes made by AI agents are tracked chronologically below (most recent fir
 
 <!-- New entries go above this line, most recent first -->
 
+## [2026-06-30] - v0.1.0-alpha.77: drag-and-drop is conflict-aware (unified paste + drop core)
+
+**Agent:** Airclone Build (Claude Opus 4.8) — branch `backlog-features`. The last consistency gap: in-app **drag**
+still overwrote silently. Now paste and every drop target share one conflict-aware core. Vetted by an 8-agent
+adversarial review (data-integrity + clipboard-lifecycle × verify): **no data-loss, drop no-op guards preserved
+verbatim**; the 3 actionable robustness findings folded in before commit.
+**Files Modified:**
+- `ui/paste_action.dart`: extracted `transferNamesIntoFolder(context, ref, {srcRemote, srcParentPath, names,
+  destRemote, destPath, type, refreshPaneIndex?, knownNames?})` — the shared core (collision probe → Skip/Replace/
+  Keep-both → `planPaste` → transfer). `pasteClipboardIntoFolder` delegates to it. **Review fixes:** an in-flight
+  latch (`_transferInFlightProvider`) blocks a double paste/drop and stacked dialogs; the core returns
+  `plan.isNotEmpty` so a **skip-everything CUT keeps the clipboard** (nothing moved ⇒ nothing cleared).
+- `ui/browser_pane.dart`: `_dropOnto` applies the existing self/subtree no-op guards to build `names`, then routes
+  through the core (current-folder drop reuses the loaded listing; folder-row drops list the target). All 4 drop
+  sites pass `context`.
+- `ui/home_screen.dart`: the **sidebar remote-root** drop (`_copyToRemoteRoot`) also routes through the core, so
+  every drop target now prompts consistently (dropped the now-unused transfer_service import).
+- `test/paste_action_test.dart`: +2 (drop-core prompt; skip-everything keeps the cut clipboard).
+**Database/API Changes:** A read-only `operations/list` before a drop/paste when the target listing isn't held.
+**Summary:** alpha.77 (branch) — dragging files onto a folder, pane, subfolder, or a sidebar remote now prompts
+**Skip / Replace / Keep both** instead of silently overwriting. analyze (0) / test (181, +2) green; build in
+progress. **Needs the user's eyes.**
+
 ## [2026-06-30] - v0.1.0-alpha.76: subfolder paste is conflict-aware too (completes the paste story)
 
 **Agent:** Airclone Build (Claude Opus 4.8) — branch `backlog-features`. a72/a73 made pasting into the *current*

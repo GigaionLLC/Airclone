@@ -1,3 +1,4 @@
+import 'package:airclone/src/rclone/models/job.dart';
 import 'package:airclone/src/rclone/models/rclone_file.dart';
 import 'package:airclone/src/rclone/models/remote.dart';
 import 'package:airclone/src/rclone/rclone_client.dart';
@@ -102,6 +103,113 @@ void main() {
     // Cancelling must run no transfer.
     await tester.tap(find.text('Cancel'));
     await tester.pumpAndSettle();
+    expect(client.transfers, isEmpty);
+  });
+
+  testWidgets('drag-drop core prompts on a collision (known listing, no '
+      're-list)', (tester) async {
+    final client = _FakeClient();
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          engineControllerProvider.overrideWith(() => _FakeEngine(client)),
+        ],
+        child: MaterialApp(
+          theme: AppTheme.light(),
+          home: Consumer(
+            builder: (ctx, ref, _) => Scaffold(
+              body: Center(
+                child: ElevatedButton(
+                  // Simulates dropping "dup.txt" onto a folder that already
+                  // holds it — knownNames supplied, so no operations/list.
+                  onPressed: () => transferNamesIntoFolder(
+                    ctx,
+                    ref,
+                    srcRemote: _remote,
+                    srcParentPath: 'from',
+                    names: const ['dup.txt'],
+                    destRemote: _remote,
+                    destPath: 'sub',
+                    type: JobType.copy,
+                    refreshPaneIndex: null,
+                    knownNames: const {'dup.txt'},
+                  ),
+                  child: const Text('drop'),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('drop'));
+    await tester.pumpAndSettle();
+    expect(find.text('1 of 1 already exist here'), findsOneWidget);
+
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpAndSettle();
+    expect(client.transfers, isEmpty);
+  });
+
+  testWidgets('a skip-everything CUT keeps the clipboard (nothing moved)', (
+    tester,
+  ) async {
+    final client = _FakeClient();
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          engineControllerProvider.overrideWith(() => _FakeEngine(client)),
+        ],
+        child: MaterialApp(
+          theme: AppTheme.light(),
+          home: Consumer(
+            builder: (ctx, ref, _) {
+              final n = ref.watch(clipboardControllerProvider).files.length;
+              return Scaffold(
+                body: Column(
+                  children: [
+                    Text('clip:$n'),
+                    ElevatedButton(
+                      onPressed: () async {
+                        ref
+                            .read(clipboardControllerProvider.notifier)
+                            .cut(_remote, '', const [
+                              RcloneFile(
+                                name: 'dup.txt',
+                                path: 'dup.txt',
+                                isDir: false,
+                                size: 1,
+                              ),
+                            ]);
+                        await pasteClipboardIntoFolder(
+                          ctx,
+                          ref,
+                          destRemote: _remote,
+                          destPath: 'sub',
+                          refreshPaneIndex: 0,
+                          knownNames: const {'dup.txt'},
+                        );
+                      },
+                      child: const Text('cutpaste'),
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('cutpaste'));
+    await tester.pumpAndSettle();
+    expect(find.text('1 of 1 already exist here'), findsOneWidget);
+
+    await tester.tap(find.text('Skip these'));
+    await tester.pumpAndSettle();
+    // Nothing moved → the cut selection must survive (not be cleared).
+    expect(find.text('clip:1'), findsOneWidget);
     expect(client.transfers, isEmpty);
   });
 }

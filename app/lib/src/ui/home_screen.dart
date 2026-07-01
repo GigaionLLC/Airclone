@@ -27,7 +27,6 @@ import '../state/remotes_provider.dart';
 import '../state/scheduler_controller.dart';
 import '../state/serve_policy.dart';
 import '../state/stats_controller.dart';
-import '../state/transfer_service.dart';
 import 'add_remote_dialog.dart';
 import 'bandwidth_control.dart';
 import 'browser_pane.dart';
@@ -898,7 +897,7 @@ class _Sidebar extends ConsumerWidget {
       String deleteLabel = 'Remove',
       Color? iconColor,
     }) => NativePaneDropRegion(
-      onDrop: (data) => _copyToRemoteRoot(ref, data, r),
+      onDrop: (data) => _copyToRemoteRoot(context, ref, data, r),
       highlightColor: c.primary,
       borderRadius: BorderRadius.circular(Radii.sm),
       child: _RemoteTile(
@@ -1193,22 +1192,25 @@ void _openOrToggle(WidgetRef ref, int active, Remote r) {
 }
 
 Future<void> _copyToRemoteRoot(
+  BuildContext context,
   WidgetRef ref,
   PaneDragData data,
   Remote dst,
 ) async {
   // No-op: dropping a remote's own root items back onto that same remote.
   if (data.remote == dst && data.parentPath.isEmpty) return;
-  final svc = ref.read(transferServiceProvider);
-  for (final f in data.files) {
-    await svc.transfer(
-      srcRemote: data.remote,
-      srcPath: joinPath(data.parentPath, f.name),
-      dstRemote: dst,
-      dstPath: f.name,
-      type: JobType.copy,
-    );
-  }
+  // Conflict-aware, like every other drop target: the core lists the remote
+  // root (knownNames: null) to detect same-name collisions and prompt.
+  await transferNamesIntoFolder(
+    context,
+    ref,
+    srcRemote: data.remote,
+    srcParentPath: data.parentPath,
+    names: data.files.map((f) => f.name).toList(),
+    destRemote: dst,
+    destPath: '',
+    type: JobType.copy,
+  );
 }
 
 class _RemoteTile extends StatelessWidget {
