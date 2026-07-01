@@ -1,6 +1,9 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../rclone/models/serve_server.dart';
 import '../rclone/rclone_client.dart';
@@ -444,6 +447,31 @@ class _ServeDialogState extends ConsumerState<_ServeDialog> {
                     ],
                   ),
                 ),
+                // Browsers speak http(s) — offered for HTTP + WebDAV serves.
+                if (s.scheme == 'http')
+                  IconButton(
+                    tooltip: 'Open in browser',
+                    onPressed: () {
+                      // We're launching LOCALLY, so an all-interfaces bind is
+                      // always reachable via loopback — never launch the
+                      // 'your-device-ip' placeholder displayUrl falls back to
+                      // when no LAN IP has resolved.
+                      final uri = Uri.tryParse(
+                        s.displayUrl(lanIp: lanIp ?? '127.0.0.1'),
+                      );
+                      if (uri != null) {
+                        unawaited(
+                          launchUrl(
+                            uri,
+                            mode: LaunchMode.externalApplication,
+                          ).catchError((_) => false),
+                        );
+                      }
+                    },
+                    icon: const Icon(Icons.open_in_browser, size: 16),
+                    color: c.textMuted,
+                    visualDensity: VisualDensity.compact,
+                  ),
                 IconButton(
                   tooltip: 'Copy URL',
                   onPressed: () => Clipboard.setData(

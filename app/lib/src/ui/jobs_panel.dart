@@ -64,9 +64,10 @@ class _Header extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final colors = AircloneTheme.of(context);
     final hasFinished = finished > 0;
+    final paused = ref.watch(queuePausedProvider);
     final counts = [
       '$running active',
-      if (queued > 0) '$queued queued',
+      if (queued > 0) '$queued queued${paused ? ' (paused)' : ''}',
       '$finished done',
     ].join(' · ');
 
@@ -90,6 +91,15 @@ class _Header extends ConsumerWidget {
           const SizedBox(width: Space.x3),
           Text(counts, style: TextStyle(color: colors.textMuted, fontSize: 12)),
           const Spacer(),
+          IconButton(
+            tooltip: paused
+                ? 'Resume queue'
+                : 'Pause queue (queued transfers wait; running ones finish)',
+            visualDensity: VisualDensity.compact,
+            onPressed: () => ref.read(queuePausedProvider.notifier).toggle(),
+            icon: Icon(paused ? Icons.play_arrow : Icons.pause, size: 18),
+            color: paused ? colors.warning : colors.textMuted,
+          ),
           TextButton(
             onPressed: hasFinished
                 ? () =>
@@ -240,10 +250,23 @@ class _JobRow extends ConsumerWidget {
           const SizedBox(width: Space.x4),
           SizedBox(
             width: 84,
-            child: Text(
-              job.isRunning ? _speed(job) : '',
-              textAlign: TextAlign.right,
-              style: TextStyle(color: colors.textMuted, fontSize: 11),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text(
+                  job.isRunning ? _speed(job) : '',
+                  textAlign: TextAlign.right,
+                  style: TextStyle(color: colors.textMuted, fontSize: 11),
+                ),
+                if (job.isRunning &&
+                    job.etaLabel.isNotEmpty &&
+                    job.etaLabel != '—')
+                  Text(
+                    '${job.etaLabel} left',
+                    textAlign: TextAlign.right,
+                    style: TextStyle(color: colors.textFaint, fontSize: 10),
+                  ),
+              ],
             ),
           ),
           const SizedBox(width: Space.x3),

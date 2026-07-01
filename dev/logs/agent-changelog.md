@@ -6,6 +6,33 @@ All changes made by AI agents are tracked chronologically below (most recent fir
 
 <!-- New entries go above this line, most recent first -->
 
+## [2026-07-01] - v0.1.0-alpha.83: checksums · pause queue · ETA · open serve URL · mount cache refresh
+
+**Agent:** Airclone Build (Claude Fable 5) — branch `backlog-features`. Five features from the gap-audit's
+remaining safe candidates, vetted by a 14-agent adversarial review (12 findings confirmed — including a **live-
+reproduced HIGH**: rclone's `vfs/refresh` hard-rejects a JSON bool `recursive`, so the feature as first written
+was dead on arrival and its unit test had locked in the wrong wire type; the verifier proved bool→HTTP 500,
+string→200 against the exact engine build the app ships). All 12 fixed before commit.
+**Features:**
+- **Checksums…** (file context menu): `operations/stat {showHash}` → every hash the backend reports, per-row
+  copy. Local files restricted to `md5/sha1/sha256` (unrestricted, rclone computes ~13 types by reading the whole
+  file); not-found shows "file may have been moved"; timeout mapped to a friendly message; list is height-capped
+  + scrollable (local reports 13 types → RenderFlex overflow at common window sizes, verifier-reproduced).
+- **Pause/resume the transfer queue** (jobs header): `queuePausedProvider` gates `_pump` — queued transfers hold,
+  running ones finish; resume re-pumps. Session-only by design.
+- **Per-job ETA**: the existing (previously unrendered) `Job.etaLabel` shown under the speed ("12s left").
+- **Open served endpoint in a browser** (serve manager): for HTTP/WebDAV serves; launches via loopback when no
+  LAN IP has resolved (never the `your-device-ip` placeholder); `launchUrl` failure swallowed safely.
+- **Refresh a mount's directory cache** (mount manager): `vfs/refresh {fs, recursive:'true', _async:true}` —
+  string wire type (see above), async so multi-minute walks don't hit the 30s RPC timeout, `fs` omitted when
+  unknown (legacy listmounts) so rclone auto-selects; result shown inline in the dialog (a SnackBar renders
+  behind the modal barrier).
+**Tests:** +11 (205 total) — including the corrected wire-type assertions.
+**Database/API Changes:** read-only `operations/stat`; `vfs/refresh` (VFS-scoped, no data mutation). No new
+dangerous surface.
+**Summary:** alpha.83 (branch) — five quality-of-life features, adversarially reviewed. analyze (0) / test (205)
+green; build in progress. **Needs the user's eyes.**
+
 ## [2026-07-01] - CI: fix the Android APK build (red since alpha.3)
 
 **Agent:** Airclone Build (Claude Opus 4.8) — branch `backlog-features` → `main`. Not an app feature; a

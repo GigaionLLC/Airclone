@@ -16,6 +16,7 @@ import '../state/thumbnail_prefs.dart';
 import '../state/thumbnail_service.dart';
 import '../state/transfer_service.dart';
 import 'add_remote_dialog.dart';
+import 'checksum_dialog.dart';
 import 'column_header.dart';
 import 'context_menu.dart';
 import 'destination_picker.dart';
@@ -387,6 +388,8 @@ class BrowserPane extends ConsumerWidget {
         await _revealLocal(ref, state, file);
       case FileMenuAction.copyPath:
         await _copyPath(ref, state, file);
+      case FileMenuAction.checksums:
+        if (context.mounted) await _checksums(context, ref, state, file);
       case FileMenuAction.download:
         await _download(ref, state, files);
       case FileMenuAction.copy:
@@ -608,6 +611,26 @@ class BrowserPane extends ConsumerWidget {
       fs: state.remote!.fs,
       remote: joinPath(state.path, f.name),
       name: f.name,
+    );
+  }
+
+  Future<void> _checksums(
+    BuildContext context,
+    WidgetRef ref,
+    BrowserState state,
+    RcloneFile f,
+  ) async {
+    final client = ref.read(engineControllerProvider).client;
+    if (client == null || state.remote == null) return;
+    await showChecksumDialog(
+      context,
+      client,
+      fs: state.remote!.fs,
+      remote: joinPath(state.path, f.name),
+      name: f.name,
+      // Local files are hashed by reading them — restrict to the common types
+      // so the stat doesn't compute ~13 hashes over the whole file.
+      hashTypes: state.remote!.isLocal ? localHashTypes : null,
     );
   }
 

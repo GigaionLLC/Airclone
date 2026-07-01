@@ -26,6 +26,10 @@ class _MountDialogState extends ConsumerState<_MountDialog> {
   String? _error;
   bool _starting = false;
 
+  /// Inline outcome of the last cache-refresh click (a SnackBar would render
+  /// behind this dialog's modal barrier and be easy to miss).
+  String? _refreshMsg;
+
   @override
   void dispose() {
     _subdir.dispose();
@@ -297,6 +301,25 @@ class _MountDialogState extends ConsumerState<_MountDialog> {
                   ),
                 ),
                 IconButton(
+                  tooltip: 'Refresh cache (pick up outside changes)',
+                  onPressed: () async {
+                    final err = await ref
+                        .read(mountControllerProvider.notifier)
+                        .refreshCache(m.fs);
+                    if (!mounted) return;
+                    setState(() {
+                      _refreshMsg = err == null
+                          ? 'Refreshing the directory cache of '
+                                '${m.fs.isEmpty ? 'the mount' : m.fs} in the '
+                                'background…'
+                          : 'Refresh failed: $err';
+                    });
+                  },
+                  icon: const Icon(Icons.refresh, size: 18),
+                  color: c.textMuted,
+                  visualDensity: VisualDensity.compact,
+                ),
+                IconButton(
                   tooltip: 'Unmount',
                   onPressed: () => ref
                       .read(mountControllerProvider.notifier)
@@ -308,6 +331,18 @@ class _MountDialogState extends ConsumerState<_MountDialog> {
               ],
             ),
           ),
+      if (_refreshMsg != null) ...[
+        const SizedBox(height: Space.x1),
+        Text(
+          _refreshMsg!,
+          style: TextStyle(
+            color: _refreshMsg!.startsWith('Refresh failed')
+                ? c.error
+                : c.textMuted,
+            fontSize: 11,
+          ),
+        ),
+      ],
     ];
   }
 

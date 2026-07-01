@@ -9,6 +9,7 @@ enum FileMenuAction {
   openWith,
   revealInFolder,
   copyPath,
+  checksums,
   download,
   copy,
   cut,
@@ -82,6 +83,8 @@ Future<FileMenuAction?> showFileContextMenu(
     ] else
       _item(FileMenuAction.download, Icons.download_outlined, 'Download'),
     _item(FileMenuAction.copyPath, Icons.content_copy_outlined, 'Copy path'),
+    if (!isDir)
+      _item(FileMenuAction.checksums, Icons.tag_outlined, 'Checksums…'),
     const _Entry.divider(),
     _item(FileMenuAction.copy, Icons.copy_outlined, 'Copy'),
     _item(FileMenuAction.cut, Icons.content_cut_outlined, 'Cut'),

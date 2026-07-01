@@ -71,8 +71,10 @@ class JobsController extends Notifier<List<Job>> {
   void pumpQueue() => _pump();
 
   /// Start as many queued dispatches as the concurrency limit allows. A limit
-  /// of `0` means unlimited (dispatch everything immediately).
+  /// of `0` means unlimited (dispatch everything immediately). While the queue
+  /// is paused nothing dispatches — queued jobs wait, running ones finish.
   void _pump() {
+    if (ref.read(queuePausedProvider)) return;
     final limit = ref.read(transferConcurrencyProvider);
     while (_pending.isNotEmpty && (limit <= 0 || _runningCount < limit)) {
       final next = _pending.removeAt(0);
@@ -237,6 +239,24 @@ class JobsController extends Notifier<List<Job>> {
 
 final jobsControllerProvider = NotifierProvider<JobsController, List<Job>>(
   JobsController.new,
+);
+
+/// Whether the transfer queue is paused: queued jobs hold until resumed;
+/// already-running transfers finish normally. Session-only (not persisted —
+/// a paused queue surviving a restart would be a confusing trap).
+class QueuePaused extends Notifier<bool> {
+  @override
+  bool build() => false;
+
+  void toggle() {
+    state = !state;
+    // Resuming may free the whole queue — dispatch immediately.
+    if (!state) ref.read(jobsControllerProvider.notifier).pumpQueue();
+  }
+}
+
+final queuePausedProvider = NotifierProvider<QueuePaused, bool>(
+  QueuePaused.new,
 );
 
 /// Maximum number of transfers allowed to run at once. `0` means unlimited

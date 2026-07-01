@@ -72,6 +72,36 @@ class MountController extends Notifier<List<MountInfo>> {
     return (res['mountPoint'] as String?) ?? mountPoint;
   }
 
+  /// Freshens the directory cache of the VFS behind [fs] (`vfs/refresh`,
+  /// recursive) so changes made outside the mount become visible without
+  /// remounting. Returns null once the refresh is DISPATCHED, else the error.
+  ///
+  /// Wire-format notes (verified against rclone's vfs/rc.go):
+  /// - `recursive` must be the STRING 'true' — the handler hard-asserts string
+  ///   params and rejects a JSON bool.
+  /// - `fs` selects the VFS when several mounts exist, but a present-but-empty
+  ///   value is looked up literally ("no VFS found with name ''") — omit the
+  ///   key instead (legacy listmounts entries carry no fs) so rclone can
+  ///   auto-select the sole active VFS.
+  /// - `_async`: a recursive walk of a big remote takes minutes; run it as a
+  ///   background job instead of holding (and timing out) the RC call.
+  Future<String?> refreshCache(String fs) async {
+    final client = ref.read(engineControllerProvider).client;
+    if (client == null) return 'Engine not ready.';
+    try {
+      await client.rpc('vfs/refresh', {
+        if (fs.isNotEmpty) 'fs': fs,
+        'recursive': 'true',
+        '_async': true,
+      });
+      return null;
+    } on RcloneException catch (e) {
+      return e.message;
+    } catch (e) {
+      return '$e';
+    }
+  }
+
   Future<void> unmount(String mountPoint) async {
     final client = ref.read(engineControllerProvider).client;
     if (client == null) return;
