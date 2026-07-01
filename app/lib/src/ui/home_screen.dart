@@ -21,6 +21,7 @@ import '../state/file_ops.dart';
 import '../state/jobs_controller.dart';
 import '../state/local_locations.dart';
 import '../state/mount_policy.dart';
+import '../state/recent_locations.dart';
 import '../state/remote_about.dart';
 import '../state/remotes_provider.dart';
 import '../state/scheduler_controller.dart';
@@ -305,6 +306,18 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     );
   }
 
+  /// Records a pane's arrival at a new remote+folder into the recents list.
+  /// Fires on the (fs, path) change (even while still loading) so navigation is
+  /// captured immediately; ignores selection/loading-only state changes.
+  void _recordNav(BrowserState? prev, BrowserState next) {
+    final r = next.remote;
+    if (r == null) return;
+    final changed =
+        prev == null || prev.remote?.fs != r.fs || prev.path != next.path;
+    if (!changed) return;
+    ref.read(recentLocationsProvider.notifier).record(r, next.path);
+  }
+
   /// The Ctrl+K command-palette catalogue: app actions (gated the same way as
   /// their toolbar buttons) followed by a "Go to" entry per remote.
   List<PaletteAction> _paletteActions(BuildContext context) {
@@ -320,6 +333,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         ref
             .read(bookmarksProvider.notifier)
             .isPinned(activeRemote.fs, active.path);
+    // Recents, minus the current folder and anything already shown as a favorite.
+    final pinnedKeys = bookmarks.map((b) => b.key).toSet();
+    final currentKey = activeRemote == null
+        ? null
+        : '${activeRemote.fs}|${active.path}';
+    final recents = ref
+        .read(recentLocationsProvider)
+        .where((l) => l.key != currentKey && !pinnedKeys.contains(l.key))
+        .take(8);
 
     return [
       if (activeRemote != null)
@@ -372,6 +394,17 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           run: () async {
             await pane().open(bm.remote);
             if (bm.path.isNotEmpty) await pane().navigateTo(bm.path);
+          },
+        ),
+      for (final loc in recents)
+        PaletteAction(
+          label: loc.label,
+          icon: Icons.history,
+          hint: 'Recent',
+          keywords: 'recent history visited ${loc.remote.type}',
+          run: () async {
+            await pane().open(loc.remote);
+            if (loc.path.isNotEmpty) await pane().navigateTo(loc.path);
           },
         ),
       PaletteAction(
@@ -462,6 +495,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     // When a transfer job finishes, re-list both panes so a just-copied/uploaded
     // file shows up without a manual refresh. (Transfers are async rclone jobs
     // that complete a moment after the drop.)
+    // Record folder visits (per pane) for the command palette's "Recent" list.
+    ref.listen(browserAProvider, _recordNav);
+    ref.listen(browserBProvider, _recordNav);
     ref.listen(jobsControllerProvider, (prev, next) {
       final was = {for (final j in (prev ?? const [])) j.id: j.status};
       final justDone = next.any(

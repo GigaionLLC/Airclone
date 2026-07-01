@@ -6,6 +6,23 @@ All changes made by AI agents are tracked chronologically below (most recent fir
 
 <!-- New entries go above this line, most recent first -->
 
+## [2026-06-30] - v0.1.0-alpha.75: recent locations in the command palette
+
+**Agent:** Airclone Build (Claude Opus 4.8) — branch `backlog-features`. Rounds out the palette (a67) alongside
+favorites (a69) and search (a68): jump back to folders you just visited.
+**Files Added:**
+- `state/recent_locations.dart`: `RecentLocation{remote, path}` (+ `key` in the same `fs|path` shape as
+  `Bookmark`, so recents dedupe against pinned favorites) and `RecentLocations` — a session-only Notifier (no disk
+  churn), newest-first, deduped by key, capped at 12.
+- `test/recent_locations_test.dart`: 3 tests — newest-first + dedupe, root-vs-subfolder labels, 12-cap eviction.
+**Files Modified:**
+- `ui/home_screen.dart`: `ref.listen` on both panes records each (fs, path) change via `_recordNav` (fires on the
+  navigation, ignores selection/loading-only changes). The palette lists up to 8 **Recent** entries after
+  favorites, excluding the current folder and anything already pinned; selecting one opens + navigates there.
+**Database/API Changes:** None (in-memory; read-only navigation).
+**Summary:** alpha.75 (branch) — **Ctrl+K** now surfaces recently-visited folders (history icon, "Recent" tag).
+analyze (0) / test (178, +3) green; build in progress. **Needs the user's eyes.**
+
 ## [2026-06-30] - v0.1.0-alpha.74: "Copy command" on the transfer preview
 
 **Agent:** Airclone Build (Claude Opus 4.8) — branch `backlog-features`. The advanced transfer dialog's "rclone
