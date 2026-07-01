@@ -112,11 +112,10 @@ jobs:
     #     android/settings.gradle.kts + gradle-wrapper.properties) because cargokit's
     #     Gradle plugin calls Project.exec(), which Gradle 9 removed — and Flutter
     #     3.44's template defaults to Gradle 9 / AGP 9.
-    # Verified locally: a 119 MB multi-ABI release APK builds with Temurin 17 (this
-    # job's JDK — its jlink is required by AGP's JdkImageTransform). Kept best-effort
-    # until a tagged CI run confirms the NDK auto-provisions on the runner; then this
-    # continue-on-error can be dropped.
-    continue-on-error: true
+    # Temurin 17 (this job's JDK) supplies the jlink AGP's JdkImageTransform needs,
+    # and the NDK auto-provisions on the runner. Verified green on GitHub Actions
+    # (workflow_dispatch run 28545145108, 2026-07-01), so continue-on-error is gone —
+    # the APK build is now a real check. If a future plugin regresses it, re-add it.
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4

@@ -25,10 +25,12 @@ android targets, Temurin JDK 17) and iterating `flutter build apk` to green.
 - `android/app/build.gradle.kts`: keep `compileSdk = 36` (now satisfied by AGP 8.9.1).
 - `.github/workflows/release.yml`: add `dtolnay/rust-toolchain@stable` to the android job (already had Temurin
   17, whose `jlink` AGP's JdkImageTransform needs).
-**Verified:** a **119 MB multi-ABI release APK** (armv7 + arm64 + x86_64) builds locally with this exact toolchain.
-`continue-on-error` kept on the CI android job until a tagged run confirms the NDK auto-provisions on the runner,
-then it can be dropped. (Local-only: `kotlin.incremental=false` in the machine-global `~/.gradle/gradle.properties`
-sidesteps a cross-drive Kotlin cache crash — pub cache on C:, repo on D:; not relevant to CI and not committed.)
+**Verified:** a **119 MB multi-ABI release APK** (armv7 + arm64 + x86_64) builds locally with this exact toolchain,
+**and green on GitHub Actions** — `workflow_dispatch` run 28545145108 (2026-07-01) had the android job **succeed**
+alongside windows/linux/macos (the NDK auto-provisioned on the runner). So `continue-on-error` was **removed** from
+the CI android job — the APK build is now a real check. (Local-only: `kotlin.incremental=false` in the machine-global
+`~/.gradle/gradle.properties` sidesteps a cross-drive Kotlin cache crash — pub cache on C:, repo on D:; not relevant
+to CI and not committed.)
 
 ## [2026-06-30] - v0.1.0-alpha.82: per-file progress inside a job row
 
