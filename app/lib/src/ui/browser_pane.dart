@@ -336,11 +336,15 @@ class BrowserPane extends ConsumerWidget {
       case FileMenuAction.cut:
         clipCtrl.cut(state.remote!, state.path, files);
       case FileMenuAction.paste:
-        await _paste(
-          ref,
-          state.remote!,
-          file.isDir ? joinPath(state.path, file.name) : state.path,
-        );
+        if (context.mounted) {
+          await _paste(
+            context,
+            ref,
+            state,
+            state.remote!,
+            file.isDir ? joinPath(state.path, file.name) : state.path,
+          );
+        }
       case FileMenuAction.copyTo:
         if (context.mounted) await _copyToPicker(context, ref, state, file);
       case FileMenuAction.moveTo:
@@ -373,7 +377,9 @@ class BrowserPane extends ConsumerWidget {
     if (action == null) return;
     switch (action) {
       case EmptyMenuAction.paste:
-        await _paste(ref, state.remote!, state.path);
+        if (context.mounted) {
+          await _paste(context, ref, state, state.remote!, state.path);
+        }
       case EmptyMenuAction.newFolder:
         if (context.mounted) await _newFolder(context, ref, state);
       case EmptyMenuAction.refresh:
@@ -485,21 +491,26 @@ class BrowserPane extends ConsumerWidget {
     }
   }
 
-  Future<void> _paste(WidgetRef ref, Remote dstRemote, String dstPath) async {
-    final clip = ref.read(clipboardControllerProvider);
-    if (clip.isEmpty || clip.remote == null) return;
-    final svc = ref.read(transferServiceProvider);
-    for (final f in clip.files) {
-      await svc.transfer(
-        srcRemote: clip.remote!,
-        srcPath: joinPath(clip.parentPath, f.name),
-        dstRemote: dstRemote,
-        dstPath: joinPath(dstPath, f.name),
-        type: clip.isCut ? JobType.move : JobType.copy,
-      );
-    }
-    if (clip.isCut) ref.read(clipboardControllerProvider.notifier).clear();
-    await ref.read(paneProvider(index).notifier).refresh();
+  Future<void> _paste(
+    BuildContext context,
+    WidgetRef ref,
+    BrowserState state,
+    Remote dstRemote,
+    String dstPath,
+  ) async {
+    // Pasting into the current folder can reuse its loaded listing to detect
+    // collisions; a subfolder target is listed by the helper.
+    final known = dstPath == state.path
+        ? state.entries.map((e) => e.name)
+        : null;
+    await pasteClipboardIntoFolder(
+      context,
+      ref,
+      destRemote: dstRemote,
+      destPath: dstPath,
+      refreshPaneIndex: index,
+      knownNames: known,
+    );
   }
 
   Future<void> _openInOtherPane(

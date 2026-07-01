@@ -6,6 +6,26 @@ All changes made by AI agents are tracked chronologically below (most recent fir
 
 <!-- New entries go above this line, most recent first -->
 
+## [2026-06-30] - v0.1.0-alpha.76: subfolder paste is conflict-aware too (completes the paste story)
+
+**Agent:** Airclone Build (Claude Opus 4.8) — branch `backlog-features`. a72/a73 made pasting into the *current*
+folder conflict-aware; right-click **Paste onto a subfolder** still overwrote silently because that folder's
+listing isn't held in memory. Now it lists the target (read-only) first.
+**Files Modified:**
+- `ui/paste_action.dart`: new `pasteClipboardIntoFolder(context, ref, {destRemote, destPath, refreshPaneIndex,
+  knownNames})` — pastes into an arbitrary folder, listing it via `operations/list` to detect collisions when
+  `knownNames` isn't supplied (with a `context.mounted` guard after the async list). `pasteClipboardInto` now
+  delegates to it, passing the pane's already-loaded names to skip the round-trip.
+- `ui/browser_pane.dart`: the per-pane `_paste(context, ref, state, remote, path)` routes through the helper —
+  reusing `state.entries` when the target is the current folder, listing otherwise. Both call sites updated.
+- `test/paste_action_test.dart`: 1 test — pasting into a subfolder lists it, surfaces the collision, prompts, and
+  runs no transfer on Cancel.
+**Database/API Changes:** Adds a read-only `operations/list` before a subfolder paste (only when the listing
+isn't already loaded).
+**Summary:** alpha.76 (branch) — paste is now conflict-aware from **every** entry point (Ctrl+V, menu paste into
+the current folder, and menu paste onto a subfolder). analyze (0) / test (179, +1) green; build in progress.
+**Needs the user's eyes.**
+
 ## [2026-06-30] - v0.1.0-alpha.75: recent locations in the command palette
 
 **Agent:** Airclone Build (Claude Opus 4.8) — branch `backlog-features`. Rounds out the palette (a67) alongside
