@@ -6,6 +6,26 @@ All changes made by AI agents are tracked chronologically below (most recent fir
 
 <!-- New entries go above this line, most recent first -->
 
+## [2026-06-30] - v0.1.0-alpha.79: collision-aware rename + new folder
+
+**Agent:** Airclone Build (Claude Opus 4.8) — branch `backlog-features`. Found by a 5-agent subsystem gap-audit as
+the top gap: **rename was the one file-mutation path that still silently overwrote** (paste + all drag-drop are
+conflict-aware since a77). `operations/movefile` clobbers its destination, and the rename handlers only guarded
+`newName == oldName`.
+**Files Modified:**
+- `ui/file_op_dialogs.dart`: the shared `_NameDialog` (rename + new folder) takes a `taken` set of sibling names
+  and blocks submit with an inline `errorText` ("A file or folder named X already exists here"), clearing as you
+  type. Keeping the same name is still allowed (not a self-collision). No overwrite is possible — no RC round-trip
+  (the sibling names are already in the loaded listing).
+- `ui/browser_pane.dart` (both rename + both new-folder handlers) and `ui/home_screen.dart` (F2 rename): pass the
+  current folder's names (rename excludes the entry itself) as `taken`.
+- `test/rename_conflict_test.dart`: 3 tests — rename onto an existing name is blocked then succeeds once fixed;
+  unchanged name allowed; new folder onto an existing name blocked.
+**Database/API Changes:** None (in-memory sibling check in front of the existing `operations/movefile`).
+**Summary:** alpha.79 (branch) — renaming or creating a folder onto a name that already exists is now blocked with
+a clear message instead of silently overwriting. **Every** file-mutation path is finally conflict-aware. analyze
+(0) / test (186, +3) green; build in progress. **Needs the user's eyes.**
+
 ## [2026-06-30] - v0.1.0-alpha.78: first-run onboarding CTA
 
 **Agent:** Airclone Build (Claude Opus 4.8) — branch `backlog-features`. Addresses the original "easier to use"

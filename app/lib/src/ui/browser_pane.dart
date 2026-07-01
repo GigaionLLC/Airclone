@@ -454,7 +454,10 @@ class BrowserPane extends ConsumerWidget {
     WidgetRef ref,
     BrowserState state,
   ) async {
-    final name = await showNewFolderDialog(context);
+    final name = await showNewFolderDialog(
+      context,
+      taken: state.entries.map((e) => e.name).toSet(),
+    );
     if (name == null || state.remote == null) return;
     await ref.read(fileOpsProvider).newFolder(state.remote!, state.path, name);
     await ref.read(paneProvider(index).notifier).refresh();
@@ -466,7 +469,14 @@ class BrowserPane extends ConsumerWidget {
     BrowserState state,
     RcloneFile f,
   ) async {
-    final name = await showRenameDialog(context, f.name);
+    final name = await showRenameDialog(
+      context,
+      f.name,
+      taken: {
+        for (final e in state.entries)
+          if (e.name != f.name) e.name,
+      },
+    );
     if (name == null || name == f.name || state.remote == null) return;
     await ref.read(fileOpsProvider).rename(state.remote!, f.path, name);
     await ref.read(paneProvider(index).notifier).refresh();
@@ -1700,7 +1710,10 @@ class _PaneToolbar extends ConsumerWidget {
 
   // ── handlers ─────────────────────────────────────────────────────────────
   Future<void> _newFolder(BuildContext context, WidgetRef ref) async {
-    final name = await showNewFolderDialog(context);
+    final name = await showNewFolderDialog(
+      context,
+      taken: state.entries.map((e) => e.name).toSet(),
+    );
     if (name == null || state.remote == null) return;
     await ref.read(fileOpsProvider).newFolder(state.remote!, state.path, name);
     await ref.read(paneProvider(index).notifier).refresh();
@@ -1723,7 +1736,14 @@ class _PaneToolbar extends ConsumerWidget {
     final files = state.selectedEntries;
     if (files.length != 1 || state.remote == null) return;
     final f = files.first;
-    final name = await showRenameDialog(context, f.name);
+    final name = await showRenameDialog(
+      context,
+      f.name,
+      taken: {
+        for (final e in state.entries)
+          if (e.name != f.name) e.name,
+      },
+    );
     if (name == null || name == f.name) return;
     await ref.read(fileOpsProvider).rename(state.remote!, f.path, name);
     await ref.read(paneProvider(index).notifier).refresh();

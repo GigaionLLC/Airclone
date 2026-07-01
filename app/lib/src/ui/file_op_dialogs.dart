@@ -8,27 +8,37 @@ import 'theme/tokens.dart';
 
 /// Prompts for a new folder name. Resolves to the trimmed name, or `null` when
 /// the user cancels or submits an empty value.
-Future<String?> showNewFolderDialog(BuildContext context) => showDialog<String>(
+Future<String?> showNewFolderDialog(
+  BuildContext context, {
+  Set<String> taken = const {},
+}) => showDialog<String>(
   context: context,
-  builder: (_) => const _NameDialog(
+  builder: (_) => _NameDialog(
     title: 'New folder',
     hint: 'Folder name',
     confirmLabel: 'Create',
+    taken: taken,
   ),
 );
 
 /// Prompts to rename an entry, prefilled with [currentName]. Resolves to the
-/// trimmed new name, or `null` when cancelled or unchanged/empty.
-Future<String?> showRenameDialog(BuildContext context, String currentName) =>
-    showDialog<String>(
-      context: context,
-      builder: (_) => _NameDialog(
-        title: 'Rename',
-        hint: 'New name',
-        confirmLabel: 'Rename',
-        initial: currentName,
-      ),
-    );
+/// trimmed new name, or `null` when cancelled or unchanged/empty. [taken] is the
+/// set of sibling names (excluding [currentName]); submitting a name already in
+/// it is blocked inline so a rename can never silently overwrite another entry.
+Future<String?> showRenameDialog(
+  BuildContext context,
+  String currentName, {
+  Set<String> taken = const {},
+}) => showDialog<String>(
+  context: context,
+  builder: (_) => _NameDialog(
+    title: 'Rename',
+    hint: 'New name',
+    confirmLabel: 'Rename',
+    initial: currentName,
+    taken: taken,
+  ),
+);
 
 /// Asks the user to confirm deleting [label]. When [isDir] is true the copy
 /// warns that the folder's contents go too. Resolves to `true` on confirm.
@@ -95,12 +105,16 @@ class _NameDialog extends StatefulWidget {
     required this.hint,
     required this.confirmLabel,
     this.initial = '',
+    this.taken = const {},
   });
 
   final String title;
   final String hint;
   final String confirmLabel;
   final String initial;
+
+  /// Names that already exist at the destination; submitting one is blocked.
+  final Set<String> taken;
 
   @override
   State<_NameDialog> createState() => _NameDialogState();
@@ -120,9 +134,22 @@ class _NameDialogState extends State<_NameDialog> {
     super.dispose();
   }
 
+  String? _error;
+
   void _submit() {
     final value = _controller.text.trim();
-    Navigator.of(context).pop(value.isEmpty ? null : value);
+    if (value.isEmpty) {
+      Navigator.of(context).pop(null);
+      return;
+    }
+    // Block a name that already exists at the target (unchanged rename is fine).
+    if (value != widget.initial && widget.taken.contains(value)) {
+      setState(
+        () => _error = 'A file or folder named "$value" already exists here.',
+      );
+      return;
+    }
+    Navigator.of(context).pop(value);
   }
 
   @override
@@ -150,10 +177,14 @@ class _NameDialogState extends State<_NameDialog> {
           decoration: InputDecoration(
             isDense: true,
             hintText: widget.hint,
+            errorText: _error,
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(Radii.md),
             ),
           ),
+          onChanged: (_) {
+            if (_error != null) setState(() => _error = null);
+          },
           onSubmitted: (_) => _submit(),
         ),
       ),

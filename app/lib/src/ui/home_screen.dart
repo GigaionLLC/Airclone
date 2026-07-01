@@ -177,7 +177,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final sel = st.selectedEntries;
     if (sel.length != 1) return; // rename targets exactly one entry
     final f = sel.first;
-    final name = await showRenameDialog(context, f.name);
+    final name = await showRenameDialog(
+      context,
+      f.name,
+      taken: {
+        for (final e in st.entries)
+          if (e.name != f.name) e.name,
+      },
+    );
     if (name == null || name == f.name) return;
     await ref.read(fileOpsProvider).rename(st.remote!, f.path, name);
     await ref.read(paneProvider(idx).notifier).refresh();
