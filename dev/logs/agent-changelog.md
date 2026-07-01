@@ -6,6 +6,23 @@ All changes made by AI agents are tracked chronologically below (most recent fir
 
 <!-- New entries go above this line, most recent first -->
 
+## [2026-06-30] - v0.1.0-alpha.78: first-run onboarding CTA
+
+**Agent:** Airclone Build (Claude Opus 4.8) — branch `backlog-features`. Addresses the original "easier to use"
+goal for brand-new users: an empty pane used to say "Pick a remote on the left" even when there was nothing to
+pick.
+**Files Modified:**
+- `ui/browser_pane.dart`: `_empty` is now context-aware. Once `remotesProvider` has **loaded and is empty**
+  (never during load, so no flash for returning users), it shows a welcome — cloud glyph, "Connect your first
+  remote", a one-liner naming Drive/S3/Dropbox/OneDrive + "your local drives are already in the sidebar", and an
+  **Add a remote** button (opens the existing add-remote dialog). With remotes configured it keeps the neutral
+  "Pick a remote on the left" hint.
+- `test/onboarding_test.dart`: 2 tests — empty remotes → onboarding CTA; configured remotes → neutral hint.
+**Database/API Changes:** None (pure UI; reuses `remotesProvider` + `showAddRemoteDialog`).
+**Summary:** alpha.78 (branch) — first launch now greets you with a clear "connect your first remote" call to
+action instead of a dead-end hint. analyze (0) / test (183, +2) green; build in progress. **Visual — needs the
+user's eyes.**
+
 ## [2026-06-30] - v0.1.0-alpha.77: drag-and-drop is conflict-aware (unified paste + drop core)
 
 **Agent:** Airclone Build (Claude Opus 4.8) — branch `backlog-features`. The last consistency gap: in-app **drag**

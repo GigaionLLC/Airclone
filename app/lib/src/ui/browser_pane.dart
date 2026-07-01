@@ -11,9 +11,11 @@ import '../state/engine_controller.dart';
 import '../state/file_ops.dart';
 import '../state/os_integration.dart';
 import '../state/remote_features.dart';
+import '../state/remotes_provider.dart';
 import '../state/thumbnail_prefs.dart';
 import '../state/thumbnail_service.dart';
 import '../state/transfer_service.dart';
+import 'add_remote_dialog.dart';
 import 'column_header.dart';
 import 'context_menu.dart';
 import 'destination_picker.dart';
@@ -66,7 +68,7 @@ class BrowserPane extends ConsumerWidget {
             ],
             Expanded(
               child: state.remote == null
-                  ? _empty(c)
+                  ? _empty(context, ref, c)
                   : NativePaneDropRegion(
                       // In-app drag → copy into this pane (its listing is
                       // loaded, so collisions are detected without a re-list).
@@ -102,19 +104,65 @@ class BrowserPane extends ConsumerWidget {
     );
   }
 
-  Widget _empty(AircloneColors c) => Center(
-    child: Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Icon(Icons.folder_open_outlined, size: 36, color: c.textFaint),
-        const SizedBox(height: Space.x2),
-        Text(
-          'Pick a remote on the left',
-          style: TextStyle(color: c.textMuted, fontSize: 13),
+  Widget _empty(BuildContext context, WidgetRef ref, AircloneColors c) {
+    // Only show first-run onboarding once we KNOW there are zero configured
+    // remotes (loaded + empty) — never flash it while the list is still loading.
+    final remotesAsync = ref.watch(remotesProvider);
+    final noRemotes =
+        remotesAsync.hasValue && (remotesAsync.value?.isEmpty ?? true);
+    if (!noRemotes) {
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.folder_open_outlined, size: 36, color: c.textFaint),
+            const SizedBox(height: Space.x2),
+            Text(
+              'Pick a remote on the left',
+              style: TextStyle(color: c.textMuted, fontSize: 13),
+            ),
+          ],
         ),
-      ],
-    ),
-  );
+      );
+    }
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 380),
+        child: Padding(
+          padding: const EdgeInsets.all(Space.x5),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.cloud_sync_outlined, size: 44, color: c.primary),
+              const SizedBox(height: Space.x3),
+              Text(
+                'Connect your first remote',
+                style: TextStyle(
+                  color: c.text,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: Space.x2),
+              Text(
+                'Link a cloud storage — Google Drive, S3, Dropbox, OneDrive and '
+                '70+ more — to browse and sync it here. Your local drives are '
+                'already listed in the sidebar.',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: c.textMuted, fontSize: 13, height: 1.4),
+              ),
+              const SizedBox(height: Space.x4),
+              FilledButton.icon(
+                onPressed: () => showAddRemoteDialog(context),
+                icon: const Icon(Icons.add, size: 18),
+                label: const Text('Add a remote'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 
   Widget _body(
     BuildContext context,
