@@ -1,6 +1,12 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <!-- Cloud remotes: the bundled rclone engine talks to storage providers. -->
     <uses-permission android:name="android.permission.INTERNET"/>
+    <!-- Transfers keep running when the app is backgrounded: a dataSync
+         foreground service holds the process (and the engine child) alive,
+         with a progress notification (runtime-granted on Android 13+). -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC"/>
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
     <!-- Local files: rclone's `local` backend uses real filesystem paths, which
          on Android 11+ requires All Files Access (granted by the user from the
          in-app prompt; without it, browsing is limited to the app's own dir).
@@ -42,6 +48,12 @@
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
         </activity>
+        <!-- Holds the app (and the engine child process) alive while transfers
+             run in the background. Started/stopped from Dart. -->
+        <service
+            android:name=".TransferService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
         <meta-data

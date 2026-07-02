@@ -35,6 +35,14 @@ target/
 # into jniLibs as a per-ABI executable named librclone.so.
 app/android/app/src/main/jniLibs/
 
+# ─── Android release signing (SECRETS — never commit) ──────────────────────
+# The release keystore lives outside the repo (~/.airclone-signing); these
+# guards make sure a stray copy or the key.properties that points at it can
+# never be checked in. CI injects the same values via AIRCLONE_* secrets.
+**/key.properties
+*.jks
+*.keystore
+
 # ─── Tauri / Rust (if adopted) ─────────────────────────────────────────────
 src-tauri/target/
 **/*.rs.bk

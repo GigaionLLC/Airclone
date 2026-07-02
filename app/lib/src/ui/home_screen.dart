@@ -12,6 +12,7 @@ import '../rclone/models/remote.dart';
 import '../rclone/rclone_client.dart';
 import '../state/advanced_mode.dart';
 import '../state/android_native.dart';
+import '../state/android_transfer_service.dart';
 import '../state/app_info.dart';
 import '../state/bookmarks_controller.dart';
 import '../state/browser_controller.dart';
@@ -94,6 +95,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       ref.read(bwScheduleControllerProvider);
       // Load persisted favorites so the command palette has them ready.
       ref.read(bookmarksProvider);
+      // Android: foreground service keeps transfers alive when backgrounded.
+      ref.read(transferForegroundServiceProvider);
     });
   }
 

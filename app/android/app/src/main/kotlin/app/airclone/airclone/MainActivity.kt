@@ -34,6 +34,41 @@ class MainActivity : FlutterActivity() {
                                     android.Manifest.permission.READ_EXTERNAL_STORAGE
                                 ) == PackageManager.PERMISSION_GRANTED
                         )
+                    // ── Transfer foreground service (see TransferService.kt) ──
+                    "startTransferService" -> {
+                        val intent = Intent(this, TransferService::class.java)
+                            .putExtra(TransferService.EXTRA_TITLE, call.argument<String>("title"))
+                            .putExtra(TransferService.EXTRA_TEXT, call.argument<String>("text"))
+                        // Same call both starts and updates: onStartCommand
+                        // re-posts the notification with the new text.
+                        try {
+                            startForegroundService(intent)
+                        } catch (e: Exception) {
+                            // Android 12+ forbids starting a foreground service
+                            // from the background (ForegroundServiceStartNotAllowed-
+                            // Exception, an IllegalStateException). A transfer
+                            // kicked off while the app is already backgrounded
+                            // (e.g. the in-app scheduler) then simply runs without
+                            // the keep-alive rather than crashing the app.
+                        }
+                        result.success(null)
+                    }
+                    "stopTransferService" -> {
+                        stopService(Intent(this, TransferService::class.java))
+                        result.success(null)
+                    }
+                    "requestNotificationPermission" -> {
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                            checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) !=
+                                PackageManager.PERMISSION_GRANTED
+                        ) {
+                            requestPermissions(
+                                arrayOf(android.Manifest.permission.POST_NOTIFICATIONS),
+                                9002,
+                            )
+                        }
+                        result.success(null)
+                    }
                     "requestAllFilesAccess" -> {
                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
                             // Per-app screen first; some OEM builds only ship the
