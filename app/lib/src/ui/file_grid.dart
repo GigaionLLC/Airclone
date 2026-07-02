@@ -9,6 +9,7 @@ import 'file_icon.dart';
 import 'folder_thumbnail.dart';
 import 'native_drag.dart';
 import 'thumbnail_image.dart';
+import 'touch.dart';
 import 'pane_drag.dart';
 import 'theme/tokens.dart';
 
@@ -143,10 +144,17 @@ class _GridTile extends StatelessWidget {
   Widget _tile(bool selected) {
     return GestureDetector(
       onSecondaryTapUp: (d) => onContextMenu(file, d.globalPosition),
+      // Touch: long-press = context menu; single tap opens/previews.
+      onLongPressStart: (d) => onContextMenu(file, d.globalPosition),
       child: InkWell(
         borderRadius: BorderRadius.circular(Radii.md),
-        onTap: file.isDir ? () => onOpen(file) : () => onToggle(file),
-        onDoubleTap: file.isDir ? () => onOpen(file) : () => onPreview(file),
+        onTap: file.isDir
+            ? () => onOpen(file)
+            : (isTouchPrimary ? () => onPreview(file) : () => onToggle(file)),
+        // Touch: no double-tap — it would delay every single tap ~300 ms.
+        onDoubleTap: isTouchPrimary
+            ? null
+            : (file.isDir ? () => onOpen(file) : () => onPreview(file)),
         child: DecoratedBox(
           decoration: BoxDecoration(
             color: selected

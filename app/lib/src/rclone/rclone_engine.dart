@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:archive/archive.dart';
 import 'package:crypto/crypto.dart';
+import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 
@@ -12,12 +13,14 @@ import 'package:path_provider/path_provider.dart';
 class RcloneEngine {
   /// Resolution order for an existing binary:
   ///   1. explicit override (settings) — passed in by the caller,
-  ///   2. the app-managed engine dir,
-  ///   3. `rclone` on the system PATH.
+  ///   2. Android: the engine bundled in the APK (nothing else can exist),
+  ///   3. the app-managed engine dir,
+  ///   4. `rclone` on the system PATH.
   static Future<String?> findExisting({String? overridePath}) async {
     if (overridePath != null && overridePath.isNotEmpty) {
       if (await File(overridePath).exists()) return overridePath;
     }
+    if (Platform.isAndroid) return bundledAndroidBinary();
     final managed = await _managedBinaryPath();
     if (await File(managed).exists()) return managed;
 
@@ -25,10 +28,43 @@ class RcloneEngine {
     return onPath;
   }
 
+  /// The rclone executable that ships inside the APK as a per-ABI jniLib named
+  /// `librclone.so` (see dev/android/build-rclone.ps1). The installer extracts
+  /// it to `nativeLibraryDir` — the one location Android permits exec() from —
+  /// whose path only the platform side knows.
+  static Future<String?> bundledAndroidBinary() async {
+    try {
+      const channel = MethodChannel('airclone/native');
+      final dir = await channel.invokeMethod<String>('nativeLibraryDir');
+      if (dir == null || dir.isEmpty) return null;
+      final path = '$dir/librclone.so';
+      return await File(path).exists() ? path : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
   /// Detects whether the rclone config is encrypted **out-of-band** — by reading the
   /// config file header, never by an RC call (a locked config hangs `config/get` and
   /// `--ask-password=false` crashes rclone). See `wiki/core/15-security.md`.
-  static Future<bool> isConfigEncrypted(String rclonePath) async {
+  ///
+  /// When the app manages the config location itself (Android passes `--config`
+  /// explicitly), [configPath] skips the `rclone config file` probe and reads
+  /// that file directly.
+  static Future<bool> isConfigEncrypted(
+    String rclonePath, {
+    String? configPath,
+  }) async {
+    if (configPath != null) {
+      try {
+        final file = File(configPath);
+        if (!await file.exists()) return false;
+        final head = await file.readAsString();
+        return head.contains('Encrypted rclone configuration File');
+      } catch (_) {
+        return false;
+      }
+    }
     try {
       final res = await Process.run(rclonePath, ['config', 'file']);
       if (res.exitCode != 0) return false;
@@ -63,6 +99,13 @@ class RcloneEngine {
   static Future<String> downloadLatest({
     void Function(String)? onStatus,
   }) async {
+    if (Platform.isAndroid) {
+      // No downloadable engine exists for Android (and exec from app storage is
+      // forbidden anyway) — the binary must come bundled in the APK.
+      throw StateError(
+        'The bundled rclone engine is missing from this build.',
+      );
+    }
     final triple = _targetTriple();
     onStatus?.call('Resolving latest rclone version…');
     final version = await _latestVersion();

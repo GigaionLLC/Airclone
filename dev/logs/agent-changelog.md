@@ -6,6 +6,45 @@ All changes made by AI agents are tracked chronologically below (most recent fir
 
 <!-- New entries go above this line, most recent first -->
 
+## [2026-07-02] - v0.1.0-alpha.84: Android works — bundled rclone engine + phone-first UI
+
+**Agent:** Airclone Build (Claude Fable 5) — branch `backlog-features` → `main`. The "very good initial
+Android work": from boots-but-useless to a working phone app, verified end-to-end on an emulator
+(engine ready → WebDAV remote listed → file copied cloud→phone byte-identical → all tabs tap-tested,
+debug AND release-mode fresh install).
+**Engine (the big one):** rclone v1.74.3 cross-compiled per ABI (Go + NDK, CGO, `-fuse-ld=lld
+--hash-style=both`, tags `android noselfupdate`) and shipped inside the APK as a *fake shared library*
+`jniLibs/<abi>/librclone.so` — `useLegacyPackaging` extracts it to `nativeLibraryDir`, the one path
+Android still allows exec() from (technique learned from GPL'd Round Sync — reimplemented, no code
+copied). The app spawns `librclone.so rcd` on loopback exactly like desktop, so `HttpRcloneClient` is
+reused unchanged (new `extraEnv`: `TMPDIR`/`HOME`/`XDG_CACHE_HOME`→app dirs,
+`RCLONE_LOCAL_NO_SET_MODTIME=true`). Config at `<appSupport>/rclone.conf` via `--config`.
+Local build: `dev/android/build-rclone.ps1`; CI builds all 3 ABIs and releases
+`airclone-android-{arm64-v8a,armeabi-v7a,x86_64}.apk` via `--split-per-abi` (45 MB arm64 — smaller
+than the old 119 MB engineless universal).
+**Phone UI:** `width<700` shell (`mobile_home.dart`): bottom nav Files/Transfers/Settings; locations
+list (Internal storage + standard folders + cloud remotes); slim browser header over the shared
+`BrowserPane`; system-back = up→close→Files→exit. Touch grammar: tap opens/previews, long-press =
+context menu (drag-and-drop pass-through on touch — its long-press recognizer was eating the menu),
+no double-tap delay. All Files Access flow (banner → settings intent → lifecycle re-check;
+legacy READ/WRITE + `requestLegacyExternalStorage` pre-Android-11). Storage root resolved per-user
+via platform channel (multi-user/work profiles). Desktop-only surfaces hidden on Android (backdrop,
+rclone path, Downloads default, open-with/reveal, "This device" `$HOME` peer).
+**Adversarial review:** 5-lens workflow (platform/CI/engine/mobile-UX/security), 27 findings → 15
+confirmed by skeptic agents → all fixed pre-commit. Highlights: `home_screen.dart` had been
+mojibake-corrupted by an earlier PowerShell edit (12 user-visible strings, byte-verified + repaired);
+`allowBackup` was leaking `rclone.conf` (cloud creds) into device backups → disabled; user engine
+flags could override the loopback `--rc-addr` (flag order = precedence) → ours now always win; rcd
+stderr no longer reaches release logs (`-vv` could echo rc creds); rcd child death now detected
+(engine error + restart instead of a zombie "ready"); tap delay, back-button, keyboard-overflow,
+Download-via-SAF-URI, CI NDK pinning + setup-go cache, build-script env restore all fixed.
+**Known limitations (deliberate, documented):** transfers don't survive backgrounding yet (needs a
+dataSync foreground service — next milestone); alpha APKs are debug-signed with an ephemeral key, so
+**uninstall the previous alpha before installing a new one**; phone multi-select limited to
+Select all / single-file long-press actions.
+**Tests:** 205 green, analyze 0. **Summary:** alpha.84 — Android goes from broken to genuinely usable:
+browse, manage remotes, and transfer, on the same engine + state layer as desktop.
+
 ## [2026-07-01] - v0.1.0-alpha.83: checksums · pause queue · ETA · open serve URL · mount cache refresh
 
 **Agent:** Airclone Build (Claude Fable 5) — branch `backlog-features`. Five features from the gap-audit's

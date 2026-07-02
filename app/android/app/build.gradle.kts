@@ -34,6 +34,18 @@ android {
             signingConfig = signingConfigs.getByName("debug")
         }
     }
+
+    packaging {
+        jniLibs {
+            // The rclone engine is a per-ABI *executable* shipped under jniLibs as
+            // librclone.so (built by dev/android/build-rclone.ps1 / CI). Legacy
+            // packaging makes the installer extract it to nativeLibraryDir — the
+            // only location Android permits exec() from (W^X, targetSdk 29+).
+            useLegacyPackaging = true
+            // Don't let AGP's strip task touch it: it's a Go binary, not a JNI lib.
+            keepDebugSymbols += "**/librclone.so"
+        }
+    }
 }
 
 kotlin {

@@ -35,6 +35,7 @@ import 'public_link_dialog.dart';
 import 'quick_look.dart';
 import 'storage_breakdown.dart';
 import 'theme/tokens.dart';
+import 'touch.dart';
 import 'transfer_options_dialog.dart';
 
 /// One of the two dual-pane browsers. [index] 0 = A (left), 1 = B (right).
@@ -90,6 +91,14 @@ class BrowserPane extends ConsumerWidget {
                       child: GestureDetector(
                         behavior: HitTestBehavior.translucent,
                         onSecondaryTapUp: (d) => _showEmptyMenu(
+                          context,
+                          ref,
+                          state,
+                          d.globalPosition,
+                        ),
+                        // Touch: long-press on empty space = the folder menu
+                        // (rows win the gesture arena with their own handler).
+                        onLongPressStart: (d) => _showEmptyMenu(
                           context,
                           ref,
                           state,
@@ -1925,9 +1934,17 @@ class _FileRowState extends ConsumerState<_FileRow> {
       onExit: (_) => _setHover(false),
       child: GestureDetector(
         onSecondaryTapUp: (d) => onContextMenu(d.globalPosition),
+        // Touch: long-press = the row's context menu (no right button), and a
+        // single tap opens/previews (phone file-manager convention) instead of
+        // toggling selection.
+        onLongPressStart: (d) => onContextMenu(d.globalPosition),
         child: InkWell(
-          onTap: file.isDir ? onOpen : onToggle,
-          onDoubleTap: file.isDir ? onOpen : onPreview,
+          onTap: file.isDir ? onOpen : (isTouchPrimary ? onPreview : onToggle),
+          // Touch: no double-tap — a registered recognizer would delay every
+          // single tap ~300 ms while the arena waits for a second tap.
+          onDoubleTap: isTouchPrimary
+              ? null
+              : (file.isDir ? onOpen : onPreview),
           child: Container(
             height: t.rowHeight,
             padding: const EdgeInsets.symmetric(horizontal: Space.x3),

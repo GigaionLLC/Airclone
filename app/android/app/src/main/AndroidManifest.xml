@@ -1,8 +1,25 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Cloud remotes: the bundled rclone engine talks to storage providers. -->
+    <uses-permission android:name="android.permission.INTERNET"/>
+    <!-- Local files: rclone's `local` backend uses real filesystem paths, which
+         on Android 11+ requires All Files Access (granted by the user from the
+         in-app prompt; without it, browsing is limited to the app's own dir).
+         Pre-11 devices use the legacy runtime permissions instead (plus
+         requestLegacyExternalStorage for Android 10's scoped-storage opt-out). -->
+    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE"/>
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"
+        android:maxSdkVersion="29"/>
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+        android:maxSdkVersion="29"/>
+    <!-- allowBackup=false: the app dir holds rclone.conf (cloud credentials,
+         obscured not encrypted) — it must never ride along in ADB/cloud
+         backups or device-to-device transfers. -->
     <application
         android:label="airclone"
         android:name="${applicationName}"
-        android:icon="@mipmap/ic_launcher">
+        android:icon="@mipmap/ic_launcher"
+        android:allowBackup="false"
+        android:requestLegacyExternalStorage="true">
         <activity
             android:name=".MainActivity"
             android:exported="true"

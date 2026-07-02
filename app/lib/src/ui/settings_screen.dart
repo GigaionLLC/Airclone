@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -27,7 +29,6 @@ class SettingsDialog extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final c = AircloneTheme.of(context);
-    final advanced = ref.watch(advancedModeProvider);
     return Dialog(
       backgroundColor: c.surfaceRaised,
       shape: RoundedRectangleBorder(
@@ -38,48 +39,76 @@ class SettingsDialog extends ConsumerWidget {
           maxWidth: 480,
           maxHeight: MediaQuery.of(context).size.height * 0.85,
         ),
-        child: SingleChildScrollView(
+        child: const SingleChildScrollView(
           child: Padding(
-            padding: const EdgeInsets.all(Space.x5),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _Header(),
-                const SizedBox(height: Space.x4),
-                // Advanced mode pinned at the top so it's easy to find/toggle.
-                _ModeSection(),
-                const SizedBox(height: Space.x5),
-                const _GroupHeader('Appearance'),
-                _ThemeSection(),
-                const SizedBox(height: Space.x4),
-                _SkinSection(),
-                const SizedBox(height: Space.x4),
-                _BackdropSection(),
-                const SizedBox(height: Space.x5),
-                const _GroupHeader('Transfers'),
-                _DownloadsSection(),
-                if (advanced) ...[
-                  const SizedBox(height: Space.x4),
-                  _ConcurrencySection(),
-                ],
-                const SizedBox(height: Space.x5),
-                const _GroupHeader('Engine'),
-                _RclonePathSection(),
-                if (advanced) ...[
-                  const SizedBox(height: Space.x4),
-                  _EngineFlagsSection(),
-                ],
-                const SizedBox(height: Space.x5),
-                const _GroupHeader('Storage & updates'),
-                _CacheSection(),
-                const SizedBox(height: Space.x4),
-                _UpdatesSection(),
-              ],
-            ),
+            padding: EdgeInsets.all(Space.x5),
+            child: SettingsContent(),
           ),
         ),
       ),
+    );
+  }
+}
+
+/// The settings sections themselves — shared between the desktop dialog and
+/// the phone shell's full-screen Settings tab. Sections that only make sense
+/// with a desktop window/engine (backdrop, rclone path override) hide
+/// themselves on mobile.
+class SettingsContent extends ConsumerWidget {
+  const SettingsContent({super.key, this.embedded = false});
+
+  /// True when shown as a plain screen (phone Settings tab) rather than a
+  /// dismissable dialog.
+  final bool embedded;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final advanced = ref.watch(advancedModeProvider);
+    final desktop =
+        Platform.isWindows || Platform.isMacOS || Platform.isLinux;
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _Header(showClose: !embedded),
+        const SizedBox(height: Space.x4),
+        // Advanced mode pinned at the top so it's easy to find/toggle.
+        _ModeSection(),
+        const SizedBox(height: Space.x5),
+        const _GroupHeader('Appearance'),
+        _ThemeSection(),
+        const SizedBox(height: Space.x4),
+        _SkinSection(),
+        if (desktop) ...[
+          const SizedBox(height: Space.x4),
+          _BackdropSection(),
+        ],
+        if (desktop || advanced) ...[
+          const SizedBox(height: Space.x5),
+          const _GroupHeader('Transfers'),
+          // Desktop only: Android's directory picker returns SAF content://
+          // URIs, which can't be a default download folder for the engine.
+          if (desktop) _DownloadsSection(),
+          if (advanced) ...[
+            if (desktop) const SizedBox(height: Space.x4),
+            _ConcurrencySection(),
+          ],
+        ],
+        if (desktop || advanced) ...[
+          const SizedBox(height: Space.x5),
+          const _GroupHeader('Engine'),
+          if (desktop) _RclonePathSection(),
+          if (advanced) ...[
+            if (desktop) const SizedBox(height: Space.x4),
+            _EngineFlagsSection(),
+          ],
+        ],
+        const SizedBox(height: Space.x5),
+        const _GroupHeader('Storage & updates'),
+        _CacheSection(),
+        const SizedBox(height: Space.x4),
+        _UpdatesSection(),
+      ],
     );
   }
 }
@@ -337,6 +366,12 @@ class _CacheSectionState extends ConsumerState<_CacheSection> {
 }
 
 class _Header extends StatelessWidget {
+  const _Header({this.showClose = true});
+
+  /// False when the content is embedded in the phone shell's Settings tab —
+  /// there is no dialog route to pop there.
+  final bool showClose;
+
   @override
   Widget build(BuildContext context) {
     final c = AircloneTheme.of(context);
@@ -353,13 +388,14 @@ class _Header extends StatelessWidget {
           ),
         ),
         const Spacer(),
-        IconButton(
-          onPressed: () => Navigator.of(context).pop(),
-          icon: const Icon(Icons.close, size: 18),
-          tooltip: 'Close',
-          color: c.textMuted,
-          visualDensity: VisualDensity.compact,
-        ),
+        if (showClose)
+          IconButton(
+            onPressed: () => Navigator.of(context).pop(),
+            icon: const Icon(Icons.close, size: 18),
+            tooltip: 'Close',
+            color: c.textMuted,
+            visualDensity: VisualDensity.compact,
+          ),
       ],
     );
   }

@@ -30,6 +30,11 @@ target/
 **/macos/Flutter/ephemeral/
 *.iml
 
+# ─── Android bundled engine (built artifact, never commit) ─────────────────
+# dev/android/build-rclone.ps1 (local) / release.yml (CI) cross-compile rclone
+# into jniLibs as a per-ABI executable named librclone.so.
+app/android/app/src/main/jniLibs/
+
 # ─── Tauri / Rust (if adopted) ─────────────────────────────────────────────
 src-tauri/target/
 **/*.rs.bk

@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 
+import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:http/http.dart' as http;
 
 import 'rclone_client.dart';
@@ -15,6 +16,7 @@ class HttpRcloneClient implements RcloneClient {
     this.configPath,
     this.configPassword,
     this.extraArgs = const <String>[],
+    this.extraEnv = const <String, String>{},
   });
 
   /// Path to the rclone binary (from [RcloneEngine]).
@@ -31,11 +33,20 @@ class HttpRcloneClient implements RcloneClient {
   /// Already tokenized argv-style. The rc binding/auth flags above always win.
   final List<String> extraArgs;
 
+  /// Additional environment for the `rcd` child (e.g. Android's TMPDIR /
+  /// RCLONE_LOCAL_NO_SET_MODTIME). RCLONE_CONFIG_PASS always wins over this.
+  final Map<String, String> extraEnv;
+
   Process? _process;
   int? _port;
   String? _authHeader;
   String? _version;
+  bool _quitting = false;
   final _client = http.Client();
+
+  /// Fires if the rcd child exits without [quit] being called (crash, OOM
+  /// kill). The owner surfaces it and offers a restart.
+  void Function()? onDied;
 
   Uri _uri(String method) => Uri.parse('http://127.0.0.1:$_port/$method');
 
@@ -46,8 +57,11 @@ class HttpRcloneClient implements RcloneClient {
 
   /// Best-effort kill of the `rcd` child from a previous run that was orphaned
   /// by a hard exit. Targets only the single PID we recorded in the marker, so
-  /// it cannot touch the user's other rclone processes.
+  /// it cannot touch the user's other rclone processes. Skipped on Android:
+  /// systemTemp resolves to /data/local/tmp (not app-writable), and Android
+  /// kills the app's process group anyway.
   Future<void> _reapPreviousRcd() async {
+    if (Platform.isAndroid) return;
     final marker = _markerFile;
     try {
       if (!await marker.exists()) return;
@@ -94,6 +108,11 @@ class HttpRcloneClient implements RcloneClient {
 
     final args = <String>[
       'rcd',
+      // Advanced: user-supplied global flags go FIRST — rclone (pflag) lets the
+      // last occurrence of a repeated flag win, so ours below always take
+      // precedence. That keeps the rc listener loopback-bound with per-session
+      // creds no matter what a user pastes into the engine-flags setting.
+      ...extraArgs,
       '--rc-addr',
       '127.0.0.1:$port',
       '--rc-user',
@@ -107,30 +126,51 @@ class HttpRcloneClient implements RcloneClient {
         '--config',
         configPath!,
       ],
-      // Advanced: user-supplied global flags, last so the rc binding stays intact.
-      ...extraArgs,
     ];
 
+    // RCLONE_CONFIG_PASS unlocks an encrypted config; inherits the parent env.
+    final env = <String, String>{
+      ...extraEnv,
+      if (configPassword != null && configPassword!.isNotEmpty)
+        'RCLONE_CONFIG_PASS': configPassword!,
+    };
     _process = await Process.start(
       rclonePath,
       args,
       runInShell: false,
-      // RCLONE_CONFIG_PASS unlocks an encrypted config; inherits the parent env.
-      environment: configPassword != null && configPassword!.isNotEmpty
-          ? {'RCLONE_CONFIG_PASS': configPassword!}
-          : null,
+      environment: env.isEmpty ? null : env,
     );
     // Record the new child's PID so a future launch can reap it if we crash.
-    try {
-      await _markerFile.writeAsString('${_process!.pid}');
-    } catch (_) {
-      /* non-fatal: reaping is best-effort */
+    if (!Platform.isAndroid) {
+      try {
+        await _markerFile.writeAsString('${_process!.pid}');
+      } catch (_) {
+        /* non-fatal: reaping is best-effort */
+      }
     }
-    // Surface engine stderr to the app log for diagnostics.
-    _process!.stderr.transform(utf8.decoder).listen((line) {
-      // ignore: avoid_print
-      print('[rclone] $line');
-    });
+    // Detect the child dying out from under us (crash/OOM); quit() exits are
+    // expected and stay silent.
+    _quitting = false;
+    final watched = _process!;
+    unawaited(
+      watched.exitCode.then((_) {
+        if (!_quitting && identical(_process, watched)) {
+          _process = null;
+          _port = null;
+          _authHeader = null;
+          onDied?.call();
+        }
+      }),
+    );
+    // Surface engine stderr for diagnostics — debug builds only. At high user
+    // verbosity (-vv / --dump) rclone can echo headers with the rc
+    // credentials, which must never reach a release device's persistent log.
+    if (kDebugMode) {
+      _process!.stderr.transform(utf8.decoder).listen((line) {
+        // ignore: avoid_print
+        print('[rclone] $line');
+      });
+    }
 
     await _awaitReady();
   }
@@ -190,6 +230,7 @@ class HttpRcloneClient implements RcloneClient {
   Future<void> quit() async {
     final proc = _process;
     if (proc == null) return;
+    _quitting = true;
     try {
       await rpc('core/quit').timeout(const Duration(seconds: 3));
     } catch (_) {

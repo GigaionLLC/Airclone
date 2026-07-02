@@ -11,6 +11,7 @@ import '../rclone/models/rclone_file.dart';
 import '../rclone/models/remote.dart';
 import '../rclone/rclone_client.dart';
 import '../state/advanced_mode.dart';
+import '../state/android_native.dart';
 import '../state/app_info.dart';
 import '../state/bookmarks_controller.dart';
 import '../state/browser_controller.dart';
@@ -34,11 +35,13 @@ import 'command_palette.dart';
 import 'connection_test_dialog.dart';
 import 'dedupe_dialog.dart';
 import 'encrypt_remote_dialog.dart';
+import 'engine_gate.dart';
 import 'file_op_dialogs.dart';
 import 'format.dart';
 import 'native_drag.dart';
 import 'inspector_panel.dart';
 import 'jobs_panel.dart';
+import 'mobile_home.dart';
 import 'mount_panel.dart';
 import 'pane_drag.dart';
 import 'paste_action.dart';
@@ -522,6 +525,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         ref.read(browserBProvider.notifier).refresh();
       }
     });
+    // Phone-sized windows get the touch-first shell (bottom tabs, one pane).
+    // The listeners above stay active for both shells.
+    if (MediaQuery.sizeOf(context).width < 700) {
+      return const MobileHomeScreen();
+    }
     return Scaffold(
       body: CallbackShortcuts(
         bindings: {
@@ -647,7 +655,7 @@ class _WorkArea extends ConsumerWidget {
     final c = AircloneTheme.of(context);
     final engine = ref.watch(engineControllerProvider);
     if (engine.phase != EnginePhase.ready) {
-      return _EngineGate(engine: engine);
+      return EngineGate(engine: engine);
     }
     final inspectorOpen = ref.watch(inspectorVisibleProvider);
     final singlePane = ref.watch(singlePaneProvider);
@@ -931,6 +939,10 @@ class _Sidebar extends ConsumerWidget {
     );
 
     final children = <Widget>[
+      // Android: local browsing needs All Files Access — prompt until granted.
+      if (Platform.isAndroid &&
+          ref.watch(allFilesAccessProvider).valueOrNull == false)
+        const StorageAccessBanner(),
       // ── Locations (editable: + picker · drag-drop folders · remove) ──────────
       _SectionHeader(
         label: 'LOCATIONS',
@@ -1514,180 +1526,6 @@ Future<void> _duplicateRemote(
     );
   } catch (e) {
     messenger.showSnackBar(SnackBar(content: Text('Duplicate failed: $e')));
-  }
-}
-
-/// Shown until the engine is ready (locating / not-installed / provisioning / error).
-class _EngineGate extends ConsumerWidget {
-  const _EngineGate({required this.engine});
-  final EngineUi engine;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final c = AircloneTheme.of(context);
-    if (engine.phase == EnginePhase.needsPassword) {
-      return _PasswordGate(message: engine.message);
-    }
-    final notInstalled = engine.phase == EnginePhase.notInstalled;
-    final error = engine.phase == EnginePhase.error;
-    final busy =
-        engine.phase == EnginePhase.locating ||
-        engine.phase == EnginePhase.provisioning ||
-        engine.phase == EnginePhase.starting;
-
-    return Center(
-      child: Container(
-        width: 420,
-        padding: const EdgeInsets.all(Space.x6),
-        decoration: BoxDecoration(
-          color: c.surfaceRaised,
-          borderRadius: BorderRadius.circular(Radii.lg),
-          border: Border.all(color: c.border),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              error ? Icons.error_outline : Icons.cloud_sync_outlined,
-              size: 40,
-              color: error ? c.error : c.primary,
-            ),
-            const SizedBox(height: Space.x4),
-            Text(
-              error
-                  ? 'Engine error'
-                  : notInstalled
-                  ? 'Set up the rclone engine'
-                  : 'Starting Airclone',
-              style: TextStyle(
-                color: c.text,
-                fontSize: 18,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            const SizedBox(height: Space.x2),
-            Text(
-              engine.message ??
-                  (notInstalled
-                      ? 'Airclone uses the rclone engine. Download it now — nothing else to install.'
-                      : 'Please wait…'),
-              textAlign: TextAlign.center,
-              style: TextStyle(color: c.textMuted, fontSize: 13),
-            ),
-            const SizedBox(height: Space.x5),
-            if (busy)
-              const SizedBox(
-                height: 22,
-                width: 22,
-                child: CircularProgressIndicator(strokeWidth: 2),
-              ),
-            if (notInstalled || error)
-              FilledButton.icon(
-                onPressed: () => ref
-                    .read(engineControllerProvider.notifier)
-                    .installAndStart(),
-                icon: const Icon(Icons.download, size: 18),
-                label: Text(
-                  error ? 'Retry download' : 'Download rclone engine',
-                ),
-              ),
-            if (error) ...[
-              const SizedBox(height: Space.x2),
-              TextButton(
-                onPressed: () =>
-                    ref.read(engineControllerProvider.notifier).bootstrap(),
-                child: const Text('Re-check for a local rclone'),
-              ),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-/// Password prompt for an encrypted rclone config. The password is sent to the
-/// controller (→ RCLONE_CONFIG_PASS) and never persisted.
-class _PasswordGate extends ConsumerStatefulWidget {
-  const _PasswordGate({this.message});
-  final String? message;
-
-  @override
-  ConsumerState<_PasswordGate> createState() => _PasswordGateState();
-}
-
-class _PasswordGateState extends ConsumerState<_PasswordGate> {
-  final _c = TextEditingController();
-
-  @override
-  void dispose() {
-    _c.dispose();
-    super.dispose();
-  }
-
-  void _submit() {
-    if (_c.text.isEmpty) return;
-    ref.read(engineControllerProvider.notifier).unlockAndStart(_c.text);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final c = AircloneTheme.of(context);
-    return Center(
-      child: Container(
-        width: 420,
-        padding: const EdgeInsets.all(Space.x6),
-        decoration: BoxDecoration(
-          color: c.surfaceRaised,
-          borderRadius: BorderRadius.circular(Radii.lg),
-          border: Border.all(color: c.border),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.lock_outline, size: 40, color: c.primary),
-            const SizedBox(height: Space.x4),
-            Text(
-              'Unlock your config',
-              style: TextStyle(
-                color: c.text,
-                fontSize: 18,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            const SizedBox(height: Space.x2),
-            Text(
-              widget.message ?? 'Your rclone config is encrypted.',
-              textAlign: TextAlign.center,
-              style: TextStyle(color: c.textMuted, fontSize: 13),
-            ),
-            const SizedBox(height: Space.x5),
-            TextField(
-              controller: _c,
-              obscureText: true,
-              autofocus: true,
-              decoration: InputDecoration(
-                isDense: true,
-                hintText: 'Config password',
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(Radii.md),
-                ),
-              ),
-              onSubmitted: (_) => _submit(),
-            ),
-            const SizedBox(height: Space.x4),
-            SizedBox(
-              width: double.infinity,
-              child: FilledButton.icon(
-                onPressed: _submit,
-                icon: const Icon(Icons.lock_open, size: 18),
-                label: const Text('Unlock'),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
   }
 }
 

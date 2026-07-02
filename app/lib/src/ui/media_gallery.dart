@@ -8,6 +8,7 @@ import '../state/thumbnail_service.dart';
 import 'file_icon.dart';
 import 'native_drag.dart';
 import 'thumbnail_image.dart';
+import 'touch.dart';
 import 'pane_drag.dart';
 import 'theme/tokens.dart';
 
@@ -281,10 +282,13 @@ class _MediaTile extends StatelessWidget {
 
     final gestures = GestureDetector(
       onSecondaryTapUp: (d) => onContextMenu(file, d.globalPosition),
+      // Touch: long-press = context menu; single tap previews.
+      onLongPressStart: (d) => onContextMenu(file, d.globalPosition),
       child: InkWell(
         borderRadius: BorderRadius.circular(Radii.sm),
-        onTap: () => onToggle(file),
-        onDoubleTap: () => onPreview(file),
+        onTap: isTouchPrimary ? () => onPreview(file) : () => onToggle(file),
+        // Touch: no double-tap — it would delay every single tap ~300 ms.
+        onDoubleTap: isTouchPrimary ? null : () => onPreview(file),
         child: framed,
       ),
     );

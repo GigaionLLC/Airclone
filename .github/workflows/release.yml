@@ -112,10 +112,17 @@ jobs:
     #     android/settings.gradle.kts + gradle-wrapper.properties) because cargokit's
     #     Gradle plugin calls Project.exec(), which Gradle 9 removed — and Flutter
     #     3.44's template defaults to Gradle 9 / AGP 9.
-    # Temurin 17 (this job's JDK) supplies the jlink AGP's JdkImageTransform needs,
-    # and the NDK auto-provisions on the runner. Verified green on GitHub Actions
-    # (workflow_dispatch run 28545145108, 2026-07-01), so continue-on-error is gone —
-    # the APK build is now a real check. If a future plugin regresses it, re-add it.
+    # Temurin 17 (this job's JDK) supplies the jlink AGP's JdkImageTransform needs.
+    # The plain APK build was verified green on Actions (run 28545145108, 2026-07-01).
+    # The "Build rclone engine" step below (alpha.84) is newer: it bundles rclone as
+    # a per-ABI jniLib so the app works on-device — validated locally (split APKs
+    # built + release smoke-tested on an emulator); its first Actions run is this
+    # tag's. The exact flutter build was exercised locally with the same jniLibs.
+    env:
+      # Keep in sync with dev/android/build-rclone.ps1 (the local equivalent).
+      RCLONE_VERSION: v1.74.3
+      NDK_VERSION: 28.2.13676358
+      NDK_API: 24
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -123,15 +130,58 @@ jobs:
       - uses: subosito/flutter-action@v2
         with: { channel: stable, cache: true }
       - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-go@v5
+        # cache:false — there is no committed go.sum (the pinning module is
+        # synthesized in /tmp at build time), so the default cache lookup would
+        # warn on every run and cache nothing.
+        with: { go-version: stable, cache: false }
+      # The Android engine: rclone cross-compiled per ABI into jniLibs as a
+      # (fake) shared library named librclone.so. useLegacyPackaging in
+      # build.gradle.kts extracts it to nativeLibraryDir at install, the one
+      # location Android permits exec() from — the app spawns `librclone.so
+      # rcd` exactly like the desktop engine. CGO on (C resolver + system
+      # certs); tags: noselfupdate (self-update can't replace an APK payload).
+      - name: Build rclone engine for Android ABIs
+        run: |
+          # Pin the NDK (matches the local toolchain) instead of trusting
+          # whatever "latest" the runner image ships.
+          echo y | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;${NDK_VERSION}" >/dev/null
+          NDK_BIN="$ANDROID_HOME/ndk/${NDK_VERSION}/toolchains/llvm/prebuilt/linux-x86_64/bin"
+          test -x "$NDK_BIN/aarch64-linux-android${NDK_API}-clang" || { echo "NDK toolchain missing at $NDK_BIN"; exit 1; }
+          mkdir -p /tmp/rclone-build && cd /tmp/rclone-build
+          go mod init rclone-android-build
+          go get github.com/rclone/rclone@${RCLONE_VERSION}
+          JNI="$GITHUB_WORKSPACE/app/android/app/src/main/jniLibs"
+          build() { # <abi> <goarch> <cc-prefix> [GOARM]
+            mkdir -p "$JNI/$1"
+            GOOS=android GOARCH=$2 CGO_ENABLED=1 GOARM=${4:-} \
+            CC="$NDK_BIN/$3${NDK_API}-clang" \
+            CGO_LDFLAGS='-fuse-ld=lld -Wl,--hash-style=both -s' \
+            go build -tags 'android noselfupdate' -trimpath \
+              -ldflags '-s -w -buildid=' \
+              -o "$JNI/$1/librclone.so" github.com/rclone/rclone
+          }
+          build arm64-v8a   arm64 aarch64-linux-android
+          build armeabi-v7a arm   armv7a-linux-androideabi 7
+          build x86_64      amd64 x86_64-linux-android
+          ls -lh "$JNI"/*/librclone.so
       - run: flutter pub get
-      - run: flutter build apk --release
+      # Split per ABI: rclone is ~76 MB per ABI, so a universal APK would be
+      # enormous. Virtually every modern phone wants arm64-v8a.
+      - run: flutter build apk --release --split-per-abi
+      - name: Rename APKs
+        run: |
+          cd build/app/outputs/flutter-apk
+          for abi in arm64-v8a armeabi-v7a x86_64; do
+            mv "app-$abi-release.apk" "airclone-android-$abi.apk"
+          done
       - uses: actions/upload-artifact@v4
         with:
           name: airclone-android-apk
-          path: app/build/app/outputs/flutter-apk/app-release.apk
+          path: app/build/app/outputs/flutter-apk/airclone-android-*.apk
       - name: Publish to release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
-          files: app/build/app/outputs/flutter-apk/app-release.apk
+          files: app/build/app/outputs/flutter-apk/airclone-android-*.apk
           prerelease: ${{ contains(github.ref_name, 'alpha') || contains(github.ref_name, 'beta') || contains(github.ref_name, 'rc') }}

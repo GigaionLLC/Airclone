@@ -21,7 +21,9 @@ final remotesProvider = FutureProvider<List<Remote>>((ref) async {
     remotes.add(Remote(name: name, type: type, fs: '$name:'));
   });
   remotes.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
-  remotes.add(localHomeRemote());
+  // Android has no meaningful $HOME — and the phone shell already offers
+  // "Internal storage", so the synthetic local peer would just be noise.
+  if (!Platform.isAndroid) remotes.add(localHomeRemote());
   return remotes;
 });
 

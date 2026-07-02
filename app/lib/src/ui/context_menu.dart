@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 
 import 'theme/tokens.dart';
@@ -68,7 +70,9 @@ Future<FileMenuAction?> showFileContextMenu(
     else
       _item(FileMenuAction.preview, Icons.visibility_outlined, 'Preview'),
     // Local files/folders interop with the OS via official, verifiable actions.
-    if (isLocal) ...[
+    // Desktop only: Android has no "open a path with the default app" /
+    // file-explorer reveal (those spawn OS processes).
+    if (isLocal && !Platform.isAndroid) ...[
       if (!isDir)
         _item(
           FileMenuAction.openWith,
@@ -80,7 +84,10 @@ Future<FileMenuAction?> showFileContextMenu(
         Icons.folder_open_outlined,
         'Show in File Explorer',
       ),
-    ] else
+    ] else if (!isLocal && !Platform.isAndroid)
+      // Android's folder picker returns SAF content:// URIs, which rclone's
+      // local backend can't write to — phones download via Copy → Paste into
+      // a local folder instead.
       _item(FileMenuAction.download, Icons.download_outlined, 'Download'),
     _item(FileMenuAction.copyPath, Icons.content_copy_outlined, 'Copy path'),
     if (!isDir)

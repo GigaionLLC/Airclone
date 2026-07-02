@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:super_drag_and_drop/super_drag_and_drop.dart';
 
 import 'pane_drag.dart';
+import 'touch.dart';
 
 /// Wraps [child] so the WHOLE widget can be dragged. The drag carries the in-app
 /// [PaneDragData] as `localData` (read back by [NativePaneDropRegion]) AND, for
@@ -27,6 +28,9 @@ class NativePaneDraggable extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Phones don't drag between panes — and DraggableWidget's long-press drag
+    // recognizer would swallow the long-press that opens the context menu.
+    if (isTouchPrimary) return child;
     return DragItemWidget(
       allowedOperations: () => const [DropOperation.copy],
       canAddItemToExistingSession: true,
@@ -158,6 +162,9 @@ class _NativePaneDropRegionState extends State<NativePaneDropRegion> {
 
   @override
   Widget build(BuildContext context) {
+    // No drags can start on touch (see NativePaneDraggable), so the drop
+    // machinery is dead weight there — skip it entirely.
+    if (isTouchPrimary) return widget.child;
     return DropRegion(
       formats: widget.onOsFiles != null
           ? const [Formats.plainText, Formats.fileUri]

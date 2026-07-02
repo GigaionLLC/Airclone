@@ -75,10 +75,46 @@ LocalLocation? _folder(String name, String path, LocalKind kind) {
   );
 }
 
+/// Android's shared-storage root. Folders under it are only readable once the
+/// user grants All Files Access (rclone's `local` backend uses real paths).
+/// Resolved from Environment.getExternalStorageDirectory() at startup (see
+/// initAndroidStorageRoot) — the default only holds for user 0; secondary
+/// users / work profiles live under a different index.
+String androidStorageRoot = '/storage/emulated/0';
+
 /// The default set of user folders (Home + standard XDG-ish folders) for first run.
 List<LocalLocation> buildDefaultUserFolders() {
-  final env = Platform.environment;
   final out = <LocalLocation>[];
+
+  if (Platform.isAndroid) {
+    // Android's fixed shared-storage folder names (Download is singular).
+    // No existsSync gate: these standard folders always exist, and a stat
+    // before the storage permission is granted can lie — seeding must not
+    // depend on grant order.
+    void add(String name, String sub, LocalKind kind) {
+      out.add(
+        LocalLocation(
+          remote: Remote(
+            name: name,
+            type: 'local',
+            fs: fsRoot('$androidStorageRoot/$sub'),
+            isLocal: true,
+          ),
+          kind: kind,
+        ),
+      );
+    }
+
+    add('Download', 'Download', LocalKind.downloads);
+    add('Documents', 'Documents', LocalKind.documents);
+    add('Pictures', 'Pictures', LocalKind.pictures);
+    add('Camera (DCIM)', 'DCIM', LocalKind.pictures);
+    add('Movies', 'Movies', LocalKind.videos);
+    add('Music', 'Music', LocalKind.music);
+    return out;
+  }
+
+  final env = Platform.environment;
   final home = (Platform.isWindows ? env['USERPROFILE'] : env['HOME']) ?? '';
   final sep = Platform.isWindows ? '\\' : '/';
 
@@ -100,6 +136,22 @@ List<LocalLocation> buildDefaultUserFolders() {
 /// Auto-detected disk drives (Windows letters, or `/` on POSIX). Not editable.
 final drivesProvider = Provider<List<LocalLocation>>((ref) {
   final out = <LocalLocation>[];
+  if (Platform.isAndroid) {
+    // The phone's shared storage. "/" exists but is mostly unreadable noise on
+    // Android, so it is deliberately not offered.
+    out.add(
+      LocalLocation(
+        remote: Remote(
+          name: 'Internal storage',
+          type: 'local',
+          fs: '$androidStorageRoot/',
+          isLocal: true,
+        ),
+        kind: LocalKind.drive,
+      ),
+    );
+    return out;
+  }
   if (Platform.isWindows) {
     for (var ch = 'C'.codeUnitAt(0); ch <= 'Z'.codeUnitAt(0); ch++) {
       final letter = String.fromCharCode(ch);
