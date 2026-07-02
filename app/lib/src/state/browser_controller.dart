@@ -389,6 +389,13 @@ final paneFilterFocusProvider = Provider.family<FocusNode, int>((ref, index) {
   return node;
 });
 
+/// Bumped by Ctrl+L / Alt+D to pop the active pane's address bar into edit
+/// mode (the Explorer/Finder "focus the address bar" gesture). The PathBar
+/// watches the tick and starts editing when it changes.
+final pathEditRequestProvider = StateProvider.family<int, int>(
+  (ref, index) => 0,
+);
+
 /// App-lifetime ScrollController per pane list view (so type-to-navigate can
 /// scroll the active pane to a matched row).
 final paneScrollProvider = Provider.family<ScrollController, int>((ref, index) {

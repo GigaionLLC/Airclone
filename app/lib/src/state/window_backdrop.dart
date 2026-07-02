@@ -38,6 +38,11 @@ const _backdropKey = 'window_backdrop';
 /// Reads the saved backdrop directly (used at startup, before the provider
 /// graph exists, to apply the effect ahead of the first frame). Falls back to
 /// [WindowBackdrop.systemDefault].
+///
+/// NOTE(alpha.85 review): defaulting Win11 to Mica was tried and reverted —
+/// the effect always applied `dark: true` (wrong on light themes) and every
+/// shell surface paints opaque anyway, so nothing showed through. "Mica done
+/// right" needs per-skin translucent surfaces first.
 Future<WindowBackdrop> loadSavedBackdrop() async {
   try {
     final p = await SharedPreferences.getInstance();

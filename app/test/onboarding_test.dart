@@ -30,14 +30,16 @@ void main() {
     await _pump(tester, const []);
     expect(find.text('Connect your first remote'), findsOneWidget);
     expect(find.widgetWithText(FilledButton, 'Add a remote'), findsOneWidget);
-    expect(find.text('Pick a remote on the left'), findsNothing);
+    expect(find.text('Cloud'), findsNothing); // no Home quick-access yet
   });
 
-  testWidgets('with remotes configured, the neutral hint shows instead', (
+  testWidgets('with remotes configured, the Home quick-access shows instead', (
     tester,
   ) async {
     await _pump(tester, const [Remote(name: 'g', type: 'drive', fs: 'g:')]);
-    expect(find.text('Pick a remote on the left'), findsOneWidget);
     expect(find.text('Connect your first remote'), findsNothing);
+    // The pane Home: the cloud remote as a tile + the add-remote tile.
+    expect(find.text('g'), findsOneWidget);
+    expect(find.text('Add a remote'), findsOneWidget);
   });
 }

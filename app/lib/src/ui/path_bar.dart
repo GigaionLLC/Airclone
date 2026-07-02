@@ -29,6 +29,7 @@ class PathBar extends StatefulWidget {
     required this.path,
     required this.onSegment,
     required this.onNavigate,
+    this.editRequestTick = 0,
   });
 
   /// The remote whose name anchors the breadcrumb (`null` -> placeholder root).
@@ -43,6 +44,10 @@ class PathBar extends StatefulWidget {
 
   /// Called when the user submits an edited path (the in-remote path string).
   final void Function(String newPath) onNavigate;
+
+  /// External "start editing" trigger: whenever this value CHANGES the bar
+  /// pops into edit mode (Ctrl+L / Alt+D route through a per-pane counter).
+  final int editRequestTick;
 
   @override
   State<PathBar> createState() => _PathBarState();
@@ -66,6 +71,10 @@ class _PathBarState extends State<PathBar> {
     // If the pane navigates underneath us, drop out of any stale edit session.
     if (oldWidget.path != widget.path || oldWidget.remote != widget.remote) {
       if (_editing) _stopEditing();
+    }
+    // Keyboard "focus the address bar" (Ctrl+L / Alt+D).
+    if (widget.editRequestTick != oldWidget.editRequestTick && !_editing) {
+      _startEditing();
     }
   }
 

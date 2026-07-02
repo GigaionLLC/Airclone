@@ -38,6 +38,7 @@ import 'encrypt_remote_dialog.dart';
 import 'engine_gate.dart';
 import 'file_op_dialogs.dart';
 import 'format.dart';
+import 'home_view.dart';
 import 'native_drag.dart';
 import 'inspector_panel.dart';
 import 'jobs_panel.dart';
@@ -54,6 +55,7 @@ import 'shortcuts_dialog.dart';
 import 'stats_panel.dart';
 import 'tasks_panel.dart';
 import 'theme/tokens.dart';
+import 'touch.dart';
 
 /// Whether the explorer shows a single wide pane (default, Spacedrive-like) or
 /// the dual-pane commander. Toggled from the top bar.
@@ -101,17 +103,67 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     super.dispose();
   }
 
-  /// Printable keystrokes (no modifiers, not space) jump-select the first entry
-  /// in the active pane starting with the typed prefix, and scroll to it (list).
+  /// Shell keys that COLLIDE with text editing (plain keys + the clipboard
+  /// chords), plus type-to-navigate. Handled here — not in CallbackShortcuts —
+  /// because a matched CallbackShortcuts binding always consumes the event,
+  /// which would make these keys dead inside the filter box / address bar.
+  /// Returning `ignored` while a field has focus lets the event bubble on to
+  /// the framework's text-editing shortcuts.
   KeyEventResult _onKey(FocusNode node, KeyEvent event) {
     if (event is! KeyDownEvent) return KeyEventResult.ignored;
+    // The user is typing: every key belongs to the text field.
+    if (textEditingHasFocus()) return KeyEventResult.ignored;
+
     final hk = HardwareKeyboard.instance;
-    if (hk.isControlPressed || hk.isAltPressed || hk.isMetaPressed) {
+    final ctrl = hk.isControlPressed;
+    final noMods =
+        !ctrl && !hk.isAltPressed && !hk.isMetaPressed && !hk.isShiftPressed;
+
+    if (ctrl && !hk.isAltPressed && !hk.isMetaPressed && !hk.isShiftPressed) {
+      switch (event.logicalKey) {
+        case LogicalKeyboardKey.keyA:
+          activePaneCtrl().selectAll();
+          return KeyEventResult.handled;
+        case LogicalKeyboardKey.keyC:
+          _clipboardStage(cut: false);
+          return KeyEventResult.handled;
+        case LogicalKeyboardKey.keyX:
+          _clipboardStage(cut: true);
+          return KeyEventResult.handled;
+        case LogicalKeyboardKey.keyV:
+          _pasteIntoActive();
+          return KeyEventResult.handled;
+      }
       return KeyEventResult.ignored;
     }
+
+    if (noMods) {
+      switch (event.logicalKey) {
+        case LogicalKeyboardKey.space:
+          _quickLookActive();
+          return KeyEventResult.handled;
+        case LogicalKeyboardKey.enter:
+          _openActiveSelection();
+          return KeyEventResult.handled;
+        case LogicalKeyboardKey.escape:
+          activePaneCtrl().clearSelection();
+          return KeyEventResult.handled;
+        case LogicalKeyboardKey.delete:
+          _deleteActiveSelection();
+          return KeyEventResult.handled;
+        case LogicalKeyboardKey.backspace:
+          // Explorer muscle memory: Backspace goes up one folder.
+          activePaneCtrl().up();
+          return KeyEventResult.handled;
+      }
+    }
+
+    if (!noMods) return KeyEventResult.ignored;
+    // Type-to-navigate: printable keystrokes (not space/control chars)
+    // jump-select the first entry starting with the typed prefix.
     final ch = event.character;
     if (ch == null || ch.length != 1 || ch.codeUnitAt(0) <= 0x20) {
-      return KeyEventResult.ignored; // skip space + control chars
+      return KeyEventResult.ignored;
     }
     _typeBuffer += ch.toLowerCase();
     _typeTimer?.cancel();
@@ -122,6 +174,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     _typeaheadJump();
     return KeyEventResult.handled;
   }
+
+  /// The active pane's controller (shared by _onKey's shortcut dispatch).
+  BrowserController activePaneCtrl() =>
+      ref.read(paneProvider(ref.read(activePaneProvider)).notifier);
 
   void _typeaheadJump() {
     final idx = ref.read(activePaneProvider);
@@ -315,6 +371,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       onChanged: () => ref.read(paneProvider(idx).notifier).refresh(),
     );
   }
+
+  /// Ctrl+L / Alt+D: pop the active pane's address bar into edit mode.
+  void _editActivePath() {
+    final idx = ref.read(activePaneProvider);
+    if (ref.read(paneProvider(idx)).remote == null) return;
+    ref.read(pathEditRequestProvider(idx).notifier).state++;
+  }
+
 
   /// Records a pane's arrival at a new remote+folder into the recents list.
   /// Fires on the (fs, path) change (even while still loading) so navigation is
@@ -553,21 +617,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 .read(paneProvider(idx).notifier)
                 .closeTab(ref.read(paneProvider(idx)).activeTab);
           },
-          const SingleActivator(LogicalKeyboardKey.space): _quickLookActive,
-          const SingleActivator(LogicalKeyboardKey.keyA, control: true): () =>
-              activePane().selectAll(),
-          const SingleActivator(LogicalKeyboardKey.escape): () =>
-              activePane().clearSelection(),
-          const SingleActivator(LogicalKeyboardKey.enter): _openActiveSelection,
+          // NOTE: keys that collide with text editing (Space/Enter/Escape/
+          // Delete/Backspace + Ctrl+A/C/X/V) are deliberately NOT bound here.
+          // A matched CallbackShortcuts binding always consumes the event, so
+          // binding them would make those keys dead inside the filter box and
+          // address bar (verified empirically). They live in _onKey below,
+          // which yields to focused text fields.
           const SingleActivator(LogicalKeyboardKey.f2): _renameActiveSelection,
-          const SingleActivator(LogicalKeyboardKey.delete):
-              _deleteActiveSelection,
-          const SingleActivator(LogicalKeyboardKey.keyC, control: true): () =>
-              _clipboardStage(cut: false),
-          const SingleActivator(LogicalKeyboardKey.keyX, control: true): () =>
-              _clipboardStage(cut: true),
-          const SingleActivator(LogicalKeyboardKey.keyV, control: true):
-              _pasteIntoActive,
           const SingleActivator(LogicalKeyboardKey.f1): () =>
               showShortcutsDialog(context),
           const SingleActivator(LogicalKeyboardKey.keyK, control: true): () =>
@@ -577,6 +633,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             control: true,
             shift: true,
           ): _openSearch,
+          // Explorer/Finder muscle memory: F5 refresh, and Ctrl+L / Alt+D
+          // focus the address bar for typing a path (Backspace-up is in
+          // _onKey with the other colliding keys).
+          const SingleActivator(LogicalKeyboardKey.f5): () =>
+              activePane().refresh(),
+          const SingleActivator(LogicalKeyboardKey.keyL, control: true):
+              _editActivePath,
+          const SingleActivator(LogicalKeyboardKey.keyD, alt: true):
+              _editActivePath,
         },
         child: Focus(
           autofocus: true,
@@ -967,8 +1032,8 @@ class _Sidebar extends ConsumerWidget {
               for (final loc in userLocations)
                 tile(
                   loc.remote,
-                  _localIcon(loc.kind),
-                  iconColor: colouredIcons ? _localAccent(loc.kind) : null,
+                  localKindIcon(loc.kind),
+                  iconColor: colouredIcons ? localKindAccent(loc.kind) : null,
                   onDelete: () => ref
                       .read(userLocationsProvider.notifier)
                       .remove(loc.remote.fs),
@@ -984,8 +1049,8 @@ class _Sidebar extends ConsumerWidget {
         for (final d in drives)
           tile(
             d.remote,
-            _localIcon(d.kind),
-            iconColor: colouredIcons ? _localAccent(d.kind) : null,
+            localKindIcon(d.kind),
+            iconColor: colouredIcons ? localKindAccent(d.kind) : null,
           ),
 
       // ── Cloud (rclone remotes) ───────────────────────────────────────────────
@@ -1182,34 +1247,8 @@ class _SidebarResizeHandle extends ConsumerWidget {
   }
 }
 
-/// Icon for a local sidebar location.
-IconData _localIcon(LocalKind kind) => switch (kind) {
-  LocalKind.home => Icons.home_outlined,
-  LocalKind.desktop => Icons.desktop_windows_outlined,
-  LocalKind.documents => Icons.description_outlined,
-  LocalKind.downloads => Icons.download_outlined,
-  LocalKind.pictures => Icons.image_outlined,
-  LocalKind.videos => Icons.movie_outlined,
-  LocalKind.music => Icons.library_music_outlined,
-  LocalKind.drive => Icons.storage_outlined,
-  LocalKind.root => Icons.computer_outlined,
-  LocalKind.folder => Icons.folder_outlined,
-};
-
-/// Win11-style coloured "known folder" tints, used by the Windows Explorer skin
-/// to make the sidebar read like Explorer's Quick Access.
-Color _localAccent(LocalKind kind) => switch (kind) {
-  LocalKind.home => const Color(0xFF4DA3E0),
-  LocalKind.desktop => const Color(0xFF4DA3E0),
-  LocalKind.documents => const Color(0xFF4DA3E0),
-  LocalKind.downloads => const Color(0xFF5BB561),
-  LocalKind.pictures => const Color(0xFF5DB6A8),
-  LocalKind.videos => const Color(0xFF6E8FE0),
-  LocalKind.music => const Color(0xFFE06A9E),
-  LocalKind.drive => const Color(0xFFB0B4BA),
-  LocalKind.root => const Color(0xFFB0B4BA),
-  LocalKind.folder => const Color(0xFFE8C15A),
-};
+// (localKindIcon / localKindAccent moved to home_view.dart, shared between the
+// sidebar and the Home quick-access tiles.)
 
 /// Open [r] in the active pane, or clear the pane if it's already showing [r].
 void _openOrToggle(WidgetRef ref, int active, Remote r) {
@@ -1563,6 +1602,7 @@ class _StatusBar extends ConsumerWidget {
         '${humanSize(about!.free!)} free of ${humanSize(about.total!)}',
     ];
 
+    final chrome = AircloneTheme.chromeOf(context);
     return Container(
       height: 24,
       color: c.surfaceRaised,
@@ -1582,8 +1622,53 @@ class _StatusBar extends ConsumerWidget {
               parts.join('   ·   '),
               style: TextStyle(color: c.textMuted, fontSize: 11),
             ),
+          // Explorer's bottom-right list/thumbnails switcher for the active pane.
+          if (chrome.statusBarViewToggles && remote != null) ...[
+            const SizedBox(width: Space.x3),
+            _statusViewToggle(
+              c,
+              Icons.view_headline,
+              'Details view',
+              st.viewMode == ViewMode.list,
+              () => ref
+                  .read(paneProvider(active).notifier)
+                  .setViewMode(ViewMode.list),
+            ),
+            const SizedBox(width: Space.x1),
+            _statusViewToggle(
+              c,
+              Icons.grid_view,
+              'Large thumbnails',
+              st.viewMode == ViewMode.grid,
+              () => ref
+                  .read(paneProvider(active).notifier)
+                  .setViewMode(ViewMode.grid),
+            ),
+          ],
         ],
       ),
     );
   }
+
+  Widget _statusViewToggle(
+    AircloneColors c,
+    IconData icon,
+    String tooltip,
+    bool active,
+    VoidCallback onTap,
+  ) => Tooltip(
+    message: tooltip,
+    child: InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(Radii.sm),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+        decoration: BoxDecoration(
+          color: active ? c.primary.withValues(alpha: 0.15) : null,
+          borderRadius: BorderRadius.circular(Radii.sm),
+        ),
+        child: Icon(icon, size: 13, color: active ? c.primary : c.textFaint),
+      ),
+    ),
+  );
 }

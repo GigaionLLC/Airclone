@@ -5,15 +5,17 @@ import '../ui/theme/tokens.dart' show Skin;
 
 export '../ui/theme/tokens.dart' show Skin;
 
-/// The active visual skin, persisted. Defaults to [Skin.airclone] (the brand
-/// look); the OS skins (Windows/macOS/GNOME) are optional opt-ins.
+/// The active visual skin, persisted. Defaults to the host OS's skin
+/// ([Skin.forHost] — Explorer on Windows, Finder on macOS, GNOME on Linux) so
+/// a fresh install reads like the file manager the user came from; a persisted
+/// choice (including Airclone, the brand look) always wins.
 class SkinController extends Notifier<Skin> {
   static const _key = 'skin';
 
   @override
   Skin build() {
     _load();
-    return Skin.airclone;
+    return Skin.forHost();
   }
 
   Future<void> _load() async {
@@ -23,7 +25,7 @@ class SkinController extends Notifier<Skin> {
       if (name != null) {
         state = Skin.values.firstWhere(
           (s) => s.name == name,
-          orElse: () => Skin.airclone,
+          orElse: () => Skin.forHost(),
         );
       }
     } catch (_) {

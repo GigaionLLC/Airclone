@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 
 /// Design tokens — the single source of truth for spacing, radius, and color.
@@ -284,8 +286,9 @@ class AircloneColors {
       );
 }
 
-/// A visual "skin". [Skin.airclone] is the default brand look; the others are
-/// optional, opt-in approximations of each OS's native file manager.
+/// A visual "skin". New installs default to the skin matching the host OS
+/// ([Skin.forHost]) so the app reads like the file manager the user already
+/// knows; [Skin.airclone] is the opt-in brand look.
 enum Skin {
   airclone,
   windows,
@@ -298,6 +301,15 @@ enum Skin {
     Skin.macos => 'macOS Finder',
     Skin.gnome => 'Linux (GNOME)',
   };
+
+  /// The skin that matches the host OS's native file manager. Android/iOS get
+  /// the brand look (the phone shell has its own Material grammar anyway).
+  static Skin forHost() {
+    if (Platform.isWindows) return Skin.windows;
+    if (Platform.isMacOS) return Skin.macos;
+    if (Platform.isLinux) return Skin.gnome;
+    return Skin.airclone;
+  }
 }
 
 /// Per-skin visual axes that the file managers actually differ on (typography,
@@ -435,6 +447,7 @@ class SkinChrome {
     required this.compactBranding,
     required this.segmentedViewSwitcher,
     required this.unifiedToolbar,
+    this.statusBarViewToggles = false,
   });
 
   /// Sidebar row selection treatment.
@@ -488,6 +501,10 @@ class SkinChrome {
   /// effect on the hoisted top band, so dual-pane never builds a unified bar.
   final bool unifiedToolbar;
 
+  /// Show Explorer's tiny list/thumbnails view toggles at the status bar's
+  /// right edge (they act on the active pane).
+  final bool statusBarViewToggles;
+
   static SkinChrome of(Skin skin) => switch (skin) {
     Skin.airclone => airclone,
     Skin.windows => windows,
@@ -529,6 +546,7 @@ class SkinChrome {
     compactBranding: true,
     segmentedViewSwitcher: true,
     unifiedToolbar: false,
+    statusBarViewToggles: true,
   );
 
   static const macos = SkinChrome(

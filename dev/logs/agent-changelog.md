@@ -6,6 +6,43 @@ All changes made by AI agents are tracked chronologically below (most recent fir
 
 <!-- New entries go above this line, most recent first -->
 
+## [2026-07-02] - v0.1.0-alpha.85: native desktop by default — Explorer/Finder/GNOME out of the box
+
+**Agent:** Airclone Build (Claude Fable 5) — `main`. The desktop revamp: someone coming from Windows
+Explorer, Finder, or GNOME Files should feel at home on first launch, no settings safari required.
+**Changes:**
+- **Skin follows the host OS by default** (`Skin.forHost()`): fresh installs on Windows open with the
+  Explorer skin (hoisted address+command bars, "+ New", segmented views, Details toggle, coloured
+  sidebar icons, pill selection), macOS gets Finder (unified toolbar, accent-pill sidebar), Linux gets
+  GNOME. A persisted choice — including the Airclone brand look — always wins. Verified visually by
+  rendering the desktop shell at tablet size on the Android emulator (only screenshot channel
+  available) with the Windows skin: it reads convincingly like Win11 Explorer.
+- **Home quick-access** (`home_view.dart`): the "Pick a remote on the left" placeholder is now a real
+  start page — Favorites, Recent folders, This computer (drives + user folders), and Cloud remotes as
+  tiles (plus an inline "Add a remote"), like Explorer's Home. Sections hide when empty; first-run
+  onboarding is unchanged.
+- **Keyboard parity:** F5 refresh · Backspace up · Ctrl+L / Alt+D pops the address bar into edit mode
+  (per-pane request tick → PathBar). **Plus a real, long-standing bug fixed:** plain-key/clipboard
+  shortcut bindings (Space/Enter/Delete/Ctrl+C/X/V — pre-existing — and the new Backspace) were
+  STEALING keystrokes from the filter box and address bar. First fix attempt (a no-op guard inside
+  CallbackShortcuts) was itself REFUTED by the adversarial review — a matched binding consumes the key
+  even if its callback does nothing, leaving Backspace dead in fields. Final fix: colliding keys moved
+  into the shell's `Focus.onKeyEvent`, which returns `ignored` while any text field has focus so the
+  event reaches the field; regression test asserts both sides (action suppressed AND the character
+  actually deleted).
+- **Explorer's status-bar view toggles** (windows chrome only): tiny list/thumbnail switchers at the
+  bottom-right, acting on the active pane.
+- **Tried and reverted (by review):** defaulting Windows 11 to the Mica backdrop — the effect was
+  hardcoded dark (wrong on light themes) and invisible anyway since every shell surface paints opaque.
+  "Mica done right" (per-skin translucent surfaces) noted as a follow-up feature.
+**Adversarial review:** 3 lenses, 19 findings, 12 confirmed → all fixed or reverted pre-commit (incl.
+Home-tile iconography now shared with the sidebar, device-appropriate "This device" title on Android,
+chrome-gated cloud subtitles, folder-named Favorites).
+**Tests:** 209 green, analyze 0. Visual verification: Airclone + Explorer skins, Home view, listing,
+status bar — screenshot-verified at desktop width via the emulator-as-tablet channel.
+**Summary:** alpha.85 — the desktop reads native-first: OS-matched skin, a real Home, and the
+muscle-memory keys, with a long-standing text-field/shortcut collision properly fixed.
+
 ## [2026-07-02] - v0.1.0-alpha.84: Android works — bundled rclone engine + phone-first UI
 
 **Agent:** Airclone Build (Claude Fable 5) — branch `backlog-features` → `main`. The "very good initial

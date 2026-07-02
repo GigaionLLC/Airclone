@@ -34,6 +34,7 @@ import 'path_bar.dart';
 import 'public_link_dialog.dart';
 import 'quick_look.dart';
 import 'storage_breakdown.dart';
+import 'home_view.dart';
 import 'theme/tokens.dart';
 import 'touch.dart';
 import 'transfer_options_dialog.dart';
@@ -121,18 +122,14 @@ class BrowserPane extends ConsumerWidget {
     final noRemotes =
         remotesAsync.hasValue && (remotesAsync.value?.isEmpty ?? true);
     if (!noRemotes) {
-      return Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.folder_open_outlined, size: 36, color: c.textFaint),
-            const SizedBox(height: Space.x2),
-            Text(
-              'Pick a remote on the left',
-              style: TextStyle(color: c.textMuted, fontSize: 13),
-            ),
-          ],
-        ),
+      // The pane's Home (Explorer Home / Finder Recents): favorites, recents,
+      // drives, and cloud remotes as quick-access tiles.
+      return HomeView(
+        onOpen: (remote, path) async {
+          final ctrl = ref.read(paneProvider(index).notifier);
+          await ctrl.open(remote);
+          if (path.isNotEmpty) await ctrl.navigateTo(path);
+        },
       );
     }
     return Center(
@@ -1053,6 +1050,7 @@ class _PaneToolbar extends ConsumerWidget {
                     path: state.path,
                     onSegment: ctrl.goToSegment,
                     onNavigate: ctrl.navigateTo,
+                    editRequestTick: ref.watch(pathEditRequestProvider(index)),
                   ),
                 ),
                 if (state.remote != null)
@@ -1363,6 +1361,7 @@ class _PaneToolbar extends ConsumerWidget {
                     path: state.path,
                     onSegment: ctrl.goToSegment,
                     onNavigate: ctrl.navigateTo,
+                    editRequestTick: ref.watch(pathEditRequestProvider(index)),
                   ),
                 ),
                 const SizedBox(width: Space.x1),

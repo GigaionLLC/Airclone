@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:airclone/src/state/skin.dart';
 import 'package:airclone/src/ui/theme/app_theme.dart';
 import 'package:airclone/src/ui/theme/tokens.dart';
@@ -135,19 +137,39 @@ void main() {
     expect(mid.colors.surface, isNot(AircloneColors.light.surface));
   });
 
-  test('skinProvider persists + round-trips, defaulting to Airclone', () async {
-    final c = ProviderContainer();
-    addTearDown(c.dispose);
-    expect(c.read(skinProvider), Skin.airclone);
-    await c.read(skinProvider.notifier).set(Skin.windows);
-    expect(c.read(skinProvider), Skin.windows);
+  test(
+    'skinProvider persists + round-trips, defaulting to the host OS skin',
+    () async {
+      final c = ProviderContainer();
+      addTearDown(c.dispose);
+      // Fresh installs read like the native file manager of the host OS
+      // (Explorer/Finder/GNOME); Airclone is the opt-in brand look.
+      expect(c.read(skinProvider), Skin.forHost());
+      await c.read(skinProvider.notifier).set(Skin.airclone);
+      expect(c.read(skinProvider), Skin.airclone);
 
-    // A fresh container loads the persisted value.
-    final c2 = ProviderContainer();
-    addTearDown(c2.dispose);
-    c2.read(skinProvider); // trigger build + async load
-    await Future<void>.delayed(Duration.zero);
-    expect(c2.read(skinProvider), Skin.windows);
+      // A fresh container loads the persisted value.
+      final c2 = ProviderContainer();
+      addTearDown(c2.dispose);
+      c2.read(skinProvider); // trigger build + async load
+      await Future<void>.delayed(Duration.zero);
+      expect(c2.read(skinProvider), Skin.airclone);
+    },
+  );
+
+  test('Skin.forHost maps each desktop OS to its native skin', () {
+    // Runs on whatever OS hosts the test — assert the general contract.
+    final host = Skin.forHost();
+    expect(
+      host,
+      Platform.isWindows
+          ? Skin.windows
+          : Platform.isMacOS
+          ? Skin.macos
+          : Platform.isLinux
+          ? Skin.gnome
+          : Skin.airclone,
+    );
   });
 
   test('skin labels are human-readable', () {
