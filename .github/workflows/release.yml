@@ -211,18 +211,22 @@ jobs:
         if: env.HAS_SIGNING_CERT == 'true' && env.HAS_NOTARY_CREDS == 'true'
         # Best-effort: the signed zip is already published; a notary failure or
         # timeout must not fail the release. Later steps key off this outcome.
+        # notarize.sh bounds every submit (--timeout, NEVER a naked --wait),
+        # captures the submission id, always dumps `notarytool log`, and retries
+        # only fast unregistered failures — a timed-out submission keeps
+        # processing at Apple, so a later run can still staple it.
         continue-on-error: true
-        timeout-minutes: 40
+        timeout-minutes: 30 # safety net only — the real guard is NOTARY_TIMEOUT
         env:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          NOTARY_TIMEOUT: 20m
+          NOTARY_RETRIES: '2'
         run: |
           set -euo pipefail
           APP="build/macos/Build/Products/Release/Airclone.app"
-          xcrun notarytool submit airclone-macos.zip \
-            --apple-id "$APPLE_ID" --password "$APPLE_APP_SPECIFIC_PASSWORD" --team-id "$APPLE_TEAM_ID" \
-            --wait --timeout 35m
+          bash "$GITHUB_WORKSPACE/.github/scripts/notarize.sh" airclone-macos.zip app
           xcrun stapler staple "$APP"
           xcrun stapler validate "$APP"
           # Rebuild the zip so the published asset carries the stapled ticket.
@@ -247,6 +251,9 @@ jobs:
       - name: Notarize + staple DMG
         # Also best-effort: the app inside is already stapled, so even an
         # un-notarized DMG container passes Gatekeeper once the app is copied out.
+        # (Serial after the app on purpose: building the DMG from the already-
+        # stapled app means a fully-offline first launch from the DMG never
+        # prompts — worth the second bounded wait.)
         if: steps.dmg.outcome == 'success'
         continue-on-error: true
         timeout-minutes: 30
@@ -254,11 +261,11 @@ jobs:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          NOTARY_TIMEOUT: 20m
+          NOTARY_RETRIES: '2'
         run: |
           set -euo pipefail
-          xcrun notarytool submit airclone-macos.dmg \
-            --apple-id "$APPLE_ID" --password "$APPLE_APP_SPECIFIC_PASSWORD" --team-id "$APPLE_TEAM_ID" \
-            --wait --timeout 25m
+          bash "$GITHUB_WORKSPACE/.github/scripts/notarize.sh" airclone-macos.dmg dmg
           xcrun stapler staple airclone-macos.dmg
           xcrun stapler validate airclone-macos.dmg
       # Two separate uploads so a DMG-only failure can never block re-publishing
