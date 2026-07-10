@@ -1,0 +1,21 @@
+# Regenerates every platform launcher/app icon from the canonical Airclone
+# brand master (docs/brand/) — replacing the stock `flutter create` Flutter
+# logo the app shipped with through beta.1. Run from app/:
+#   dart run flutter_launcher_icons
+# Android adaptive icons take the white mark on a solid brand blue (gradients
+# aren't supported as adaptive backgrounds); everything else uses the
+# full-bleed square master.
+flutter_launcher_icons:
+  image_path: "../docs/brand/airclone-icon-1024.png"
+  android: true
+  adaptive_icon_background: "#1565C0"
+  adaptive_icon_foreground: "../docs/brand/airclone-icon-adaptive-fg.png"
+  ios: true
+  remove_alpha_ios: true
+  windows:
+    generate: true
+    image_path: "../docs/brand/airclone-icon-1024.png"
+    icon_size: 256
+  macos:
+    generate: true
+    image_path: "../docs/brand/airclone-icon-1024.png"
