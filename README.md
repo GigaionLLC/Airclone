@@ -121,12 +121,28 @@ docker compose run --rm flutter flutter test      # unit tests
 pre-release; macOS builds are signed + notarized). On first launch Airclone downloads + verifies the
 rclone engine for you — nothing else to install.
 
+## 💸 Pricing
+
+**Airclone is free.** Every build on the [Releases](https://github.com/GigaionLLC/Airclone/releases)
+page is free to download and install (ad-hoc / sideload), and you can always build it from source
+yourself — no fees, no feature gates, no accounts.
+
+The one exception: listings on the **Apple App Store, Google Play, and Microsoft Store** will carry a
+small fee. That fee exists solely to fund the code-signing certificates and developer-program
+memberships those stores require — it buys convenience, not features. The store builds and the free
+builds are the same app.
+
 ## 🗺️ Roadmap
 
 **Phase 0** spikes → **Phase 1** desktop MVP → **Phase 2** mobile are **shipped**; most of
 **Phase 3** advanced (bisync, crypt, scheduling) landed during the alphas — profile sync and iOS are
 the big remaining items. Live queue: [Feature Backlog](dev/backlog/feature-backlog.md) · details in
 the [Cross-Platform Plan](dev/plans/cross-platform-architecture-plan.md).
+
+## 🤖 Built by AI
+
+Airclone is AI-authored under Gigaion, LLC's direction. Review it with the same judgment you would
+apply to any production tool you trust with your files.
 
 ## License
 
