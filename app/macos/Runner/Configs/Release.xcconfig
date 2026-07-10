@@ -1,2 +1,7 @@
 #include "../../Flutter/Flutter-Release.xcconfig"
 #include "Warnings.xcconfig"
+
+// Hardened Runtime is mandatory for notarization (Developer ID distribution).
+// Release AOT code needs no JIT entitlements; CI re-signs with `--options runtime`
+// and this keeps local `flutter build macos --release` output consistent.
+ENABLE_HARDENED_RUNTIME = YES

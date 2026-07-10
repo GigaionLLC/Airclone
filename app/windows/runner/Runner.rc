@@ -89,13 +89,13 @@ BEGIN
     BEGIN
         BLOCK "040904e4"
         BEGIN
-            VALUE "CompanyName", "app.airclone" "\0"
-            VALUE "FileDescription", "airclone" "\0"
+            VALUE "CompanyName", "Gigaion, LLC" "\0"
+            VALUE "FileDescription", "Airclone" "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
             VALUE "InternalName", "airclone" "\0"
-            VALUE "LegalCopyright", "Copyright (C) 2026 app.airclone. All rights reserved." "\0"
+            VALUE "LegalCopyright", "Copyright (C) 2026 Gigaion, LLC. All rights reserved." "\0"
             VALUE "OriginalFilename", "airclone.exe" "\0"
-            VALUE "ProductName", "airclone" "\0"
+            VALUE "ProductName", "Airclone" "\0"
             VALUE "ProductVersion", VERSION_AS_STRING "\0"
         END
     END

@@ -2,7 +2,12 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<!-- No App Sandbox: Airclone spawns a user-provisioned rclone binary, binds
+	     loopback sockets, and reads/writes arbitrary user paths — none of which the
+	     sandbox permits. Developer ID (non-App-Store) distribution does not require
+	     it; the Hardened Runtime (Release.xcconfig + CI codesign) is what notarization
+	     checks. -->
 	<key>com.apple.security.app-sandbox</key>
-	<true/>
+	<false/>
 </dict>
 </plist>

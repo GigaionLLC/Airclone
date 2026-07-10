@@ -17,3 +17,6 @@ plan file here when scoped.
 | Feature / Task | Plan Link | Status | Description |
 | :--- | :--- | :--- | :--- |
 | Full prioritized roadmap | [feature-backlog.md](feature-backlog.md) | `ROADMAP` | The cross-app feature matrix and v1→v2 backlog distilled from research. |
+| Settings & advanced-config UX | [settings-ux-improvements.md](settings-ux-improvements.md) | `PROPOSED` | 14 prioritized findings (2026-07-09 review): make Mount/Serve discoverable, explain remote options, settings search/reset. |
+| Beta quality review | [beta-quality-review.md](beta-quality-review.md) | `PROPOSED` | 16 beta-readiness findings — **P0: one-way sync lacks `--max-delete`/forced dry-run** (top pick for beta.2), silent file-op errors, engine tests. |
+| README screenshots | [../plans/readme-screenshots-plan.md](../plans/readme-screenshots-plan.md) | `PLANNED` | Shot list, README markup, and capture workflow (Windows + phone AVD) for the visual README. |

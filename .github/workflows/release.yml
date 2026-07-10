@@ -1,12 +1,18 @@
 name: Release
 
 # Builds the platform binaries we cannot build on the local Linux/Docker machine and
-# publishes them as a downloadable GitHub Release. GitHub provides the OS-native
-# runners — windows-latest (MSVC) and macos-latest (Xcode) — free for public repos.
-# Windows is the primary/reference target; the others are wired up for when we expand.
+# publishes them to a GitHub Release. GitHub provides the OS-native runners —
+# windows-latest (MSVC) and macos-latest (Xcode) — free for public repos.
 #
-# Trigger: push a tag like `v0.1.0-alpha.1` (publishes a pre-release), or run manually
-# via workflow_dispatch (uploads artifacts only, no release).
+# Trigger: push a tag like `v0.1.0-beta.1`. The `release` job creates the GitHub
+# Release first (curated notes from dev/releases/<tag>.md when that file exists,
+# generated notes otherwise; alpha/beta/rc tags are marked pre-release), then each
+# platform job uploads its asset to it. Running manually via workflow_dispatch
+# builds + uploads artifacts only (no release).
+#
+# macOS builds are Developer ID signed + notarized (secrets APPLE_*, org-level).
+# The signed zip is published BEFORE notarization so an Apple notary outage or
+# timeout can never block a release — the stapled zip/DMG then replace/join it.
 
 on:
   push:
@@ -21,8 +27,43 @@ defaults:
     working-directory: app
 
 jobs:
+  release:
+    # Creates the GitHub Release up front so the platform jobs only ever upload
+    # assets — one owner for the notes + prerelease flag instead of four racing
+    # publish steps (which used to make release notes whoever-finishes-first).
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Create GitHub Release
+        working-directory: .
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          if gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Release $GITHUB_REF_NAME already exists — leaving it as-is."
+            exit 0
+          fi
+          args=(--repo "$GITHUB_REPOSITORY" --title "Airclone $GITHUB_REF_NAME" --verify-tag)
+          case "$GITHUB_REF_NAME" in
+            *alpha*|*beta*|*rc*) args+=(--prerelease) ;;
+          esac
+          notes="dev/releases/$GITHUB_REF_NAME.md"
+          if [ -f "$notes" ]; then
+            args+=(--notes-file "$notes")
+          else
+            echo "::warning::No curated notes at $notes — falling back to generated notes."
+            args+=(--generate-notes)
+          fi
+          gh release create "$GITHUB_REF_NAME" "${args[@]}"
+
   windows:
     runs-on: windows-latest
+    needs: release
+    # Tag push: run once the release exists. workflow_dispatch: release job is
+    # skipped by design, build artifacts only.
+    if: ${{ !cancelled() && (needs.release.result == 'success' || github.event_name == 'workflow_dispatch') }}
     steps:
       - uses: actions/checkout@v4
       - uses: subosito/flutter-action@v2
@@ -39,16 +80,17 @@ jobs:
         with:
           name: airclone-windows-x64
           path: app/airclone-windows-x64.zip
-      - name: Publish to release
+      - name: Upload to release
         if: startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@v2
-        with:
-          files: app/airclone-windows-x64.zip
-          generate_release_notes: true
-          prerelease: ${{ contains(github.ref_name, 'alpha') || contains(github.ref_name, 'beta') || contains(github.ref_name, 'rc') }}
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release upload "$GITHUB_REF_NAME" airclone-windows-x64.zip --clobber --repo "$GITHUB_REPOSITORY"
 
   linux:
     runs-on: ubuntu-latest
+    needs: release
+    if: ${{ !cancelled() && (needs.release.result == 'success' || github.event_name == 'workflow_dispatch') }}
     steps:
       - uses: actions/checkout@v4
       - name: Install build deps
@@ -68,17 +110,31 @@ jobs:
         with:
           name: airclone-linux-x64
           path: app/airclone-linux-x64.tar.gz
-      - name: Publish to release
+      - name: Upload to release
         if: startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@v2
-        with:
-          files: app/airclone-linux-x64.tar.gz
-          prerelease: ${{ contains(github.ref_name, 'alpha') || contains(github.ref_name, 'beta') || contains(github.ref_name, 'rc') }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release upload "$GITHUB_REF_NAME" airclone-linux-x64.tar.gz --clobber --repo "$GITHUB_REPOSITORY"
 
   macos:
     runs-on: macos-latest
+    needs: release
+    if: ${{ !cancelled() && (needs.release.result == 'success' || github.event_name == 'workflow_dispatch') }}
+    timeout-minutes: 90
+    env:
+      # Job-level so step `if:`s can test them; empty on forks (which then build
+      # ad-hoc-signed artifacts only — the tag guard below keeps releases signed).
+      HAS_SIGNING_CERT: ${{ secrets.APPLE_DEVELOPER_ID_APPLICATION_P12_BASE64 != '' }}
+      HAS_NOTARY_CREDS: ${{ secrets.APPLE_ID != '' && secrets.APPLE_APP_SPECIFIC_PASSWORD != '' && secrets.APPLE_TEAM_ID != '' }}
     steps:
       - uses: actions/checkout@v4
+      # Fail fast on a tagged release if the signing cert is missing — mirrors the
+      # Android keystore guard: never publish an unsigned "release" build.
+      - name: Require Developer ID signing on tagged builds
+        if: startsWith(github.ref, 'refs/tags/') && env.HAS_SIGNING_CERT != 'true'
+        run: |
+          echo "::error::Tagged release but APPLE_DEVELOPER_ID_APPLICATION_P12_BASE64 is missing — refusing to publish an unsigned macOS build."
+          exit 1
       - uses: subosito/flutter-action@v2
         with: { channel: stable, cache: true }
       # super_native_extensions (drag-out) builds a Rust crate via cargokit.
@@ -86,24 +142,146 @@ jobs:
       - run: flutter config --enable-macos-desktop
       - run: flutter pub get
       - run: flutter build macos --release
-      # Code-signing + notarization are added later (require an Apple Developer ID).
-      - name: Package
+      - name: Import Developer ID certificate
+        if: env.HAS_SIGNING_CERT == 'true'
+        env:
+          P12_BASE64: ${{ secrets.APPLE_DEVELOPER_ID_APPLICATION_P12_BASE64 }}
+          P12_PASSWORD: ${{ secrets.APPLE_DEVELOPER_ID_APPLICATION_P12_PASSWORD }}
+          KEYCHAIN_PASSWORD: ${{ github.run_id }}
         run: |
-          cd build/macos/Build/Products/Release
-          zip -r -y ../../../../../airclone-macos.zip Airclone.app
+          set -euo pipefail
+          CERT="$RUNNER_TEMP/developer_id_application.p12"
+          KEYCHAIN="$RUNNER_TEMP/app-signing.keychain-db"
+          echo "$P12_BASE64" | base64 --decode > "$CERT"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security import "$CERT" -P "$P12_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN"
+          security list-keychains -d user -s "$KEYCHAIN" $(security list-keychains -d user | sed 's/"//g')
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          # Discover the identity from the cert itself — no extra secret to configure.
+          # Use the SHA-1 hash (column 2), not the display name: hash-signing stays
+          # unambiguous if a renewed same-name cert ever coexists in the keychain.
+          IDENTITY=$(security find-identity -v -p codesigning "$KEYCHAIN" | awk '/Developer ID Application/ {print $2; exit}')
+          if [ -z "$IDENTITY" ]; then
+            echo "::error::No 'Developer ID Application' identity found in the imported .p12."
+            exit 1
+          fi
+          echo "CODESIGN_IDENTITY=$IDENTITY" >> "$GITHUB_ENV"
+      - name: Codesign (Hardened Runtime)
+        if: env.HAS_SIGNING_CERT == 'true'
+        run: |
+          set -euo pipefail
+          APP="build/macos/Build/Products/Release/Airclone.app"
+          # Inside-out, per Apple's guidance (no --deep): first every Mach-O leaf
+          # buried in Frameworks (plugin dylibs, media_kit's libmpv, etc.), then the
+          # framework bundles (sealing the fresh leaf signatures), then the app.
+          # Every regular file goes through the `file` type check — gating on name
+          # or exec-bit would miss an oddly-named nested Mach-O, which notarization
+          # then rejects as an unsigned binary.
+          while IFS= read -r -d '' f; do
+            if file -b "$f" | grep -q 'Mach-O'; then
+              codesign --force --timestamp --options runtime --sign "$CODESIGN_IDENTITY" "$f"
+            fi
+          done < <(find "$APP/Contents/Frameworks" -type f -print0)
+          while IFS= read -r -d '' fw; do
+            codesign --force --timestamp --options runtime --sign "$CODESIGN_IDENTITY" "$fw"
+          done < <(find "$APP/Contents/Frameworks" -mindepth 1 -maxdepth 1 -name '*.framework' -print0)
+          codesign --force --timestamp --options runtime \
+            --entitlements macos/Runner/Release.entitlements \
+            --sign "$CODESIGN_IDENTITY" "$APP"
+          codesign --verify --strict --verbose=2 "$APP"
+      - name: Package (zip)
+        # ditto (not zip) preserves symlinks/metadata the way notarization expects.
+        run: ditto -c -k --keepParent build/macos/Build/Products/Release/Airclone.app airclone-macos.zip
       - uses: actions/upload-artifact@v4
         with:
           name: airclone-macos
           path: app/airclone-macos.zip
-      - name: Publish to release
+      # Publish the signed zip BEFORE notarization so an Apple notary outage or
+      # timeout can never block the release (abcli hit exactly that); the stapled
+      # zip + DMG below replace/join it when notarization succeeds.
+      - name: Upload signed zip to release
         if: startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@v2
-        with:
-          files: app/airclone-macos.zip
-          prerelease: ${{ contains(github.ref_name, 'alpha') || contains(github.ref_name, 'beta') || contains(github.ref_name, 'rc') }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release upload "$GITHUB_REF_NAME" airclone-macos.zip --clobber --repo "$GITHUB_REPOSITORY"
+      - name: Notarize + staple app
+        id: notarize
+        if: env.HAS_SIGNING_CERT == 'true' && env.HAS_NOTARY_CREDS == 'true'
+        # Best-effort: the signed zip is already published; a notary failure or
+        # timeout must not fail the release. Later steps key off this outcome.
+        continue-on-error: true
+        timeout-minutes: 40
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          set -euo pipefail
+          APP="build/macos/Build/Products/Release/Airclone.app"
+          xcrun notarytool submit airclone-macos.zip \
+            --apple-id "$APPLE_ID" --password "$APPLE_APP_SPECIFIC_PASSWORD" --team-id "$APPLE_TEAM_ID" \
+            --wait --timeout 35m
+          xcrun stapler staple "$APP"
+          xcrun stapler validate "$APP"
+          # Rebuild the zip so the published asset carries the stapled ticket.
+          rm -f airclone-macos.zip
+          ditto -c -k --keepParent "$APP" airclone-macos.zip
+      - name: Package DMG
+        id: dmg
+        if: steps.notarize.outcome == 'success'
+        # Best-effort like the notarize steps: an hdiutil/timestamp-server hiccup
+        # here must not red the job or block re-publishing the stapled zip below.
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          APP="build/macos/Build/Products/Release/Airclone.app"
+          STAGING="$RUNNER_TEMP/dmg-staging"
+          mkdir -p "$STAGING"
+          # ditto (not cp) faithfully preserves the signed bundle + stapled ticket.
+          ditto "$APP" "$STAGING/Airclone.app"
+          ln -s /Applications "$STAGING/Applications"
+          hdiutil create -volname "Airclone" -srcfolder "$STAGING" -ov -format UDZO airclone-macos.dmg
+          codesign --force --timestamp --sign "$CODESIGN_IDENTITY" airclone-macos.dmg
+      - name: Notarize + staple DMG
+        # Also best-effort: the app inside is already stapled, so even an
+        # un-notarized DMG container passes Gatekeeper once the app is copied out.
+        if: steps.dmg.outcome == 'success'
+        continue-on-error: true
+        timeout-minutes: 30
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          set -euo pipefail
+          xcrun notarytool submit airclone-macos.dmg \
+            --apple-id "$APPLE_ID" --password "$APPLE_APP_SPECIFIC_PASSWORD" --team-id "$APPLE_TEAM_ID" \
+            --wait --timeout 25m
+          xcrun stapler staple airclone-macos.dmg
+          xcrun stapler validate airclone-macos.dmg
+      # Two separate uploads so a DMG-only failure can never block re-publishing
+      # the stapled zip (which replaces the pre-notarization signed zip).
+      - name: Upload stapled zip to release
+        if: startsWith(github.ref, 'refs/tags/') && steps.notarize.outcome == 'success'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release upload "$GITHUB_REF_NAME" airclone-macos.zip --clobber --repo "$GITHUB_REPOSITORY"
+      - name: Upload DMG to release
+        if: startsWith(github.ref, 'refs/tags/') && steps.dmg.outcome == 'success'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release upload "$GITHUB_REF_NAME" airclone-macos.dmg --clobber --repo "$GITHUB_REPOSITORY"
+      - name: Warn if not notarized
+        if: steps.notarize.outcome != 'success'
+        run: |
+          echo "::warning::macOS build was signed but NOT notarized (missing notary creds, Apple outage, or timeout). The published zip is Developer-ID-signed only — re-run this job once the notary service recovers to staple + publish the DMG."
 
   android:
     runs-on: ubuntu-latest
+    needs: release
+    if: ${{ !cancelled() && (needs.release.result == 'success' || github.event_name == 'workflow_dispatch') }}
     # Android APK build, fixed after being red since alpha.3. Two parts:
     #  1) This job needs the Rust toolchain (below): super_native_extensions /
     #     irondash_engine_context compile a Rust crate via cargokit for the Android
@@ -113,11 +291,8 @@ jobs:
     #     Gradle plugin calls Project.exec(), which Gradle 9 removed — and Flutter
     #     3.44's template defaults to Gradle 9 / AGP 9.
     # Temurin 17 (this job's JDK) supplies the jlink AGP's JdkImageTransform needs.
-    # The plain APK build was verified green on Actions (run 28545145108, 2026-07-01).
-    # The "Build rclone engine" step below (alpha.84) is newer: it bundles rclone as
-    # a per-ABI jniLib so the app works on-device — validated locally (split APKs
-    # built + release smoke-tested on an emulator); its first Actions run is this
-    # tag's. The exact flutter build was exercised locally with the same jniLibs.
+    # The "Build rclone engine" step (alpha.84) bundles rclone as a per-ABI jniLib
+    # so the app works on-device; release signing (alpha.86) uses AIRCLONE_* secrets.
     env:
       # Keep in sync with dev/android/build-rclone.ps1 (the local equivalent).
       RCLONE_VERSION: v1.74.3
@@ -206,9 +381,8 @@ jobs:
         with:
           name: airclone-android-apk
           path: app/build/app/outputs/flutter-apk/airclone-android-*.apk
-      - name: Publish to release
+      - name: Upload to release
         if: startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@v2
-        with:
-          files: app/build/app/outputs/flutter-apk/airclone-android-*.apk
-          prerelease: ${{ contains(github.ref_name, 'alpha') || contains(github.ref_name, 'beta') || contains(github.ref_name, 'rc') }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release upload "$GITHUB_REF_NAME" build/app/outputs/flutter-apk/airclone-android-*.apk --clobber --repo "$GITHUB_REPOSITORY"

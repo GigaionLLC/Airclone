@@ -29,9 +29,11 @@ experience**, and brings it to the desktop *and* the phone:
   kill-switches, OS-keychain/Vault secrets, local audit + opt-in SIEM, signed/SBOM'd builds, optional
   self-hosted control plane). Enterprise control flows only through customer-owned channels.
 
-> **Status:** early bootstrap. This repository currently contains the product vision, architecture,
-> and documentation — code lands in Phase 1 (see the roadmap below). Planned stack: **Flutter** with a
-> single engine abstraction (`rclone rcd` over HTTP on desktop; `librclone` in-process on mobile).
+> **Status: beta** — first beta release `v0.1.0-beta.1` (2026-07-09). Windows, macOS, Linux and
+> Android builds ship on the [Releases](https://github.com/GigaionLLC/Airclone/releases) page —
+> macOS builds are Developer ID **signed + notarized**; iOS hasn't shipped yet. Stack: **Flutter**
+> with a single engine abstraction (`rclone rcd` over HTTP on desktop; a bundled rclone engine on
+> Android).
 
 ## 📚 Documentation
 
@@ -68,7 +70,9 @@ The whole app talks to one `RcloneClient` interface, so ~95% of the code is plat
 ## 🔧 Building & running
 
 The app lives in [`app/`](app/) (Flutter). This machine builds with **Docker locally** (analyze/test)
-and **GitHub Actions for the OS-native binaries**. Full details: [Directory Structure & Build](wiki/core/04-directory-structure.md).
+and **GitHub Actions for the OS-native binaries**. Desktop builds also need a **Rust toolchain** on
+PATH (`super_native_extensions` compiles a crate via cargokit). Full details:
+[Directory Structure & Build](wiki/core/04-directory-structure.md).
 
 ```powershell
 docker compose run --rm flutter flutter analyze   # static analysis
@@ -76,14 +80,16 @@ docker compose run --rm flutter flutter test      # unit tests
 ```
 
 **Downloads:** Windows/macOS/Linux/Android builds are published on the
-[Releases](https://github.com/GigaionLLC/Airclone/releases) page (alpha builds are pre-releases). On
-first launch Airclone downloads + verifies the rclone engine for you — nothing else to install.
+[Releases](https://github.com/GigaionLLC/Airclone/releases) page (alpha/beta builds are marked
+pre-release; macOS builds are signed + notarized). On first launch Airclone downloads + verifies the
+rclone engine for you — nothing else to install.
 
 ## 🗺️ Roadmap
 
-**Phase 0** spike the riskiest seams → **Phase 1** desktop MVP → **Phase 2** mobile (the
-differentiator) → **Phase 3** advanced (bisync, crypt, scheduling, profiles). Details in the
-[Cross-Platform Plan](dev/plans/cross-platform-architecture-plan.md).
+**Phase 0** spikes → **Phase 1** desktop MVP → **Phase 2** mobile are **shipped**; most of
+**Phase 3** advanced (bisync, crypt, scheduling) landed during the alphas — profile sync and iOS are
+the big remaining items. Live queue: [Feature Backlog](dev/backlog/feature-backlog.md) · details in
+the [Cross-Platform Plan](dev/plans/cross-platform-architecture-plan.md).
 
 ## License
 
