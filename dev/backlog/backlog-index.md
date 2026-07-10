@@ -21,3 +21,4 @@ plan file here when scoped.
 | Beta quality review | [beta-quality-review.md](beta-quality-review.md) | `PROPOSED` | 16 beta-readiness findings — **P0: one-way sync lacks `--max-delete`/forced dry-run** (top pick for beta.2), silent file-op errors, engine tests. |
 | README screenshots | [../plans/readme-screenshots-plan.md](../plans/readme-screenshots-plan.md) | `SHIPPED` | Shot list, README markup, and capture workflow; 9 shots captured + committed 2026-07-09. |
 | Phase 3 continuation | [../plans/phase3-continuation-plan.md](../plans/phase3-continuation-plan.md) | `ACTIVE` | Finish bisync/crypt/scheduling: background execution design, crypt reattach/rotation, bisync reliability, engine test harness. |
+| Config portability & unlock | [../plans/config-portability-plan.md](../plans/config-portability-plan.md) | `PLANNED` | Config path control, encrypted import/export, desktop→phone QR/LAN handoff, biometric unlock — the serverless profile-sync on-ramp. |
