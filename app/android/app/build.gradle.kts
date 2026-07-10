@@ -43,8 +43,16 @@ android {
     }
 
     defaultConfig {
-        // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
-        applicationId = "app.airclone.airclone"
+        // The public app identity — matches the macOS/iOS bundle id and is what
+        // Google Play knows the app as, PERMANENTLY (Play package names can
+        // never change once published). Renamed from the scaffold-era
+        // app.airclone.airclone before the first Play release; sideloaded
+        // builds from that era cannot update in place over this one (one-time
+        // uninstall/reinstall — documented in the release notes). `namespace`
+        // below deliberately keeps the old value: it is internal-only (R class
+        // / Kotlin package), invisible to Play and users, and changing it
+        // would churn every Kotlin file for zero benefit.
+        applicationId = "com.gigaionllc.airclone"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         // Oreo (26), overriding Flutter's default of 24. The transfer
