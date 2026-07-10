@@ -310,6 +310,10 @@ jobs:
       # Release signing. Base64-encoded keystore is job-level so the decode
       # step's `if:` can test it; empty on forks (which then debug-sign).
       AIRCLONE_KEYSTORE_BASE64: ${{ secrets.AIRCLONE_KEYSTORE_BASE64 }}
+      # Google Play auto-submission credential (a GCP service-account JSON
+      # granted release rights in Play Console → API access). Empty on forks
+      # and until the secret is configured — the Play steps then no-op.
+      HAS_PLAY_CREDS: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON != '' }}
     steps:
       - uses: actions/checkout@v4
       # Fail fast on a real (tagged) release if the signing secret is missing,
@@ -400,6 +404,46 @@ jobs:
         with:
           name: airclone-playstore-aab
           path: app/build/app/outputs/bundle/release/app-release.aab
+      # ── Google Play submission (internal track) ──────────────────────────
+      # Runs only on a tagged release when PLAY_SERVICE_ACCOUNT_JSON exists.
+      # The FIRST app listing had to be uploaded manually in the Play Console;
+      # every automated push after it must carry a HIGHER versionCode than
+      # that manual upload (pubspec build number strictly increases per
+      # release, so this holds as long as tags keep bumping it).
+      # Play wants short plain-text notes (max 500 chars/locale), not our
+      # markdown release file — distill dev/releases/<tag>.md down.
+      - name: Prepare Play release notes (plain text, <=500 chars)
+        if: startsWith(github.ref, 'refs/tags/') && env.HAS_PLAY_CREDS == 'true'
+        working-directory: .
+        run: |
+          set -euo pipefail
+          mkdir -p distribution/whatsnew
+          notes="dev/releases/${GITHUB_REF_NAME}.md"
+          if [ -f "$notes" ]; then
+            grep -vE '^\s*(#|\||-{3,})' "$notes" | sed '/^\s*$/d' \
+              | head -c 480 > distribution/whatsnew/whatsnew-en-US
+          else
+            printf 'Airclone %s — see the GitHub release for full notes.' \
+              "$GITHUB_REF_NAME" > distribution/whatsnew/whatsnew-en-US
+          fi
+      - name: Upload AAB to Google Play (internal track)
+        if: startsWith(github.ref, 'refs/tags/') && env.HAS_PLAY_CREDS == 'true'
+        uses: r0adkll/upload-google-play@v1
+        with:
+          serviceAccountJsonPlainText: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+          packageName: com.gigaionllc.airclone
+          # Paths here are repo-root-relative — this action does not honor
+          # defaults.run.working-directory.
+          releaseFiles: app/build/app/outputs/bundle/release/app-release.aab
+          track: internal
+          status: completed
+          releaseName: ${{ github.ref_name }}
+          whatsNewDirectory: distribution/whatsnew
+          # changesNotSentForReview: true  # ONLY if the first automated run
+          # fails with "changes cannot be sent for review automatically";
+          # remove again once a reviewed release exists (it then errors the
+          # other way). Production promotion is a follow-up lane — never
+          # auto-push pre-release tags past the internal track.
       - name: Upload to release
         if: startsWith(github.ref, 'refs/tags/')
         env:
