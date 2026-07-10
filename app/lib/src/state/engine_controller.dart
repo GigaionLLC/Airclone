@@ -10,6 +10,39 @@ import '../rclone/rclone_engine.dart';
 import 'cache_crypto.dart';
 import 'config_password_vault.dart';
 import 'engine_flags.dart';
+import 'settings_controller.dart';
+
+/// Resolves the `--config` path the engine should spawn with (null = "let rclone
+/// use its own default location"). Pure and platform-parameterised so the
+/// decision is unit-tested without a process — see `config_override_test.dart`.
+///
+/// Resolution order:
+///  - **Android** always uses its app-private config ([androidConfigPath]); the
+///    sandbox has nowhere else the engine may exec/read a config against, and the
+///    override picker is desktop-only.
+///  - **Desktop** uses [override] when set (Settings → Config → "Use a different
+///    config file…"), otherwise null — rclone resolves its own default.
+String? resolveConfigPath({
+  required bool isAndroid,
+  String? androidConfigPath,
+  String? override,
+}) {
+  if (isAndroid) return androidConfigPath;
+  return (override != null && override.isNotEmpty) ? override : null;
+}
+
+/// The argv for the pre-switch validation probe the settings "Use a different
+/// config file…" action runs: `rclone config dump --config <path>`. Pure so the
+/// exact vector is unit-tested without spawning a process. A non-zero exit means
+/// the file isn't a loadable rclone config; the caller surfaces that inline and
+/// blocks the switch. (An *encrypted* pick is detected out-of-band beforehand
+/// and skips this probe — it gates on the launch password instead.)
+List<String> configDumpArgs(String configPath) => [
+  'config',
+  'dump',
+  '--config',
+  configPath,
+];
 
 enum EnginePhase {
   idle,
@@ -90,13 +123,30 @@ class EngineController extends Notifier<EngineUi> {
   /// Android runs the engine sandboxed: the config lives in the app's own
   /// storage (passed via `--config`), temp files go to the app cache (there is
   /// no /tmp), and `local` writes skip chtimes, which Android storage rejects.
-  /// Desktop returns nulls/empty — rclone's own defaults are right there.
+  /// Desktop lets rclone use its own default location UNLESS the user set a
+  /// config-file override (Settings → Config), which flows through here as the
+  /// spawn's `--config` arg AND the file `isConfigEncrypted` reads directly.
   Future<(String?, Map<String, String>)> _platformSetup() async {
-    if (!Platform.isAndroid) return (null, const <String, String>{});
+    // Hydrate the persisted override before reading it: build() returns the
+    // default synchronously and fills from disk on a later microtask, so a cold
+    // bootstrap that skipped this could spawn against the DEFAULT config while
+    // the user's override is still loading. ensureLoaded() is idempotent.
+    await ref.read(settingsControllerProvider.notifier).ensureLoaded();
+    final override = ref.read(settingsControllerProvider).configPathOverride;
+    if (!Platform.isAndroid) {
+      return (
+        resolveConfigPath(isAndroid: false, override: override),
+        const <String, String>{},
+      );
+    }
     final support = await getApplicationSupportDirectory();
     final cache = await getTemporaryDirectory();
     return (
-      '${support.path}/rclone.conf',
+      resolveConfigPath(
+        isAndroid: true,
+        androidConfigPath: '${support.path}/rclone.conf',
+        override: override,
+      ),
       <String, String>{
         'TMPDIR': cache.path,
         'HOME': support.path,
@@ -127,12 +177,36 @@ class EngineController extends Notifier<EngineUi> {
 
   /// Stop and re-spawn the engine with current settings (e.g. after changing the
   /// global engine flags). Reuses the unlocked config password if one is held.
+  /// Use this ONLY when the config FILE is unchanged — for a config-path/content
+  /// change use [switchConfigAndStart], which re-gates on the new config.
   Future<void> restartEngine() async {
     final path = _rclonePath;
     if (path == null) return;
     final password = ref.read(cachePassphraseProvider);
     await state.client?.quit();
     await _startWith(path, password: password);
+  }
+
+  /// Restart the engine for a CONFIG-PATH / CONFIG-CONTENT change (switch config
+  /// file, back to default, replace, or restore). Unlike [restartEngine] — which
+  /// reuses the password held for the OLD config against the SAME file — this
+  /// re-runs the encryption gate against the RESOLVED NEW config via
+  /// [_proceedWith]: detect encryption, try a silent vault unlock, else enter
+  /// [EnginePhase.needsPassword]. It first CLEARS the held password so the new
+  /// config's actual encryption state decides what unlocks it — otherwise a
+  /// switch to an encrypted config would spawn with the wrong password (never
+  /// reaching the gate), and a switch to a PLAINTEXT config would leave the stale
+  /// password bound to the cache + the Settings "Encrypted" badge lit. The caller
+  /// persists the new override BEFORE calling this so [_platformSetup] resolves
+  /// the new path.
+  Future<void> switchConfigAndStart() async {
+    final path = _rclonePath;
+    if (path == null) return bootstrap();
+    await state.client?.quit();
+    // Drop the previous config's password before re-gating; _proceedWith only
+    // reaches for the vault when no session password is held.
+    ref.read(cachePassphraseProvider.notifier).state = null;
+    await _proceedWith(path);
   }
 
   /// Desktop: download the latest verified rclone, repoint the cached path, and

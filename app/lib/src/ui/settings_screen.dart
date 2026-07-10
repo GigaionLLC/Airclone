@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../rclone/rclone_engine.dart';
@@ -10,13 +11,18 @@ import '../state/advanced_mode.dart';
 import '../state/app_info.dart';
 import '../state/cache_crypto.dart';
 import '../state/config_password_vault.dart';
+import '../state/config_transfer_controller.dart';
 import '../state/download_settings.dart';
 import '../state/engine_controller.dart';
 import '../state/engine_flags.dart';
 import '../state/jobs_controller.dart';
+import '../state/os_integration.dart';
+import '../state/remotes_provider.dart';
 import '../state/settings_controller.dart';
 import '../state/skin.dart';
 import '../state/window_backdrop.dart';
+import 'config_export_dialog.dart';
+import 'config_import_dialog.dart';
 import 'theme/tokens.dart';
 
 /// Opens the app settings dialog (theme, engine path override, update check).
@@ -107,6 +113,12 @@ class SettingsContent extends ConsumerWidget {
             _EngineFlagsSection(),
           ],
         ],
+        // Config: visible on every platform (mobile is read-only — the path
+        // picker/switch is desktop-only, but everyone sees where their remotes
+        // live, whether it's encrypted, and how many are configured).
+        const SizedBox(height: Space.x5),
+        const _GroupHeader('Config'),
+        const _ConfigSection(),
         const SizedBox(height: Space.x5),
         const _GroupHeader('Storage & updates'),
         _CacheSection(),
@@ -367,6 +379,596 @@ class _CacheSectionState extends ConsumerState<_CacheSection> {
       ],
     );
   }
+}
+
+/// Best-effort guess of rclone's default config location on this OS, WITHOUT
+/// shelling out — just the conventional path derived from the environment, for
+/// DISPLAY in the Config section. Null when the environment doesn't reveal a
+/// home/appdata dir (the section then shows "rclone default"). The engine still
+/// lets rclone resolve its own default at spawn time; this never drives config.
+String? conventionalRcloneConfigPath() {
+  if (Platform.isWindows) {
+    final appData = Platform.environment['APPDATA'];
+    if (appData == null || appData.isEmpty) return null;
+    return '${appData.replaceAll(r'\', '/')}/rclone/rclone.conf';
+  }
+  // POSIX: XDG override wins, else ~/.config/rclone/rclone.conf (rclone's default).
+  final xdg = Platform.environment['XDG_CONFIG_HOME'];
+  if (xdg != null && xdg.isNotEmpty) return '$xdg/rclone/rclone.conf';
+  final home = Platform.environment['HOME'];
+  if (home != null && home.isNotEmpty) {
+    return '$home/.config/rclone/rclone.conf';
+  }
+  return null;
+}
+
+/// The Config section: where the active rclone config lives, whether it's
+/// encrypted, how many remotes it holds, and (desktop) actions to point Airclone
+/// at a different config file or return to rclone's default. Mobile renders the
+/// same status read-only — the app-private config there isn't user-relocatable.
+///
+/// Switching runs a pre-flight validation: a plaintext pick must parse via
+/// `rclone config dump` before we persist + restart; an *encrypted* pick is
+/// allowed through (it gates on the launch password) since a non-interactive
+/// dump would fail it for the wrong reason.
+class _ConfigSection extends ConsumerStatefulWidget {
+  const _ConfigSection();
+
+  @override
+  ConsumerState<_ConfigSection> createState() => _ConfigSectionState();
+}
+
+class _ConfigSectionState extends ConsumerState<_ConfigSection> {
+  /// The resolved path shown in the row (override / Android app-private / the
+  /// conventional desktop default). Null once resolved means "rclone default"
+  /// (no override and no discoverable conventional path).
+  String? _activePath;
+  bool _resolved = false;
+  bool _switching = false;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _resolvePath();
+  }
+
+  /// Resolves the display path off the same [resolveConfigPath] the engine uses,
+  /// falling back to the conventional default for display only.
+  Future<void> _resolvePath() async {
+    final override = ref.read(settingsControllerProvider).configPathOverride;
+    String? androidPath;
+    if (Platform.isAndroid) {
+      try {
+        final support = await getApplicationSupportDirectory();
+        androidPath = '${support.path}/rclone.conf';
+      } catch (_) {
+        /* leave null → "rclone default" */
+      }
+    }
+    final resolved =
+        resolveConfigPath(
+          isAndroid: Platform.isAndroid,
+          androidConfigPath: androidPath,
+          override: override,
+        ) ??
+        conventionalRcloneConfigPath();
+    if (mounted) {
+      setState(() {
+        _activePath = resolved;
+        _resolved = true;
+      });
+    }
+  }
+
+  void _fail(String message) {
+    if (!mounted) return;
+    setState(() {
+      _switching = false;
+      _error = message;
+    });
+  }
+
+  /// Runs `rclone config dump --config <picked>` and reports whether it loaded.
+  /// Process.run returns a result even on a non-zero exit (no throw), so the
+  /// catch only fires on the short timeout or a spawn failure — both "couldn't
+  /// validate" → block the switch.
+  Future<bool> _validatesAsConfig(String rclone, String configPath) async {
+    try {
+      final res = await Process.run(
+        rclone,
+        configDumpArgs(configPath),
+      ).timeout(const Duration(seconds: 10));
+      return res.exitCode == 0;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<void> _useDifferentConfig() async {
+    // Grab the messenger before any await so the post-switch confirmation never
+    // touches a possibly-unmounted context.
+    final messenger = ScaffoldMessenger.maybeOf(context);
+    final file = await openFile(confirmButtonText: 'Use this config');
+    if (file == null || !mounted) return;
+    final picked = file.path;
+    setState(() {
+      _switching = true;
+      _error = null;
+    });
+    try {
+      // Locate the rclone binary exactly as bootstrap does (honouring the
+      // engine-path override), so we validate against the engine we'll spawn.
+      final rclone = await RcloneEngine.findExisting(
+        overridePath: ref.read(settingsControllerProvider).rclonePathOverride,
+      );
+      if (rclone == null) {
+        _fail('The rclone engine was not found — set its path above first.');
+        return;
+      }
+      // Encrypted picks are allowed and gate on launch; detect encryption from
+      // the file header (out-of-band) and skip the dump probe for them.
+      final encrypted = await RcloneEngine.isConfigEncrypted(
+        rclone,
+        configPath: picked,
+      );
+      if (!encrypted && !await _validatesAsConfig(rclone, picked)) {
+        _fail('Not a valid rclone config (or wrong password).');
+        return;
+      }
+      await ref
+          .read(settingsControllerProvider.notifier)
+          .setConfigPathOverride(picked);
+      // A config-file change re-runs the encryption gate against the NEW file
+      // (switchConfigAndStart), so an encrypted pick reaches the password gate
+      // instead of spawning with the previous config's password.
+      await ref.read(engineControllerProvider.notifier).switchConfigAndStart();
+      if (!mounted) return;
+      // Report the ACTUAL outcome — the engine parks failures in a phase rather
+      // than throwing, so a locked/dead engine must not read as success. On
+      // needsPassword the EngineGate shows its own prompt (behind this dialog),
+      // so just point the user there.
+      final phase = ref.read(engineControllerProvider).phase;
+      final failed =
+          phase != EnginePhase.ready && phase != EnginePhase.needsPassword;
+      setState(() {
+        _switching = false;
+        _error = failed
+            ? 'The engine could not start with the selected config.'
+            : null;
+      });
+      await _resolvePath();
+      if (phase == EnginePhase.ready) {
+        messenger?.showSnackBar(
+          const SnackBar(content: Text('Switched to the selected config.')),
+        );
+      } else if (phase == EnginePhase.needsPassword) {
+        messenger?.showSnackBar(
+          const SnackBar(
+            content: Text("Enter the config's password to finish switching."),
+          ),
+        );
+      }
+    } catch (_) {
+      _fail('Not a valid rclone config (or wrong password).');
+    }
+  }
+
+  Future<void> _backToDefault() async {
+    setState(() {
+      _switching = true;
+      _error = null;
+    });
+    await ref
+        .read(settingsControllerProvider.notifier)
+        .setConfigPathOverride(null);
+    // Re-gate against the (plaintext) default: switchConfigAndStart clears the
+    // stale password so the cache key + "Encrypted" badge don't stay bound to
+    // the just-abandoned encrypted override.
+    await ref.read(engineControllerProvider.notifier).switchConfigAndStart();
+    if (!mounted) return;
+    setState(() => _switching = false);
+    await _resolvePath();
+  }
+
+  Future<void> _openFolder() async {
+    final p = _activePath;
+    if (p == null) return;
+    await ref.read(osIntegrationProvider).revealInFileManager(p);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final c = AircloneTheme.of(context);
+    final desktop = Platform.isWindows || Platform.isMacOS || Platform.isLinux;
+    // Re-resolve the display path whenever the persisted override changes — the
+    // async first load, or a switch/back-to-default from another Settings view.
+    ref.listen(settingsControllerProvider.select((s) => s.configPathOverride), (
+      _,
+      _,
+    ) {
+      _resolvePath();
+    });
+    final hasOverride =
+        ref.watch(
+          settingsControllerProvider.select((s) => s.configPathOverride),
+        ) !=
+        null;
+    // "Encrypted?" reads the live engine state: the held config password is
+    // non-null only for an unlocked encrypted config (unencrypted → null).
+    final encrypted = ref.watch(cachePassphraseProvider) != null;
+    // Remote count is the remotes list length (includes the synthetic local peer
+    // on desktop), or null while the engine hasn't answered config/dump yet.
+    final count = ref.watch(remotesProvider).valueOrNull?.length;
+    final countLabel = count == null
+        ? 'counting remotes…'
+        : (count == 1 ? '1 remote' : '$count remotes');
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _SectionLabel(
+          'Config location',
+          help: desktop
+              ? 'Where your remotes are stored. Point Airclone at a different '
+                    'rclone config file, or return to the default.'
+              : 'Where your remotes are stored on this device.',
+        ),
+        Row(
+          children: [
+            Icon(Icons.description_outlined, size: 16, color: c.textMuted),
+            const SizedBox(width: Space.x2),
+            Expanded(
+              child: Text(
+                _resolved ? (_activePath ?? 'rclone default') : 'Locating…',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: _activePath == null ? c.textFaint : c.textMuted,
+                  fontSize: 13,
+                ),
+              ),
+            ),
+            if (hasOverride) ...[
+              const SizedBox(width: Space.x2),
+              _CustomBadge(),
+            ],
+            if (desktop && _activePath != null)
+              IconButton(
+                onPressed: _openFolder,
+                icon: const Icon(Icons.folder_open, size: 16),
+                tooltip: 'Open containing folder',
+                color: c.textMuted,
+                visualDensity: VisualDensity.compact,
+              ),
+          ],
+        ),
+        const SizedBox(height: Space.x1),
+        Row(
+          children: [
+            Icon(
+              encrypted ? Icons.lock_outline : Icons.lock_open_outlined,
+              size: 14,
+              color: c.textFaint,
+            ),
+            const SizedBox(width: Space.x2),
+            Text(
+              '${encrypted ? 'Encrypted' : 'Not encrypted'}  ·  $countLabel',
+              style: TextStyle(color: c.textFaint, fontSize: 12),
+            ),
+          ],
+        ),
+        if (_error != null) ...[
+          const SizedBox(height: Space.x2),
+          Text(_error!, style: TextStyle(color: c.error, fontSize: 12)),
+        ],
+        if (desktop) ...[
+          const SizedBox(height: Space.x3),
+          Row(
+            children: [
+              FilledButton.icon(
+                onPressed: _switching ? null : _useDifferentConfig,
+                icon: const Icon(Icons.folder_open_outlined, size: 16),
+                label: const Text('Use a different config file…'),
+                style: FilledButton.styleFrom(
+                  visualDensity: VisualDensity.compact,
+                  backgroundColor: c.primary,
+                ),
+              ),
+              if (hasOverride) ...[
+                const SizedBox(width: Space.x2),
+                TextButton(
+                  onPressed: _switching ? null : _backToDefault,
+                  child: const Text('Back to default'),
+                ),
+              ],
+              const Spacer(),
+              if (_switching)
+                const SizedBox(
+                  height: 14,
+                  width: 14,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+            ],
+          ),
+        ],
+        // Seam for the follow-up config tools (import / export / automatic
+        // backups — plan §§2-4); a later agent mounts them here.
+        const _ConfigToolsHook(),
+      ],
+    );
+  }
+}
+
+/// A small "Custom" pill shown beside the path when a config override is active,
+/// so it reads distinctly from the rclone default.
+class _CustomBadge extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    final c = AircloneTheme.of(context);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: Space.x2, vertical: 1),
+      decoration: BoxDecoration(
+        color: c.primary.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(Radii.sm),
+      ),
+      child: Text(
+        'Custom',
+        style: TextStyle(
+          color: c.primary,
+          fontSize: 10,
+          fontWeight: FontWeight.w700,
+          letterSpacing: 0.4,
+        ),
+      ),
+    );
+  }
+}
+
+/// The config tools mounted beneath the location + status block (plan §§3-4):
+/// Import… / Export… wizards, plus a "Restore a backup…" row over the always-on
+/// automatic backups (plan §2). Every mutating path here snapshots the active
+/// config first (via [ConfigTransferController]) so a bad import/restore is one
+/// tap away from undo.
+class _ConfigToolsHook extends ConsumerStatefulWidget {
+  const _ConfigToolsHook();
+
+  @override
+  ConsumerState<_ConfigToolsHook> createState() => _ConfigToolsHookState();
+}
+
+class _ConfigToolsHookState extends ConsumerState<_ConfigToolsHook> {
+  bool _showBackups = false;
+  Future<List<File>>? _backups;
+  bool _restoring = false;
+  String? _message;
+
+  void _toggleBackups() {
+    setState(() {
+      _showBackups = !_showBackups;
+      // Load lazily the first time the row is opened (and refresh on re-open).
+      if (_showBackups) {
+        _backups = ref.read(configTransferControllerProvider).listBackups();
+      }
+    });
+  }
+
+  Future<void> _restore(File f) async {
+    final c = AircloneTheme.of(context);
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: c.surfaceRaised,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(Radii.md),
+        ),
+        title: Text(
+          'Restore this backup?',
+          style: TextStyle(
+            color: c.text,
+            fontSize: 16,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        content: SizedBox(
+          width: 420,
+          child: Text(
+            'This overwrites your active rclone config with '
+            '${_backupLabel(f.path)} and restarts the engine. Your current '
+            'config is snapshotted first, so this is reversible.',
+            style: TextStyle(color: c.textMuted, fontSize: 13),
+          ),
+        ),
+        actionsPadding: const EdgeInsets.fromLTRB(
+          Space.x4,
+          0,
+          Space.x4,
+          Space.x4,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: Text('Cancel', style: TextStyle(color: c.textMuted)),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: c.error,
+              foregroundColor: c.onPrimary,
+            ),
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('Restore'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    setState(() {
+      _restoring = true;
+      _message = null;
+    });
+    try {
+      await ref.read(configTransferControllerProvider).restoreBackup(f.path);
+      if (!mounted) return;
+      setState(() {
+        _restoring = false;
+        _message = 'Restored ${_backupLabel(f.path)} and restarted the engine.';
+        // The restore added a safety snapshot of the just-replaced config.
+        _backups = ref.read(configTransferControllerProvider).listBackups();
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _restoring = false;
+        _message = 'Restore failed: $e';
+      });
+    }
+  }
+
+  /// `rclone-YYYYMMDD-HHMMSS[-n].conf` → a readable UTC label; the raw basename
+  /// if it doesn't match (a hand-dropped file in the folder).
+  static String _backupLabel(String path) {
+    final base = path.replaceAll('\\', '/').split('/').last;
+    final m = RegExp(
+      r'^rclone-(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})(\d{2})(?:-(\d+))?\.conf$',
+    ).firstMatch(base);
+    if (m == null) return base;
+    final dup = m.group(7);
+    return '${m.group(1)}-${m.group(2)}-${m.group(3)} '
+        '${m.group(4)}:${m.group(5)}:${m.group(6)} UTC'
+        '${dup != null ? ' (#$dup)' : ''}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final c = AircloneTheme.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const SizedBox(height: Space.x4),
+        const _SectionLabel(
+          'Import & export',
+          help:
+              'Move your remotes to another device, or roll back to an '
+              'automatic backup.',
+        ),
+        Row(
+          children: [
+            OutlinedButton.icon(
+              onPressed: () => showConfigImportDialog(context),
+              icon: const Icon(Icons.file_download_outlined, size: 16),
+              label: const Text('Import…'),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: c.text,
+                side: BorderSide(color: c.borderStrong),
+                visualDensity: VisualDensity.compact,
+              ),
+            ),
+            const SizedBox(width: Space.x2),
+            OutlinedButton.icon(
+              onPressed: () => showConfigExportDialog(context),
+              icon: const Icon(Icons.file_upload_outlined, size: 16),
+              label: const Text('Export…'),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: c.text,
+                side: BorderSide(color: c.borderStrong),
+                visualDensity: VisualDensity.compact,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: Space.x3),
+        InkWell(
+          onTap: _toggleBackups,
+          borderRadius: BorderRadius.circular(Radii.sm),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: Space.x1),
+            child: Row(
+              children: [
+                Icon(
+                  _showBackups ? Icons.expand_less : Icons.expand_more,
+                  size: 18,
+                  color: c.textMuted,
+                ),
+                const SizedBox(width: Space.x1),
+                Text(
+                  'Restore a backup…',
+                  style: TextStyle(color: c.textMuted, fontSize: 12),
+                ),
+                if (_restoring) ...[
+                  const SizedBox(width: Space.x2),
+                  const SizedBox(
+                    height: 12,
+                    width: 12,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+        if (_showBackups) _backupsList(c),
+        if (_message != null) ...[
+          const SizedBox(height: Space.x2),
+          Text(_message!, style: TextStyle(color: c.textFaint, fontSize: 12)),
+        ],
+      ],
+    );
+  }
+
+  Widget _backupsList(AircloneColors c) => FutureBuilder<List<File>>(
+    future: _backups,
+    builder: (context, snap) {
+      if (snap.connectionState != ConnectionState.done) {
+        return Padding(
+          padding: const EdgeInsets.only(top: Space.x2, left: Space.x5),
+          child: Text(
+            'Loading…',
+            style: TextStyle(color: c.textFaint, fontSize: 12),
+          ),
+        );
+      }
+      final files = snap.data ?? const <File>[];
+      if (files.isEmpty) {
+        return Padding(
+          padding: const EdgeInsets.only(top: Space.x2, left: Space.x5),
+          child: Text(
+            'No backups yet — one is made automatically before an import, '
+            'replace, or config switch.',
+            style: TextStyle(color: c.textFaint, fontSize: 12),
+          ),
+        );
+      }
+      return Column(
+        children: [
+          for (final f in files)
+            Padding(
+              padding: const EdgeInsets.only(top: Space.x1, left: Space.x5),
+              child: Row(
+                children: [
+                  Icon(Icons.history, size: 14, color: c.textFaint),
+                  const SizedBox(width: Space.x2),
+                  Expanded(
+                    child: Text(
+                      _backupLabel(f.path),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(color: c.textMuted, fontSize: 12),
+                    ),
+                  ),
+                  TextButton(
+                    onPressed: _restoring ? null : () => _restore(f),
+                    style: TextButton.styleFrom(
+                      visualDensity: VisualDensity.compact,
+                    ),
+                    child: const Text('Restore'),
+                  ),
+                ],
+              ),
+            ),
+        ],
+      );
+    },
+  );
 }
 
 class _Header extends StatelessWidget {

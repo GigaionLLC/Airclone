@@ -10,6 +10,7 @@ import '../state/engine_controller.dart';
 import '../state/engine_flags.dart';
 import '../state/jobs_controller.dart';
 import '../state/scheduler_controller.dart';
+import '../state/settings_controller.dart';
 import '../state/tasks_controller.dart';
 import '../state/transfer_service.dart';
 
@@ -236,10 +237,16 @@ Future<int> _runHeadless(
   //     metered backup saturate the link when no one can intervene.
   //   • transferConcurrencyProvider — so a `--run-due` batch honours the user's
   //     concurrency limit rather than dispatching everything at once.
+  //   • settingsControllerProvider — so the engine spawns against the user's
+  //     config-file OVERRIDE (Settings → Config), not rclone's default. The
+  //     engine's _platformSetup now awaits its own ensureLoaded() before reading
+  //     the override, so this read is belt-and-suspenders rather than load-
+  //     bearing, but keeping it warms the value here alongside the others.
   container.read(tasksProvider);
   container.read(rememberConfigPasswordProvider);
   container.read(engineFlagsProvider);
   container.read(transferConcurrencyProvider);
+  container.read(settingsControllerProvider);
   await SharedPreferences.getInstance();
   final tasks = container.read(tasksProvider);
 
