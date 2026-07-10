@@ -69,3 +69,14 @@ add an `integration_test` that seeds the config and screenshots the static dialo
 1. Land beta.1 (done in this pass) → 2. seed demo config + stage folders → 3. capture the 6 desktop
 shots → 4. capture the 2 Android shots → 5. optimize + commit `docs/screenshots/` → 6. README hero +
 gallery PR (drop the stale-status text at the same time — already fixed in beta.1).
+
+## Status: CAPTURED + SHIPPED (2026-07-09, same day as beta.1)
+
+9 finals live in `docs/screenshots/` and wired into the README (hero `<picture>` light/dark + tour
+table + phone section): `explorer-hero(.png/-dark.png)` (mid-drag, drop-target highlighted),
+`transfer-running`, `sync-dry-run`, `native-skins` (skin dropdown open), `thumbnails-grid`,
+`conflict-guard`, `android-files`, `android-browser`. Captured exactly per this plan: alias/webdav
+remotes named like clouds over `D:\AircloneDemo` staged data (desktop: `RCLONE_CONFIG` env; Android:
+beta.1 release APK on a Pixel-7 AVD + host `rclone serve webdav` at `10.0.2.2:8090` + demo-mode
+status bar). Still open: `mount-manager` + `serve-share` shots (Advanced-mode features; WinFsp needed
+for a real mount) and a true-macOS Finder-chrome shot.

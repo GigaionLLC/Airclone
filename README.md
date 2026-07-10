@@ -9,6 +9,13 @@
   <i>Windows · macOS · Linux · Android · iOS — one codebase</i>
 </p>
 
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/explorer-hero-dark.png">
+    <img alt="Airclone dual-pane cloud file explorer — dragging a file from Google Drive to OneDrive" src="docs/screenshots/explorer-hero.png" width="860">
+  </picture>
+</p>
+
 ---
 
 ## What is Airclone?
@@ -34,6 +41,36 @@ experience**, and brings it to the desktop *and* the phone:
 > macOS builds are Developer ID **signed + notarized**; iOS hasn't shipped yet. Stack: **Flutter**
 > with a single engine abstraction (`rclone rcd` over HTTP on desktop; a bundled rclone engine on
 > Android).
+
+## 📸 A tour
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/transfer-running.png" alt="Live transfer job with speed and ETA"><br><sub><b>Live transfers</b> — every copy is an observable job: progress, speed, ETA, pause/cancel.</sub></td>
+    <td width="50%"><img src="docs/screenshots/sync-dry-run.png" alt="Sync dialog with Mirror/Move/Sync/Two-way modes and a Dry run button"><br><sub><b>Safe sync</b> — Copy / Move / Sync / Two-way, with filters, an rclone-command preview, and one-click <b>dry-run</b>.</sub></td>
+  </tr>
+  <tr>
+    <td><img src="docs/screenshots/native-skins.png" alt="Settings showing theme control and native skin dropdown"><br><sub><b>Native skins + dark mode</b> — Explorer, Finder, or GNOME looks, light and dark.</sub></td>
+    <td><img src="docs/screenshots/thumbnails-grid.png" alt="Grid view with image thumbnails over a cloud remote"><br><sub><b>Thumbnails everywhere</b> — image/video previews over any remote, cached encrypted (AES-256-GCM).</sub></td>
+  </tr>
+  <tr>
+    <td colspan="2" align="center"><img src="docs/screenshots/conflict-guard.png" alt="Conflict dialog offering Skip, Replace, Keep both" width="720"><br><sub><b>Nothing overwrites silently</b> — every collision prompts Skip / Replace / Keep both.</sub></td>
+  </tr>
+</table>
+
+### 📱 On your phone
+
+<p align="center">
+  <img src="docs/screenshots/android-files.png" alt="Airclone on Android — local locations and cloud remotes" width="270">
+  &nbsp;&nbsp;&nbsp;
+  <img src="docs/screenshots/android-browser.png" alt="Airclone on Android — browsing a cloud remote" width="270">
+</p>
+
+<p align="center">
+  <sub>The full rclone engine ships <b>inside the APK</b> — browse every remote with a touch-first UI,
+  run transfers in the background with a live notification, and flip “Show in Files” to expose remotes
+  to your phone's own file manager.</sub>
+</p>
 
 ## 📚 Documentation
 

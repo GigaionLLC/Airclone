@@ -72,6 +72,14 @@ adversarial safety review), should be built + reviewed as its own change, not ru
     `super_native_extensions` builds a Rust crate via cargokit on desktop (partially addressed in the
     beta.1 commit; verify the dependency is still needed at all).
 
+### Found while capturing README screenshots (2026-07-09, live app)
+
+17. **`rclone cmd` tab leaks the UI label into the generated command** — the Transfer Options →
+    rclone cmd tab renders `rclone sync "S3-Backups:archives  (whole folder)" "OneDrive:Projects"`:
+    the ` (whole folder)` display suffix is inside the quoted source path, so the copied command is
+    not runnable as-is. Build the command string from the raw remote:path, not the display label
+    (`transfer_options_dialog.dart`, `_CmdTab`).
+
 ### Also noted (macOS engine hardening, from the signing audit)
 
 16. **Downloaded rclone engine on macOS: add belt-and-suspenders** — the notarized app spawns a
