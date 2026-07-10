@@ -134,6 +134,28 @@ class EngineController extends Notifier<EngineUi> {
     await _startWith(path, password: password);
   }
 
+  /// Desktop: download the latest verified rclone, repoint the cached path, and
+  /// restart the engine — preserving the held config password so an encrypted
+  /// config stays unlocked across the swap. Throws on failure so the caller (the
+  /// settings "Update engine" affordance) can surface it inline. Android bundles
+  /// its engine, so [RcloneEngine.downloadLatest] throws there by design.
+  Future<void> updateEngine() async {
+    final password = ref.read(cachePassphraseProvider);
+    final path = await RcloneEngine.downloadLatest();
+    _rclonePath = path;
+    await state.client?.quit();
+    await _startWith(path, password: password);
+    // _startWith never throws — it parks failures in the error/needsPassword
+    // phase for the engine gate. Surface a failed post-update start to the
+    // caller explicitly, or Settings would report "Engine updated." while the
+    // engine is actually down.
+    if (!state.isReady) {
+      throw StateError(
+        state.message ?? 'the engine did not start after the update',
+      );
+    }
+  }
+
   /// Provided by the password gate when the config is encrypted.
   Future<void> unlockAndStart(String password) async {
     final path = _rclonePath;
@@ -187,6 +209,22 @@ class EngineController extends Notifier<EngineUi> {
     try {
       await client.start();
       final status = await client.status();
+      // Refuse to run an engine older than the supported minimum: it misses RC
+      // methods we depend on and carries the published rclone RC CVEs. Enter the
+      // error phase so EngineGate offers the download/Retry CTA (which downloads
+      // the latest and overwrites the stale managed/PATH binary).
+      final reported = status.version;
+      if (reported != null && !RcloneEngine.meetsMinRclone(reported)) {
+        await client.quit();
+        state = EngineUi(
+          phase: EnginePhase.error,
+          message:
+              'rclone $reported is older than the minimum '
+              '${RcloneEngine.minRcloneVersion} — update the engine to '
+              'continue.',
+        );
+        return;
+      }
       // Bind the at-rest cache key to the config password (null when the config
       // is unencrypted → the cache falls back to a per-remote-name key).
       ref.read(cachePassphraseProvider.notifier).state = password;

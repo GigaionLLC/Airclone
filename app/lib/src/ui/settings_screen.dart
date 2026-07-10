@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../rclone/rclone_engine.dart';
 import '../state/advanced_mode.dart';
 import '../state/app_info.dart';
 import '../state/cache_crypto.dart';
@@ -93,7 +94,11 @@ class SettingsContent extends ConsumerWidget {
         if (desktop || advanced) ...[
           const SizedBox(height: Space.x5),
           const _GroupHeader('Engine'),
-          if (desktop) _RclonePathSection(),
+          if (desktop) ...[
+            _RclonePathSection(),
+            const SizedBox(height: Space.x4),
+            _EngineVersionSection(),
+          ],
           if (advanced) ...[
             if (desktop) const SizedBox(height: Space.x4),
             _EngineFlagsSection(),
@@ -592,6 +597,150 @@ class _RclonePathSectionState extends ConsumerState<_RclonePathSection> {
           ),
           onChanged: ctrl.setRclonePath,
         ),
+      ],
+    );
+  }
+}
+
+/// Desktop: shows the running rclone engine version with a "check for updates"
+/// affordance that can download + hot-swap a newer verified engine build.
+/// Mirrors the app-updates section's visual pattern but drives the engine via
+/// [EngineController.updateEngine] (Android bundles its engine — desktop-gated).
+class _EngineVersionSection extends ConsumerStatefulWidget {
+  @override
+  ConsumerState<_EngineVersionSection> createState() =>
+      _EngineVersionSectionState();
+}
+
+class _EngineVersionSectionState extends ConsumerState<_EngineVersionSection> {
+  // Idle when all flags are false and both strings are null. The check/update
+  // lifecycle is tracked with these so feedback renders inline, matching the
+  // Engine-flags "Apply & restart" and app "Check for updates" patterns.
+  bool _checking = false;
+  bool _updating = false;
+  String? _latest; // latest tag resolved by the last successful check
+  String? _error; // friendly message when a check/update failed
+  bool _updated = false; // success confirmation after a hot-swap
+
+  Future<void> _check() async {
+    setState(() {
+      _checking = true;
+      _error = null;
+      _latest = null;
+      _updated = false;
+    });
+    try {
+      final latest = await RcloneEngine.latestAvailableVersion();
+      if (!mounted) return;
+      setState(() {
+        _latest = latest;
+        _checking = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _error = "Couldn't reach the rclone download server. Try again.";
+        _checking = false;
+      });
+    }
+  }
+
+  Future<void> _update() async {
+    setState(() {
+      _updating = true;
+      _error = null;
+    });
+    try {
+      await ref.read(engineControllerProvider.notifier).updateEngine();
+      if (!mounted) return;
+      setState(() {
+        _updating = false;
+        _updated = true;
+        _latest = null; // now running the latest — clear the update CTA
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _updating = false;
+        _error = 'Update failed. Please try again.';
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final c = AircloneTheme.of(context);
+    final running = ref.watch(
+      engineControllerProvider.select((e) => e.version),
+    );
+    // Only offer an update when the resolved latest is strictly newer than the
+    // engine we're actually running.
+    final newer =
+        running != null &&
+        _latest != null &&
+        RcloneEngine.compareRcloneVersions(_latest!, running) > 0;
+    final busy = _checking || _updating;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const _SectionLabel(
+          'rclone engine version',
+          help: 'The engine that powers transfers, mounts, and serve.',
+        ),
+        Row(
+          children: [
+            Icon(Icons.memory_outlined, size: 16, color: c.textMuted),
+            const SizedBox(width: Space.x2),
+            Text(
+              running != null ? 'rclone $running' : 'rclone (not running)',
+              style: TextStyle(color: c.textMuted, fontSize: 13),
+            ),
+            const Spacer(),
+            if (busy)
+              const SizedBox(
+                height: 14,
+                width: 14,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            else if (newer)
+              FilledButton.icon(
+                onPressed: _update,
+                icon: const Icon(Icons.upgrade, size: 16),
+                label: Text('Update to $_latest'),
+                style: FilledButton.styleFrom(
+                  visualDensity: VisualDensity.compact,
+                  backgroundColor: c.primary,
+                ),
+              )
+            else
+              TextButton(
+                onPressed: running == null ? null : _check,
+                child: const Text('Check for updates'),
+              ),
+          ],
+        ),
+        if (_error != null) ...[
+          const SizedBox(height: Space.x1),
+          Text(_error!, style: TextStyle(color: c.error, fontSize: 12)),
+        ] else if (_updating) ...[
+          const SizedBox(height: Space.x1),
+          Text(
+            'Downloading and restarting the engine…',
+            style: TextStyle(color: c.textMuted, fontSize: 12),
+          ),
+        ] else if (_updated || (_latest != null && !newer)) ...[
+          const SizedBox(height: Space.x1),
+          Row(
+            children: [
+              Icon(Icons.check_circle_outline, size: 14, color: c.success),
+              const SizedBox(width: Space.x2),
+              Text(
+                _updated ? 'Engine updated.' : 'Up to date.',
+                style: TextStyle(color: c.success, fontSize: 12),
+              ),
+            ],
+          ),
+        ],
       ],
     );
   }

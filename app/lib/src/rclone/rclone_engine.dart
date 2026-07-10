@@ -94,8 +94,10 @@ class RcloneEngine {
     return downloadLatest(onStatus: onStatus);
   }
 
-  /// Downloads the latest official rclone, verifies its SHA-256 (fail-closed), and
-  /// extracts the binary into the app-managed engine dir. Returns its path.
+  /// Downloads the latest official rclone, verifies its SHA-256 (fail-closed —
+  /// throws a [StateError] if the checksum can't be fetched, parsed, or matched
+  /// rather than installing an unverified engine), and extracts the binary into
+  /// the app-managed engine dir (overwriting any existing one). Returns its path.
   static Future<String> downloadLatest({
     void Function(String)? onStatus,
   }) async {
@@ -116,9 +118,27 @@ class RcloneEngine {
     final zipBytes = await _getBytes('$base/$zipName');
 
     onStatus?.call('Verifying checksum…');
-    final expected = await _expectedSha256(base, zipName);
+    // Fail-closed: an engine we cannot verify is never installed. Any failure
+    // to fetch OR parse the official SHA256SUMS aborts the install with an
+    // actionable error rather than silently trusting the bytes we just pulled.
+    final String sumsBody;
+    try {
+      sumsBody = await _getString('$base/SHA256SUMS');
+    } catch (e) {
+      throw StateError(
+        'could not verify the download — refusing to install an unverified '
+        'engine (fetching the checksum list failed: $e)',
+      );
+    }
+    final expected = parseSha256Sums(sumsBody, zipName);
+    if (expected == null) {
+      throw StateError(
+        'could not verify the download — refusing to install an unverified '
+        'engine (no checksum for $zipName in the release SHA256SUMS)',
+      );
+    }
     final actual = sha256.convert(zipBytes).toString();
-    if (expected != null && expected.toLowerCase() != actual.toLowerCase()) {
+    if (expected.toLowerCase() != actual.toLowerCase()) {
       throw StateError(
         'rclone checksum mismatch (expected $expected, got $actual)',
       );
@@ -179,18 +199,70 @@ class RcloneEngine {
     return m.group(0)!;
   }
 
-  static Future<String?> _expectedSha256(String base, String zipName) async {
-    try {
-      final sums = await _getString('$base/SHA256SUMS');
-      for (final line in sums.split('\n')) {
-        if (line.contains(zipName)) {
-          return line.trim().split(RegExp(r'\s+')).first;
-        }
-      }
-    } catch (_) {
-      /* fall through — caller treats null as "unverified" */
+  /// The latest official rclone version available for download (e.g. `v1.74.4`).
+  /// Wraps the internal `version.txt` probe so callers (the settings "check for
+  /// updates" affordance) can query the newest release without downloading it.
+  static Future<String> latestAvailableVersion() => _latestVersion();
+
+  /// Extracts the SHA-256 hex digest for [zipName] from an rclone `SHA256SUMS`
+  /// file body (lines of `<64-hex>  <filename>`). Pure + network-free so it is
+  /// unit-testable. Returns null when the body has no entry for [zipName] or the
+  /// matching line is malformed (non-64-hex digest) — [downloadLatest] treats a
+  /// null as "unverifiable" and refuses to install (fail-closed).
+  static String? parseSha256Sums(String sumsBody, String zipName) {
+    for (final line in sumsBody.split('\n')) {
+      final parts = line.trim().split(RegExp(r'\s+'));
+      if (parts.length < 2) continue;
+      // Second field is the filename; a leading `*` marks binary mode in some
+      // sha256sum outputs (rclone's are plain, but tolerate it). Match exactly
+      // so a shorter name can't accidentally hit a longer entry.
+      final name = parts[1].replaceFirst(RegExp(r'^[*./]+'), '');
+      if (name != zipName) continue;
+      final hash = parts.first.toLowerCase();
+      if (RegExp(r'^[0-9a-f]{64}$').hasMatch(hash)) return hash;
     }
     return null;
+  }
+
+  /// The minimum rclone version Airclone supports. Older engines miss RC methods
+  /// we rely on and carry the published rclone RC CVEs called out in
+  /// `dev/backlog/feature-backlog.md`. The min-version gate refuses to run below
+  /// this; keep it in sync with `.github/workflows/release.yml`'s RCLONE_VERSION.
+  static const minRcloneVersion = '1.73.5';
+
+  /// Parses a MAJOR.MINOR.PATCH triple out of a reported rclone version string,
+  /// tolerating the shapes rclone emits: `v1.74.4`, `rclone v1.74.4`,
+  /// `1.74.4-beta.1234.abcdef`. Returns null when no triple can be found.
+  static (int, int, int)? _parseVersionTriple(String v) {
+    final m = RegExp(r'(\d+)\.(\d+)\.(\d+)').firstMatch(v);
+    if (m == null) return null;
+    return (
+      int.parse(m.group(1)!),
+      int.parse(m.group(2)!),
+      int.parse(m.group(3)!),
+    );
+  }
+
+  /// Compares two rclone version strings by MAJOR.MINOR.PATCH, tolerant of the
+  /// `v`/`rclone ` prefixes and `-beta`/`-DEV` suffixes rclone attaches. Returns
+  /// `<0` if `a < b`, `0` if equal, `>0` if `a > b`. Unparseable input on either
+  /// side yields 0 (callers that must not proceed on garbage should check
+  /// parseability first, e.g. via [meetsMinRclone]).
+  static int compareRcloneVersions(String a, String b) {
+    final pa = _parseVersionTriple(a);
+    final pb = _parseVersionTriple(b);
+    if (pa == null || pb == null) return 0;
+    if (pa.$1 != pb.$1) return pa.$1.compareTo(pb.$1);
+    if (pa.$2 != pb.$2) return pa.$2.compareTo(pb.$2);
+    return pa.$3.compareTo(pb.$3);
+  }
+
+  /// True when [reported] is at least [minRcloneVersion]. An unparseable version
+  /// is treated as NOT meeting the minimum (fail-closed — we would rather prompt
+  /// an engine update than run a build we cannot vet).
+  static bool meetsMinRclone(String reported) {
+    if (_parseVersionTriple(reported) == null) return false;
+    return compareRcloneVersions(reported, minRcloneVersion) >= 0;
   }
 
   static Future<String?> _whichRclone() async {

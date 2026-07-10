@@ -7,6 +7,12 @@ enum TransferMode { copy, move, sync, bisync }
 /// How rclone decides two files are equal (skip vs. retransfer).
 enum CompareMode { sizeModTime, size, checksum }
 
+/// Sentinel telling [TransferOptions.copyWith] to leave [maxDeleteFiles]
+/// unchanged, distinct from an explicit `null` ("clear the cap"). Needed
+/// because — unlike every other field — `null` is itself a meaningful value
+/// here (no cap), so the usual `x ?? this.x` idiom can't express "clear it".
+const Object _keepMaxDelete = Object();
+
 /// Immutable bundle of advanced Copy/Move/Sync settings.
 ///
 /// The easy path does a one-click copy; this is the power path surfaced by
@@ -27,6 +33,7 @@ class TransferOptions {
     this.orderBy = '',
     this.trackRenames = false,
     this.immutable = false,
+    this.maxDeleteFiles,
     this.resyncMode = 'path1',
     this.conflictResolve = 'none',
     this.conflictLoser = 'num',
@@ -79,6 +86,14 @@ class TransferOptions {
   /// Refuse to modify already-existing files — abort on any change
   /// (`--immutable`).
   final bool immutable;
+
+  /// One-way Sync delete cap: abort the run if more than this many destination
+  /// files would be deleted (`--max-delete`, a COUNT). `null` = no cap. Only
+  /// applied when [mode] is [TransferMode.sync] — the mode that deletes
+  /// destination-only files. Distinct from bisync's [maxDeletePercent], which
+  /// is a percentage. A wrong/empty source can otherwise wipe the destination,
+  /// so this is a data-loss guard, not a tuning knob.
+  final int? maxDeleteFiles;
 
   // ── Two-way sync (bisync) settings — only used when mode == bisync ─────────
 
@@ -138,6 +153,9 @@ class TransferOptions {
     String? orderBy,
     bool? trackRenames,
     bool? immutable,
+    // Object? (not int?) so an explicit `null` clears the cap; omitting the
+    // argument leaves it unchanged (see [_keepMaxDelete]).
+    Object? maxDeleteFiles = _keepMaxDelete,
     String? resyncMode,
     String? conflictResolve,
     String? conflictLoser,
@@ -162,6 +180,9 @@ class TransferOptions {
     orderBy: orderBy ?? this.orderBy,
     trackRenames: trackRenames ?? this.trackRenames,
     immutable: immutable ?? this.immutable,
+    maxDeleteFiles: identical(maxDeleteFiles, _keepMaxDelete)
+        ? this.maxDeleteFiles
+        : maxDeleteFiles as int?,
     resyncMode: resyncMode ?? this.resyncMode,
     conflictResolve: conflictResolve ?? this.conflictResolve,
     conflictLoser: conflictLoser ?? this.conflictLoser,
@@ -189,6 +210,9 @@ class TransferOptions {
     if (orderBy.isNotEmpty) 'orderBy': orderBy,
     if (trackRenames) 'trackRenames': trackRenames,
     if (immutable) 'immutable': immutable,
+    // One-way Sync delete cap: omit when null (no cap) so legacy task JSON that
+    // never had this key round-trips byte-identical.
+    if (maxDeleteFiles != null) 'maxDeleteFiles': maxDeleteFiles,
     // bisync settings: omit when at their defaults so legacy task JSON (which
     // never had these keys) round-trips byte-identical.
     if (resyncMode != 'path1') 'resyncMode': resyncMode,
@@ -228,6 +252,7 @@ class TransferOptions {
       orderBy: (j['orderBy'] as String?) ?? '',
       trackRenames: j['trackRenames'] == true,
       immutable: j['immutable'] == true,
+      maxDeleteFiles: (j['maxDeleteFiles'] as num?)?.toInt(),
       resyncMode: (j['resyncMode'] as String?) ?? 'path1',
       conflictResolve: (j['conflictResolve'] as String?) ?? 'none',
       conflictLoser: (j['conflictLoser'] as String?) ?? 'num',
@@ -278,6 +303,13 @@ String rcloneCmdPreview(TransferOptions o, String src, String dst) {
   if (o.orderBy.isNotEmpty) parts.add('--order-by ${o.orderBy}');
   if (o.trackRenames) parts.add('--track-renames');
   if (o.immutable) parts.add('--immutable');
+  // Sync-only delete cap (a COUNT here — distinct from bisync's percent below).
+  // Negatives are never emitted (they mean "unlimited" to rclone).
+  if (o.mode == TransferMode.sync &&
+      o.maxDeleteFiles != null &&
+      o.maxDeleteFiles! >= 0) {
+    parts.add('--max-delete ${o.maxDeleteFiles}');
+  }
 
   for (final p in o.includes) {
     if (p.trim().isEmpty) continue;
@@ -374,6 +406,17 @@ List<String> _clean(List<String> patterns) => [
   if (o.orderBy.isNotEmpty) config['OrderBy'] = o.orderBy;
   if (o.trackRenames) config['TrackRenames'] = true;
   if (o.immutable) config['Immutable'] = true;
+  // Sync delete cap (data-loss guard): rclone `_config` MaxDelete = max number
+  // of destination deletes allowed before the run aborts. Only meaningful for
+  // sync (the mode that deletes destination-only files); copy/move never do.
+  // Negative values mean "unlimited" to rclone — the opposite of a guard — so
+  // they are never emitted (the input field also rejects them; this is the
+  // belt to that suspender for values arriving via JSON).
+  if (o.mode == TransferMode.sync &&
+      o.maxDeleteFiles != null &&
+      o.maxDeleteFiles! >= 0) {
+    config['MaxDelete'] = o.maxDeleteFiles;
+  }
   switch (o.compare) {
     case CompareMode.size:
       config['SizeOnly'] = true;

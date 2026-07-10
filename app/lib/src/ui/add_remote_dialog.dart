@@ -75,6 +75,86 @@ class _AddRemoteDialogState extends ConsumerState<AddRemoteDialog> {
     );
   }
 
+  /// Edit-save entry point. Editing a `crypt` remote's password rewrites the key
+  /// rclone derives from it, so everything already uploaded with the OLD password
+  /// silently becomes permanently undecryptable. When that's what a save would do,
+  /// make the user confirm it first; otherwise save straight through.
+  Future<void> _onSaveEdit(
+    AddRemoteState state,
+    AddRemoteController ctrl,
+  ) async {
+    if (_cryptPasswordChanged(state)) {
+      final confirmed = await _confirmCryptPasswordChange();
+      if (!mounted || confirmed != true) return;
+    }
+    ctrl.submitEdit();
+  }
+
+  /// True when a `crypt` remote is being edited and a new, non-blank value has
+  /// been typed into any of its password fields (`password` / `password2`) — the
+  /// exact situation that would re-key it. (Blank means "keep current", so safe.)
+  bool _cryptPasswordChanged(AddRemoteState state) {
+    final p = state.provider;
+    if (p == null || p.name != 'crypt') return false;
+    for (final o in p.options) {
+      if (o.isPassword && (state.values[o.name]?.isNotEmpty ?? false)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /// Destructive confirm shown before re-keying a crypt remote. Cancel is the
+  /// autofocused default so an accidental Enter never rewrites the key.
+  Future<bool?> _confirmCryptPasswordChange() {
+    final c = AircloneTheme.of(context);
+    return showDialog<bool>(
+      context: context,
+      builder: (dctx) => AlertDialog(
+        backgroundColor: c.surfaceRaised,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(Radii.md),
+        ),
+        title: Text(
+          'Change encryption password?',
+          style: TextStyle(
+            color: c.text,
+            fontSize: 16,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        content: Text(
+          'Files already uploaded with the current password will become '
+          'permanently unreadable — the new password can\'t decrypt them, and '
+          'there is no way to reset it. This cannot be undone.',
+          style: TextStyle(color: c.textMuted, fontSize: 13),
+        ),
+        actionsPadding: const EdgeInsets.fromLTRB(
+          Space.x4,
+          0,
+          Space.x4,
+          Space.x4,
+        ),
+        actions: [
+          TextButton(
+            autofocus: true,
+            onPressed: () => Navigator.of(dctx).pop(false),
+            child: Text('Cancel', style: TextStyle(color: c.textMuted)),
+          ),
+          const SizedBox(width: Space.x1),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: c.error,
+              foregroundColor: c.onPrimary,
+            ),
+            onPressed: () => Navigator.of(dctx).pop(true),
+            child: const Text('Change password'),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _header(AircloneColors c, String title, {String? subtitle}) => Column(
     crossAxisAlignment: CrossAxisAlignment.start,
     children: [
@@ -281,7 +361,9 @@ class _AddRemoteDialogState extends ConsumerState<AddRemoteDialog> {
           mainAxisAlignment: MainAxisAlignment.end,
           children: [
             FilledButton(
-              onPressed: state.isEdit ? ctrl.submitEdit : ctrl.submit,
+              onPressed: state.isEdit
+                  ? () => _onSaveEdit(state, ctrl)
+                  : ctrl.submit,
               child: Text(state.isEdit ? 'Save changes' : 'Create remote'),
             ),
           ],

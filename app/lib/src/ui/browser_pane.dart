@@ -14,8 +14,10 @@ import '../state/remote_features.dart';
 import '../state/remotes_provider.dart';
 import '../state/thumbnail_prefs.dart';
 import '../state/thumbnail_service.dart';
+import '../state/transfer_options.dart';
 import '../state/transfer_service.dart';
 import 'add_remote_dialog.dart';
+import 'bisync_confirm.dart';
 import 'checksum_dialog.dart';
 import 'column_header.dart';
 import 'context_menu.dart';
@@ -1845,9 +1847,36 @@ class _PaneToolbar extends ConsumerWidget {
           ? '${from.remote!.name}:${from.path}  (whole folder)'
           : '${from.remote!.name}:${from.path}  (${selected.length} selected)',
       toLabel: '${dstRemote.name}:$dstPath',
+      // Run dispatches immediately here, so the destructive-Sync confirm
+      // applies (task definition passes false and confirms nothing).
+      isRunNow: true,
     );
     if (options == null) return;
     final svc = ref.read(transferServiceProvider);
+
+    // Two-way sync (bisync) is a folder-pair operation, never per-file, and an
+    // ad-hoc run has no saved baseline — so transferAdvancedRaw would auto-fire
+    // a DESTRUCTIVE --resync. Run it exactly once on the current-folder ↔
+    // destination-folder pair, behind a baseline confirm.
+    if (options.mode == TransferMode.bisync) {
+      if (!context.mounted) return;
+      final choice = await showBisyncBaselineConfirm(
+        context,
+        path1Label: '${from.remote!.name}:${from.path}',
+        path2Label: '${dstRemote.name}:$dstPath',
+      );
+      if (choice == null) return;
+      await svc.transferAdvanced(
+        srcRemote: from.remote!,
+        srcPath: from.path,
+        dstRemote: dstRemote,
+        dstPath: dstPath,
+        options: options.copyWith(dryRun: choice.dryRun || options.dryRun),
+      );
+      ref.read(paneProvider(index).notifier).clearSelection();
+      return;
+    }
+
     if (whole) {
       await svc.transferAdvanced(
         srcRemote: from.remote!,

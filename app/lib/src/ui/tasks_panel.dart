@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../rclone/models/job.dart';
 import '../state/browser_controller.dart';
 import '../state/jobs_controller.dart';
+import '../state/scheduler_controller.dart';
 import '../state/task_schedule.dart';
 import '../state/tasks_controller.dart';
 import '../state/transfer_options.dart';
@@ -22,6 +23,9 @@ class _TasksDialog extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final c = AircloneTheme.of(context);
     final tasks = ref.watch(tasksProvider);
+    // Re-read each tick; also carries the "a run was due while the engine was
+    // locked" flag surfaced in the footer below.
+    final sched = ref.watch(schedulerProvider);
     return Dialog(
       backgroundColor: c.surfaceRaised,
       shape: RoundedRectangleBorder(
@@ -81,6 +85,32 @@ class _TasksDialog extends ConsumerWidget {
             ),
             if (tasks.any((t) => t.schedule != null)) ...[
               Divider(height: 1, color: c.border),
+              if (sched.skippedWhileUnavailable != null)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(
+                    Space.x5,
+                    Space.x2,
+                    Space.x5,
+                    0,
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.warning_amber_rounded,
+                        size: 13,
+                        color: c.warning,
+                      ),
+                      const SizedBox(width: Space.x2),
+                      Expanded(
+                        child: Text(
+                          'A scheduled task was due while the engine was '
+                          'locked — unlock to let it run.',
+                          style: TextStyle(color: c.warning, fontSize: 11),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               Padding(
                 padding: const EdgeInsets.symmetric(
                   horizontal: Space.x5,
@@ -225,6 +255,9 @@ class _TaskRow extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final c = AircloneTheme.of(context);
+    // Re-time the schedule labels below (due now / next / last ran) whenever the
+    // scheduler ticks (~30 s) so they don't go stale while the dialog is open.
+    ref.watch(schedulerProvider);
     return Padding(
       padding: const EdgeInsets.symmetric(
         horizontal: Space.x4,
@@ -286,7 +319,8 @@ class _TaskRow extends ConsumerWidget {
                       const SizedBox(width: 4),
                       Flexible(
                         child: Text(
-                          '${task.schedule!.describe()} · ${_nextLabel(task)}',
+                          '${task.schedule!.describe()} · ${_nextLabel(task)} · '
+                          'last ran ${_lastRanLabel(task.lastRun)}',
                           style: TextStyle(
                             color: c.primary,
                             fontSize: 11,
@@ -303,6 +337,17 @@ class _TaskRow extends ConsumerWidget {
             ),
           ),
           const SizedBox(width: Space.x3),
+          // Bisync escape hatch: once the baseline is established there's no other
+          // way to force a fresh --resync, so a task whose listings rclone has
+          // lost would fail forever. Only shown for already-baselined bisync tasks.
+          if (task.options.mode == TransferMode.bisync &&
+              task.options.baselineEstablished)
+            IconButton(
+              onPressed: () => _run(context, ref, reestablish: true),
+              icon: const Icon(Icons.restart_alt, size: 18),
+              color: c.textFaint,
+              tooltip: 'Re-establish baseline…',
+            ),
           IconButton(
             onPressed: () => showScheduleDialog(context, ref, task),
             icon: Icon(
@@ -336,14 +381,23 @@ class _TaskRow extends ConsumerWidget {
   /// shows a guarded confirm first, then runs `--resync`; on a successful
   /// (non-dry-run) baseline run it flips `baselineEstablished` so later runs are
   /// normal two-way syncs.
-  Future<void> _run(BuildContext context, WidgetRef ref) async {
+  ///
+  /// [reestablish] forces that same guarded `--resync` confirm for a task whose
+  /// baseline is *already* established — the escape hatch when rclone's listings
+  /// are lost/corrupt and every normal run would otherwise fail forever. A
+  /// successful non-dry re-resync leaves `baselineEstablished` true.
+  Future<void> _run(
+    BuildContext context,
+    WidgetRef ref, {
+    bool reestablish = false,
+  }) async {
     final svc = ref.read(transferServiceProvider);
     final messenger = ScaffoldMessenger.of(context);
     final needsBaseline =
         task.options.mode == TransferMode.bisync &&
         !task.options.baselineEstablished;
 
-    if (!needsBaseline) {
+    if (!needsBaseline && !reestablish) {
       svc.transferAdvancedRaw(
         srcFs: task.srcFs,
         dstFs: task.dstFs,
@@ -524,6 +578,17 @@ String _nextLabel(TransferTask task) {
   final now = DateTime.now();
   if (isDue(s, now: now, lastRun: task.lastRun)) return 'due now';
   return 'next ${_fmtNext(nextRun(s, from: now, lastRun: task.lastRun))}';
+}
+
+/// "just now" / "5 min ago" / "2 h ago" / "3 d ago" / "never" for a task's
+/// persisted [lastRun] on the schedule status line.
+String _lastRanLabel(DateTime? lastRun) {
+  if (lastRun == null) return 'never';
+  final d = DateTime.now().difference(lastRun);
+  if (d.inMinutes < 1) return 'just now';
+  if (d.inMinutes < 60) return '${d.inMinutes} min ago';
+  if (d.inHours < 24) return '${d.inHours} h ago';
+  return '${d.inDays} d ago';
 }
 
 String _fmtNext(DateTime dt) {

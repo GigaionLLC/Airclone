@@ -101,13 +101,19 @@ class _EncryptRemoteDialogState extends ConsumerState<_EncryptRemoteDialog> {
         width: 520,
         child: Padding(
           padding: const EdgeInsets.all(Space.x5),
-          child: switch (st.phase) {
-            EncryptPhase.creating => _busy(c, 'Creating encrypted remote…'),
-            EncryptPhase.verifying => _busy(c, 'Verifying…'),
-            EncryptPhase.done => _done(c, st),
-            EncryptPhase.error => _error(c, st.error),
-            EncryptPhase.form => _form(c),
-          },
+          // Scrollable: the form stacks ~10 fields plus the password-loss
+          // warning; on a phone with the keyboard raised the dialog's height
+          // budget shrinks well below the content height, and an unscrollable
+          // Column would overflow and clip the action buttons out of reach.
+          child: SingleChildScrollView(
+            child: switch (st.phase) {
+              EncryptPhase.creating => _busy(c, 'Creating encrypted remote…'),
+              EncryptPhase.verifying => _busy(c, 'Verifying…'),
+              EncryptPhase.done => _done(c, st),
+              EncryptPhase.error => _error(c, st.error),
+              EncryptPhase.form => _form(c),
+            },
+          ),
         ),
       ),
     );
@@ -211,6 +217,10 @@ class _EncryptRemoteDialogState extends ConsumerState<_EncryptRemoteDialog> {
             style: TextStyle(color: c.text, fontSize: 13),
           ),
         ),
+        // The password IS the key — there is no escrow or reset. Warn up front,
+        // while the user is choosing it, so it lands in a password manager.
+        _lossWarning(c, finalReminder: false),
+        const SizedBox(height: Space.x3),
         Row(
           children: [
             Expanded(
@@ -350,6 +360,10 @@ class _EncryptRemoteDialogState extends ConsumerState<_EncryptRemoteDialog> {
           ],
         ),
         const SizedBox(height: Space.x3),
+        // Parting reminder — the same unrecoverable-password warning as the
+        // form, phrased as a last chance to save it before the dialog closes.
+        _lossWarning(c, finalReminder: true),
+        const SizedBox(height: Space.x3),
         // Config-encryption nudge — shown regardless of verify outcome, since
         // rclone.conf only lightly obscures the password.
         Container(
@@ -437,6 +451,42 @@ class _EncryptRemoteDialogState extends ConsumerState<_EncryptRemoteDialog> {
         ],
       ),
     ],
+  );
+
+  /// The single most important safety copy: a crypt remote derives its key from
+  /// this password, so losing it makes the ciphertext unreadable forever — no one
+  /// (not Airclone, not rclone) can reset it. Rendered in error tones so it can't
+  /// be mistaken for the softer config-obscure nudge. [finalReminder] switches the
+  /// wording between the form (choosing it) and the success screen (keep it safe).
+  Widget _lossWarning(
+    AircloneColors c, {
+    required bool finalReminder,
+  }) => Container(
+    padding: const EdgeInsets.all(Space.x3),
+    decoration: BoxDecoration(
+      color: c.errorBg,
+      borderRadius: BorderRadius.circular(Radii.md),
+    ),
+    child: Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(Icons.warning_amber_rounded, size: 16, color: c.error),
+        const SizedBox(width: Space.x2),
+        Expanded(
+          child: Text(
+            finalReminder
+                ? 'Save this password now. If you lose it, these encrypted '
+                      'files can NEVER be read again — neither Airclone nor '
+                      'rclone can reset it. Store it in a password manager.'
+                : 'There is no password reset. If you lose this password, the '
+                      'encrypted files can NEVER be read again — not by '
+                      'Airclone, not by rclone, not by anyone. Store it in a '
+                      'password manager.',
+            style: TextStyle(color: c.textMuted, fontSize: 11),
+          ),
+        ),
+      ],
+    ),
   );
 
   Widget _field(AircloneColors c, String label, Widget child) => Padding(

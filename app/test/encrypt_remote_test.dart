@@ -100,6 +100,42 @@ void main() {
     expect(params['directory_name_encryption'], 'false');
   });
 
+  test('filename_encryption "off" serializes verbatim', () async {
+    final client = _CapturingClient();
+    final c = _container(client);
+    await c
+        .read(encryptRemoteControllerProvider.notifier)
+        .submit(
+          name: 'x',
+          baseFs: 'b:',
+          filenameEncryption: 'off',
+          dirNameEncryption: false,
+          password: 'p',
+        );
+    final create = client.calls.firstWhere((c) => c.method == 'config/create');
+    final params = create.params!['parameters'] as Map<String, dynamic>;
+    expect(params['filename_encryption'], 'off');
+    expect(params['directory_name_encryption'], 'false');
+  });
+
+  test('filename_encryption "obfuscate" serializes verbatim', () async {
+    final client = _CapturingClient();
+    final c = _container(client);
+    await c
+        .read(encryptRemoteControllerProvider.notifier)
+        .submit(
+          name: 'x',
+          baseFs: 'b:',
+          filenameEncryption: 'obfuscate',
+          dirNameEncryption: true,
+          password: 'p',
+        );
+    final create = client.calls.firstWhere((c) => c.method == 'config/create');
+    final params = create.params!['parameters'] as Map<String, dynamic>;
+    expect(params['filename_encryption'], 'obfuscate');
+    expect(params['directory_name_encryption'], 'true');
+  });
+
   test('a config/create error stops before cryptcheck', () async {
     final client = _CapturingClient()
       ..onRpc = (method, _) =>

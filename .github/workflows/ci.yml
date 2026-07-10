@@ -9,6 +9,11 @@ on:
     branches: [main]
   pull_request:
   workflow_dispatch:
+  schedule:
+    # Weekly canary: catches upstream drift (new rclone releases via the
+    # rclone-pin job below, plus Flutter/pub breakage in analyze-test) even
+    # when the repo itself is quiet.
+    - cron: '0 6 * * 1'
 
 defaults:
   run:
@@ -38,3 +43,26 @@ jobs:
           name: coverage
           path: app/coverage/lcov.info
           if-no-files-found: ignore
+
+  rclone-pin:
+    # Warns (never fails) when the Android rclone pin drifts between its two
+    # definition sites, or falls behind the latest upstream release — rclone
+    # patch releases regularly carry security fixes (v1.74.4: serve s3/webdav
+    # CVEs), so a stale pin should be loud.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check rclone pin freshness
+        working-directory: .
+        run: |
+          set -euo pipefail
+          yml=$(grep -oP 'RCLONE_VERSION: \Kv[0-9.]+' .github/workflows/release.yml | head -1)
+          ps1=$(grep -oP "RcloneVersion = '\Kv[0-9.]+" dev/android/build-rclone.ps1 | head -1)
+          latest=$(curl -fsS https://downloads.rclone.org/version.txt | grep -oP 'v[0-9.]+' | head -1 || echo unknown)
+          echo "release.yml pin: $yml | build-rclone.ps1 pin: $ps1 | upstream latest: $latest"
+          if [ "$yml" != "$ps1" ]; then
+            echo "::warning::rclone pin drift: release.yml has $yml but dev/android/build-rclone.ps1 has $ps1 — keep them in sync."
+          fi
+          if [ "$latest" != "unknown" ] && [ "$yml" != "$latest" ]; then
+            echo "::warning::rclone pin $yml is behind the latest upstream release $latest — check the changelog (security fixes ship in patch releases) and bump both pin sites."
+          fi

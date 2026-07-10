@@ -176,7 +176,8 @@ void main() {
       final call = client.calls.singleWhere((x) => x.method == 'vfs/refresh');
       expect(call.params!['fs'], 'gdrive:');
       // rclone's vfs/rc hard-asserts STRING params — a JSON bool is rejected
-      // ("value must be string"); verified live against rclone v1.74.3.
+      // ("value must be string"); verified live against rclone v1.74.3 (pin has
+      // since moved on — see release.yml RCLONE_VERSION).
       expect(call.params!['recursive'], 'true');
       // Recursive walks can take minutes on big remotes — must run async.
       expect(call.params!['_async'], true);

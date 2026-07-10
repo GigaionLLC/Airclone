@@ -302,7 +302,9 @@ jobs:
     # so the app works on-device; release signing (alpha.86) uses AIRCLONE_* secrets.
     env:
       # Keep in sync with dev/android/build-rclone.ps1 (the local equivalent).
-      RCLONE_VERSION: v1.74.3
+      # v1.74.4 (2026-07-08) is a security patch: CVEs in serve s3 / serve
+      # webdav / local-backend symlink escape — all surfaces Airclone ships.
+      RCLONE_VERSION: v1.74.4
       NDK_VERSION: 28.2.13676358
       NDK_API: 24
       # Release signing. Base64-encoded keystore is job-level so the decode

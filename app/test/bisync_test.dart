@@ -74,6 +74,19 @@ void main() {
       expect(custom.params['checkAccess'], true);
     });
 
+    test('one-way maxDeleteFiles never leaks into a bisync call', () {
+      // bisync caps deletes via its own percent (maxDeletePercent, top-level);
+      // the one-way count guard must not appear — bisync has no _config at all.
+      final call = buildRcCall(
+        const TransferOptions(mode: TransferMode.bisync, maxDeleteFiles: 100),
+        'a:',
+        'b:',
+      );
+      expect(call.params.containsKey('_config'), isFalse);
+      expect(call.params.containsKey('MaxDelete'), isFalse);
+      expect(call.params.containsKey('maxDeleteFiles'), isFalse);
+    });
+
     test('filters still apply to bisync', () {
       final call = buildRcCall(
         const TransferOptions(mode: TransferMode.bisync, excludes: ['*.tmp']),

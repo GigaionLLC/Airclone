@@ -10,30 +10,105 @@ import 'theme/tokens.dart';
 ///
 /// Resolves to the chosen [TransferOptions], or `null` if cancelled. The
 /// "Dry run" footer button returns a copy with `dryRun: true`.
+///
+/// [isRunNow] tells the dialog whether Run dispatches a transfer immediately
+/// (the ad-hoc browser flow) or merely returns options to be saved (task
+/// definition). The destructive one-way-Sync confirm only fires when true —
+/// at definition time nothing runs, so a confirm there is misleading and its
+/// "Dry run first" nudge would bake `dryRun: true` into the saved task,
+/// turning a scheduled backup into a permanent no-op.
 Future<TransferOptions?> showTransferOptionsDialog(
   BuildContext context, {
   required String fromLabel,
   required String toLabel,
   TransferOptions initial = const TransferOptions(),
+  bool isRunNow = false,
 }) => showDialog<TransferOptions>(
   context: context,
   builder: (_) => _TransferOptionsDialog(
     fromLabel: fromLabel,
     toLabel: toLabel,
     initial: initial,
+    isRunNow: isRunNow,
   ),
 );
+
+/// Outcome of the one-way Sync destructive confirm: [dryRun] previews first,
+/// [run] proceeds with the real (deleting) sync. Cancel returns `null`.
+enum _SyncRunChoice { dryRun, run }
+
+/// The destructive-run confirm shown before a real one-way Sync. Sync makes the
+/// destination exactly match the source, so destination-only files are deleted
+/// for good — this makes that consequence explicit and nudges a dry run first.
+Future<_SyncRunChoice?> _showSyncConfirm(BuildContext context) =>
+    showDialog<_SyncRunChoice>(
+      context: context,
+      builder: (ctx) {
+        final c = AircloneTheme.of(ctx);
+        return AlertDialog(
+          backgroundColor: c.surfaceRaised,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(Radii.md),
+          ),
+          title: Text(
+            'Sync deletes destination files',
+            style: TextStyle(
+              color: c.text,
+              fontSize: 16,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          content: Text(
+            'Sync makes the destination exactly match the source. Any files '
+            'that exist only on the destination are permanently deleted — this '
+            'cannot be undone. If the source is wrong or empty this can wipe '
+            'the destination, so run a dry run first to preview the changes.',
+            style: TextStyle(color: c.textMuted, fontSize: 13),
+          ),
+          actionsPadding: const EdgeInsets.fromLTRB(
+            Space.x4,
+            0,
+            Space.x4,
+            Space.x4,
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: Text('Cancel', style: TextStyle(color: c.textMuted)),
+            ),
+            OutlinedButton(
+              onPressed: () => Navigator.of(ctx).pop(_SyncRunChoice.dryRun),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: c.text,
+                side: BorderSide(color: c.borderStrong),
+              ),
+              child: const Text('Dry run first'),
+            ),
+            FilledButton(
+              style: FilledButton.styleFrom(
+                backgroundColor: c.error,
+                foregroundColor: c.onPrimary,
+              ),
+              onPressed: () => Navigator.of(ctx).pop(_SyncRunChoice.run),
+              child: const Text('Run sync'),
+            ),
+          ],
+        );
+      },
+    );
 
 class _TransferOptionsDialog extends StatefulWidget {
   const _TransferOptionsDialog({
     required this.fromLabel,
     required this.toLabel,
     required this.initial,
+    required this.isRunNow,
   });
 
   final String fromLabel;
   final String toLabel;
   final TransferOptions initial;
+  final bool isRunNow;
 
   @override
   State<_TransferOptionsDialog> createState() => _TransferOptionsDialogState();
@@ -73,6 +148,31 @@ class _TransferOptionsDialogState extends State<_TransferOptionsDialog> {
   ];
 
   void _set(TransferOptions next) => setState(() => _o = next);
+
+  /// Run button. A real (non-dry) one-way Sync permanently deletes every file
+  /// that exists only on the destination, so make the user acknowledge that —
+  /// and offer a dry run — before returning the options. Copy/Move (and any run
+  /// already marked dry) pop straight through. Two-way (bisync) is guarded by
+  /// its own baseline confirm at the dispatch site, not here. The confirm only
+  /// fires for run-now consumers ([isRunNow]) — at task-definition time nothing
+  /// runs on save, and the "Dry run first" choice must never be persisted into
+  /// a saved task (it would make every scheduled run a silent no-op).
+  Future<void> _onRun() async {
+    final current = _current;
+    if (widget.isRunNow &&
+        current.mode == TransferMode.sync &&
+        !current.dryRun) {
+      final choice = await _showSyncConfirm(context);
+      if (!mounted || choice == null) return;
+      Navigator.of(context).pop(
+        choice == _SyncRunChoice.dryRun
+            ? current.copyWith(dryRun: true)
+            : current,
+      );
+      return;
+    }
+    Navigator.of(context).pop(current);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -200,10 +300,7 @@ class _TransferOptionsDialogState extends State<_TransferOptionsDialog> {
           child: const Text('Dry run'),
         ),
         const SizedBox(width: Space.x2),
-        FilledButton(
-          onPressed: () => Navigator.of(context).pop(_current),
-          child: const Text('Run'),
-        ),
+        FilledButton(onPressed: _onRun, child: const Text('Run')),
       ],
     ),
   );
@@ -269,6 +366,12 @@ class _SettingsTab extends ConsumerWidget {
       options.dryRun,
       (v) => onChanged(options.copyWith(dryRun: v)),
     ),
+    // Sync is the only one-way mode that deletes destination-only files, so its
+    // delete cap belongs here and only here.
+    if (options.mode == TransferMode.sync) ...[
+      const SizedBox(height: Space.x3),
+      _maxDeleteField(c),
+    ],
     const SizedBox(height: Space.x4),
     _label(c, 'Compare by'),
     const SizedBox(height: Space.x2),
@@ -363,6 +466,73 @@ class _SettingsTab extends ConsumerWidget {
           ),
         ),
         onChanged: (v) => onPick(int.tryParse(v) ?? 0),
+      ),
+    ],
+  );
+
+  /// Sync-only delete cap. Empty field = no cap (`maxDeleteFiles == null`); any
+  /// number aborts a run that would delete more than that many destination
+  /// files. Teaches the `--max-delete` flag inline like the neighbouring
+  /// options do.
+  Widget _maxDeleteField(AircloneColors c) => Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Row(
+        children: [
+          Flexible(
+            child: Text(
+              'Abort if more than N files would be deleted',
+              style: TextStyle(
+                color: c.text,
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+          const SizedBox(width: Space.x2),
+          Tooltip(
+            message:
+                '--max-delete — cap destination deletes; the run aborts '
+                'rather than exceed it.',
+            child: Text(
+              '--max-delete',
+              style: TextStyle(
+                color: c.textFaint,
+                fontSize: 11,
+                fontFamily: 'monospace',
+              ),
+            ),
+          ),
+        ],
+      ),
+      const SizedBox(height: 4),
+      TextFormField(
+        initialValue: options.maxDeleteFiles?.toString() ?? '',
+        keyboardType: TextInputType.number,
+        style: TextStyle(color: c.text, fontSize: 13),
+        decoration: InputDecoration(
+          isDense: true,
+          hintText: 'no cap',
+          hintStyle: TextStyle(color: c.textFaint, fontSize: 12),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(Radii.md),
+          ),
+        ),
+        onChanged: (v) {
+          final n = int.tryParse(v.trim());
+          // Empty, unparseable, or NEGATIVE ⇒ clear the cap (explicit null via
+          // copyWith). A negative MaxDelete means "unlimited" to rclone — the
+          // opposite of a safety cap — so it must never slip through.
+          onChanged(
+            options.copyWith(maxDeleteFiles: (n == null || n < 0) ? null : n),
+          );
+        },
+      ),
+      const SizedBox(height: 4),
+      Text(
+        'Sync deletes files that exist only on the destination. A wrong or '
+        'empty source can wipe it — cap that here (empty = no cap).',
+        style: TextStyle(color: c.textFaint, fontSize: 11),
       ),
     ],
   );
