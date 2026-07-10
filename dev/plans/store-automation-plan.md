@@ -66,10 +66,31 @@ MAS is structurally incompatible with Airclone as architected — this is not a 
 3. **OS mount is impossible** in the MAS sandbox; serve is fragile.
 
 Making it work = re-architecting macOS onto in-process `librclone`, routing all local I/O through
-the host with security-scoped bookmarks, and dropping mount — high effort, degraded product, while
-the existing Developer-ID signed + notarized DMG passes Gatekeeper cleanly with zero of those
-limits. No known rclone-based file manager ships on MAS. Revisit only alongside an intentional
-librclone migration.
+the host with security-scoped bookmarks, and dropping mount — while the existing Developer-ID
+signed + notarized DMG passes Gatekeeper cleanly with zero of those limits. No known rclone-based
+file manager ships on MAS.
+
+### REVISED (2026-07-09, maintainer decision): dual-engine mode makes MAS a real option
+
+The verdict above assumed the subprocess architecture. Decision: pursue a **dual-engine backend**
+behind the existing `RcloneClient` seam —
+- **`HttpRcloneClient`** (today): spawns `rclone rcd`, full features incl. OS mount. Default for
+  DMG/Developer-ID, Windows, Linux, Android(-as-subprocess).
+- **`LibRcloneClient`** (new): in-process `librclone` over dart:ffi (RPC(method, params) mirrors
+  the RC API). **In-process I/O holds the host's security-scoped grants — this dissolves MAS
+  blocker #2** (the grant-inheritance problem). File access via NSOpenPanel grants + persisted
+  security-scoped bookmarks.
+
+Channel matrix: **DMG** = both engines (subprocess default; librclone selectable in Settings →
+Engine), **MAS build** = librclone-only (binary/spawn path compile-time disabled with honest copy
+"unavailable in the App Store edition", mount hidden), **iOS** = librclone-only — iOS cannot spawn
+subprocesses AT ALL, so this work is a hard prerequisite for the iOS app regardless of MAS.
+
+Build order: (1) `LibRcloneClient` + cgo build of librclone (macOS universal dylib first) behind a
+Settings toggle on the DMG channel, feature-scoped to explore/transfer/sync (no mount/serve);
+(2) security-scoped bookmark plumbing for local paths; (3) MAS target + entitlements + the iOS/MAS
+submission lanes from this plan. Mount stays a DMG-channel feature forever (FUSE is impossible on
+MAS). Tracked as its own backlog item: dual-engine (librclone).
 
 ## Secrets inventory (delta)
 
