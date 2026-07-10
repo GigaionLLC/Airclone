@@ -207,25 +207,24 @@ class _MobileLocations extends ConsumerWidget {
     );
   }
 
-  Widget _header(AircloneColors c, String label, {Widget? trailing}) =>
-      Padding(
-        padding: const EdgeInsets.only(top: Space.x4, bottom: Space.x1),
-        child: Row(
-          children: [
-            Expanded(
-              child: Text(
-                label,
-                style: TextStyle(
-                  color: c.textMuted,
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
+  Widget _header(AircloneColors c, String label, {Widget? trailing}) => Padding(
+    padding: const EdgeInsets.only(top: Space.x4, bottom: Space.x1),
+    child: Row(
+      children: [
+        Expanded(
+          child: Text(
+            label,
+            style: TextStyle(
+              color: c.textMuted,
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
             ),
-            ?trailing,
-          ],
+          ),
         ),
-      );
+        ?trailing,
+      ],
+    ),
+  );
 
   Widget _tile(
     BuildContext context,
@@ -369,8 +368,7 @@ class _MobileBrowser extends ConsumerWidget {
           child: Row(
             children: [
               IconButton(
-                onPressed: () =>
-                    state.path.isEmpty ? ctrl.clear() : ctrl.up(),
+                onPressed: () => state.path.isEmpty ? ctrl.clear() : ctrl.up(),
                 icon: const Icon(Icons.arrow_back, size: 22),
                 color: c.text,
                 tooltip: state.path.isEmpty ? 'All locations' : 'Up',
@@ -427,10 +425,7 @@ class _MobileBrowser extends ConsumerWidget {
                   }
                 },
                 itemBuilder: (_) => [
-                  const PopupMenuItem(
-                    value: 'refresh',
-                    child: Text('Refresh'),
-                  ),
+                  const PopupMenuItem(value: 'refresh', child: Text('Refresh')),
                   PopupMenuItem(
                     value: 'paste',
                     enabled: !clipEmpty,
@@ -461,7 +456,9 @@ class _MobileBrowser extends ConsumerWidget {
       children: [
         SizedBox(
           width: 24,
-          child: state.viewMode == mode ? const Icon(Icons.check, size: 16) : null,
+          child: state.viewMode == mode
+              ? const Icon(Icons.check, size: 16)
+              : null,
         ),
         Text(label),
       ],

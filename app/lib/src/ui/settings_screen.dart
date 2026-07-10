@@ -64,8 +64,7 @@ class SettingsContent extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final advanced = ref.watch(advancedModeProvider);
-    final desktop =
-        Platform.isWindows || Platform.isMacOS || Platform.isLinux;
+    final desktop = Platform.isWindows || Platform.isMacOS || Platform.isLinux;
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -79,10 +78,7 @@ class SettingsContent extends ConsumerWidget {
         _ThemeSection(),
         const SizedBox(height: Space.x4),
         _SkinSection(),
-        if (desktop) ...[
-          const SizedBox(height: Space.x4),
-          _BackdropSection(),
-        ],
+        if (desktop) ...[const SizedBox(height: Space.x4), _BackdropSection()],
         if (desktop || advanced) ...[
           const SizedBox(height: Space.x5),
           const _GroupHeader('Transfers'),

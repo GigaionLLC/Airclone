@@ -178,7 +178,8 @@ class EngineController extends Notifier<EngineUi> {
       if (state.client == client) {
         state = const EngineUi(
           phase: EnginePhase.error,
-          message: 'The engine stopped unexpectedly. Start it again to '
+          message:
+              'The engine stopped unexpectedly. Start it again to '
               'continue.',
         );
       }

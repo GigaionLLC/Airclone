@@ -64,16 +64,18 @@ void main() {
                 child: ElevatedButton(
                   onPressed: () {
                     // Stage a file named dup.txt on the clipboard.
-                    ref
-                        .read(clipboardControllerProvider.notifier)
-                        .copy(_remote, '', const [
-                          RcloneFile(
-                            name: 'dup.txt',
-                            path: 'dup.txt',
-                            isDir: false,
-                            size: 1,
-                          ),
-                        ]);
+                    ref.read(clipboardControllerProvider.notifier).copy(
+                      _remote,
+                      '',
+                      const [
+                        RcloneFile(
+                          name: 'dup.txt',
+                          path: 'dup.txt',
+                          isDir: false,
+                          size: 1,
+                        ),
+                      ],
+                    );
                     // Paste into a subfolder whose listing isn't held locally →
                     // the helper must list it (knownNames: null) to find dup.txt.
                     pasteClipboardIntoFolder(

@@ -39,11 +39,7 @@ void main() {
     });
 
     test('skip drops only the colliding names', () {
-      final plan = planPaste(
-        ['a.txt', 'c.txt'],
-        dest,
-        ConflictChoice.skip,
-      );
+      final plan = planPaste(['a.txt', 'c.txt'], dest, ConflictChoice.skip);
       expect(plan.map((p) => p.dst), ['c.txt']); // a.txt skipped
     });
 
@@ -60,11 +56,7 @@ void main() {
     });
 
     test('keep both renames colliding names, leaves free ones', () {
-      final plan = planPaste(
-        ['a.txt', 'c.txt'],
-        dest,
-        ConflictChoice.keepBoth,
-      );
+      final plan = planPaste(['a.txt', 'c.txt'], dest, ConflictChoice.keepBoth);
       expect(plan.map((p) => '${p.src}->${p.dst}'), [
         'a.txt->a (2).txt',
         'c.txt->c.txt',

@@ -5,7 +5,13 @@ void main() {
   group('TransferItem.listFrom', () {
     test('parses a core/stats transferring array', () {
       final items = TransferItem.listFrom([
-        {'name': 'a.bin', 'percentage': 40, 'speed': 1000.0, 'bytes': 40, 'size': 100},
+        {
+          'name': 'a.bin',
+          'percentage': 40,
+          'speed': 1000.0,
+          'bytes': 40,
+          'size': 100,
+        },
         {'name': 'b.bin', 'percentage': 10, 'size': 50},
       ]);
       expect(items.length, 2);

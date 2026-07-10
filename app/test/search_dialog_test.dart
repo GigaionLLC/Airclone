@@ -18,10 +18,25 @@ class _FakeClient implements RcloneClient {
     lastCall = (method: method, params: params);
     return {
       'list': [
-        {'Name': 'report.pdf', 'Path': 'Q1/report.pdf', 'Size': 2048, 'IsDir': false},
-        {'Name': 'notes.txt', 'Path': 'Q1/notes.txt', 'Size': 12, 'IsDir': false},
+        {
+          'Name': 'report.pdf',
+          'Path': 'Q1/report.pdf',
+          'Size': 2048,
+          'IsDir': false,
+        },
+        {
+          'Name': 'notes.txt',
+          'Path': 'Q1/notes.txt',
+          'Size': 12,
+          'IsDir': false,
+        },
         {'Name': 'Archive', 'Path': 'Q1/Archive', 'IsDir': true},
-        {'Name': 'budget.pdf', 'Path': 'Q2/budget.pdf', 'Size': 99, 'IsDir': false},
+        {
+          'Name': 'budget.pdf',
+          'Path': 'Q2/budget.pdf',
+          'Size': 99,
+          'IsDir': false,
+        },
       ],
     };
   }
@@ -119,8 +134,9 @@ void main() {
     tester,
   ) async {
     await _open(tester, _FakeClient(), onOpen: (_) {});
-    FilledButton btn() =>
-        tester.widget<FilledButton>(find.widgetWithText(FilledButton, 'Search'));
+    FilledButton btn() => tester.widget<FilledButton>(
+      find.widgetWithText(FilledButton, 'Search'),
+    );
     expect(btn().onPressed, isNull); // empty → disabled
 
     await tester.enterText(find.byType(TextField), '   '); // whitespace only
@@ -156,7 +172,12 @@ class _ManyClient implements RcloneClient {
   ]) async => {
     'list': [
       for (var i = 0; i < n; i++)
-        {'Name': 'file$i.txt', 'Path': 'd/file$i.txt', 'Size': i, 'IsDir': false},
+        {
+          'Name': 'file$i.txt',
+          'Path': 'd/file$i.txt',
+          'Size': i,
+          'IsDir': false,
+        },
     ],
   };
 

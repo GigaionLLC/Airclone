@@ -16,9 +16,7 @@ Future<void> _pump(WidgetTester tester, List<Remote> remotes) async {
       overrides: [remotesProvider.overrideWith((ref) async => remotes)],
       child: MaterialApp(
         theme: AppTheme.light(),
-        home: const Scaffold(
-          body: BrowserPane(index: 0, showToolbar: false),
-        ),
+        home: const Scaffold(body: BrowserPane(index: 0, showToolbar: false)),
       ),
     ),
   );
@@ -26,7 +24,9 @@ Future<void> _pump(WidgetTester tester, List<Remote> remotes) async {
 }
 
 void main() {
-  testWidgets('first run (no remotes) shows the onboarding CTA', (tester) async {
+  testWidgets('first run (no remotes) shows the onboarding CTA', (
+    tester,
+  ) async {
     await _pump(tester, const []);
     expect(find.text('Connect your first remote'), findsOneWidget);
     expect(find.widgetWithText(FilledButton, 'Add a remote'), findsOneWidget);

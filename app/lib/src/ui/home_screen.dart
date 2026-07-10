@@ -382,7 +382,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     ref.read(pathEditRequestProvider(idx).notifier).state++;
   }
 
-
   /// Records a pane's arrival at a new remote+folder into the recents list.
   /// Fires on the (fs, path) change (even while still loading) so navigation is
   /// captured immediately; ignores selection/loading-only state changes.

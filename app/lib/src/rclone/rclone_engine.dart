@@ -102,9 +102,7 @@ class RcloneEngine {
     if (Platform.isAndroid) {
       // No downloadable engine exists for Android (and exec from app storage is
       // forbidden anyway) — the binary must come bundled in the APK.
-      throw StateError(
-        'The bundled rclone engine is missing from this build.',
-      );
+      throw StateError('The bundled rclone engine is missing from this build.');
     }
     final triple = _targetTriple();
     onStatus?.call('Resolving latest rclone version…');

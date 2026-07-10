@@ -97,9 +97,7 @@ class HomeView extends ConsumerWidget {
             _Tile(
               icon: Icons.star,
               iconColor: coloured ? favoriteStarGold : c.primary,
-              title: b.path.isEmpty
-                  ? b.remote.name
-                  : b.path.split('/').last,
+              title: b.path.isEmpty ? b.remote.name : b.path.split('/').last,
               subtitle: b.path.isEmpty ? null : b.remote.name,
               onTap: () => onOpen(b.remote, b.path),
             ),
@@ -192,9 +190,7 @@ class _Tile extends StatelessWidget {
         decoration: BoxDecoration(
           color: outlined ? null : c.surfaceRaised,
           borderRadius: BorderRadius.circular(Radii.md),
-          border: Border.all(
-            color: outlined ? c.borderStrong : c.border,
-          ),
+          border: Border.all(color: outlined ? c.borderStrong : c.border),
         ),
         child: Row(
           children: [

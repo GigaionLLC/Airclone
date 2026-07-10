@@ -26,10 +26,7 @@ void main() {
 
     test('a file with no hashes is not a candidate', () {
       expect(DupFile.fromJson(_item('a.txt', 'a.txt', 10)), isNull);
-      expect(
-        DupFile.fromJson(_item('a.txt', 'a.txt', 10, hashes: {})),
-        isNull,
-      );
+      expect(DupFile.fromJson(_item('a.txt', 'a.txt', 10, hashes: {})), isNull);
       // empty hash strings don't count
       expect(
         DupFile.fromJson(_item('a.txt', 'a.txt', 10, hashes: {'MD5': ''})),
@@ -45,12 +42,8 @@ void main() {
     });
 
     test('same content but different declared size → different signature', () {
-      final a = DupFile.fromJson(
-        _item('a', 'a', 10, hashes: {'MD5': 'x'}),
-      )!;
-      final b = DupFile.fromJson(
-        _item('b', 'b', 11, hashes: {'MD5': 'x'}),
-      )!;
+      final a = DupFile.fromJson(_item('a', 'a', 10, hashes: {'MD5': 'x'}))!;
+      final b = DupFile.fromJson(_item('b', 'b', 11, hashes: {'MD5': 'x'}))!;
       expect(a.signature == b.signature, isFalse);
     });
   });

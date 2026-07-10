@@ -58,9 +58,7 @@ void main() {
     addTearDown(c.dispose);
     final ctrl = c.read(bookmarksProvider.notifier);
     ctrl.add(_b);
-    ctrl.add(
-      const Bookmark(name: 's3', type: 's3', fs: 's3:', path: 'backup'),
-    );
+    ctrl.add(const Bookmark(name: 's3', type: 's3', fs: 's3:', path: 'backup'));
     expect(c.read(bookmarksProvider).first.name, 's3');
   });
 
@@ -74,9 +72,6 @@ void main() {
     addTearDown(c2.dispose);
     c2.read(bookmarksProvider); // triggers build() → _load()
     await _tick(); // let _load complete
-    expect(
-      c2.read(bookmarksProvider).map((b) => b.key),
-      contains(_b.key),
-    );
+    expect(c2.read(bookmarksProvider).map((b) => b.key), contains(_b.key));
   });
 }
