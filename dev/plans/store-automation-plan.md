@@ -81,16 +81,23 @@ behind the existing `RcloneClient` seam —
   blocker #2** (the grant-inheritance problem). File access via NSOpenPanel grants + persisted
   security-scoped bookmarks.
 
-Channel matrix: **DMG** = both engines (subprocess default; librclone selectable in Settings →
-Engine), **MAS build** = librclone-only (binary/spawn path compile-time disabled with honest copy
-"unavailable in the App Store edition", mount hidden), **iOS** = librclone-only — iOS cannot spawn
-subprocesses AT ALL, so this work is a hard prerequisite for the iOS app regardless of MAS.
+Channel matrix (2026-07-09, extended to Windows by maintainer request):
+- **Windows zip / macOS DMG / Linux** = BOTH engines: subprocess `rcd` default (full features incl.
+  OS mount), in-process librclone selectable in Settings → Engine. Windows bonus: a bundled
+  `librclone.dll` gives a zero-download first launch and removes the spawned-exe surface AV
+  heuristics occasionally flag.
+- **Mac App Store build** = librclone-only (binary/spawn path compile-time disabled with honest
+  copy "unavailable in the App Store edition", mount hidden).
+- **iOS** = librclone-only — iOS cannot spawn subprocesses AT ALL, so this work is a hard
+  prerequisite for the iOS app regardless of MAS.
 
-Build order: (1) `LibRcloneClient` + cgo build of librclone (macOS universal dylib first) behind a
-Settings toggle on the DMG channel, feature-scoped to explore/transfer/sync (no mount/serve);
-(2) security-scoped bookmark plumbing for local paths; (3) MAS target + entitlements + the iOS/MAS
-submission lanes from this plan. Mount stays a DMG-channel feature forever (FUSE is impossible on
-MAS). Tracked as its own backlog item: dual-engine (librclone).
+Build order: (1) `LibRcloneClient` (dart:ffi; the Dart side is platform-agnostic) + cgo builds of
+librclone — macOS universal dylib AND windows amd64 dll (mingw-w64 in CI) first, Linux .so next —
+behind a Settings → Engine toggle, feature-scoped to explore/transfer/sync (no mount/serve);
+(2) security-scoped bookmark plumbing for macOS local paths; (3) MAS target + entitlements + the
+iOS/MAS submission lanes from this plan. Mount stays a subprocess-channel feature (FUSE is
+impossible on MAS, and librclone builds skip it everywhere). Tracked as its own backlog item:
+dual-engine (librclone).
 
 ## Secrets inventory (delta)
 
