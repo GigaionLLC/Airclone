@@ -9,6 +9,7 @@ import '../rclone/rclone_engine.dart';
 import '../state/advanced_mode.dart';
 import '../state/app_info.dart';
 import '../state/cache_crypto.dart';
+import '../state/config_password_vault.dart';
 import '../state/download_settings.dart';
 import '../state/engine_controller.dart';
 import '../state/engine_flags.dart';
@@ -98,6 +99,8 @@ class SettingsContent extends ConsumerWidget {
             _RclonePathSection(),
             const SizedBox(height: Space.x4),
             _EngineVersionSection(),
+            const SizedBox(height: Space.x4),
+            _RememberPasswordSection(),
           ],
           if (advanced) ...[
             if (desktop) const SizedBox(height: Space.x4),
@@ -741,6 +744,79 @@ class _EngineVersionSectionState extends ConsumerState<_EngineVersionSection> {
             ],
           ),
         ],
+      ],
+    );
+  }
+}
+
+/// Desktop: opt-in to storing the encrypted-config password in the OS credential
+/// vault so scheduled/background runs can unlock the config unattended. Default
+/// OFF and security-sensitive, so the sub-label is deliberately blunt about the
+/// exposure. Toggling OFF wipes any stored password immediately; toggling ON
+/// captures the currently-unlocked password now (if any) so it takes effect
+/// without waiting for the next unlock.
+class _RememberPasswordSection extends ConsumerWidget {
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final c = AircloneTheme.of(context);
+    final remember = ref.watch(rememberConfigPasswordProvider);
+    return Row(
+      children: [
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Remember config password',
+                style: TextStyle(
+                  color: c.text,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                "Stored in the operating system's credential vault (Windows "
+                'Credential Manager / macOS Keychain / Linux Secret Service) so '
+                'scheduled and background runs can unlock the config without '
+                'you; anyone with access to your OS user account can recover it. '
+                'Toggling off clears the stored password immediately.',
+                style: TextStyle(color: c.textFaint, fontSize: 11),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(width: Space.x3),
+        Switch(
+          value: remember,
+          onChanged: (v) async {
+            final messenger = ScaffoldMessenger.maybeOf(context);
+            await ref.read(rememberConfigPasswordProvider.notifier).set(v);
+            final vault = ref.read(configPasswordVaultProvider);
+            if (v) {
+              // If the config is already unlocked this session, capture that
+              // password now so the setting takes effect without a restart.
+              final held = ref.read(cachePassphraseProvider);
+              if (held != null && held.isNotEmpty) await vault.save(held);
+            } else {
+              // Opted out — remove any stored password from the OS vault now.
+              // The sub-label promises immediate removal, so a failed delete
+              // (locked keyring, Secret Service down) must be surfaced rather
+              // than silently leaving the recoverable secret behind.
+              final removed = await vault.clear();
+              if (!removed) {
+                messenger?.showSnackBar(
+                  const SnackBar(
+                    content: Text(
+                      'Could not remove the stored password from the OS '
+                      'credential vault — it may still be present.',
+                    ),
+                  ),
+                );
+              }
+            }
+          },
+        ),
       ],
     );
   }

@@ -46,6 +46,11 @@ dependencies:
   crypto: ^3.0.5
   # At-rest encryption for the on-disk preview cache (AES-GCM + PBKDF2).
   cryptography: ^2.7.0
+  # OS credential-vault storage for the (opt-in, default-off) rclone config
+  # password, so scheduled/background runs can unlock an encrypted config
+  # unattended: Windows DPAPI / Credential Manager, macOS Keychain, Linux
+  # Secret Service. See state/config_password_vault.dart.
+  flutter_secure_storage: ^9.2.2
 
   # alpha.3: app version (update check), open links, settings store.
   # (OS→app file drop moved to super_drag_and_drop's DropRegion in alpha.35.)

@@ -105,6 +105,29 @@ void main() {
     });
   });
 
+  group('manual run stamps lastRun (no scheduled double-run)', () {
+    test('stamping a scheduled task on manual run advances the anchor + drops it '
+        'from the next tick', () {
+      final container = ProviderContainer(
+        overrides: [
+          tasksProvider.overrideWith(() => _FixedTasks([_task(lastRun: null)])),
+        ],
+      );
+      addTearDown(container.dispose);
+      final notifier = container.read(tasksProvider.notifier);
+      final t = container.read(tasksProvider).single;
+      // A due scheduled task run manually would otherwise still read as due to
+      // the next 30s tick, firing a second (scheduled) run behind the manual
+      // one. `_TaskRow._run` now stamps lastRun before dispatch on a scheduled
+      // task; model that stamp through the real controller.
+      expect(dueTasks([t], DateTime.now()), isNotEmpty);
+      notifier.update(t.copyWith(lastRun: DateTime.now()));
+      final after = container.read(tasksProvider).single;
+      expect(after.lastRun, isNotNull);
+      expect(dueTasks([after], DateTime.now()), isEmpty);
+    });
+  });
+
   group('double-fire guard', () {
     test(
       'stamping lastRun before dispatch stops the next tick re-running it',

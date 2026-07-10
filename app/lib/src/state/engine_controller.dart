@@ -8,6 +8,7 @@ import '../rclone/http_rclone_client.dart';
 import '../rclone/rclone_client.dart';
 import '../rclone/rclone_engine.dart';
 import 'cache_crypto.dart';
+import 'config_password_vault.dart';
 import 'engine_flags.dart';
 
 enum EnginePhase {
@@ -161,6 +162,26 @@ class EngineController extends Notifier<EngineUi> {
     final path = _rclonePath;
     if (path == null) return bootstrap();
     await _startWith(path, password: password);
+    // A successful interactive unlock is the one moment we hold the plaintext
+    // config password with the user watching. Honour their opt-in: stash it in
+    // the OS vault so unattended (scheduled/background) runs can unlock the same
+    // config later — or wipe any stale copy the moment they've opted out.
+    if (!state.isReady) return;
+    final vault = ref.read(configPasswordVaultProvider);
+    // Hydrate the persisted opt-in BEFORE the save-vs-clear decision. On a cold
+    // GUI start straight to the password gate this is the first read of the
+    // remember provider, whose build() returns the default `false` synchronously
+    // and fills from disk asynchronously; awaiting ensureLoaded() makes the
+    // decision use the user's actual choice instead of wiping the just-typed
+    // working password (which would then break every unattended run on this
+    // config). This also removes the headless path's fragile read-ordering
+    // dependency — the correct value is guaranteed regardless of read order.
+    await ref.read(rememberConfigPasswordProvider.notifier).ensureLoaded();
+    if (ref.read(rememberConfigPasswordProvider)) {
+      await vault.save(password);
+    } else {
+      await vault.clear();
+    }
   }
 
   /// After we have a binary: gate on the config password if encrypted, else start.
@@ -171,6 +192,18 @@ class EngineController extends Notifier<EngineUi> {
       rclonePath,
       configPath: configPath,
     )) {
+      // Encrypted config. Before gating on manual entry, try a password the user
+      // chose to remember in the OS vault (the headless-unlock prerequisite): a
+      // successful read is a silent unlock straight to start, while a wrong or
+      // absent one falls through to the needsPassword gate exactly as before. We
+      // only reach for it on a cold start (no session password held yet).
+      if (ref.read(cachePassphraseProvider) == null) {
+        final remembered = await ref.read(configPasswordVaultProvider).read();
+        if (remembered != null && remembered.isNotEmpty) {
+          await _startWith(rclonePath, password: remembered);
+          if (state.isReady) return;
+        }
+      }
       state = const EngineUi(
         phase: EnginePhase.needsPassword,
         message:

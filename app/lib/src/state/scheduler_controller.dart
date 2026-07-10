@@ -3,7 +3,10 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../rclone/models/job.dart';
+import '../rclone/rclone_client.dart';
 import 'engine_controller.dart';
+import 'jobs_controller.dart';
 import 'task_schedule.dart';
 import 'tasks_controller.dart';
 import 'transfer_options.dart';
@@ -103,17 +106,185 @@ class SchedulerController extends Notifier<SchedulerStatus> {
     for (final t in due) {
       // Stamp lastRun BEFORE the async kickoff so the next tick can't double-fire.
       tasks.update(t.copyWith(lastRun: now));
-      svc.transferAdvancedRaw(
-        srcFs: t.srcFs,
-        dstFs: t.dstFs,
-        srcLabel: t.srcLabel,
-        dstLabel: t.dstLabel,
-        options: t.options,
-      );
+      // Fire-and-forget the dispatch, but supervise it to a terminal state so
+      // the outcome lands in history — a failed scheduled run must not vanish.
+      unawaited(_runAndRecord(svc, tasks, t));
     }
     // Publish the tick (re-times UI labels) and clear any prior skip warning —
     // the engine is back, so due tasks just ran.
     state = SchedulerStatus(tickedAt: now);
+  }
+
+  /// Dispatches [t] and supervises the resulting job to a terminal state,
+  /// appending the outcome to [t]'s per-run history. Kicked off unawaited from
+  /// [tick]; [recordRunOutcome] owns its own error handling.
+  Future<void> _runAndRecord(
+    TransferService svc,
+    TasksController tasks,
+    TransferTask t,
+  ) async {
+    final jobId = await svc.transferAdvancedRaw(
+      srcFs: t.srcFs,
+      dstFs: t.dstFs,
+      srcLabel: t.srcLabel,
+      dstLabel: t.dstLabel,
+      options: t.options,
+    );
+    await recordRunOutcome(
+      readClient: () => ref.read(engineControllerProvider).client,
+      tasks: tasks,
+      readJobs: () => ref.read(jobsControllerProvider),
+      taskId: t.id,
+      jobId: jobId,
+    );
+  }
+}
+
+/// Default cadence for the supervised outcome poll — matches [JobsController]'s
+/// own 1 s `job/status` poll so supervising a run costs no more engine traffic
+/// than the Jobs panel already generates. Injectable via [recordRunOutcome] so a
+/// test can drive the loop without waiting on wall-clock seconds.
+const kOutcomePollInterval = Duration(seconds: 1);
+
+/// Hard wall-clock cap on a single supervised run. Without it the GUI supervisor
+/// can spin forever — a paused transfer queue leaves a job `queued` with no
+/// rclone jobid (phase 1 loops), or a genuinely stuck rclone job keeps phase 2
+/// polling — and each dispatch would leak one loop for the app's lifetime. When
+/// it trips we record a timed-out failure so the run still lands in history.
+/// Mirrors the Scheduled-Task `ExecutionTimeLimit=PT6H`. (Headless is also
+/// bounded by [HeadlessRequest.timeout] + process exit; this covers the GUI.)
+const kMaxSuperviseDuration = Duration(hours: 6);
+
+/// Supervises one dispatched task run to its terminal state and appends the
+/// outcome to the task's capped per-run history. Shared by the scheduler tick
+/// ([SchedulerController._runAndRecord]) and manual runs (`_TaskRow._run`).
+///
+/// [jobId] is the LOCAL id returned by [TransferService.transferAdvancedRaw]. We
+/// resolve its rclone async jobid off [readJobs] once dispatch assigns it, then
+/// poll the engine's `job/status` — the same finished/success/error read
+/// [JobsController] performs — until the run terminates. If the local job settles
+/// into a terminal [JobStatus] before it ever received an rclone jobid (a
+/// dispatch failure, e.g. "Engine not ready"), the outcome is recorded from that
+/// instead.
+///
+/// Kick off with `unawaited(...)`: the loop owns its error handling, always
+/// records exactly one [TaskRunRecord], and never leaks an unhandled rejection.
+///
+/// [readClient] is a live GETTER, not a captured reference: the engine's client
+/// goes null the moment rcd dies ([EngineController.onDied]), and re-reading it
+/// each poll lets the loop notice death promptly and bail instead of spinning to
+/// [maxSupervise] against a stale non-null handle.
+Future<void> recordRunOutcome({
+  required RcloneClient? Function() readClient,
+  required TasksController tasks,
+  required List<Job> Function() readJobs,
+  required String taskId,
+  required int jobId,
+  Duration pollInterval = kOutcomePollInterval,
+  Duration maxSupervise = kMaxSuperviseDuration,
+}) async {
+  final start = DateTime.now();
+  final deadline = start.add(maxSupervise);
+
+  Job? localJob() {
+    for (final j in readJobs()) {
+      if (j.id == jobId) return j;
+    }
+    return null;
+  }
+
+  void record({required bool ok, String? error, int? bytes}) {
+    tasks.recordRun(
+      taskId,
+      TaskRunRecord(
+        at: DateTime.now(),
+        ok: ok,
+        error: (error != null && error.isNotEmpty) ? error : null,
+        duration: DateTime.now().difference(start),
+        bytes: (bytes != null && bytes > 0) ? bytes : null,
+      ),
+    );
+  }
+
+  // Phase 1: wait for dispatch to assign the rclone jobid — or for the local job
+  // to settle (a pre-dispatch failure) before it ever got one. `late final`: the
+  // loop below assigns exactly once (assign → break), which the compiler can't
+  // prove for a plain final local.
+  late final int rcJobid;
+  while (true) {
+    final job = localJob();
+    if (job == null) return; // cleared out from under us — nothing to record.
+    final id = job.jobid;
+    if (id != null) {
+      rcJobid = id;
+      break;
+    }
+    if (job.isFinished) {
+      record(
+        ok: job.status == JobStatus.success,
+        error: job.error,
+        bytes: job.bytes,
+      );
+      return;
+    }
+    // A paused queue can leave a job `queued` with no jobid indefinitely; the
+    // wall-clock cap stops this phase from spinning for the app's lifetime.
+    if (DateTime.now().isAfter(deadline)) {
+      record(
+        ok: false,
+        error: 'run did not start within ${maxSupervise.inHours}h',
+      );
+      return;
+    }
+    await Future<void>.delayed(pollInterval);
+  }
+
+  // Phase 2: poll to completion. Prefer the jobs poller's own terminal signal
+  // when it beats us to it (it also carries bytes/error); otherwise ask the
+  // engine directly.
+  while (true) {
+    final job = localJob();
+    if (job == null) return;
+    if (job.isFinished) {
+      record(
+        ok: job.status == JobStatus.success,
+        error: job.error,
+        bytes: job.bytes,
+      );
+      return;
+    }
+    // Engine vanished after dispatch (crash/quit): re-read the LIVE client so we
+    // catch onDied promptly. The jobs poller can't advance the job past a dead
+    // engine either, so record a failure (rather than returning silently, which
+    // would let a caller fall back to a prior run's stale [OK]) and stop.
+    final client = readClient();
+    if (client == null) {
+      record(ok: false, error: 'the engine stopped before the run finished');
+      return;
+    }
+    // Bound a genuinely stuck rclone job so phase 2 can't poll forever.
+    if (DateTime.now().isAfter(deadline)) {
+      record(
+        ok: false,
+        error: 'run did not finish within ${maxSupervise.inHours}h',
+      );
+      return;
+    }
+    try {
+      final status = await client.rpc('job/status', {'jobid': rcJobid});
+      if (status['finished'] == true) {
+        final err = status['error'];
+        record(
+          ok: status['success'] == true,
+          error: err is String ? err : null,
+          bytes: localJob()?.bytes,
+        );
+        return;
+      }
+    } catch (_) {
+      // Transient engine hiccup — retry next tick (mirrors JobsController._poll).
+    }
+    await Future<void>.delayed(pollInterval);
   }
 }
 

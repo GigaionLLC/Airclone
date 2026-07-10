@@ -7,6 +7,26 @@ import '../state/transfer_service.dart';
 import 'format.dart';
 import 'theme/tokens.dart';
 
+/// Recognizes the class of rclone bisync failure that means its two saved
+/// listings (the "baseline") are missing or unusable, so the only recovery is a
+/// fresh `--resync`. rclone phrases this several ways across versions, e.g.
+/// "cannot find prior Path1 listing", "cannot find prior Path1 or Path2
+/// listings", "Bisync aborted. Must run --resync to recover", or "Try running
+/// bisync again with --resync". We deliberately match tolerantly — lowercased
+/// `contains` on two stable signals, not any single exact sentence — so wording
+/// drift between rclone releases still lands the hint:
+///   • the `--resync` flag itself (unambiguous: a plain "sync" error has no such
+///     double-dashed token), or
+///   • a "prior … listing" word pair (both words survive even when rclone
+///     splices "Path1"/"Path2" between them, which a literal "prior listing"
+///     substring match would miss).
+/// Kept a pure top-level function so it is unit-testable in isolation.
+bool looksLikeBisyncNeedsResync(String error) {
+  final e = error.toLowerCase();
+  return e.contains('--resync') ||
+      (e.contains('prior') && e.contains('listing'));
+}
+
 /// Bottom dock listing active and finished transfers. The shell gives this its
 /// height; we just fill the space with a header + scrollable job rows.
 class JobsPanel extends ConsumerWidget {
@@ -243,6 +263,20 @@ class _JobRow extends ConsumerWidget {
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(color: colors.error, fontSize: 11),
                   ),
+                  // The raw (truncated) bisync "lost baseline" error is a dead
+                  // end on its own — it names no fix. When we recognize it, add
+                  // a styled line pointing at the one-click recovery that ships
+                  // in Saved tasks (the "Re-establish baseline…" action).
+                  if (looksLikeBisyncNeedsResync(job.error!)) ...[
+                    const SizedBox(height: 2),
+                    Text(
+                      'Two-way sync needs its baseline re-established — open '
+                      'Saved tasks and use "Re-establish baseline…".',
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(color: colors.warning, fontSize: 11),
+                    ),
+                  ],
                 ],
               ],
             ),

@@ -76,3 +76,17 @@ restart). Land before/with any further engine work.
 - Bisync filters parity and `--max-delete` abort override (`force`) until per-pair state exists.
 - Crypt wizard exposure of `no_data_encryption`/`filename_encoding` (quick win, but batch scope was
   safety-first; add with the reattach wizard).
+- **Orphaned Scheduled Task self-heal** (from the phase-3 headless review): if `schtasks /Delete`
+  fails or a task's SharedPreferences entry vanishes on another profile/machine, the OS Scheduled
+  Task survives and runs `airclone --run-task <id>` forever, each fire hitting "no saved task with
+  id" and exiting 2 — no cap, no cleanup, no user signal. Fix: make the headless unknown-id branch
+  unregister its own Scheduled Task (`WindowsTaskScheduler.unregister(request.taskId)`) before
+  returning exit 2, so an orphan removes itself on its next fire. Deferred (needs care to only
+  self-delete when the id is genuinely absent, not merely un-hydrated).
+- **Cross-process SharedPreferences whole-file clobber** (headless concurrency note honesty): the
+  desktop legacy prefs backend rewrites ALL keys to one file atomically, so a GUI/headless write
+  collision drops the loser's ENTIRE prefs snapshot for that write (engine flags, concurrency,
+  backdrop, tasks…), not just the run-history stamp the `headless_runner` doc calls out. Real fix is
+  a scoped/segregated store or a cross-process lock; until then the doc note understates the blast
+  radius. Tracked here as a known sharp edge (background runs are expected app-closed, so collisions
+  are rare).

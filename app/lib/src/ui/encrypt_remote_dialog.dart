@@ -326,17 +326,17 @@ class _EncryptRemoteDialogState extends ConsumerState<_EncryptRemoteDialog> {
       true => (
         Icons.check_circle_outline,
         c.success,
-        'Encrypted remote created',
+        'Verified: names encrypt and decrypt end-to-end',
       ),
       false => (
         Icons.error_outline,
         c.warning,
-        'Created, but verification reported differences',
+        'Created, but verification could not confirm encryption — check the base remote',
       ),
       null => (
         Icons.check_circle_outline,
         c.success,
-        'Encrypted remote created',
+        'Encrypted remote created — unverified',
       ),
     };
     return Column(
