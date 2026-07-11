@@ -122,6 +122,23 @@ jobs:
         with:
           name: librclone-windows
           path: app/windows/librclone
+      - name: Ensure a NuGet package source (local_auth_windows WIL restore)
+        shell: pwsh
+        run: |
+          # local_auth_windows' CMake runs `nuget install
+          # Microsoft.Windows.ImplementationLibrary` and FATAL_ERRORs (=> "Unable
+          # to generate build files") if no package source is registered. Register
+          # nuget.org explicitly (idempotent) — writes the user NuGet config that
+          # both a PATH nuget and the plugin's downloaded nuget read.
+          $nuget = (Get-Command nuget -ErrorAction SilentlyContinue).Source
+          if (-not $nuget) {
+            choco install nuget.commandline -y --no-progress | Out-Null
+            $nuget = (Get-Command nuget -ErrorAction SilentlyContinue).Source
+          }
+          if (-not (& $nuget sources list | Select-String -Quiet 'api\.nuget\.org')) {
+            & $nuget sources add -Name nuget.org -Source https://api.nuget.org/v3/index.json
+          }
+          & $nuget sources list
       - run: flutter build windows --release
       - name: Note whether librclone bundled
         shell: pwsh
@@ -152,9 +169,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Install build deps
-        # libmpv-dev + mpv are required by media_kit (video/audio preview) on Linux —
-        # without them `flutter build linux` fails to link (regressed in alpha.6).
-        run: sudo apt-get update && sudo apt-get install -y ninja-build libgtk-3-dev libmpv-dev mpv
+        # libmpv-dev + mpv: media_kit (video/audio preview) — without them
+        # `flutter build linux` fails to link (regressed in alpha.6).
+        # libsecret-1-dev: flutter_secure_storage_linux (OS credential vault, added
+        # for config portability) — its CMake pkg_check_modules(libsecret-1) errors
+        # "Unable to generate build files" without it.
+        run: sudo apt-get update && sudo apt-get install -y ninja-build libgtk-3-dev libmpv-dev mpv libsecret-1-dev
       - uses: subosito/flutter-action@v2
         with: { channel: stable, cache: true }
       # super_native_extensions (drag-out) builds a Rust crate via cargokit.
