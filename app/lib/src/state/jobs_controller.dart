@@ -190,10 +190,15 @@ class JobsController extends Notifier<List<Job>> {
     for (final job in running) {
       final jobid = job.jobid!;
 
-      // Live byte counters / speed for this job's group.
+      // Live byte counters / speed for this job's group. The group is keyed by
+      // the LOCAL job id — that is exactly the `_group` the transfer was
+      // dispatched with (`airclone/<job.id>`, see TransferService). It must NOT
+      // use the rclone `jobid`: local ids start at 0 and rclone jobids at 1, so
+      // an rclone-jobid group would never match and progress would read zero.
+      // (`job/status` below correctly takes the rclone jobid.)
       try {
         final stats = await client.rpc('core/stats', {
-          'group': 'airclone/$jobid',
+          'group': 'airclone/${job.id}',
         });
         final bytes = _asInt(stats['bytes']);
         final speed = _asDouble(stats['speed']);
