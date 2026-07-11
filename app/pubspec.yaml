@@ -112,6 +112,16 @@ dependencies:
   # re-test on every Flutter stable bump (0.3.0 is the only 0.3.x).
   desktop_multi_window: ^0.3.0
 
+  # Dual-engine (MAS/iOS + desktop option): the in-process rclone engine
+  # (FfiRcloneClient) calls librclone's C ABI over dart:ffi — RcloneInitialize /
+  # RcloneRPC(method,json) / RcloneFinalize — instead of spawning `rcd`. `ffi`
+  # supplies the native-string helpers (toNativeUtf8/toDartString + malloc). The
+  # native lib (librclone.dll/.dylib/.so) is built from the pinned rclone via
+  # dev/desktop/build-librclone.ps1 and bundled beside the app. See
+  # rclone/librclone_ffi.dart + rclone/ffi_rclone_client.dart and
+  # dev/plans/dual-engine-plan.md.
+  ffi: ^2.1.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
