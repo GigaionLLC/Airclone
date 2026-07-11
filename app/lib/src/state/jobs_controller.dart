@@ -77,10 +77,16 @@ class JobsController extends Notifier<List<Job>> {
   }
 
   /// Number of TRANSFER jobs currently dispatched (occupying a transfer slot).
-  /// Console commands run as [JobType.command] jobs but must NOT consume a
-  /// transfer-concurrency slot (a read-only `ls` shouldn't stall queued copies).
+  /// Console commands ([JobType.command]) and archive ops ([JobType.archive]) run
+  /// as their own subprocess/stream jobs and must NOT consume a transfer slot (a
+  /// read-only `ls` or a user-initiated compress shouldn't stall queued copies).
   int get _runningCount => state
-      .where((j) => j.status == JobStatus.running && j.type != JobType.command)
+      .where(
+        (j) =>
+            j.status == JobStatus.running &&
+            j.type != JobType.command &&
+            j.type != JobType.archive,
+      )
       .length;
 
   /// Public hook to re-evaluate the queue (e.g. after the limit is raised).

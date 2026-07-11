@@ -22,6 +22,10 @@ enum FileMenuAction {
   delete,
   publicLink,
   openInOtherPane,
+  compress,
+  extractHere,
+  extractTo,
+  listArchive,
 }
 
 /// Actions offered when right-clicking empty space in a pane.
@@ -63,6 +67,7 @@ Future<FileMenuAction?> showFileContextMenu(
   required bool hasOtherPane,
   bool canPublicLink = false,
   bool isLocal = false,
+  bool isArchive = false,
 }) {
   final entries = <_Entry<FileMenuAction>>[
     if (isDir)
@@ -110,6 +115,26 @@ Future<FileMenuAction?> showFileContextMenu(
         Icons.splitscreen_outlined,
         'Open in other pane',
       ),
+    const _Entry.divider(),
+    // Archive: Compress anything; Extract/List only for a recognised archive.
+    _item(FileMenuAction.compress, Icons.folder_zip_outlined, 'Compress…'),
+    if (isArchive) ...[
+      _item(
+        FileMenuAction.extractHere,
+        Icons.unarchive_outlined,
+        'Extract here',
+      ),
+      _item(
+        FileMenuAction.extractTo,
+        Icons.drive_folder_upload_outlined,
+        'Extract to…',
+      ),
+      _item(
+        FileMenuAction.listArchive,
+        Icons.list_alt_outlined,
+        'List contents…',
+      ),
+    ],
     const _Entry.divider(),
     _item(FileMenuAction.rename, Icons.edit_outlined, 'Rename'),
     _item(FileMenuAction.delete, Icons.delete_outline, 'Delete', danger: true),

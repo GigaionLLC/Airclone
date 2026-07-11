@@ -4,6 +4,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../rclone/models/job.dart';
 import '../rclone/models/rclone_file.dart';
 import '../rclone/models/remote.dart';
+import '../state/archive_command.dart';
+import '../state/archive_service.dart';
 import '../state/browser_controller.dart';
 import '../state/clipboard_controller.dart';
 import '../state/download_settings.dart';
@@ -17,6 +19,7 @@ import '../state/thumbnail_service.dart';
 import '../state/transfer_options.dart';
 import '../state/transfer_service.dart';
 import 'add_remote_dialog.dart';
+import 'archive_dialogs.dart';
 import 'bisync_confirm.dart';
 import 'checksum_dialog.dart';
 import 'column_header.dart';
@@ -409,6 +412,7 @@ class BrowserPane extends ConsumerWidget {
       hasOtherPane: hasOther,
       canPublicLink: feats?['PublicLink'] == true,
       isLocal: state.remote!.isLocal,
+      isArchive: !file.isDir && looksLikeArchive(file.name),
     );
     if (action == null || state.remote == null) return;
     final files = _targetFiles(state, file);
@@ -462,7 +466,134 @@ class BrowserPane extends ConsumerWidget {
         if (context.mounted) await _delete(context, ref, state, file);
       case FileMenuAction.publicLink:
         if (context.mounted) await _publicLink(context, ref, state, file);
+      case FileMenuAction.compress:
+        if (context.mounted) await _compress(context, ref, state, file);
+      case FileMenuAction.extractHere:
+        // Extract into a NEW subfolder named after the archive (not the current
+        // folder) so members can never silently overwrite same-named files here.
+        final dirPrefix = state.path.isEmpty ? '' : '${state.path}/';
+        await _extract(
+          ref,
+          state,
+          file,
+          dest: '${state.remote!.fs}$dirPrefix${_archiveLeaf(file)}',
+        );
+        if (context.mounted) _archiveStarted(context, 'Extracting…');
+      case FileMenuAction.extractTo:
+        if (context.mounted) await _extractTo(context, ref, state, file);
+      case FileMenuAction.listArchive:
+        if (context.mounted) {
+          await showArchiveContentsDialog(
+            context,
+            ref,
+            archivePath:
+                '${state.remote!.fs}${joinPath(state.path, file.name)}',
+          );
+        }
     }
+  }
+
+  /// Compress the selection (or the clicked item) into a new archive. A single
+  /// item archives directly; multiple items archive the current folder scoped by
+  /// `--include` filters for each selected name.
+  Future<void> _compress(
+    BuildContext context,
+    WidgetRef ref,
+    BrowserState state,
+    RcloneFile file,
+  ) async {
+    final remote = state.remote!;
+    final targets = _targetFiles(state, file);
+    final single = targets.length == 1;
+    final dirPrefix = state.path.isEmpty ? '' : '${state.path}/';
+    final leaf = single
+        ? _archiveLeaf(targets.first)
+        : (state.path.isEmpty ? remote.name : state.path.split('/').last);
+    final choice = await showCompressDialog(
+      context,
+      initialDest: '${remote.fs}$dirPrefix$leaf${ArchiveFormat.zip.ext}',
+      what: single
+          ? 'Compressing "${targets.first.name}"'
+          : 'Compressing ${targets.length} items',
+      singleSource: single,
+    );
+    if (choice == null) return;
+    final String source;
+    final extraFlags = <String>[];
+    if (single) {
+      source = '${remote.fs}${joinPath(state.path, targets.first.name)}';
+    } else {
+      source = '${remote.fs}${state.path}';
+      for (final t in targets) {
+        // The name is a literal, but --include is a GLOB — escape metacharacters
+        // so e.g. `data[1].csv` archives itself, not `data1.csv`.
+        final g = escapeRcloneGlob(t.name);
+        extraFlags
+          ..add('--include')
+          ..add(t.isDir ? '/$g/**' : '/$g');
+      }
+    }
+    final cmd = buildArchiveCommand(
+      op: ArchiveOp.create,
+      source: source,
+      dest: choice.dest,
+      format: choice.format,
+      fullPath: single && choice.fullPath,
+      extraFlags: extraFlags,
+    );
+    await ref.read(archiveServiceProvider).runJob(cmd);
+    if (context.mounted) _archiveStarted(context, 'Compressing…');
+  }
+
+  Future<void> _extractTo(
+    BuildContext context,
+    WidgetRef ref,
+    BrowserState state,
+    RcloneFile file,
+  ) async {
+    final remote = state.remote!;
+    final dirPrefix = state.path.isEmpty ? '' : '${state.path}/';
+    final into = '${remote.fs}$dirPrefix${_archiveLeaf(file)}';
+    final dest = await showExtractToDialog(
+      context,
+      initialDest: into,
+      what: 'Extracting "${file.name}"',
+    );
+    if (dest == null) return;
+    await _extract(ref, state, file, dest: dest);
+    if (context.mounted) _archiveStarted(context, 'Extracting…');
+  }
+
+  Future<void> _extract(
+    WidgetRef ref,
+    BrowserState state,
+    RcloneFile file, {
+    required String dest,
+  }) async {
+    final source = '${state.remote!.fs}${joinPath(state.path, file.name)}';
+    final cmd = buildArchiveCommand(
+      op: ArchiveOp.extract,
+      source: source,
+      dest: dest,
+    );
+    await ref.read(archiveServiceProvider).runJob(cmd);
+  }
+
+  /// The archive base name for a browser entry — a file's name with its known
+  /// archive extension stripped (`Photos.tar.gz` → `Photos`), else the name as-is.
+  String _archiveLeaf(RcloneFile f) {
+    final fmt = archiveFormatForName(f.name);
+    if (fmt != null && f.name.length > fmt.ext.length) {
+      return f.name.substring(0, f.name.length - fmt.ext.length);
+    }
+    final dot = f.name.lastIndexOf('.');
+    return (!f.isDir && dot > 0) ? f.name.substring(0, dot) : f.name;
+  }
+
+  void _archiveStarted(BuildContext context, String label) {
+    ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+      SnackBar(content: Text('$label see the Transfers panel for progress.')),
+    );
   }
 
   Future<void> _showEmptyMenu(

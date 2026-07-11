@@ -394,6 +394,7 @@ class _TypeLabel extends StatelessWidget {
     JobType.upload => 'Upload',
     JobType.download => 'Download',
     JobType.command => 'Command',
+    JobType.archive => 'Archive',
   };
 }
 
