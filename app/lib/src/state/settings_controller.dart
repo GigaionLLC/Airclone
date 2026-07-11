@@ -3,6 +3,8 @@ import 'package:flutter/material.dart' show ThemeMode;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'engine_mode.dart';
+
 /// Sentinel distinguishing "argument omitted" from "explicitly passed null" in
 /// [SettingsState.copyWith], so the nullable [SettingsState.configPathOverride]
 /// can be CLEARED back to the rclone default (pass null) without every other
@@ -19,10 +21,16 @@ class SettingsState {
     this.themeMode = ThemeMode.system,
     this.rclonePathOverride = '',
     this.configPathOverride,
+    this.engineMode = EngineMode.auto,
   });
 
   /// Which Material theme to apply (system / light / dark).
   final ThemeMode themeMode;
+
+  /// Which rclone engine to run: spawned binary, in-process library, or auto
+  /// (resolved per platform + availability by [resolveEngineMode]). Advanced —
+  /// desktop only; see the Settings "Engine" control + `EngineController`.
+  final EngineMode engineMode;
 
   /// Optional absolute path to an rclone binary, overriding auto-discovery.
   /// Empty when unset.
@@ -39,12 +47,14 @@ class SettingsState {
     ThemeMode? themeMode,
     String? rclonePathOverride,
     Object? configPathOverride = _kUnset,
+    EngineMode? engineMode,
   }) => SettingsState(
     themeMode: themeMode ?? this.themeMode,
     rclonePathOverride: rclonePathOverride ?? this.rclonePathOverride,
     configPathOverride: identical(configPathOverride, _kUnset)
         ? this.configPathOverride
         : configPathOverride as String?,
+    engineMode: engineMode ?? this.engineMode,
   );
 }
 
@@ -52,6 +62,7 @@ class SettingsState {
 const _kThemeMode = 'themeMode';
 const _kRclonePath = 'rclonePath';
 const _kConfigPath = 'configPath';
+const _kEngineMode = 'engineMode';
 
 /// Owns the user's settings: returns defaults synchronously, then hydrates from
 /// disk and persists every change. The shell watches [themeMode] for the
@@ -85,10 +96,12 @@ class SettingsController extends Notifier<SettingsState> {
     final path = prefs.getString(_kRclonePath) ?? '';
     // Absent key → null → clears the override (via the copyWith sentinel).
     final configPath = prefs.getString(_kConfigPath);
+    final engineMode = engineModeFromName(prefs.getString(_kEngineMode));
     state = state.copyWith(
       themeMode: mode,
       rclonePathOverride: path,
       configPathOverride: configPath,
+      engineMode: engineMode,
     );
   }
 
@@ -118,6 +131,14 @@ class SettingsController extends Notifier<SettingsState> {
     } else {
       await prefs.setString(_kConfigPath, v);
     }
+  }
+
+  /// Persist the chosen engine mode. The caller restarts the engine to apply it
+  /// (see `EngineController`), since the running engine keeps its current impl.
+  Future<void> setEngineMode(EngineMode mode) async {
+    state = state.copyWith(engineMode: mode);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_kEngineMode, mode.name);
   }
 
   static ThemeMode _themeModeFromName(String? name) => switch (name) {

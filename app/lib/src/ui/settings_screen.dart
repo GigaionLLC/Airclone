@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../rclone/librclone_ffi.dart' show defaultLibrclonePath;
 import '../rclone/rclone_engine.dart';
 import '../state/advanced_mode.dart';
 import '../state/app_info.dart';
@@ -16,6 +17,7 @@ import '../state/config_transfer_controller.dart';
 import '../state/download_settings.dart';
 import '../state/engine_controller.dart';
 import '../state/engine_flags.dart';
+import '../state/engine_mode.dart';
 import '../state/jobs_controller.dart';
 import '../state/os_integration.dart';
 import '../state/remotes_provider.dart';
@@ -104,6 +106,8 @@ class SettingsContent extends ConsumerWidget {
           const SizedBox(height: Space.x5),
           const _GroupHeader('Engine'),
           if (desktop) ...[
+            _EngineModeSection(),
+            const SizedBox(height: Space.x4),
             _RclonePathSection(),
             const SizedBox(height: Space.x4),
             _EngineVersionSection(),
@@ -1059,6 +1063,89 @@ class _SectionLabel extends StatelessWidget {
           Text(help!, style: TextStyle(color: c.textFaint, fontSize: 11)),
         ],
         const SizedBox(height: Space.x2),
+      ],
+    );
+  }
+}
+
+/// Desktop engine choice: spawn `rclone rcd` (Binary), embed rclone in-process
+/// via librclone (In-process), or Auto (pick per platform + availability).
+/// Changing it tears down + restarts the engine ([switchEngineAndStart]). The
+/// in-process engine only runs when its library was bundled in this build.
+class _EngineModeSection extends ConsumerStatefulWidget {
+  @override
+  ConsumerState<_EngineModeSection> createState() => _EngineModeSectionState();
+}
+
+class _EngineModeSectionState extends ConsumerState<_EngineModeSection> {
+  bool _switching = false;
+  // Resolved once: whether this build shipped the in-process engine library.
+  late final bool _libAvailable = File(defaultLibrclonePath()).existsSync();
+
+  Future<void> _select(EngineMode mode) async {
+    if (_switching) return;
+    setState(() => _switching = true);
+    try {
+      await ref.read(settingsControllerProvider.notifier).setEngineMode(mode);
+      await ref.read(engineControllerProvider.notifier).switchEngineAndStart();
+    } finally {
+      if (mounted) setState(() => _switching = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final c = AircloneTheme.of(context);
+    final mode = ref.watch(
+      settingsControllerProvider.select((s) => s.engineMode),
+    );
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _SectionLabel(
+          'Engine',
+          help: _libAvailable
+              ? 'Binary runs rclone as a separate process; In-process embeds '
+                    'rclone inside Airclone (no subprocess). Auto picks for you.'
+              : 'Runs rclone as a separate process. The in-process engine was '
+                    'not bundled in this build.',
+        ),
+        SegmentedButton<EngineMode>(
+          segments: const [
+            ButtonSegment(
+              value: EngineMode.auto,
+              icon: Icon(Icons.auto_mode_outlined, size: 16),
+              label: Text('Auto'),
+            ),
+            ButtonSegment(
+              value: EngineMode.binary,
+              icon: Icon(Icons.terminal_outlined, size: 16),
+              label: Text('Binary'),
+            ),
+            ButtonSegment(
+              value: EngineMode.inProcess,
+              icon: Icon(Icons.memory_outlined, size: 16),
+              label: Text('In-process'),
+            ),
+          ],
+          selected: {mode},
+          showSelectedIcon: false,
+          onSelectionChanged: _switching ? null : (sel) => _select(sel.first),
+        ),
+        if (_switching) ...[
+          const SizedBox(height: Space.x2),
+          Text(
+            'Restarting engine…',
+            style: TextStyle(color: c.textFaint, fontSize: 11),
+          ),
+        ] else if (!_libAvailable && mode == EngineMode.inProcess) ...[
+          const SizedBox(height: Space.x2),
+          Text(
+            'The in-process engine is not available in this build — Airclone '
+            'will use the binary engine instead.',
+            style: TextStyle(color: c.warning, fontSize: 11),
+          ),
+        ],
       ],
     );
   }

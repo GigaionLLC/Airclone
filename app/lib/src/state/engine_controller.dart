@@ -4,13 +4,16 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
 
+import '../rclone/ffi_rclone_client.dart';
 import '../rclone/http_rclone_client.dart';
+import '../rclone/librclone_ffi.dart';
 import '../rclone/rclone_client.dart';
 import '../rclone/rclone_engine.dart';
 import 'biometric_unlock.dart';
 import 'cache_crypto.dart';
 import 'config_password_vault.dart';
 import 'engine_flags.dart';
+import 'engine_mode.dart';
 import 'settings_controller.dart';
 
 /// Resolves the `--config` path the engine should spawn with (null = "let rclone
@@ -91,6 +94,12 @@ class EngineUi {
 class EngineController extends Notifier<EngineUi> {
   String? _rclonePath;
 
+  /// The engine actually in use this run, resolved once at [bootstrap] from the
+  /// user's [EngineMode] setting + platform + what is available. Drives whether
+  /// [_startWith] builds a spawned [HttpRcloneClient] or an in-process
+  /// [FfiRcloneClient], and gates the binary-only `_rclonePath == null` paths.
+  EngineMode _resolvedMode = EngineMode.binary;
+
   @override
   EngineUi build() {
     ref.onDispose(() => state.client?.quit());
@@ -102,6 +111,25 @@ class EngineController extends Notifier<EngineUi> {
     if (state.phase == EnginePhase.locating || state.isReady) return;
     state = const EngineUi(phase: EnginePhase.locating);
     final path = await RcloneEngine.findExisting();
+    _rclonePath = path;
+    _resolvedMode = await _resolveEngineMode(binaryAvailable: path != null);
+
+    // In-process engine: the bundled library stands in for the binary, so skip
+    // the "binary not found" branch entirely and go straight to the gate.
+    if (_resolvedMode == EngineMode.inProcess) {
+      if (!File(defaultLibrclonePath()).existsSync()) {
+        state = const EngineUi(
+          phase: EnginePhase.error,
+          message:
+              'The in-process engine library was not found in this build. '
+              'Switch to the binary engine in Settings, or reinstall.',
+        );
+        return;
+      }
+      await _proceedWith(null);
+      return;
+    }
+
     if (path == null) {
       // On Android the engine ships inside the APK — its absence is a broken
       // build, not something a download can fix.
@@ -119,6 +147,22 @@ class EngineController extends Notifier<EngineUi> {
       return;
     }
     await _proceedWith(path);
+  }
+
+  /// Resolve the engine to run from the persisted setting + availability. Android
+  /// always runs its bundled binary (its jniLib-subprocess model is the only one
+  /// wired there); engine choice is desktop-only. Desktop DMG allows a subprocess
+  /// — the iOS/MAS "library only" constraint lands with those targets.
+  Future<EngineMode> _resolveEngineMode({required bool binaryAvailable}) async {
+    if (Platform.isAndroid) return EngineMode.binary;
+    await ref.read(settingsControllerProvider.notifier).ensureLoaded();
+    final setting = ref.read(settingsControllerProvider).engineMode;
+    return resolveEngineMode(
+      setting: setting,
+      subprocessAllowed: true,
+      libraryAvailable: File(defaultLibrclonePath()).existsSync(),
+      binaryAvailable: binaryAvailable,
+    );
   }
 
   /// Android runs the engine sandboxed: the config lives in the app's own
@@ -181,11 +225,11 @@ class EngineController extends Notifier<EngineUi> {
   /// Use this ONLY when the config FILE is unchanged — for a config-path/content
   /// change use [switchConfigAndStart], which re-gates on the new config.
   Future<void> restartEngine() async {
-    final path = _rclonePath;
-    if (path == null) return;
+    // Binary mode needs a located binary; the in-process engine does not.
+    if (_resolvedMode != EngineMode.inProcess && _rclonePath == null) return;
     final password = ref.read(cachePassphraseProvider);
     await state.client?.quit();
-    await _startWith(path, password: password);
+    await _startWith(password: password);
   }
 
   /// Restart the engine for a CONFIG-PATH / CONFIG-CONTENT change (switch config
@@ -201,13 +245,26 @@ class EngineController extends Notifier<EngineUi> {
   /// persists the new override BEFORE calling this so [_platformSetup] resolves
   /// the new path.
   Future<void> switchConfigAndStart() async {
-    final path = _rclonePath;
-    if (path == null) return bootstrap();
+    // Binary mode without a located binary can't proceed — (re)bootstrap.
+    if (_resolvedMode != EngineMode.inProcess && _rclonePath == null) {
+      return bootstrap();
+    }
     await state.client?.quit();
     // Drop the previous config's password before re-gating; _proceedWith only
     // reaches for the vault when no session password is held.
     ref.read(cachePassphraseProvider.notifier).state = null;
-    await _proceedWith(path);
+    await _proceedWith(_rclonePath);
+  }
+
+  /// Switch engines after the user changes the [EngineMode] setting: tear down
+  /// the current engine, drop the held password, and re-bootstrap so the mode is
+  /// resolved afresh (binary ↔ in-process). Resetting the phase clears the
+  /// ready-guard so [bootstrap] runs its full resolve-and-start path.
+  Future<void> switchEngineAndStart() async {
+    await state.client?.quit();
+    ref.read(cachePassphraseProvider.notifier).state = null;
+    state = const EngineUi(phase: EnginePhase.idle);
+    await bootstrap();
   }
 
   /// Desktop: download the latest verified rclone, repoint the cached path, and
@@ -219,8 +276,11 @@ class EngineController extends Notifier<EngineUi> {
     final password = ref.read(cachePassphraseProvider);
     final path = await RcloneEngine.downloadLatest();
     _rclonePath = path;
+    // "Update engine" downloads + runs a binary — force binary mode for the
+    // restart (the in-process library ships with the app and isn't updated here).
+    _resolvedMode = EngineMode.binary;
     await state.client?.quit();
-    await _startWith(path, password: password);
+    await _startWith(password: password);
     // _startWith never throws — it parks failures in the error/needsPassword
     // phase for the engine gate. Surface a failed post-update start to the
     // caller explicitly, or Settings would report "Engine updated." while the
@@ -234,9 +294,10 @@ class EngineController extends Notifier<EngineUi> {
 
   /// Provided by the password gate when the config is encrypted.
   Future<void> unlockAndStart(String password) async {
-    final path = _rclonePath;
-    if (path == null) return bootstrap();
-    await _startWith(path, password: password);
+    if (_resolvedMode != EngineMode.inProcess && _rclonePath == null) {
+      return bootstrap();
+    }
+    await _startWith(password: password);
     // A successful interactive unlock is the one moment we hold the plaintext
     // config password with the user watching. Honour their opt-in: stash it in
     // the OS vault so unattended (scheduled/background) runs can unlock the same
@@ -259,14 +320,13 @@ class EngineController extends Notifier<EngineUi> {
     }
   }
 
-  /// After we have a binary: gate on the config password if encrypted, else start.
-  Future<void> _proceedWith(String rclonePath) async {
+  /// After the engine is resolved (binary located, or in-process library
+  /// present): gate on the config password if the config is encrypted, else
+  /// start. [rclonePath] is null in in-process mode (there is no binary).
+  Future<void> _proceedWith(String? rclonePath) async {
     _rclonePath = rclonePath;
     final (configPath, _) = await _platformSetup();
-    if (await RcloneEngine.isConfigEncrypted(
-      rclonePath,
-      configPath: configPath,
-    )) {
+    if (await _isConfigEncrypted(configPath)) {
       // Encrypted config. Before gating on manual entry, try a password the user
       // chose to remember in the OS vault (the headless-unlock prerequisite): a
       // successful read is a silent unlock straight to start, while a wrong or
@@ -307,7 +367,7 @@ class EngineController extends Notifier<EngineUi> {
         if (mayReleaseVault) {
           final remembered = await ref.read(configPasswordVaultProvider).read();
           if (remembered != null && remembered.isNotEmpty) {
-            await _startWith(rclonePath, password: remembered);
+            await _startWith(password: remembered);
             if (state.isReady) return;
           }
         }
@@ -319,34 +379,80 @@ class EngineController extends Notifier<EngineUi> {
       );
       return;
     }
-    await _startWith(rclonePath);
+    await _startWith();
   }
 
-  Future<void> _startWith(String rclonePath, {String? password}) async {
+  /// Is the resolved config encrypted? Binary mode asks rclone (or reads the
+  /// header when the path is explicit); in-process mode has no binary to spawn,
+  /// so it resolves the config path (explicit override, else asks the library
+  /// via `config/paths`) and reads the header directly.
+  Future<bool> _isConfigEncrypted(String? configPath) async {
+    if (_resolvedMode == EngineMode.inProcess) {
+      final path = configPath ?? await _probeLibraryConfigPath();
+      if (path == null) return false;
+      return RcloneEngine.isConfigEncrypted('', configPath: path);
+    }
+    return RcloneEngine.isConfigEncrypted(_rclonePath!, configPath: configPath);
+  }
+
+  /// Ask the in-process engine where its config file lives (the `config/paths`
+  /// RC method), so we can check encryption without a binary. Starts a throwaway
+  /// library engine with no password — `config/paths` returns the path without
+  /// decrypting, so this works even for an encrypted config. Null on any failure
+  /// (then we assume unencrypted and let the real start surface any error).
+  Future<String?> _probeLibraryConfigPath() async {
+    final probe = FfiRcloneClient(libraryPath: defaultLibrclonePath());
+    try {
+      await probe.start();
+      final res = await probe.rpc('config/paths');
+      final path = res['config'];
+      return (path is String && path.isNotEmpty) ? path : null;
+    } catch (_) {
+      return null;
+    } finally {
+      await probe.quit();
+    }
+  }
+
+  Future<void> _startWith({String? password}) async {
     state = const EngineUi(
       phase: EnginePhase.starting,
       message: 'Starting engine…',
     );
     final (configPath, extraEnv) = await _platformSetup();
-    final client = HttpRcloneClient(
-      rclonePath: rclonePath,
-      configPath: configPath,
-      configPassword: password,
-      extraArgs: parseEngineFlags(ref.read(engineFlagsProvider)),
-      extraEnv: extraEnv,
-    );
-    // If rcd dies out from under us (crash, Android LMK), don't keep showing
-    // a "ready" engine wired to a corpse — surface it with a restart path.
-    client.onDied = () {
-      if (state.client == client) {
-        state = const EngineUi(
-          phase: EnginePhase.error,
-          message:
-              'The engine stopped unexpectedly. Start it again to '
-              'continue.',
-        );
-      }
-    };
+    final RcloneClient client;
+    if (_resolvedMode == EngineMode.inProcess) {
+      // In-process librclone. Its preview byte-bridge needs a writable cache dir
+      // (the OS temp dir) since there is no rcd file server. No onDied: an
+      // in-process engine is as alive as the app.
+      client = FfiRcloneClient(
+        libraryPath: defaultLibrclonePath(),
+        configPath: configPath,
+        configPassword: password,
+        previewCacheDir: (await getTemporaryDirectory()).path,
+      );
+    } else {
+      final http = HttpRcloneClient(
+        rclonePath: _rclonePath!,
+        configPath: configPath,
+        configPassword: password,
+        extraArgs: parseEngineFlags(ref.read(engineFlagsProvider)),
+        extraEnv: extraEnv,
+      );
+      // If rcd dies out from under us (crash, Android LMK), don't keep showing
+      // a "ready" engine wired to a corpse — surface it with a restart path.
+      http.onDied = () {
+        if (state.client == http) {
+          state = const EngineUi(
+            phase: EnginePhase.error,
+            message:
+                'The engine stopped unexpectedly. Start it again to '
+                'continue.',
+          );
+        }
+      };
+      client = http;
+    }
     try {
       await client.start();
       final status = await client.status();

@@ -83,6 +83,25 @@ void main() {
       final st = await client.status();
       expect(st.state, EngineState.running);
     });
+
+    test('two SEPARATE engines can run back-to-back in one process', () async {
+      // Mirrors EngineController's encryption probe: a throwaway FfiRcloneClient
+      // (config/paths) is started + quit, THEN the real engine starts. Each is a
+      // fresh LibrcloneEngine (its own worker isolate) doing Initialize/Finalize
+      // against the same in-process Go runtime.
+      final lib = libPath!;
+      final probe = FfiRcloneClient(libraryPath: lib);
+      await probe.start();
+      final paths = await probe.rpc('config/paths');
+      expect(paths['config'], isA<String>());
+      await probe.quit();
+
+      final real = FfiRcloneClient(libraryPath: lib);
+      await real.start();
+      final st = await real.status();
+      expect(st.state, EngineState.running);
+      await real.quit();
+    });
   }, skip: skip);
 
   group('FfiRcloneClient objectRef bridge (live librclone)', () {
