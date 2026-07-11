@@ -8,6 +8,7 @@ import '../../rclone/rclone_client.dart';
 import '../engine_controller.dart';
 import '../jobs_controller.dart';
 import 'console_command.dart';
+import 'console_redaction.dart';
 import 'rclone_commands.dart';
 
 /// The channel a console output line came from — drives its styling.
@@ -101,6 +102,16 @@ class ConsoleController extends FamilyNotifier<ConsoleState, String> {
       );
       return;
     }
+    // Refuse credential-dumping verbosity (-vv / --dump …) rather than trying to
+    // scrub freeform dump output — block over scrub.
+    if (hasCredentialDump(cmd)) {
+      _append(
+        'Refused: -vv / --dump can echo credentials to the log. Remove it, or '
+        'use a lower verbosity.',
+        ConsoleLineKind.error,
+      );
+      return;
+    }
 
     final client = ref.read(engineControllerProvider).client;
     if (client == null) {
@@ -108,21 +119,23 @@ class ConsoleController extends FamilyNotifier<ConsoleState, String> {
       return;
     }
 
+    // A redacted, display-safe rendering used everywhere the command is shown.
+    final safe = redactedPreview(cmd);
     final jobs = ref.read(jobsControllerProvider.notifier);
     final job = jobs.add(
       type: JobType.command,
-      source: cmd.preview(),
+      source: safe,
       dest: '',
       status: JobStatus.running,
     );
-    _append('› ${cmd.preview()}', ConsoleLineKind.input);
+    _append('› $safe', ConsoleLineKind.input);
     state = state.copyWith(running: true, draft: '');
 
     try {
       final res = await client.rpc('core/command', cmd.toRcParams());
       final out = (res['result'] as String?) ?? '';
       for (final line in const LineSplitter().convert(out)) {
-        _append(line, ConsoleLineKind.output);
+        _append(redactOutputLine(line), ConsoleLineKind.output);
       }
       if (res['error'] == true) {
         _append('✗ command exited non-zero', ConsoleLineKind.error);

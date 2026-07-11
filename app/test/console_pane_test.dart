@@ -17,9 +17,7 @@ void main() {
       ProviderScope(
         child: MaterialApp(
           theme: AppTheme.light(),
-          home: const Scaffold(
-            body: ConsolePane(consoleId: 'test-console'),
-          ),
+          home: const Scaffold(body: ConsolePane(consoleId: 'test-console')),
         ),
       ),
     );
@@ -33,7 +31,9 @@ void main() {
     expect(find.text('Run'), findsOneWidget);
   });
 
-  testWidgets('typing surfaces a live preview with a tier badge', (tester) async {
+  testWidgets('typing surfaces a live preview with a tier badge', (
+    tester,
+  ) async {
     await pump(tester);
 
     await tester.enterText(find.byType(TextField), 'lsjson gdrive:');
@@ -51,5 +51,16 @@ void main() {
     await tester.pump();
     // Blocked verb → "blocked" badge.
     expect(find.text('blocked'), findsOneWidget);
+  });
+
+  testWidgets('typing a verb prefix shows an autocomplete popover with docs', (
+    tester,
+  ) async {
+    await pump(tester);
+    await tester.enterText(find.byType(TextField), 'ls');
+    await tester.pump();
+    // Subcommand suggestions appear (lsjson, lsd, …) each with a docs link.
+    expect(find.text('lsjson'), findsWidgets);
+    expect(find.text('docs ↗'), findsWidgets);
   });
 }

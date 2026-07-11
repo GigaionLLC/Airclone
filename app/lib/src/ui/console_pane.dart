@@ -1,16 +1,24 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:url_launcher/url_launcher.dart';
 
+import '../state/console/console_autocomplete.dart';
 import '../state/console/console_command.dart';
 import '../state/console/console_controller.dart';
+import '../state/console/console_redaction.dart';
 import '../state/console/rclone_commands.dart';
+import '../state/remotes_provider.dart';
 import 'theme/tokens.dart';
 
-/// The rclone command console — a pane that runs an arbitrary rclone command
-/// and shows its output, instead of a folder view. Keyed by [consoleId] so it
-/// keeps its own scrollback across tab switches. Phase-1 MVP: a raw command box
-/// + buffered output; autocomplete/streaming/mobile come later.
+/// The rclone command console — a pane that runs an arbitrary rclone command and
+/// shows its output, instead of a folder view. Keyed by [consoleId] so it keeps
+/// its own scrollback across tab switches.
+///
+/// Phase 2: token-aware autocomplete (subcommands / flags / remotes) with
+/// rclone.org doc links, a redacted exact-command preview, and secret redaction
+/// applied to output. Streaming + Stop (Phase 3) and the mobile RC-method
+/// console (Phase 4) come later.
 class ConsolePane extends ConsumerStatefulWidget {
   const ConsolePane({super.key, required this.consoleId});
   final String consoleId;
@@ -24,6 +32,8 @@ class _ConsolePaneState extends ConsumerState<ConsolePane> {
   final _inputFocus = FocusNode();
   final _scroll = ScrollController();
   int _lastLogLen = 0;
+  int _sel = 0; // selected suggestion index
+  bool _popClosed = false; // Escape hides the popover until the next edit
 
   String get _id => widget.consoleId;
 
@@ -35,21 +45,69 @@ class _ConsolePaneState extends ConsumerState<ConsolePane> {
     super.dispose();
   }
 
+  List<String> get _remoteNames =>
+      ref.read(remotesProvider).valueOrNull?.map((r) => r.name).toList() ??
+      const [];
+
+  List<Suggestion> _suggestions() {
+    if (_popClosed || !_inputFocus.hasFocus) return const [];
+    return suggestFor(_input.text, remotes: _remoteNames);
+  }
+
+  void _apply(Suggestion s) {
+    _input.text = applySuggestion(_input.text, s.value);
+    _input.selection = TextSelection.collapsed(offset: _input.text.length);
+    setState(() {
+      _sel = 0;
+      _popClosed = false;
+    });
+  }
+
+  KeyEventResult _onKey(FocusNode node, KeyEvent e) {
+    if (e is! KeyDownEvent) return KeyEventResult.ignored;
+    final sug = _suggestions();
+    final k = e.logicalKey;
+    if (k == LogicalKeyboardKey.escape) {
+      if (sug.isNotEmpty) {
+        setState(() => _popClosed = true);
+        return KeyEventResult.handled;
+      }
+      return KeyEventResult.ignored;
+    }
+    if (sug.isEmpty) return KeyEventResult.ignored;
+    if (k == LogicalKeyboardKey.arrowDown) {
+      setState(() => _sel = (_sel + 1) % sug.length);
+      return KeyEventResult.handled;
+    }
+    if (k == LogicalKeyboardKey.arrowUp) {
+      setState(() => _sel = (_sel - 1 + sug.length) % sug.length);
+      return KeyEventResult.handled;
+    }
+    if (k == LogicalKeyboardKey.tab) {
+      _apply(sug[_sel.clamp(0, sug.length - 1)]);
+      return KeyEventResult.handled;
+    }
+    return KeyEventResult.ignored;
+  }
+
   Future<void> _submit() async {
     final ctrl = ref.read(consoleControllerProvider(_id).notifier);
     final cmd = ConsoleCommand.parse(_input.text.trim());
     if (cmd.isEmpty) return;
-    // Destructive verbs demand an explicit confirm before running. (Phase 2
-    // upgrades this to a dry-run preview + typed confirm.) Blocked verbs are
-    // refused by the controller itself.
     if (cmd.tier == CommandTier.destructive) {
       final ok = await _confirmDestructive(cmd);
       if (ok != true) return;
     }
     ctrl.setDraft(_input.text);
     _input.clear();
+    setState(() => _popClosed = false);
     await ctrl.run();
     if (mounted) _inputFocus.requestFocus();
+  }
+
+  Future<void> _openDoc(String? url) async {
+    if (url == null) return;
+    await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
   }
 
   Future<bool?> _confirmDestructive(ConsoleCommand cmd) {
@@ -64,7 +122,8 @@ class _ConsolePaneState extends ConsumerState<ConsolePane> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'This can delete or overwrite data and cannot be undone.',
+              'This can delete or overwrite data and cannot be undone. Consider '
+              'adding --dry-run first.',
               style: TextStyle(color: c.textMuted, fontSize: 13),
             ),
             const SizedBox(height: Space.x3),
@@ -76,7 +135,7 @@ class _ConsolePaneState extends ConsumerState<ConsolePane> {
                 borderRadius: BorderRadius.circular(Radii.sm),
               ),
               child: Text(
-                cmd.preview(),
+                redactedPreview(cmd),
                 style: const TextStyle(fontFamily: 'monospace', fontSize: 12.5),
               ),
             ),
@@ -102,7 +161,6 @@ class _ConsolePaneState extends ConsumerState<ConsolePane> {
     final c = AircloneTheme.of(context);
     final st = ref.watch(consoleControllerProvider(_id));
 
-    // Auto-scroll to the bottom when new output arrives.
     if (st.log.length != _lastLogLen) {
       _lastLogLen = st.log.length;
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -113,6 +171,7 @@ class _ConsolePaneState extends ConsumerState<ConsolePane> {
     }
 
     final live = ConsoleCommand.parse(_input.text.trim());
+    final suggestions = _suggestions();
 
     return Container(
       color: c.surfaceSunken,
@@ -120,6 +179,7 @@ class _ConsolePaneState extends ConsumerState<ConsolePane> {
         children: [
           _header(c),
           Expanded(child: _output(c, st)),
+          if (suggestions.isNotEmpty) _popover(c, suggestions),
           if (!live.isEmpty) _previewBar(c, live),
           _inputRow(c, st),
         ],
@@ -203,6 +263,86 @@ class _ConsolePaneState extends ConsumerState<ConsolePane> {
     );
   }
 
+  Widget _popover(AircloneColors c, List<Suggestion> sug) {
+    final sel = _sel.clamp(0, sug.length - 1);
+    return Container(
+      constraints: const BoxConstraints(maxHeight: 176),
+      margin: const EdgeInsets.fromLTRB(Space.x3, 0, Space.x3, 0),
+      decoration: BoxDecoration(
+        color: c.surfaceRaised,
+        borderRadius: BorderRadius.circular(Radii.sm),
+        border: Border.all(color: c.border),
+      ),
+      child: ListView.builder(
+        shrinkWrap: true,
+        padding: EdgeInsets.zero,
+        itemCount: sug.length,
+        itemBuilder: (_, i) {
+          final s = sug[i];
+          final on = i == sel;
+          final vColor = s.destructive ? c.error : c.text;
+          return InkWell(
+            onTap: () => _apply(s),
+            child: Container(
+              color: on ? c.primary.withValues(alpha: 0.10) : null,
+              padding: const EdgeInsets.symmetric(
+                horizontal: Space.x3,
+                vertical: 6,
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    switch (s.kind) {
+                      SuggestionKind.command => Icons.chevron_right,
+                      SuggestionKind.flag => Icons.flag_outlined,
+                      SuggestionKind.remote => Icons.cloud_outlined,
+                    },
+                    size: 13,
+                    color: c.textFaint,
+                  ),
+                  const SizedBox(width: Space.x2),
+                  Text(
+                    s.value,
+                    style: TextStyle(
+                      fontFamily: 'monospace',
+                      fontSize: 12.5,
+                      color: vColor,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(width: Space.x3),
+                  Expanded(
+                    child: Text(
+                      s.help,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(color: c.textFaint, fontSize: 11.5),
+                    ),
+                  ),
+                  if (s.docUrl != null)
+                    InkWell(
+                      onTap: () => _openDoc(s.docUrl),
+                      borderRadius: BorderRadius.circular(Radii.sm),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 6,
+                          vertical: 1,
+                        ),
+                        child: Text(
+                          'docs ↗',
+                          style: TextStyle(color: c.primary, fontSize: 11),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
   Widget _previewBar(AircloneColors c, ConsoleCommand cmd) {
     final (label, badge) = switch (cmd.tier) {
       CommandTier.safe => ('runs', c.textMuted),
@@ -236,7 +376,7 @@ class _ConsolePaneState extends ConsumerState<ConsolePane> {
           const SizedBox(width: Space.x2),
           Expanded(
             child: Text(
-              cmd.preview(),
+              redactedPreview(cmd),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
@@ -268,23 +408,26 @@ class _ConsolePaneState extends ConsumerState<ConsolePane> {
         ),
         const SizedBox(width: Space.x2),
         Expanded(
-          child: TextField(
-            controller: _input,
-            focusNode: _inputFocus,
-            autofocus: true,
-            enabled: !st.running,
-            onChanged: (_) => setState(() {}),
-            onSubmitted: (_) => _submit(),
-            style: const TextStyle(fontFamily: 'monospace', fontSize: 13),
-            decoration: InputDecoration(
-              isDense: true,
-              border: InputBorder.none,
-              hintText: st.running ? 'running…' : 'rclone command…',
-              hintStyle: TextStyle(color: c.textFaint, fontSize: 13),
+          child: Focus(
+            onKeyEvent: _onKey,
+            child: TextField(
+              controller: _input,
+              focusNode: _inputFocus,
+              autofocus: true,
+              enabled: !st.running,
+              onChanged: (_) => setState(() => _popClosed = false),
+              onSubmitted: (_) => _submit(),
+              style: const TextStyle(fontFamily: 'monospace', fontSize: 13),
+              decoration: InputDecoration(
+                isDense: true,
+                border: InputBorder.none,
+                hintText: st.running ? 'running…' : 'rclone command…',
+                hintStyle: TextStyle(color: c.textFaint, fontSize: 13),
+              ),
+              inputFormatters: [
+                FilteringTextInputFormatter.deny(RegExp('[\n\r]')),
+              ],
             ),
-            inputFormatters: [
-              FilteringTextInputFormatter.deny(RegExp('[\n\r]')),
-            ],
           ),
         ),
         const SizedBox(width: Space.x2),
