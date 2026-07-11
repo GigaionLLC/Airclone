@@ -8,6 +8,7 @@ import 'src/headless/headless_runner.dart';
 import 'src/state/android_native.dart';
 import 'src/state/window_backdrop.dart';
 import 'src/ui/app.dart';
+import 'src/ui/popout_image_app.dart';
 
 Future<void> main(List<String> args) async {
   // Headless background entrypoint (`--run-task <id>` / `--run-due`), invoked by
@@ -21,6 +22,24 @@ Future<void> main(List<String> args) async {
     return runHeadless(args);
   }
   WidgetsFlutterBinding.ensureInitialized();
+  // Pop-out image sub-window (desktop only). desktop_multi_window spins up a
+  // SECOND FlutterEngine in THIS process for each popped-out image; that engine
+  // re-runs main(), but its payload arrives via the plugin channel
+  // (WindowController.fromCurrentEngine().arguments), NOT argv — so it never
+  // trips the argv-based headless check above, and the PRIMARY window (empty
+  // arguments) simply falls through to the normal launch. This branch must run
+  // BEFORE MediaKit/backdrop/Android-init/ProviderScope: a pop-out is a bare
+  // image viewer that reuses this process's rcd (via the URL + auth header
+  // baked into its args) and needs none of that init. It must never call
+  // exit()/quit() — see popout_image_app.dart. Guarded to desktop so mobile
+  // never touches the plugin channel.
+  if (Platform.isWindows || Platform.isMacOS || Platform.isLinux) {
+    final popoutArgs = await readPopoutImageArgs();
+    if (popoutArgs != null) {
+      runApp(PopoutImageApp(args: popoutArgs));
+      return;
+    }
+  }
   MediaKit.ensureInitialized(); // libmpv backend for video/audio previews
   // Android: resolve the real shared-storage root (multi-user aware) before
   // the location providers build. No-op elsewhere.

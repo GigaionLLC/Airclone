@@ -13,6 +13,7 @@ import '../state/engine_controller.dart';
 import 'format.dart';
 import 'media_preview.dart';
 import 'theme/tokens.dart';
+import 'zoomable_network_image.dart';
 
 /// Largest text/markdown payload we fetch + render inline. Anything beyond this
 /// is truncated (with a note) so a stray multi-megabyte log never freezes the UI.
@@ -131,6 +132,11 @@ _PreviewKind _kindFor(RcloneFile file) {
   }
   return _PreviewKind.unsupported;
 }
+
+/// Whether [file] renders as an image — gates the desktop "Pop out" action
+/// (only images pop out) using the SAME kind detection as the inline preview,
+/// so the button and the actual preview never disagree.
+bool isImagePreview(RcloneFile file) => _kindFor(file) == _PreviewKind.image;
 
 IconData _iconFor(_PreviewKind kind) {
   switch (kind) {
@@ -325,7 +331,9 @@ class _Header extends StatelessWidget {
   }
 }
 
-/// Image preview: pannable/zoomable, with loading + error states.
+/// Image preview: pannable/zoomable via the shared [ZoomableNetworkImage] (the
+/// SAME widget the desktop pop-out window uses, so zoom is identical in both),
+/// keeping the sunken surface fill and the dialog's themed error card.
 class _ImageBody extends StatelessWidget {
   const _ImageBody({required this.ref0});
 
@@ -334,27 +342,14 @@ class _ImageBody extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = AircloneTheme.of(context);
-    return Container(
-      color: c.surfaceSunken,
-      width: double.infinity,
-      child: InteractiveViewer(
-        maxScale: 8,
-        child: Center(
-          child: Image.network(
-            ref0.url,
-            headers: ref0.headers,
-            fit: BoxFit.contain,
-            loadingBuilder: (context, child, progress) {
-              if (progress == null) return child;
-              return const Center(child: CircularProgressIndicator());
-            },
-            errorBuilder: (context, error, stack) => _Message(
-              icon: Icons.broken_image_outlined,
-              title: 'Could not load image',
-              detail: '$error',
-            ),
-          ),
-        ),
+    return ZoomableNetworkImage(
+      url: ref0.url,
+      headers: ref0.headers,
+      backgroundColor: c.surfaceSunken,
+      errorBuilder: (context, error, stack) => _Message(
+        icon: Icons.broken_image_outlined,
+        title: 'Could not load image',
+        detail: '$error',
       ),
     );
   }

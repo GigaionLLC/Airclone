@@ -6,6 +6,8 @@
 #endif
 
 #include "flutter/generated_plugin_registrant.h"
+// desktop_multi_window: register plugins into each pop-out window's engine too.
+#include "desktop_multi_window/desktop_multi_window_plugin.h"
 
 struct _MyApplication {
   GtkApplication parent_instance;
@@ -74,6 +76,11 @@ static void my_application_activate(GApplication* application) {
   gtk_widget_realize(GTK_WIDGET(view));
 
   fl_register_plugins(FL_PLUGIN_REGISTRY(view));
+
+  // Every window desktop_multi_window creates (each pop-out image viewer) gets
+  // the generated plugins registered on its own engine.
+  desktop_multi_window_plugin_set_window_created_callback(
+      [](FlPluginRegistry* registry) { fl_register_plugins(registry); });
 
   gtk_widget_grab_focus(GTK_WIDGET(view));
 }

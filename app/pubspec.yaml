@@ -102,6 +102,16 @@ dependencies:
   qr_flutter: ^4.1.0
   basic_utils: ^5.8.2
 
+  # Desktop pop-out image viewer: opens an image in its own independently-
+  # resizable native OS window (multiple images -> multiple windows), each with
+  # its own pinch/scroll zoom, decoupled from the main app window. DESKTOP ONLY
+  # (the plugin declares no Android/iOS implementation); every call is
+  # Platform-guarded so mobile never touches its channel. Each pop-out runs its
+  # own FlutterEngine in this SAME process, dispatched in main.dart via
+  # WindowController.fromCurrentEngine(). See ui/popout_image_app.dart. Pinned:
+  # re-test on every Flutter stable bump (0.3.0 is the only 0.3.x).
+  desktop_multi_window: ^0.3.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

@@ -1,8 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../rclone/models/rclone_file.dart';
 import '../rclone/models/remote.dart';
+import '../rclone/rclone_client.dart';
+import '../state/engine_controller.dart';
+import 'popout_image_app.dart';
+import 'popout_image_args.dart';
 import 'preview_dialog.dart';
 import 'theme/tokens.dart';
 
@@ -60,8 +65,10 @@ Future<void> showQuickLook(
 }
 
 /// The overlay body: a centered preview with header, framed [PreviewContent],
-/// on-screen chevrons, and a keyboard hint.
-class _QuickLook extends StatefulWidget {
+/// on-screen chevrons, and a keyboard hint. A [ConsumerStatefulWidget] so the
+/// desktop "Pop out" action can read the engine client to build the pop-out's
+/// authenticated image URLs.
+class _QuickLook extends ConsumerStatefulWidget {
   const _QuickLook({
     required this.remote,
     required this.parentPath,
@@ -75,10 +82,10 @@ class _QuickLook extends StatefulWidget {
   final int initialIndex;
 
   @override
-  State<_QuickLook> createState() => _QuickLookState();
+  ConsumerState<_QuickLook> createState() => _QuickLookState();
 }
 
-class _QuickLookState extends State<_QuickLook> {
+class _QuickLookState extends ConsumerState<_QuickLook> {
   late int _i = widget.initialIndex;
   late final PageController _pager = PageController(
     initialPage: widget.initialIndex,
@@ -120,6 +127,39 @@ class _QuickLookState extends State<_QuickLook> {
       return KeyEventResult.handled;
     }
     return KeyEventResult.ignored;
+  }
+
+  /// Desktop only: open the current image in its own independently-resizable OS
+  /// window via [openPopoutImageWindow]. The pop-out viewer renders images only,
+  /// so we hand it just the image files (in order) as its sibling set for
+  /// prev/next, remembering where the current file lands. The overlay stays open
+  /// — pop-out is additive. Does nothing if the engine is down or no image
+  /// resolves (the trigger is also hidden in those cases).
+  void _popOut() {
+    final client = ref.read(engineControllerProvider).client;
+    if (client == null) return;
+    final current = widget.files[_i];
+    final images = <PopoutImageEntry>[];
+    var initial = 0;
+    var auth = '';
+    for (final f in widget.files) {
+      if (!isImagePreview(f)) continue;
+      final ObjectRef r;
+      try {
+        // f.path is the fs-relative path (same target PreviewContent resolves).
+        r = client.objectRef(widget.remote.fs, f.path);
+      } catch (_) {
+        continue;
+      }
+      if (identical(f, current)) initial = images.length;
+      auth = r.headers['Authorization'] ?? auth;
+      images.add(PopoutImageEntry(url: r.url, name: f.name));
+    }
+    if (images.isEmpty) return;
+    // Fire-and-forget: window creation is async but the UI need not await it.
+    openPopoutImageWindow(
+      PopoutImageArgs(authorization: auth, images: images, index: initial),
+    );
   }
 
   @override
@@ -167,6 +207,18 @@ class _QuickLookState extends State<_QuickLook> {
                         fontSize: 12,
                       ),
                     ),
+                    // Desktop only, images only: pop the current image into its
+                    // own resizable OS window (the in-app overlay stays open).
+                    if (isPopoutSupportedOn(Theme.of(context).platform) &&
+                        isImagePreview(file))
+                      IconButton(
+                        icon: const Icon(
+                          Icons.open_in_new,
+                          color: Colors.white,
+                        ),
+                        tooltip: 'Pop out to a new window',
+                        onPressed: _popOut,
+                      ),
                     IconButton(
                       icon: const Icon(Icons.close, color: Colors.white),
                       tooltip: 'Close',
