@@ -431,13 +431,25 @@ class _ConsolePaneState extends ConsumerState<ConsolePane> {
           ),
         ),
         const SizedBox(width: Space.x2),
-        if (st.running)
+        if (st.running) ...[
           const SizedBox(
-            width: 16,
-            height: 16,
+            width: 14,
+            height: 14,
             child: CircularProgressIndicator(strokeWidth: 2),
-          )
-        else
+          ),
+          const SizedBox(width: Space.x2),
+          OutlinedButton(
+            onPressed: () =>
+                ref.read(consoleControllerProvider(_id).notifier).stop(),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: c.error,
+              side: BorderSide(color: c.error.withValues(alpha: 0.5)),
+              visualDensity: VisualDensity.compact,
+              padding: const EdgeInsets.symmetric(horizontal: Space.x3),
+            ),
+            child: const Text('Stop'),
+          ),
+        ] else
           FilledButton(
             onPressed: _submit,
             style: FilledButton.styleFrom(

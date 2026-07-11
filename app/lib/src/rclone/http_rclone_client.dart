@@ -226,6 +226,47 @@ class HttpRcloneClient implements RcloneClient {
     return body;
   }
 
+  /// Runs an arbitrary rclone subcommand via `core/command` with returnType
+  /// STREAM and returns a LIVE stream of output lines (the console's Phase-3
+  /// path). Desktop/HTTP only — librclone can't stream (`core/command` needs the
+  /// live response writer), so this lives on the concrete client, not the seam.
+  ///
+  /// It is a plain synchronous streamed request — NEVER `_async` (that returns a
+  /// jobid but the response writer dies) — and has NO rpc timeout, so a long
+  /// command streams for as long as it runs. Cancelling the returned stream's
+  /// subscription closes the HTTP request, which cancels rclone's command context
+  /// and kills the spawned child — that is the console's Stop.
+  Future<Stream<String>> commandStream(
+    String command,
+    List<String> args,
+  ) async {
+    if (_port == null) {
+      throw RcloneException('core/command', 'engine not started');
+    }
+    final req = http.Request('POST', _uri('core/command'))
+      ..headers['Authorization'] = _authHeader!
+      ..headers['Content-Type'] = 'application/json'
+      ..body = jsonEncode({
+        'command': command,
+        'arg': args,
+        'returnType': 'STREAM',
+      });
+    final resp = await _client.send(req);
+    if (resp.statusCode ~/ 100 != 2) {
+      throw RcloneException(
+        'core/command',
+        'HTTP ${resp.statusCode}',
+        statusCode: resp.statusCode,
+      );
+    }
+    // The body is an unframed byte pipe (chunked, no per-line flush); split it
+    // into lines ourselves. Latin-1-safe UTF-8 decode tolerates a chunk that
+    // splits a multibyte sequence.
+    return resp.stream
+        .transform(const Utf8Decoder(allowMalformed: true))
+        .transform(const LineSplitter());
+  }
+
   @override
   Future<void> quit() async {
     final proc = _process;
