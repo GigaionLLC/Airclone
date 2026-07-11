@@ -10,10 +10,10 @@ void main() {
     test('remote:path / remote: / connection string / refusals', () {
       expect(splitFsRemote('gdrive:Photos'), ('gdrive:', 'Photos'));
       expect(splitFsRemote('gdrive:'), ('gdrive:', ''));
-      expect(
-        splitFsRemote(':s3,env_auth=true:bucket/key'),
-        (':s3,env_auth=true:', 'bucket/key'),
-      );
+      expect(splitFsRemote(':s3,env_auth=true:bucket/key'), (
+        ':s3,env_auth=true:',
+        'bucket/key',
+      ));
       expect(splitFsRemote('C:/Users/x'), isNull, reason: 'windows path');
       expect(splitFsRemote(r'C:\Users\x'), isNull);
       expect(splitFsRemote('noremote'), isNull);
@@ -45,7 +45,10 @@ void main() {
 
     test('mkdir/rmdir/deletefile/touch split the target', () {
       expect(dispatch('mkdir gdrive:New').method, 'operations/mkdir');
-      expect(dispatch('mkdir gdrive:New').params, {'fs': 'gdrive:', 'remote': 'New'});
+      expect(dispatch('mkdir gdrive:New').params, {
+        'fs': 'gdrive:',
+        'remote': 'New',
+      });
       expect(dispatch('rmdir s3:b/old').method, 'operations/rmdir');
       expect(dispatch('deletefile a:f.txt').method, 'operations/deletefile');
     });
@@ -77,7 +80,10 @@ void main() {
     test('delete/purge/cleanup/rmdirs/check', () {
       expect(dispatch('delete s3:b').method, 'operations/delete');
       expect(dispatch('purge s3:b/junk').method, 'operations/purge');
-      expect(dispatch('purge s3:b/junk').params, {'fs': 's3:', 'remote': 'b/junk'});
+      expect(dispatch('purge s3:b/junk').params, {
+        'fs': 's3:',
+        'remote': 'b/junk',
+      });
       expect(dispatch('cleanup s3:b').method, 'operations/cleanup');
       expect((dispatch('rmdirs s3:b').params)['leaveRoot'], false);
       expect(dispatch('check a: b:').method, 'operations/check');
@@ -95,16 +101,21 @@ void main() {
         (dispatch('sync a: b: --dry-run').params['_config'] as Map)['DryRun'],
         true,
       );
-      expect((dispatch('sync a: b: -n').params['_config'] as Map)['DryRun'], true);
+      expect(
+        (dispatch('sync a: b: -n').params['_config'] as Map)['DryRun'],
+        true,
+      );
     });
 
     test('int flags parse; = and space forms; clusters', () {
       expect(
-        (dispatch('copy a: b: --transfers 8').params['_config'] as Map)['Transfers'],
+        (dispatch('copy a: b: --transfers 8').params['_config']
+            as Map)['Transfers'],
         8,
       );
       expect(
-        (dispatch('copy a: b: --transfers=8').params['_config'] as Map)['Transfers'],
+        (dispatch('copy a: b: --transfers=8').params['_config']
+            as Map)['Transfers'],
         8,
       );
       final cfg = dispatch('copy a: b: -cP').params['_config'] as Map;
@@ -115,7 +126,9 @@ void main() {
 
     test('--include/--exclude accumulate into _filter lists', () {
       final f =
-          dispatch('copy a: b: --include *.jpg --exclude *.tmp').params['_filter']
+          dispatch(
+                'copy a: b: --include *.jpg --exclude *.tmp',
+              ).params['_filter']
               as Map;
       expect(f['IncludeRule'], ['*.jpg']);
       expect(f['ExcludeRule'], ['*.tmp']);
@@ -125,7 +138,10 @@ void main() {
       final r = dispatch('lsjson gdrive: --recursive');
       expect(r.kind, RcKind.asyncJob);
       expect((r.params['opt'] as Map)['recurse'], true);
-      expect((dispatch('ls a: --dirs-only').params['opt'] as Map)['dirsOnly'], true);
+      expect(
+        (dispatch('ls a: --dirs-only').params['opt'] as Map)['dirsOnly'],
+        true,
+      );
     });
 
     test('--progress/--stats are noted, never dropped silently', () {
@@ -179,7 +195,11 @@ void main() {
       // A split verb needs a real remote:path — a Windows drive path can't split.
       expect(tr('mkdir C:/Users/x'), isA<RcRefusal>());
       expect(tr('ls notaremote'), isA<RcRefusal>());
-      expect(tr('copy a:'), isA<RcRefusal>(), reason: 'move/copy need two args');
+      expect(
+        tr('copy a:'),
+        isA<RcRefusal>(),
+        reason: 'move/copy need two args',
+      );
       // NB: `copy C:/local remote:` is intentionally allowed — copy/move/sync take
       // whole fs strings, and a local path is a legitimate rclone source.
       expect(dispatch('copy C:/local b:').method, 'sync/copy');

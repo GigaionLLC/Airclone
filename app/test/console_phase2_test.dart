@@ -58,7 +58,9 @@ void main() {
         // Compound connection-string keys echoed in an error line — parity with
         // the input-side redaction (an FFI fs-create error quotes the fs).
         expect(
-          redactOutputLine('Failed to create fs ":s3,secret_access_key=AKIAxyz:b"'),
+          redactOutputLine(
+            'Failed to create fs ":s3,secret_access_key=AKIAxyz:b"',
+          ),
           isNot(contains('AKIAxyz')),
         );
         expect(
@@ -95,19 +97,22 @@ void main() {
       );
     });
 
-    test('secret keyword ANYWHERE in the flag name is redacted (de-anchored)', () {
-      for (final f in [
-        '--crypt-password2',
-        '--drive-service-account-credentials',
-        '--sftp-key-pem',
-      ]) {
-        expect(
-          redactTokens(['copy', 'a:', 'b:', f, 'SEKRET']).join(' '),
-          isNot(contains('SEKRET')),
-          reason: f,
-        );
-      }
-    });
+    test(
+      'secret keyword ANYWHERE in the flag name is redacted (de-anchored)',
+      () {
+        for (final f in [
+          '--crypt-password2',
+          '--drive-service-account-credentials',
+          '--sftp-key-pem',
+        ]) {
+          expect(
+            redactTokens(['copy', 'a:', 'b:', f, 'SEKRET']).join(' '),
+            isNot(contains('SEKRET')),
+            reason: f,
+          );
+        }
+      },
+    );
 
     test('compound connection-string secret keys are redacted', () {
       expect(

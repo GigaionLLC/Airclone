@@ -134,8 +134,14 @@ void main() {
         ConsoleCommand.parse('ls r: --rc-addr 0.0.0.0:5572').tier,
         CommandTier.blocked,
       );
-      expect(ConsoleCommand.parse('lsjson r: --dump headers').tier, CommandTier.blocked);
-      expect(ConsoleCommand.parse('ls r: --config other.conf').tier, CommandTier.blocked);
+      expect(
+        ConsoleCommand.parse('lsjson r: --dump headers').tier,
+        CommandTier.blocked,
+      );
+      expect(
+        ConsoleCommand.parse('ls r: --config other.conf').tier,
+        CommandTier.blocked,
+      );
     });
 
     test('a destructive FLAG promotes a safe verb to destructive', () {

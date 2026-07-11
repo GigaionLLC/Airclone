@@ -3,22 +3,25 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   group('buildConfigEncryptionCommand (pure argv/env/stdin)', () {
-    test('encrypt: `config encryption set`, new password twice on stdin, no env', () {
-      final cmd = buildConfigEncryptionCommand(
-        op: ConfigEncryptionOp.encrypt,
-        configPath: r'C:\cfg\rclone.conf',
-        newPassword: 'hunter2',
-      );
-      expect(cmd.args, [
-        'config',
-        'encryption',
-        'set',
-        '--config',
-        r'C:\cfg\rclone.conf',
-      ]);
-      expect(cmd.env, isEmpty);
-      expect(cmd.stdin, 'hunter2\nhunter2\n');
-    });
+    test(
+      'encrypt: `config encryption set`, new password twice on stdin, no env',
+      () {
+        final cmd = buildConfigEncryptionCommand(
+          op: ConfigEncryptionOp.encrypt,
+          configPath: r'C:\cfg\rclone.conf',
+          newPassword: 'hunter2',
+        );
+        expect(cmd.args, [
+          'config',
+          'encryption',
+          'set',
+          '--config',
+          r'C:\cfg\rclone.conf',
+        ]);
+        expect(cmd.env, isEmpty);
+        expect(cmd.stdin, 'hunter2\nhunter2\n');
+      },
+    );
 
     test('changePassword: OLD in RCLONE_CONFIG_PASS, NEW twice on stdin', () {
       final cmd = buildConfigEncryptionCommand(
@@ -61,45 +64,54 @@ void main() {
       }
     });
 
-    test('the NEW password never appears in argv (stdin-only, not process list)', () {
-      final cmd = buildConfigEncryptionCommand(
-        op: ConfigEncryptionOp.encrypt,
-        configPath: '/c.conf',
-        newPassword: 's3cr3t-value',
-      );
-      expect(cmd.args.join(' '), isNot(contains('s3cr3t-value')));
-    });
+    test(
+      'the NEW password never appears in argv (stdin-only, not process list)',
+      () {
+        final cmd = buildConfigEncryptionCommand(
+          op: ConfigEncryptionOp.encrypt,
+          configPath: '/c.conf',
+          newPassword: 's3cr3t-value',
+        );
+        expect(cmd.args.join(' '), isNot(contains('s3cr3t-value')));
+      },
+    );
 
-    test('missing/empty new password is refused (never an unprotected encrypt)', () {
-      for (final pw in [null, '']) {
+    test(
+      'missing/empty new password is refused (never an unprotected encrypt)',
+      () {
+        for (final pw in [null, '']) {
+          expect(
+            () => buildConfigEncryptionCommand(
+              op: ConfigEncryptionOp.encrypt,
+              newPassword: pw,
+            ),
+            throwsArgumentError,
+            reason: '"$pw"',
+          );
+        }
+      },
+    );
+
+    test(
+      'missing current password is refused for change + decrypt (no hang)',
+      () {
         expect(
           () => buildConfigEncryptionCommand(
-            op: ConfigEncryptionOp.encrypt,
-            newPassword: pw,
+            op: ConfigEncryptionOp.changePassword,
+            newPassword: 'new',
+            currentPassword: null,
           ),
           throwsArgumentError,
-          reason: '"$pw"',
         );
-      }
-    });
-
-    test('missing current password is refused for change + decrypt (no hang)', () {
-      expect(
-        () => buildConfigEncryptionCommand(
-          op: ConfigEncryptionOp.changePassword,
-          newPassword: 'new',
-          currentPassword: null,
-        ),
-        throwsArgumentError,
-      );
-      expect(
-        () => buildConfigEncryptionCommand(
-          op: ConfigEncryptionOp.decrypt,
-          currentPassword: '',
-        ),
-        throwsArgumentError,
-      );
-    });
+        expect(
+          () => buildConfigEncryptionCommand(
+            op: ConfigEncryptionOp.decrypt,
+            currentPassword: '',
+          ),
+          throwsArgumentError,
+        );
+      },
+    );
 
     test('changePassword still requires the new password too', () {
       expect(

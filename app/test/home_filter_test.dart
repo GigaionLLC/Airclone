@@ -46,7 +46,9 @@ void main() {
     return container;
   }
 
-  testWidgets('Ctrl+F focus node lands on the Home filter field', (tester) async {
+  testWidgets('Ctrl+F focus node lands on the Home filter field', (
+    tester,
+  ) async {
     final container = await pump(tester);
     final node = container.read(paneFilterFocusProvider(0));
 

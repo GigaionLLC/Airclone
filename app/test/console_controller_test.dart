@@ -24,7 +24,10 @@ class _FakeHttp extends HttpRcloneClient {
   List<String>? lastArgs;
 
   @override
-  Future<Stream<String>> commandStream(String command, List<String> args) async {
+  Future<Stream<String>> commandStream(
+    String command,
+    List<String> args,
+  ) async {
     commandCalls++;
     lastArgs = args;
     return Stream.fromIterable(lines);
@@ -38,7 +41,8 @@ class _FakeEngine extends EngineController {
   EngineUi build() => EngineUi(phase: EnginePhase.ready, client: _c);
 }
 
-Future<void> _settle() => Future<void>.delayed(const Duration(milliseconds: 20));
+Future<void> _settle() =>
+    Future<void>.delayed(const Duration(milliseconds: 20));
 
 void main() {
   const id = 'test';
@@ -62,7 +66,11 @@ void main() {
     await _settle();
 
     expect(client.commandCalls, 1);
-    final texts = c.read(consoleControllerProvider(id)).log.map((l) => l.text).toList();
+    final texts = c
+        .read(consoleControllerProvider(id))
+        .log
+        .map((l) => l.text)
+        .toList();
     expect(texts, contains('› rclone lsjson gdrive:'));
     expect(texts, containsAll(['one', 'two']));
     expect(c.read(consoleControllerProvider(id)).running, isFalse);
@@ -72,7 +80,8 @@ void main() {
   });
 
   test('an error-shaped line marks the streamed job failed', () async {
-    final client = _FakeHttp()..lines = ['listing…', 'ERROR : nope: Failed to read'];
+    final client = _FakeHttp()
+      ..lines = ['listing…', 'ERROR : nope: Failed to read'];
     final c = make(client);
     final ctrl = c.read(consoleControllerProvider(id).notifier);
     ctrl.setDraft('lsjson gdrive:missing');
@@ -89,7 +98,10 @@ void main() {
     await ctrl.run();
     await _settle();
     expect(client.commandCalls, 0);
-    expect(c.read(consoleControllerProvider(id)).log.map((l) => l.text).join(), contains('Blocked'));
+    expect(
+      c.read(consoleControllerProvider(id)).log.map((l) => l.text).join(),
+      contains('Blocked'),
+    );
     expect(c.read(jobsControllerProvider), isEmpty);
   });
 
@@ -104,7 +116,11 @@ void main() {
   });
 
   test('credential-dumping verbosity is refused (incl. -vvvv)', () async {
-    for (final draft in ['ls gdrive: -vv', 'ls gdrive: -vvvv', 'ls gdrive: --log-level DEBUG']) {
+    for (final draft in [
+      'ls gdrive: -vv',
+      'ls gdrive: -vvvv',
+      'ls gdrive: --log-level DEBUG',
+    ]) {
       final client = _FakeHttp();
       final c = make(client);
       c.read(consoleControllerProvider(id).notifier).setDraft(draft);
@@ -114,29 +130,39 @@ void main() {
     }
   });
 
-  test('the echoed command redacts a secret (conn-string) and does not leak it', () async {
-    final client = _FakeHttp()..lines = const [];
-    final c = make(client);
-    final ctrl = c.read(consoleControllerProvider(id).notifier);
-    ctrl.setDraft('copy :sftp,pass=hunter2:x local:y');
-    await ctrl.run();
-    await _settle();
-    final joined = c.read(consoleControllerProvider(id)).log.map((l) => l.text).join('\n');
-    expect(joined, isNot(contains('hunter2')));
-    expect(joined, contains('‹redacted›'));
-  });
+  test(
+    'the echoed command redacts a secret (conn-string) and does not leak it',
+    () async {
+      final client = _FakeHttp()..lines = const [];
+      final c = make(client);
+      final ctrl = c.read(consoleControllerProvider(id).notifier);
+      ctrl.setDraft('copy :sftp,pass=hunter2:x local:y');
+      await ctrl.run();
+      await _settle();
+      final joined = c
+          .read(consoleControllerProvider(id))
+          .log
+          .map((l) => l.text)
+          .join('\n');
+      expect(joined, isNot(contains('hunter2')));
+      expect(joined, contains('‹redacted›'));
+    },
+  );
 
-  test('non-HTTP (in-process) engine shows an honest unsupported message', () async {
-    // No engine override -> the default engine has no HttpRcloneClient; but the
-    // engine is not ready either, so we assert the command does not dispatch.
-    final c = ProviderContainer();
-    addTearDown(c.dispose);
-    final ctrl = c.read(consoleControllerProvider(id).notifier);
-    ctrl.setDraft('ls gdrive:');
-    await ctrl.run();
-    await _settle();
-    // No engine -> "Engine not ready" (no crash, no dispatch).
-    expect(c.read(consoleControllerProvider(id)).log, isNotEmpty);
-    expect(c.read(jobsControllerProvider), isEmpty);
-  });
+  test(
+    'non-HTTP (in-process) engine shows an honest unsupported message',
+    () async {
+      // No engine override -> the default engine has no HttpRcloneClient; but the
+      // engine is not ready either, so we assert the command does not dispatch.
+      final c = ProviderContainer();
+      addTearDown(c.dispose);
+      final ctrl = c.read(consoleControllerProvider(id).notifier);
+      ctrl.setDraft('ls gdrive:');
+      await ctrl.run();
+      await _settle();
+      // No engine -> "Engine not ready" (no crash, no dispatch).
+      expect(c.read(consoleControllerProvider(id)).log, isNotEmpty);
+      expect(c.read(jobsControllerProvider), isEmpty);
+    },
+  );
 }
