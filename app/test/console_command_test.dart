@@ -113,6 +113,31 @@ void main() {
       expect(ConsoleCommand.parse('rm -rf /').tier, CommandTier.blocked);
     });
 
+    test('obscure is blocked (its arg is a plaintext password)', () {
+      expect(ConsoleCommand.parse('obscure hunter2').tier, CommandTier.blocked);
+    });
+
+    test('backend is destructive (subcommands can delete)', () {
+      expect(
+        ConsoleCommand.parse('backend cleanup-hidden s3:b').tier,
+        CommandTier.destructive,
+      );
+    });
+
+    test('a server/config/dump global flag blocks ANY verb (critical)', () {
+      // A safe verb + --rc could spin up an unauthenticated rc server.
+      expect(
+        ConsoleCommand.parse('cat r:x --rc --rc-no-auth').tier,
+        CommandTier.blocked,
+      );
+      expect(
+        ConsoleCommand.parse('ls r: --rc-addr 0.0.0.0:5572').tier,
+        CommandTier.blocked,
+      );
+      expect(ConsoleCommand.parse('lsjson r: --dump headers').tier, CommandTier.blocked);
+      expect(ConsoleCommand.parse('ls r: --config other.conf').tier, CommandTier.blocked);
+    });
+
     test('a destructive FLAG promotes a safe verb to destructive', () {
       expect(ConsoleCommand.parse('copy a: b:').tier, CommandTier.safe);
       expect(

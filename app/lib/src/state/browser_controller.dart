@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../rclone/models/rclone_file.dart';
 import '../rclone/models/remote.dart';
 import '../ui/column_header.dart' show SortKey, compareRcloneFiles;
+import 'console/console_controller.dart';
 import 'engine_controller.dart';
 import 'view_memory.dart';
 
@@ -215,6 +216,16 @@ class BrowserController extends Notifier<BrowserState> {
 
   void closeTab(int i) {
     if (_sessions.length <= 1 || i < 0 || i >= _sessions.length) return;
+    // Closing a console tab: cancel any running command and FREE its controller.
+    // consoleControllerProvider is a non-autoDispose family keyed by a monotonic
+    // id, so without this the subscription (and its ~2000-line scrollback) would
+    // leak for the app's lifetime and orphan a running command.
+    final closing = _sessions[i];
+    if (closing.kind == PaneKind.console && closing.consoleId.isNotEmpty) {
+      final p = consoleControllerProvider(closing.consoleId);
+      ref.read(p.notifier).stop();
+      ref.invalidate(p);
+    }
     _sessions.removeAt(i);
     if (_active >= _sessions.length) {
       _active = _sessions.length - 1;

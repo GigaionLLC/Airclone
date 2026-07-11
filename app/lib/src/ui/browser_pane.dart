@@ -86,9 +86,19 @@ class BrowserPane extends ConsumerWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            if (showTabs && state.tabs.length > 1) PaneTabStrip(index: index),
+            // Keep the strip when the SOLE tab is a console — otherwise there's
+            // no on-screen affordance to switch back to (or add) a browser tab.
+            if (showTabs && (state.tabs.length > 1 || isConsole))
+              PaneTabStrip(index: index),
             if (isConsole)
-              Expanded(child: ConsolePane(consoleId: activeTab.consoleId))
+              Expanded(
+                // Key by console id so switching console tabs gets a fresh state
+                // (draft input) instead of reusing the previous tab's.
+                child: ConsolePane(
+                  key: ValueKey(activeTab.consoleId),
+                  consoleId: activeTab.consoleId,
+                ),
+              )
             else ...[
               if (showToolbar) ...[
                 _PaneToolbar(index: index, active: active, state: state),
@@ -873,6 +883,15 @@ class PaneToolbar extends ConsumerWidget {
     final c = AircloneTheme.of(context);
     final state = ref.watch(paneProvider(index));
     final active = ref.watch(activePaneProvider) == index;
+    // A console tab has no folder toolbar — the hoisted OS-skin band must hide
+    // too (BrowserPane hides its own inline toolbar for consoles), or a dead
+    // path bar + disabled verbs float above the console.
+    final tabs = state.tabs;
+    final isConsole =
+        state.activeTab >= 0 &&
+        state.activeTab < tabs.length &&
+        tabs[state.activeTab].kind == PaneKind.console;
+    if (isConsole) return const SizedBox.shrink();
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [

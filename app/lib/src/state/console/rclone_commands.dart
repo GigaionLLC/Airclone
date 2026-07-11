@@ -69,8 +69,10 @@ final Map<String, RcloneCommandInfo> kRcloneCommands = {
     _s('link', 'Generate public link to file/folder'),
     _s('settier', 'Change storage class/tier of objects in remote'),
     _s('version', 'Show the version number'),
-    _s('backend', 'Run a backend-specific command'),
-    _s('obscure', 'Obscure password for use in the rclone config file'),
+    // `backend <cmd>` can invoke destructive backend subcommands (cleanup,
+    // cleanup-hidden, drop…) with no way to see the subcommand from the verb —
+    // gate it behind the destructive confirm.
+    _d('backend', 'Run a backend-specific command (some are destructive)'),
     // ── destructive: deletes or overwrites data ──────────────────────────────
     _d('delete', 'Remove the files in path'),
     _d('deletefile', 'Remove a single file from remote'),
@@ -93,6 +95,9 @@ final Map<String, RcloneCommandInfo> kRcloneCommands = {
       'Manage config file (secrets) — use Airclone\'s config screens',
     ),
     _b('reveal', 'Reveal obscured password (secret exfil)'),
+    // Its argument is a PLAINTEXT password (a positional we can't redact by flag
+    // rule); keep it out of the console — use the config screens.
+    _b('obscure', 'Obscure a password — use the config screens instead'),
     _b('authorize', 'Remote authorization (interactive OAuth)'),
     _b('reconnect', 'Re-authenticate a remote (interactive)'),
     _b('mount', 'Mount the remote — use Airclone\'s Mount manager'),
@@ -116,16 +121,37 @@ const Set<String> kDestructiveFlags = {
   '--rmdirs',
 };
 
+/// Global flags that must NEVER run via the console on ANY verb — they turn a
+/// harmless command into a secret-exfil or long-lived-server vector inside the
+/// child process `core/command` spawns:
+///  - `--rc` / `--rc-*` start rclone's remote-control HTTP server (a
+///    `--rc-no-auth --rc-addr :0` exposes config/dump to the LAN),
+///  - `--config` / `--config-*` could point at or mutate another config,
+///  - `--dump` / `--dump-*` echo auth headers/bodies.
+/// (Airclone still passes its OWN `--config` for a config-file override — that is
+/// appended internally, after classification, never typed by the user.)
+bool isBlockedGlobalFlag(String name) =>
+    name == '--rc' ||
+    name.startsWith('--rc-') ||
+    name == '--config' ||
+    name.startsWith('--config-') ||
+    name == '--dump' ||
+    name.startsWith('--dump-');
+
 /// The safety tier of a command, considering both the verb and its flags.
 ///
 /// - Unknown verb → [CommandTier.blocked] (allowlist).
-/// - A blocked verb stays blocked.
+/// - A blocked verb, or ANY verb carrying a blocked global flag (`--rc*`,
+///   `--config*`, `--dump*`) → [CommandTier.blocked].
 /// - A safe verb carrying a destructive flag (e.g. `copy --delete-excluded`)
 ///   is promoted to [CommandTier.destructive].
 CommandTier classifyTier(String verb, List<String> flags) {
   final info = kRcloneCommands[verb];
   if (info == null) return CommandTier.blocked;
   if (info.tier == CommandTier.blocked) return CommandTier.blocked;
+  if (flags.any((f) => isBlockedGlobalFlag(_flagName(f)))) {
+    return CommandTier.blocked;
+  }
   final hasDestructiveFlag = flags.any(
     (f) => kDestructiveFlags.contains(_flagName(f)),
   );

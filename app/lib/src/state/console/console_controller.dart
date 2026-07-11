@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -9,6 +8,7 @@ import '../../rclone/models/job.dart';
 import '../../rclone/rclone_client.dart';
 import '../engine_controller.dart';
 import '../jobs_controller.dart';
+import '../settings_controller.dart';
 import 'console_command.dart';
 import 'console_redaction.dart';
 import 'rclone_commands.dart';
@@ -81,6 +81,10 @@ class ConsoleController extends FamilyNotifier<ConsoleState, String> {
   /// The local id of the job currently running (for Stop → mark canceled).
   int? _jobId;
 
+  /// Set when Stop is pressed during the brief `commandStream` setup window
+  /// (before `_sub` exists) so the stream is cancelled the instant it attaches.
+  bool _stopRequested = false;
+
   @override
   ConsoleState build(String arg) {
     ref.onDispose(() => _sub?.cancel());
@@ -130,6 +134,29 @@ class ConsoleController extends FamilyNotifier<ConsoleState, String> {
       _append('Engine not ready.', ConsoleLineKind.system);
       return;
     }
+    // The console runs core/command, which the in-process (librclone) engine
+    // can't execute — it re-execs the rclone binary, which doesn't exist
+    // in-process. The desktop binary / Android bundled-binary engines are
+    // HttpRcloneClient; anything else gets an honest message until the Phase-4
+    // RC-method console.
+    if (client is! HttpRcloneClient) {
+      _append(
+        "The console needs the binary engine — it isn't available on the "
+        'in-process engine yet.',
+        ConsoleLineKind.error,
+      );
+      return;
+    }
+
+    // The spawned rcd runs with a `--config` override, but core/command re-execs
+    // a FRESH rclone that does NOT inherit that flag — so pass it explicitly, or
+    // console commands would read the DEFAULT config. (`--config` is a blocked
+    // global flag when typed by the user, so this internal append is the only way
+    // it reaches the arg list.) RCLONE_CONFIG_PASS is already inherited via env.
+    final configPath = ref.read(settingsControllerProvider).configPathOverride;
+    final args = (configPath != null && configPath.isNotEmpty)
+        ? [...cmd.args, '--config', configPath]
+        : cmd.args;
 
     // A redacted, display-safe rendering used everywhere the command is shown.
     final safe = redactedPreview(cmd);
@@ -140,95 +167,102 @@ class ConsoleController extends FamilyNotifier<ConsoleState, String> {
       dest: '',
       status: JobStatus.running,
     );
+    // A jobs-panel Stop on this row routes to our stream cancel.
+    jobs.registerCancel(job.id, stop);
     _append('› $safe', ConsoleLineKind.input);
     _jobId = job.id;
+    _stopRequested = false;
     state = state.copyWith(running: true, draft: '');
-
-    // Desktop/HTTP: a LIVE stream via core/command STREAM (no 30s timeout,
-    // Stop-able). The in-process (FFI) engine can't stream core/command, so it
-    // takes the buffered fallback (which surfaces a clear error until the Phase-4
-    // RC-method console).
-    if (client is HttpRcloneClient) {
-      await _runStreaming(client, cmd, job.id, jobs);
-    } else {
-      await _runBuffered(client, cmd, job.id, jobs);
-    }
+    await _runStreaming(client, cmd.verb, args, job.id, jobs);
   }
 
   Future<void> _runStreaming(
     HttpRcloneClient client,
-    ConsoleCommand cmd,
+    String verb,
+    List<String> args,
     int jobId,
     JobsController jobs,
   ) async {
+    final Stream<String> stream;
     try {
-      final stream = await client.commandStream(cmd.verb, cmd.args);
-      _sub = stream.listen(
-        (line) => _append(redactOutputLine(line), ConsoleLineKind.output),
-        onError: (Object e) {
-          _append('$e', ConsoleLineKind.error);
-          jobs.markDone(jobId, JobStatus.failed, error: '$e');
-          _finish();
-        },
-        onDone: () {
-          jobs.markDone(jobId, JobStatus.success);
-          _finish();
-        },
-        cancelOnError: true,
-      );
+      stream = await client.commandStream(verb, args);
     } on RcloneException catch (e) {
       _append(e.message, ConsoleLineKind.error);
       jobs.markDone(jobId, JobStatus.failed, error: e.message);
       _finish();
+      return;
     } catch (e) {
       _append('$e', ConsoleLineKind.error);
       jobs.markDone(jobId, JobStatus.failed, error: '$e');
       _finish();
+      return;
     }
+    // Stop was pressed during the setup window (before _sub existed) — cancel
+    // the stream the instant it attaches.
+    if (_stopRequested) {
+      final s = stream.listen(null);
+      await s.cancel();
+      jobs.markDone(jobId, JobStatus.canceled);
+      _append('■ stopped', ConsoleLineKind.system);
+      _finish();
+      return;
+    }
+    // core/command STREAM carries no exit code — HTTP 200 is already flushed and
+    // rclone writes any error into the body, then ends the stream normally. So we
+    // heuristically flag a failure from error-shaped lines and style them.
+    var sawError = false;
+    _sub = stream.listen(
+      (line) {
+        final isErr = _looksLikeError(line);
+        if (isErr) sawError = true;
+        _append(
+          redactOutputLine(line),
+          isErr ? ConsoleLineKind.error : ConsoleLineKind.output,
+        );
+      },
+      onError: (Object e) {
+        _append('$e', ConsoleLineKind.error);
+        jobs.markDone(jobId, JobStatus.failed, error: '$e');
+        _finish();
+      },
+      onDone: () {
+        jobs.markDone(
+          jobId,
+          sawError ? JobStatus.failed : JobStatus.success,
+          error: sawError ? 'command reported an error' : null,
+        );
+        _finish();
+      },
+      cancelOnError: true,
+    );
   }
 
-  Future<void> _runBuffered(
-    RcloneClient client,
-    ConsoleCommand cmd,
-    int jobId,
-    JobsController jobs,
-  ) async {
-    try {
-      final res = await client.rpc('core/command', cmd.toRcParams());
-      final out = (res['result'] as String?) ?? '';
-      for (final line in const LineSplitter().convert(out)) {
-        _append(redactOutputLine(line), ConsoleLineKind.output);
-      }
-      if (res['error'] == true) {
-        _append('✗ command exited non-zero', ConsoleLineKind.error);
-        jobs.markDone(jobId, JobStatus.failed, error: 'non-zero exit');
-      } else {
-        jobs.markDone(jobId, JobStatus.success);
-      }
-    } on RcloneException catch (e) {
-      _append(e.message, ConsoleLineKind.error);
-      jobs.markDone(jobId, JobStatus.failed, error: e.message);
-    } catch (e) {
-      _append('$e', ConsoleLineKind.error);
-      jobs.markDone(jobId, JobStatus.failed, error: '$e');
-    } finally {
-      _finish();
-    }
+  static bool _looksLikeError(String line) {
+    final l = line.toLowerCase();
+    return line.contains('ERROR') ||
+        l.contains('failed to') ||
+        l.startsWith('error:') ||
+        l.contains('fatal error');
   }
 
   void _finish() {
     _sub = null;
     _jobId = null;
+    _stopRequested = false;
     state = state.copyWith(running: false);
   }
 
-  /// Stop a running (streaming) command: cancelling the subscription closes the
-  /// HTTP request, so rclone cancels the command context and kills the spawned
-  /// child. Marks the job canceled. No-op if nothing is streaming (the buffered
-  /// fallback isn't cancellable).
+  /// Stop a running command: cancelling the subscription closes the HTTP request,
+  /// so rclone cancels the command context and kills the spawned child. Marks the
+  /// job canceled. Also invoked by the jobs panel via the registered cancel hook.
   Future<void> stop() async {
+    if (!state.running) return;
     final sub = _sub;
-    if (sub == null) return;
+    if (sub == null) {
+      // Stop hit during the commandStream setup window — cancel once it attaches.
+      _stopRequested = true;
+      return;
+    }
     _sub = null;
     await sub.cancel(); // silent — does not fire onDone
     final jid = _jobId;

@@ -4,20 +4,22 @@ import 'console_command.dart';
 /// containing this sentinel prompts for the secret rather than replaying it.
 const String kRedacted = '‹redacted›';
 
-/// Flag names whose VALUE is a secret (matched case-insensitively on the name,
-/// before any `=value`). Covers backend password/key/token/secret flags plus the
-/// rc auth flags. Deny-list shaped — the output scrubber ([redactOutputLine]) is
-/// the backstop for anything a novel flag name misses.
+/// Flag names whose VALUE is a secret. The secret keyword may appear ANYWHERE in
+/// the flag name (not just at the end), so `--crypt-password2`,
+/// `--drive-service-account-credentials`, and `--sftp-key-pem` are all caught.
+/// Redaction is display-only (the real command runs with the real value), so
+/// over-matching a non-secret flag is a safe default.
 final RegExp _secretFlag = RegExp(
-  r'^--(.*-)?(pass|password|key|secret|token|auth|sas-url|account-key|client-secret|client-id)$'
+  r'^--.*(pass|password|key|secret|token|auth|credential|sas-url|account-key|client-secret|client-id|pem)'
   r'|^--rc-(pass|user)$',
   caseSensitive: false,
 );
 
 /// Secret keys inside an rclone connection string
-/// (`:sftp,host=h,pass=xxx:path`) — redact their `=value`.
+/// (`:sftp,host=h,pass=xxx:path` or `:s3,secret_access_key=…:path`) — redact
+/// their `=value`. Matches compound keys (the secret word anywhere in the key).
 final RegExp _connStringSecret = RegExp(
-  r'(?<=[,:])(pass|password|key|secret|token|client_secret|sas_url)=([^,:]*)',
+  r'(?<=[,:])([^,:=]*(?:pass(?:word)?|secret|token|key|sas[_-]?url|credential)[^,:=]*)=([^,:]*)',
   caseSensitive: false,
 );
 
@@ -53,25 +55,40 @@ List<String> redactTokens(List<String> tokens) {
   return out;
 }
 
-/// True if the command asks for high-verbosity dumps that can echo credentials
-/// (`-vv`, `--verbose 2`+, any `--dump …`). The console refuses these rather than
-/// trying to scrub freeform dump output (block-over-scrub).
+/// True if the command asks for DEBUG-level verbosity or a header/body dump that
+/// can echo credentials — the console REFUSES these (block over scrub). Catches:
+/// any `--dump*`; `--log-level DEBUG`; and an effective `-v` count >= 2 whether
+/// written as `-vv`/`-vvvv`, a combined cluster (`-vvP`), repeated `-v -v`, or
+/// `--verbose 2`.
 bool hasCredentialDump(ConsoleCommand cmd) {
-  for (var i = 0; i < cmd.args.length; i++) {
-    final a = cmd.args[i];
+  final args = cmd.args;
+  var vCount = 0;
+  for (var i = 0; i < args.length; i++) {
+    final a = args[i];
     final name = flagName(a);
     if (name == '--dump' || name.startsWith('--dump-')) return true;
-    if (a == '-vv' || a == '-vvv') return true;
-    if (name == '--verbose' || name == '-v') {
-      // --verbose 2 / -v 2 (a following numeric >= 2), or --verbose=2
+    if (name == '--log-level') {
+      final eq = a.indexOf('=');
+      final val =
+          (eq >= 0
+                  ? a.substring(eq + 1)
+                  : (i + 1 < args.length ? args[i + 1] : ''))
+              .toUpperCase();
+      if (val == 'DEBUG') return true;
+      continue;
+    }
+    if (name == '--verbose') {
       final eq = a.indexOf('=');
       final val = eq >= 0
           ? a.substring(eq + 1)
-          : (i + 1 < cmd.args.length ? cmd.args[i + 1] : '');
-      if ((int.tryParse(val) ?? 0) >= 2) return true;
+          : (i + 1 < args.length ? args[i + 1] : '');
+      vCount += int.tryParse(val) ?? 1; // bare --verbose == 1
+    } else if (RegExp(r'^-[a-zA-Z]*v[a-zA-Z]*$').hasMatch(a)) {
+      // A short-flag cluster containing v(s): -v, -vv, -vvvv, -vvP, -Pv, …
+      vCount += a.substring(1).split('').where((ch) => ch == 'v').length;
     }
   }
-  return false;
+  return vCount >= 2;
 }
 
 /// A redacted, display-safe rendering of a command (the exact-command preview +

@@ -22,6 +22,19 @@ class JobsController extends Notifier<List<Job>> {
   /// transfer slot. Keyed by the local job id so a cancel can drop them.
   final List<({int jobId, Future<void> Function() run})> _pending = [];
 
+  /// Per-job cancel hooks for jobs whose cancellation isn't a plain rclone
+  /// `job/stop` — e.g. a console command whose live stream lives in the
+  /// ConsoleController. [stop] invokes the hook instead of `job/stop`.
+  final Map<int, Future<void> Function()> _cancels = {};
+
+  /// Registers a [cancel] callback owning the teardown of job [jobId] (it should
+  /// itself mark the job terminal). Cleared when the job is removed.
+  void registerCancel(int jobId, Future<void> Function() cancel) =>
+      _cancels[jobId] = cancel;
+
+  /// Drops a job's cancel hook (its owner has finished/cancelled it).
+  void unregisterCancel(int jobId) => _cancels.remove(jobId);
+
   @override
   List<Job> build() {
     _timer = Timer.periodic(const Duration(seconds: 1), (_) => _poll());
@@ -63,9 +76,12 @@ class JobsController extends Notifier<List<Job>> {
     _pump();
   }
 
-  /// Number of jobs currently dispatched (occupying a transfer slot).
-  int get _runningCount =>
-      state.where((j) => j.status == JobStatus.running).length;
+  /// Number of TRANSFER jobs currently dispatched (occupying a transfer slot).
+  /// Console commands run as [JobType.command] jobs but must NOT consume a
+  /// transfer-concurrency slot (a read-only `ls` shouldn't stall queued copies).
+  int get _runningCount => state
+      .where((j) => j.status == JobStatus.running && j.type != JobType.command)
+      .length;
 
   /// Public hook to re-evaluate the queue (e.g. after the limit is raised).
   void pumpQueue() => _pump();
@@ -120,7 +136,13 @@ class JobsController extends Notifier<List<Job>> {
   /// Moves the job with [id] into a terminal [status]. For a successful job we
   /// snap the progress bar to 100% by pinning bytes to total. Freeing a slot
   /// pumps the queue so the next pending transfer can start.
+  ///
+  /// No-op if the job is ALREADY terminal — so a stream that finishes right
+  /// after the user hit Stop can't flip a Canceled job back to Done.
   void markDone(int id, JobStatus status, {String? error}) {
+    final existing = _byId(id);
+    if (existing != null && existing.isFinished) return;
+    _cancels.remove(id);
     state = [
       for (final j in state)
         if (j.id == id)
@@ -161,6 +183,13 @@ class JobsController extends Notifier<List<Job>> {
     if (job == null) return;
     // If it never left the queue, just remove the pending dispatch.
     _pending.removeWhere((p) => p.jobId == id);
+    // A registered cancel (e.g. a console command) owns its own teardown +
+    // terminal state — invoke it instead of job/stop.
+    final hook = _cancels.remove(id);
+    if (hook != null) {
+      await hook();
+      return;
+    }
     final client = ref.read(engineControllerProvider).client;
     final jobid = job.jobid;
     if (client != null && jobid != null) {

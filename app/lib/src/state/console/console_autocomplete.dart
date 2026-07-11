@@ -148,5 +148,8 @@ String applySuggestion(String draft, String value) {
   final tokens = parseEngineFlags(draft);
   final atNew = draft.isEmpty || draft.endsWith(' ');
   final kept = atNew ? tokens : tokens.take(cur.index).toList();
-  return '${[...kept, value].join(' ')} ';
+  // Re-quote tokens that contain spaces so a previously-quoted path isn't split
+  // into multiple args when the line is re-tokenized.
+  String q(String t) => (t.contains(' ') || t.isEmpty) ? '"$t"' : t;
+  return '${[...kept, value].map(q).join(' ')} ';
 }

@@ -63,18 +63,49 @@ void main() {
       },
     );
 
-    test('detects credential-dumping verbosity (refused, not scrubbed)', () {
-      expect(hasCredentialDump(ConsoleCommand.parse('copy a: b: -vv')), isTrue);
-      expect(
-        hasCredentialDump(ConsoleCommand.parse('ls a: --dump headers')),
-        isTrue,
-      );
-      expect(
-        hasCredentialDump(ConsoleCommand.parse('ls a: --verbose 2')),
-        isTrue,
-      );
+    test('detects credential-dumping verbosity in all its forms', () {
+      for (final d in [
+        'copy a: b: -vv',
+        'ls a: -vvvv',
+        'ls a: -vvP',
+        'copy a: b: -v -v',
+        'ls a: --dump headers',
+        'ls a: --dump-bodies',
+        'ls a: --verbose 2',
+        'ls a: --log-level DEBUG',
+        'ls a: --log-level=DEBUG',
+      ]) {
+        expect(hasCredentialDump(ConsoleCommand.parse(d)), isTrue, reason: d);
+      }
       expect(hasCredentialDump(ConsoleCommand.parse('ls a: -v')), isFalse);
       expect(hasCredentialDump(ConsoleCommand.parse('ls a:')), isFalse);
+      expect(
+        hasCredentialDump(ConsoleCommand.parse('ls a: --log-level INFO')),
+        isFalse,
+      );
+    });
+
+    test('secret keyword ANYWHERE in the flag name is redacted (de-anchored)', () {
+      for (final f in [
+        '--crypt-password2',
+        '--drive-service-account-credentials',
+        '--sftp-key-pem',
+      ]) {
+        expect(
+          redactTokens(['copy', 'a:', 'b:', f, 'SEKRET']).join(' '),
+          isNot(contains('SEKRET')),
+          reason: f,
+        );
+      }
+    });
+
+    test('compound connection-string secret keys are redacted', () {
+      expect(
+        redactTokens([
+          ':s3,access_key_id=AKIA,secret_access_key=REALSECRET:b',
+        ]).join(),
+        isNot(contains('REALSECRET')),
+      );
     });
 
     test('redactedPreview quotes + redacts', () {
