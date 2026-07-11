@@ -225,12 +225,42 @@ class EngineController extends Notifier<EngineUi> {
   /// Use this ONLY when the config FILE is unchanged — for a config-path/content
   /// change use [switchConfigAndStart], which re-gates on the new config.
   Future<void> restartEngine() async {
-    // Binary mode needs a located binary; the in-process engine does not.
-    if (_resolvedMode != EngineMode.inProcess && _rclonePath == null) return;
+    // Binary mode needs a located binary; the in-process engine does not. A path
+    // override may have been set (Settings) since the last bootstrap without a
+    // restart, leaving `_rclonePath` null — re-resolve it here rather than
+    // silently no-opping, so a post-config-op restart actually comes back up.
+    if (_resolvedMode != EngineMode.inProcess && _rclonePath == null) {
+      _rclonePath = await RcloneEngine.findExisting(
+        overridePath: ref.read(settingsControllerProvider).rclonePathOverride,
+      );
+      if (_rclonePath == null) return;
+    }
     final password = ref.read(cachePassphraseProvider);
     await state.client?.quit();
     await _startWith(password: password);
   }
+
+  /// Stop the running engine WITHOUT tearing down the resolved binary/mode, so a
+  /// config-FILE operation ([ConfigTransferController.applyConfigEncryption]) can
+  /// rewrite the config with NO second writer racing it — rclone's own OAuth
+  /// token auto-save would otherwise write the file concurrently with the
+  /// encryption CLI's atomic rename and lose an update. [reloadWithConfigPassword]
+  /// brings the engine back afterward. Parks the phase in `starting` (client
+  /// cleared) so the UI never shows a "ready" engine wired to a stopped process.
+  Future<void> quiesceForConfigOp() async {
+    _quiescing = true;
+    await state.client?.quit();
+    state = const EngineUi(
+      phase: EnginePhase.starting,
+      message: 'Applying config change…',
+    );
+  }
+
+  /// True while a config-file op holds the engine down between [quiesceForConfigOp]
+  /// and its follow-up restart — lets callers distinguish a deliberate pause from
+  /// a crash.
+  bool _quiescing = false;
+  bool get isQuiescing => _quiescing;
 
   /// Restart the engine for a CONFIG-PATH / CONFIG-CONTENT change (switch config
   /// file, back to default, replace, or restore). Unlike [restartEngine] — which
@@ -317,6 +347,44 @@ class EngineController extends Notifier<EngineUi> {
       await vault.save(password);
     } else {
       await vault.clear();
+    }
+  }
+
+  /// Restart the engine after the config's OWN encryption state was changed
+  /// out-of-band — Airclone ran `rclone config encryption set/remove` on the
+  /// file via [ConfigTransferController.applyConfigEncryption]. Unlike
+  /// [switchConfigAndStart] (which re-runs the encryption GATE because it can't
+  /// know the new state), here we KNOW the resulting state, so we start straight
+  /// with [newPassword] — the password the config now needs, or null after a
+  /// decrypt. Persists/clears the OS vault per the remember opt-in exactly like an
+  /// interactive [unlockAndStart], so a just-encrypted config stays unlocked for
+  /// unattended runs (when opted in) and a just-decrypted one never leaves a stale
+  /// password behind. Throws if the engine fails to come back up.
+  Future<void> reloadWithConfigPassword(String? newPassword) async {
+    // restartEngine reads the held password to respawn with — set it first so the
+    // engine comes up against the NEW encryption state (null ⇒ plaintext spawn).
+    ref.read(cachePassphraseProvider.notifier).state = newPassword;
+    await restartEngine();
+    _quiescing = false;
+    // Reconcile the OS vault to the new ON-DISK state BEFORE surfacing any restart
+    // failure. The encryption CLI already committed the file change atomically, so
+    // the vault must match it whether or not the engine came back up — throwing
+    // first (as this used to) would strand a stale password after a decrypt or the
+    // OLD, now-wrong password after a change if the restart failed.
+    final vault = ref.read(configPasswordVaultProvider);
+    await ref.read(rememberConfigPasswordProvider.notifier).ensureLoaded();
+    if (newPassword != null &&
+        newPassword.isNotEmpty &&
+        ref.read(rememberConfigPasswordProvider)) {
+      await vault.save(newPassword);
+    } else {
+      await vault.clear();
+    }
+    if (!state.isReady) {
+      throw StateError(
+        state.message ??
+            'the engine did not restart after the encryption change',
+      );
     }
   }
 

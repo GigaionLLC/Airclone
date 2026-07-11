@@ -24,6 +24,7 @@ import '../state/remotes_provider.dart';
 import '../state/settings_controller.dart';
 import '../state/skin.dart';
 import '../state/window_backdrop.dart';
+import 'config_encryption_dialog.dart';
 import 'config_export_dialog.dart';
 import 'config_import_dialog.dart';
 import 'send_to_phone_dialog.dart';
@@ -705,6 +706,10 @@ class _ConfigSectionState extends ConsumerState<_ConfigSection> {
                 ),
             ],
           ),
+          // Native rclone config encryption (encrypt / change-password / remove).
+          // Desktop-only: the underlying `rclone config encryption` CLI needs a
+          // binary the in-process engine doesn't have.
+          const ConfigEncryptionControls(),
         ],
         // Seam for the follow-up config tools (import / export / automatic
         // backups — plan §§2-4); a later agent mounts them here.

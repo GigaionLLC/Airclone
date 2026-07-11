@@ -52,6 +52,9 @@ class ConfigBackups {
   Future<String?> backupActiveConfig(File src) async {
     if (!await src.exists()) return null;
     await dir.create(recursive: true);
+    // A backup can be a PLAINTEXT config (import/replace/path-switch snapshots),
+    // so tighten the ring to owner-only on POSIX — mirrors the config temp dir.
+    await _hardenPosix(dir.path, '700');
     final stamp = _stamp(_clock());
     var dest = File('${dir.path}/rclone-$stamp.conf');
     var n = 2;
@@ -59,8 +62,21 @@ class ConfigBackups {
       dest = File('${dir.path}/rclone-$stamp-${_two(n++)}.conf');
     }
     await src.copy(dest.path);
+    await _hardenPosix(dest.path, '600');
     await _prune();
     return dest.path;
+  }
+
+  /// Best-effort owner-only tightening on POSIX (chmod). No-op on Windows — the
+  /// backups live under the per-user app-support dir, which NTFS ACLs already
+  /// scope to the user — and on any chmod failure (the file is still written).
+  static Future<void> _hardenPosix(String path, String mode) async {
+    if (Platform.isWindows) return;
+    try {
+      await Process.run('chmod', [mode, path]);
+    } catch (_) {
+      // best-effort hardening — a failed chmod must not fail the backup
+    }
   }
 
   /// The current backups, newest first. Sorted by a derived key (fixed-width UTC

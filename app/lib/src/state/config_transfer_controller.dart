@@ -11,8 +11,10 @@ import '../rclone/rclone_client.dart';
 import '../rclone/rclone_engine.dart';
 import 'cache_crypto.dart';
 import 'config_backups.dart';
+import 'config_encryption.dart';
 import 'config_io.dart';
 import 'engine_controller.dart';
+import 'jobs_controller.dart';
 import 'remotes_provider.dart';
 import 'settings_controller.dart';
 
@@ -647,6 +649,274 @@ class ConfigTransferController {
     // the one currently running) instead of reusing the stale held password.
     await _ref.read(engineControllerProvider.notifier).switchConfigAndStart();
     _ref.invalidate(remotesProvider);
+  }
+
+  // --- Native config encryption (set / change / remove) ---------------------
+
+  /// Drives rclone's own config-file encryption ([ConfigEncryptionOp]) on the
+  /// ACTIVE config, then restarts the engine against the new state. There is no
+  /// RC method for this and setting `RCLONE_CONFIG_PASS` on a plaintext config
+  /// does NOT encrypt it on save (both verified against rclone v1.74), so it runs
+  /// the `rclone config encryption set/remove` CLI out-of-process — which needs a
+  /// real binary (desktop + Android; refused on a pure-FFI engine that has none).
+  ///
+  /// Safety (each hardened after a 2026-07-11 adversarial review):
+  ///  - Refused unless the engine is READY (a running engine is what we quiesce +
+  ///    restart around the rewrite) — this also structurally blocks the
+  ///    encrypted-but-LOCKED and binary-not-installed states where the cheap state
+  ///    guards below could be defeated.
+  ///  - Refused while transfers are in flight — the op restarts the engine, which
+  ///    would silently abort them; the user is told to finish/pause them first.
+  ///  - Encryption state is read from BOTH the held session password AND the file
+  ///    header, so an "encrypt" can never run on an already-encrypted file.
+  ///  - The running engine is QUIESCED before the CLI touches the file, so rclone's
+  ///    own OAuth token auto-save can't race the encryption CLI's atomic rename.
+  ///  - For encrypt we do NOT snapshot the (plaintext) config — that would scatter
+  ///    a readable copy of the very secrets being encrypted into the backups ring;
+  ///    the atomic-rename CLI leaves nothing torn to protect. change/decrypt DO back
+  ///    up (an already-encrypted file, safe + useful for undo).
+  ///  - A timeout is treated as INDETERMINATE (re-probe the file), not a hard fail.
+  ///  - The new password travels via stdin, the current via the environment — never
+  ///    the argv/a log.
+  Future<void> applyConfigEncryption(
+    ConfigEncryptionOp op, {
+    String? newPassword,
+  }) async {
+    await _ensureSettingsLoaded();
+    final engine = _ref.read(engineControllerProvider.notifier);
+
+    // The whole flow assumes a running engine to quiesce/restart around the
+    // rewrite and to trust the live encryption state. Refuse otherwise.
+    if (!_ref.read(engineControllerProvider).isReady) {
+      throw const ConfigTransferError(
+        'Start the engine before changing config encryption.',
+      );
+    }
+    final rclone = await RcloneEngine.findExisting(
+      overridePath: _ref.read(settingsControllerProvider).rclonePathOverride,
+    );
+    if (rclone == null) {
+      throw const ConfigTransferError(
+        'The rclone engine binary was not found — config encryption needs it '
+        '(it is unavailable on the in-process engine).',
+      );
+    }
+    final active = await _activeConfigFile();
+    if (active == null) {
+      throw const ConfigTransferError(
+        "Couldn't locate the active config file to encrypt.",
+      );
+    }
+
+    // Refuse while transfers are active — the engine restart would kill them.
+    final activeJobs = _ref
+        .read(jobsControllerProvider)
+        .where((j) => j.isActive)
+        .length;
+    if (activeJobs > 0) {
+      throw const ConfigTransferError(
+        'Finish, pause, or cancel active transfers first — changing config '
+        'encryption restarts the engine and would interrupt them.',
+      );
+    }
+
+    // Derive the encryption state from BOTH the held session password AND the file
+    // header — never trust a single signal before rewriting the file.
+    final current = _ref.read(cachePassphraseProvider);
+    final heldEncrypted = current != null && current.isNotEmpty;
+    final fileEncrypted = await _fileIsEncrypted(active);
+    final isEncrypted = heldEncrypted || fileEncrypted;
+
+    if (op == ConfigEncryptionOp.encrypt && isEncrypted) {
+      throw const ConfigTransferError(
+        'This config is already encrypted. Use "Change password" or '
+        '"Remove encryption" instead.',
+      );
+    }
+    if (op != ConfigEncryptionOp.encrypt && !isEncrypted) {
+      throw const ConfigTransferError(
+        'This config is not encrypted, so there is nothing to change or remove.',
+      );
+    }
+    // change/decrypt re-encrypt/decrypt with the CURRENT password — we must hold
+    // it (a ready engine on an encrypted config always does; this guards the
+    // pathological file-encrypted-but-not-unlocked case).
+    if (op != ConfigEncryptionOp.encrypt && !heldEncrypted) {
+      throw const ConfigTransferError(
+        'Unlock the config first — its current password is needed to change or '
+        'remove encryption.',
+      );
+    }
+
+    // Back up before the rewrite — but NOT for encrypt, whose source is plaintext
+    // (a snapshot would leave a readable copy of every secret in the ring). The
+    // encrypt CLI writes atomically, so nothing is torn to protect.
+    if (op != ConfigEncryptionOp.encrypt) {
+      final backups = await _ref.read(configBackupsProvider.future);
+      await backups.backupActiveConfig(active);
+    }
+
+    // The password the config needs AFTER a successful op (null after decrypt),
+    // and the one it needs if the op did NOT change the on-disk state.
+    final newHeld = op == ConfigEncryptionOp.decrypt ? null : newPassword;
+    final priorHeld = heldEncrypted ? current : null;
+
+    // Build the command BEFORE quiescing the engine — a missing-password
+    // ArgumentError here must not leave the engine torn down.
+    final cmd = buildConfigEncryptionCommand(
+      op: op,
+      configPath: active.path,
+      currentPassword: current,
+      newPassword: newPassword,
+    );
+
+    // Quiesce the single writer (rcd) before mutating the file.
+    await engine.quiesceForConfigOp();
+
+    final int code;
+    final String errTail;
+    try {
+      final r = await _runEncryptionCli(rclone, cmd);
+      code = r.$1;
+      errTail = r.$2;
+    } catch (e) {
+      // The CLI couldn't even start — the file is untouched. Restore + report.
+      await _restoreEngine(engine, priorHeld);
+      throw ConfigTransferError(
+        "Couldn't run rclone to change the config encryption: $e",
+      );
+    }
+
+    if (code == -1) {
+      // Timeout — INDETERMINATE: rclone may have committed its atomic rename just
+      // before we killed it. Re-probe whether it actually reached the target
+      // state; proceed if so, else restore the prior state and report honestly.
+      //   - encrypt/decrypt flip the file HEADER (plaintext ⇄ encrypted), so a
+      //     header sniff proves the commit.
+      //   - changePassword leaves the header identical (encrypted either way), so
+      //     the only proof is that the NEW password now loads the config — a
+      //     header sniff would falsely "confirm" an uncommitted change and then
+      //     reload/vault the WRONG password. Test-load with the new password.
+      final bool reachedTarget;
+      switch (op) {
+        case ConfigEncryptionOp.encrypt:
+          reachedTarget = await _fileIsEncrypted(active);
+        case ConfigEncryptionOp.decrypt:
+          reachedTarget = !await _fileIsEncrypted(active);
+        case ConfigEncryptionOp.changePassword:
+          reachedTarget = await _configLoadsWith(
+            rclone,
+            active.path,
+            newPassword,
+          );
+      }
+      if (!reachedTarget) {
+        await _restoreEngine(engine, priorHeld);
+        throw const ConfigTransferError(
+          "Timed out and couldn't confirm the change — the config is unchanged. "
+          'Please try again.',
+        );
+      }
+    } else if (code != 0) {
+      // Real failure — the file is untouched. Bring the engine back as it was.
+      await _restoreEngine(engine, priorHeld);
+      throw ConfigTransferError(
+        "rclone couldn't change the config encryption"
+        '${errTail.isEmpty ? '.' : ': $errTail'}',
+      );
+    }
+
+    // Success (exit 0, or a timeout that reached the target). Restart against the
+    // new state — reloadWithConfigPassword reconciles the vault first, so a failed
+    // restart still leaves a consistent secret store (and surfaces its own error).
+    await engine.reloadWithConfigPassword(newHeld);
+    _ref.invalidate(remotesProvider);
+  }
+
+  /// Best-effort engine restart used on a failed/aborted config-encryption op to
+  /// bring the quiesced engine back in its PRIOR state. Swallows a restart error
+  /// so the caller's real (CLI) failure is the one surfaced.
+  Future<void> _restoreEngine(EngineController engine, String? password) async {
+    try {
+      await engine.reloadWithConfigPassword(password);
+    } catch (_) {
+      // The prior-state restart failed too; the caller reports the primary error.
+    }
+  }
+
+  /// True when the config at [path] loads with [password] — a `rclone config dump`
+  /// that exits 0. Used ONLY to disambiguate a changePassword TIMEOUT, whose file
+  /// header can't reveal whether the new password actually took: the new password
+  /// loads the config iff the atomic re-encrypt committed. The password travels via
+  /// `RCLONE_CONFIG_PASS` (env), never the argv. Null/empty ⇒ test as plaintext.
+  Future<bool> _configLoadsWith(
+    String rclone,
+    String path,
+    String? password,
+  ) async {
+    try {
+      final res = await Process.run(
+        rclone,
+        configDumpArgs(path),
+        runInShell: false,
+        environment: (password != null && password.isNotEmpty)
+            ? {'RCLONE_CONFIG_PASS': password}
+            : null,
+      ).timeout(const Duration(seconds: 15));
+      return res.exitCode == 0;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Spawns the rclone binary for a config-encryption op: writes the new password
+  /// to stdin (rclone reads it from a pipe rather than a TTY), then closes stdin
+  /// so a `set` doesn't hang on its second prompt. Captures stderr for a failure
+  /// message (rclone never echoes the typed password, so the tail is safe to
+  /// surface). A run that exceeds the timeout is killed and reaped. Returns the
+  /// exit code and the last stderr line.
+  Future<(int, String)> _runEncryptionCli(
+    String rclone,
+    ConfigEncryptionCommand cmd,
+  ) async {
+    final proc = await Process.start(
+      rclone,
+      cmd.args,
+      runInShell: false,
+      environment: cmd.env.isEmpty ? null : cmd.env,
+    );
+    final err = StringBuffer();
+    final drainErr = proc.stderr.transform(utf8.decoder).forEach(err.write);
+    final stdinText = cmd.stdin;
+    if (stdinText != null) {
+      proc.stdin.write(stdinText);
+      await proc.stdin.flush();
+    }
+    // Always close stdin — `remove` reads none, `set` needs EOF after the two
+    // password lines or it waits forever.
+    try {
+      await proc.stdin.close();
+    } catch (_) {
+      // The child may have already exited (e.g. bad env password) — ignore.
+    }
+    final code = await proc.exitCode.timeout(
+      const Duration(seconds: 20),
+      onTimeout: () {
+        proc.kill();
+        return -1;
+      },
+    );
+    await drainErr.timeout(const Duration(seconds: 2), onTimeout: () {});
+    final lines = err
+        .toString()
+        // rclone writes the interactive "password:"/"Confirm…" prompts to stderr
+        // with no trailing newline; a plain split still yields the real error as
+        // the last non-empty segment.
+        .split(RegExp(r'[\r\n]+'))
+        .map((l) => l.trim())
+        .where((l) => l.isNotEmpty && !l.endsWith('password:'))
+        .toList();
+    return (code, lines.isEmpty ? '' : lines.last);
   }
 
   // --- Active config file resolution ----------------------------------------

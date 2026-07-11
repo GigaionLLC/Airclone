@@ -161,6 +161,7 @@ class BrowserPane extends ConsumerWidget {
       // The pane's Home (Explorer Home / Finder Recents): favorites, recents,
       // drives, and cloud remotes as quick-access tiles.
       return HomeView(
+        index: index,
         onOpen: (remote, path) async {
           final ctrl = ref.read(paneProvider(index).notifier);
           await ctrl.open(remote);
