@@ -123,6 +123,19 @@ final List<(RegExp, String Function(Match))> _outputScrubbers = [
     ),
     (m) => '${m[1]}$kRedacted',
   ),
+  // Connection-string secrets echoed in output (an rclone error line often quotes
+  // the offending fs, e.g. `…for ":s3,secret_access_key=AKIA:bucket"`). Mirrors the
+  // input-side [_connStringSecret] so compound keys the bare-key scrubber above
+  // misses — `secret_access_key=`, `key=` (Azure), `sas_url=`, `account-key=` — are
+  // redacted with parity. The `(?<=[,:])` anchor targets conn-string context, so a
+  // standalone `key=` elsewhere in output is left alone.
+  (
+    RegExp(
+      r'(?<=[,:])([^,:=\s"]*(?:pass(?:word)?|secret|token|key|sas[_-]?url|credential)[^,:=\s"]*)=([^,:\s"]*)',
+      caseSensitive: false,
+    ),
+    (m) => '${m[1]}=$kRedacted',
+  ),
 ];
 
 /// Scrubs known secret shapes from one output line before display/persist.

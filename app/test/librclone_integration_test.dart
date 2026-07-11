@@ -84,6 +84,59 @@ void main() {
       expect(st.state, EngineState.running);
     });
 
+    test(
+      '_async sync/copy round-trips in-process: jobid → job/status → success '
+      '(the Phase-4 RC-method console substrate)',
+      () async {
+        // The load-bearing assumption of the FFI RC-method console: _async + the
+        // process-global jobs map + job/status work in-process via librclone,
+        // exactly as TransferService relies on. Proven here against a real lib
+        // with the local backend (fs = a directory path).
+        final src = await Directory.systemTemp.createTemp('airclone-async-src');
+        final dst = await Directory.systemTemp.createTemp('airclone-async-dst');
+        await File(
+          '${src.path}${Platform.pathSeparator}hello.txt',
+        ).writeAsString('phase-4');
+        try {
+          await client.start();
+          final res = await client.rpc('sync/copy', {
+            'srcFs': src.path,
+            'dstFs': dst.path,
+            '_async': true,
+            '_group': 'airclone/test',
+          });
+          final jobid = res['jobid'];
+          expect(jobid, isA<num>(), reason: 'in-process _async must return a jobid');
+
+          // Poll job/status like JobsController._poll does, until finished.
+          Map<String, dynamic> status = const {};
+          final deadline = DateTime.now().add(const Duration(seconds: 20));
+          while (DateTime.now().isBefore(deadline)) {
+            status = await client.rpc('job/status', {'jobid': jobid});
+            if (status['finished'] == true) break;
+            await Future<void>.delayed(const Duration(milliseconds: 100));
+          }
+          expect(status['finished'], true, reason: 'job never finished');
+          expect(status['success'], true, reason: 'job/status.success');
+
+          // core/stats scoped to the group answers in-process too.
+          final stats = await client.rpc('core/stats', {
+            'group': 'airclone/test',
+          });
+          expect(stats, isA<Map<String, dynamic>>());
+
+          // The file actually copied.
+          expect(
+            File('${dst.path}${Platform.pathSeparator}hello.txt').existsSync(),
+            isTrue,
+          );
+        } finally {
+          await src.delete(recursive: true);
+          await dst.delete(recursive: true);
+        }
+      },
+    );
+
     test('two SEPARATE engines can run back-to-back in one process', () async {
       // Mirrors EngineController's encryption probe: a throwaway FfiRcloneClient
       // (config/paths) is started + quit, THEN the real engine starts. Each is a

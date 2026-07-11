@@ -55,6 +55,16 @@ void main() {
           redactOutputLine('Credential=AKIA/20240101/us'),
           contains(kRedacted),
         );
+        // Compound connection-string keys echoed in an error line — parity with
+        // the input-side redaction (an FFI fs-create error quotes the fs).
+        expect(
+          redactOutputLine('Failed to create fs ":s3,secret_access_key=AKIAxyz:b"'),
+          isNot(contains('AKIAxyz')),
+        );
+        expect(
+          redactOutputLine('…for ":azureblob,account=a,key=SECRETKEY:c"'),
+          isNot(contains('SECRETKEY')),
+        );
         // ordinary output is left alone
         expect(
           redactOutputLine('Copied (new) 3 files'),

@@ -3,11 +3,15 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../rclone/http_rclone_client.dart';
+import '../rclone/models/job.dart';
 import '../state/console/console_autocomplete.dart';
 import '../state/console/console_command.dart';
 import '../state/console/console_controller.dart';
 import '../state/console/console_redaction.dart';
 import '../state/console/rclone_commands.dart';
+import '../state/engine_controller.dart';
+import '../state/jobs_controller.dart';
 import '../state/remotes_provider.dart';
 import 'theme/tokens.dart';
 
@@ -178,10 +182,82 @@ class _ConsolePaneState extends ConsumerState<ConsolePane> {
       child: Column(
         children: [
           _header(c),
+          _engineBanner(c),
           Expanded(child: _output(c, st)),
+          _progressRow(c, st),
           if (suggestions.isNotEmpty) _popover(c, suggestions),
           if (!live.isEmpty) _previewBar(c, live),
           _inputRow(c, st),
+        ],
+      ),
+    );
+  }
+
+  /// Honest degradation strip on the in-process/FFI engine: it runs the curated
+  /// RC-method console, so text-output commands (cat/tree/raw streams) aren't
+  /// available. Absent on the desktop/Android binary engine (full CLI).
+  Widget _engineBanner(AircloneColors c) {
+    final client = ref.watch(engineControllerProvider).client;
+    if (client == null || client is HttpRcloneClient) {
+      return const SizedBox.shrink();
+    }
+    return Container(
+      width: double.infinity,
+      color: c.info.withValues(alpha: 0.10),
+      padding: const EdgeInsets.symmetric(horizontal: Space.x3, vertical: 5),
+      child: Row(
+        children: [
+          Icon(Icons.memory, size: 13, color: c.info),
+          const SizedBox(width: Space.x2),
+          Expanded(
+            child: Text(
+              'In-process engine — structured RC-method console. Text-output '
+              'commands (cat, tree, raw streams) run only on the desktop binary '
+              'engine.',
+              style: TextStyle(color: c.textMuted, fontSize: 11, height: 1.3),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Live progress for a Path-B async command (in-process engine), driven by the
+  /// same job the Jobs panel shows. Absent for streaming / instant / idle.
+  Widget _progressRow(AircloneColors c, ConsoleState st) {
+    final id = st.activeJobId;
+    if (id == null) return const SizedBox.shrink();
+    final jobs = ref.watch(jobsControllerProvider);
+    Job? job;
+    for (final j in jobs) {
+      if (j.id == id) {
+        job = j;
+        break;
+      }
+    }
+    if (job == null || !job.isRunning) return const SizedBox.shrink();
+    final j = job;
+    final pct = j.total > 0 ? j.progress : null;
+    final detail = j.total > 0
+        ? '${(j.progress * 100).toStringAsFixed(0)}%  ·  ETA ${j.etaLabel}'
+        : 'working…';
+    return Container(
+      width: double.infinity,
+      color: c.surface,
+      padding: const EdgeInsets.symmetric(horizontal: Space.x3, vertical: 6),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(detail, style: TextStyle(color: c.textMuted, fontSize: 11)),
+          const SizedBox(height: 4),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(Radii.sm),
+            child: LinearProgressIndicator(
+              value: pct,
+              minHeight: 3,
+              backgroundColor: c.surfaceSunken,
+            ),
+          ),
         ],
       ),
     );
