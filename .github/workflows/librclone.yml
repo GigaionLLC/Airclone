@@ -49,7 +49,10 @@ jobs:
       - uses: subosito/flutter-action@v2
         with: { channel: stable, cache: true }
       - uses: actions/setup-go@v5
-        with: { go-version: 'stable' }
+        # cache:false — there is no committed go.sum (the build script synthesizes
+        # the pinning module in /tmp), so the default cache lookup would warn on
+        # every run and cache nothing.
+        with: { go-version: 'stable', cache: false }
       - name: Set up mingw-w64 (Windows cgo compiler)
         if: runner.os == 'Windows'
         uses: ./.github/actions/ensure-mingw

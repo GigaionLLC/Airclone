@@ -79,7 +79,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
-        with: { go-version: 'stable' }
+        # cache:false — no committed go.sum (the build script synthesizes the
+        # pinning module in /tmp), so the default cache lookup warns + caches nothing.
+        with: { go-version: 'stable', cache: false }
       - name: Set up mingw-w64 (cgo compiler)
         if: runner.os == 'Windows'
         uses: ./.github/actions/ensure-mingw
