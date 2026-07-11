@@ -571,4 +571,15 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/')
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release upload "$GITHUB_REF_NAME" build/app/outputs/flutter-apk/airclone-android-*.apk --clobber --repo "$GITHUB_REPOSITORY"
+        run: |
+          # End users install the per-ABI APKs. The Play App Bundle (.aab) is the
+          # Play CONSOLE upload artifact — attached here (with a clear name) as a
+          # convenience for manual upload. It carries no private signing key (Play
+          # App Signing re-signs server-side), so publishing it is safe; once
+          # PLAY_SERVICE_ACCOUNT_JSON is set the CI auto-submits it and this asset
+          # is just a mirror.
+          cp build/app/outputs/bundle/release/app-release.aab airclone-playstore.aab
+          gh release upload "$GITHUB_REF_NAME" \
+            build/app/outputs/flutter-apk/airclone-android-*.apk \
+            airclone-playstore.aab \
+            --clobber --repo "$GITHUB_REPOSITORY"
