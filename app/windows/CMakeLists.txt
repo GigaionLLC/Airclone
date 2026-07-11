@@ -32,6 +32,13 @@ set(CMAKE_CXX_FLAGS_PROFILE "${CMAKE_CXX_FLAGS_RELEASE}")
 # Use Unicode for all projects.
 add_definitions(-DUNICODE -D_UNICODE)
 
+# local_auth_windows pulls in <experimental/coroutine> (transitively via WIL /
+# CppWinRT). Newer MSVC (VS 18 / MSVC 14.51, now on GitHub's windows-latest)
+# turns that header into a HARD ERROR (STL1011) unless this is defined — it is
+# Microsoft's own documented workaround. Directory-scope + set before the plugin
+# subprojects are added (via generated_plugins.cmake below) so it reaches them.
+add_compile_definitions(_SILENCE_EXPERIMENTAL_COROUTINE_DEPRECATION_WARNINGS)
+
 # Compilation settings that should be applied to most targets.
 #
 # Be cautious about adding new options here, as plugins use this function by
