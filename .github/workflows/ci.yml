@@ -23,7 +23,7 @@ jobs:
   analyze-test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
@@ -51,7 +51,7 @@ jobs:
     # CVEs), so a stale pin should be loud.
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Check rclone pin freshness
         working-directory: .
         run: |

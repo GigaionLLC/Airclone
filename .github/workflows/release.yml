@@ -34,7 +34,7 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Create GitHub Release
         working-directory: .
         env:
@@ -77,7 +77,7 @@ jobs:
           - { os: ubuntu-latest, out: app/linux/librclone/librclone.so, artifact: librclone-linux }
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: actions/setup-go@v5
         # cache:false — no committed go.sum (the build script synthesizes the
         # pinning module in /tmp), so the default cache lookup warns + caches nothing.
@@ -107,7 +107,7 @@ jobs:
     # skipped by design, build artifacts only.
     if: ${{ !cancelled() && (needs.release.result == 'success' || github.event_name == 'workflow_dispatch') }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: subosito/flutter-action@v2
         with: { channel: stable, cache: true }
       # super_native_extensions (drag-out) builds a Rust crate via cargokit.
@@ -169,7 +169,7 @@ jobs:
     needs: [release, librclone]
     if: ${{ !cancelled() && (needs.release.result == 'success' || github.event_name == 'workflow_dispatch') }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Install build deps
         # libmpv-dev + mpv: media_kit (video/audio preview) — without them
         # `flutter build linux` fails to link (regressed in alpha.6).
@@ -224,7 +224,7 @@ jobs:
       HAS_SIGNING_CERT: ${{ secrets.APPLE_DEVELOPER_ID_APPLICATION_P12_BASE64 != '' }}
       HAS_NOTARY_CREDS: ${{ secrets.APPLE_ID != '' && secrets.APPLE_APP_SPECIFIC_PASSWORD != '' && secrets.APPLE_TEAM_ID != '' }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       # Fail fast on a tagged release if the signing cert is missing — mirrors the
       # Android keystore guard: never publish an unsigned "release" build.
       - name: Require Developer ID signing on tagged builds
@@ -438,7 +438,7 @@ jobs:
       # and until the secret is configured — the Play steps then no-op.
       HAS_PLAY_CREDS: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON != '' }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       # Fail fast on a real (tagged) release if the signing secret is missing,
       # rather than debug-signing the APK and publishing it — a debug-signed
       # "release" carries an ephemeral/unknown key and can't update in place over
