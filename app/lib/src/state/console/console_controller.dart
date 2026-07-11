@@ -327,8 +327,8 @@ class ConsoleController extends FamilyNotifier<ConsoleState, String> {
       }
     }
     final jobid = job?.jobid;
-    if (jobid == null)
-      return; // pre-jobid: the dispatcher cancels once it lands
+    // pre-jobid: the dispatcher cancels once it lands
+    if (jobid == null) return;
     final client = ref.read(engineControllerProvider).client;
     try {
       await client?.rpc('job/stop', {'jobid': jobid});
