@@ -1,0 +1,47 @@
+name: Ensure mingw-w64
+description: >
+  Provision a mingw-w64 toolchain (gcc + objdump, for cgo builds of librclone)
+  on a Windows runner and add its bin dir to PATH — without depending on a flaky
+  third-party setup action. Prefers a real mingw already on the image; installs
+  via choco only if none is found.
+
+runs:
+  using: composite
+  steps:
+    - shell: pwsh
+      run: |
+        $ErrorActionPreference = 'Stop'
+        function Find-MingwBin {
+          # A REAL mingw bin dir has gcc AND objdump co-located (a choco *shim*
+          # dir has gcc but not objdump, which the librclone build/verify needs).
+          $cands = @(
+            'C:\mingw64\bin',
+            'C:\ProgramData\mingw64\bin',
+            'C:\ProgramData\chocolatey\lib\mingw\tools\install\mingw64\bin',
+            'C:\msys64\mingw64\bin'
+          )
+          foreach ($p in $cands) {
+            if ((Test-Path (Join-Path $p 'gcc.exe')) -and
+                (Test-Path (Join-Path $p 'objdump.exe'))) { return $p }
+          }
+          $cmd = Get-Command gcc -ErrorAction SilentlyContinue
+          if ($cmd) {
+            $d = Split-Path $cmd.Source
+            if (Test-Path (Join-Path $d 'objdump.exe')) { return $d }
+          }
+          return $null
+        }
+        $bin = Find-MingwBin
+        if (-not $bin) {
+          Write-Host 'mingw-w64 not found on the image - installing via choco'
+          choco install mingw -y --no-progress | Out-Null
+          $bin = Find-MingwBin
+        }
+        if (-not $bin) {
+          throw 'could not provision a mingw-w64 toolchain with gcc + objdump'
+        }
+        Write-Host "mingw bin: $bin"
+        # Put it on PATH for the following steps (the librclone build resolves gcc
+        # from PATH and uses the co-located objdump for its self-contained check).
+        Add-Content -Path $env:GITHUB_PATH -Value $bin
+        & (Join-Path $bin 'gcc.exe') --version | Select-Object -First 1

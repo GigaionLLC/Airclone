@@ -52,7 +52,7 @@ jobs:
         with: { go-version: 'stable' }
       - name: Set up mingw-w64 (Windows cgo compiler)
         if: runner.os == 'Windows'
-        uses: egor-tensin/setup-mingw@v2
+        uses: ./.github/actions/ensure-mingw
 
       - name: Show toolchain
         working-directory: .

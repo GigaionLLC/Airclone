@@ -78,7 +78,8 @@ jobs:
       # + version-stamped; see dev/desktop/build-librclone.ps1.
       - uses: actions/setup-go@v5
         with: { go-version: 'stable' }
-      - uses: egor-tensin/setup-mingw@v2
+      - name: Set up mingw-w64 (cgo compiler)
+        uses: ./.github/actions/ensure-mingw
       - name: Build librclone (in-process engine)
         # Non-blocking: a librclone build hiccup degrades to a binary-engine-only
         # release (CMake bundles the lib only when present) instead of failing the
