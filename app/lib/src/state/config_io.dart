@@ -258,8 +258,14 @@ const Argon2Params _kExportArgon2 = Argon2Params(
 );
 
 /// Upper bounds rejected as [CorruptEnvelope] before a derive, so a corrupt or
-/// hostile header can't drive an OOM/hang (memory capped at 1 GiB).
+/// hostile header can't drive an OOM/hang (memory capped at 1 GiB). Argon2 work
+/// scales as memory×iterations, so bounding memory ALONE is not enough — a hostile
+/// header could set iterations/parallelism (single bytes, up to 255) to inflate
+/// the derive ~170×. Airclone only ever WRITES t=3, p=1, so these tight ceilings
+/// reject any hostile header while accepting every artifact Airclone produced.
 const int _kMaxArgon2MemoryKiB = 1 << 20; // 1 GiB
+const int _kMaxOpenIterations = 10;
+const int _kMaxOpenParallelism = 4;
 
 /// AES-256-GCM needs a 32-byte key.
 const int _kKeyLength = 32;
@@ -331,15 +337,20 @@ Future<Uint8List> sealConfigEnvelope(
   String plaintext,
   String passphrase, {
   Argon2Params kdf = _kExportArgon2,
+}) => sealConfigEnvelopeBytes(utf8.encode(plaintext), passphrase, kdf: kdf);
+
+/// Byte-level seal — identical to [sealConfigEnvelope] but takes raw plaintext
+/// bytes, so a caller that compresses first (the offline QR: gzip-then-seal) can
+/// seal non-UTF-8 content. The String form delegates here.
+Future<Uint8List> sealConfigEnvelopeBytes(
+  List<int> plaintextBytes,
+  String passphrase, {
+  Argon2Params kdf = _kExportArgon2,
 }) async {
   final salt = _randomBytes(_kSaltLength);
   final header = _buildEnvelopeHeader(kdf, salt);
   final key = await _deriveExportKey(passphrase, salt, kdf);
-  final box = await _aes.encrypt(
-    utf8.encode(plaintext),
-    secretKey: key,
-    aad: header,
-  );
+  final box = await _aes.encrypt(plaintextBytes, secretKey: key, aad: header);
   final b = BytesBuilder(copy: false);
   b.add(header);
   b.add(box.concatenation()); // nonce | ciphertext | mac
@@ -353,6 +364,25 @@ Future<Uint8List> sealConfigEnvelope(
 /// Both are typed so the caller can prompt "re-enter password" vs "this isn't an
 /// Airclone export".
 Future<String> openConfigEnvelope(List<int> bytes, String passphrase) async {
+  final clear = await openConfigEnvelopeBytes(bytes, passphrase);
+  try {
+    return utf8.decode(clear);
+  } on FormatException {
+    // Authenticated bytes that somehow aren't UTF-8 — treat as corruption.
+    throw const CorruptEnvelope('decrypted content is not valid UTF-8');
+  }
+}
+
+/// Byte-level open — the inverse of [sealConfigEnvelopeBytes], returning the raw
+/// authenticated plaintext bytes (so the offline-QR caller can gunzip them). The
+/// String [openConfigEnvelope] wraps this and UTF-8-decodes. Same typed errors.
+Future<Uint8List> openConfigEnvelopeBytes(
+  List<int> bytes,
+  String passphrase, {
+  int maxMemoryKiB = _kMaxArgon2MemoryKiB,
+  int maxIterations = _kMaxOpenIterations,
+  int maxParallelism = _kMaxOpenParallelism,
+}) async {
   if (bytes.length < _magicPrefix.length || !_startsWith(bytes, _magicPrefix)) {
     throw const CorruptEnvelope('not an Airclone config envelope');
   }
@@ -376,10 +406,16 @@ Future<String> openConfigEnvelope(List<int> bytes, String passphrase) async {
   final saltLen = bytes[12];
   // Reject params that would OOM/hang or that Argon2id itself would assert on,
   // as corruption rather than letting a hostile file drive resource exhaustion.
+  // [maxMemoryKiB] lets an UNTRUSTED source (a scanned offline QR) pin a tighter
+  // ceiling than the 1 GiB default so a hostile header can't OOM the device with a
+  // giant Argon2id cost before the derive even runs.
   if (memory < 8 ||
       memory > _kMaxArgon2MemoryKiB ||
+      memory > maxMemoryKiB ||
       iterations < 1 ||
+      iterations > maxIterations ||
       parallelism < 1 ||
+      parallelism > maxParallelism ||
       memory < 8 * parallelism) {
     throw const CorruptEnvelope('invalid KDF parameters in envelope header');
   }
@@ -411,13 +447,10 @@ Future<String> openConfigEnvelope(List<int> bytes, String passphrase) async {
   }
   try {
     final clear = await _aes.decrypt(box, secretKey: key, aad: header);
-    return utf8.decode(clear);
+    return Uint8List.fromList(clear);
   } on SecretBoxAuthenticationError {
     // GCM tag mismatch: wrong key (passphrase) or tampered bytes/header.
     throw const WrongPassphrase();
-  } on FormatException {
-    // Authenticated bytes that somehow aren't UTF-8 — treat as corruption.
-    throw const CorruptEnvelope('decrypted content is not valid UTF-8');
   }
 }
 

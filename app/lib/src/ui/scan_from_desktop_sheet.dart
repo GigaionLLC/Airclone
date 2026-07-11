@@ -6,6 +6,7 @@ import 'package:mobile_scanner/mobile_scanner.dart';
 
 import '../state/config_io.dart';
 import '../state/config_transfer_controller.dart';
+import '../state/offline_qr.dart';
 import '../state/pairing_protocol.dart';
 import '../state/pairing_receiver.dart';
 import 'theme/tokens.dart';
@@ -23,10 +24,11 @@ Future<void> showScanFromDesktopSheet(BuildContext context) => Navigator.of(
 ).push<void>(MaterialPageRoute(builder: (_) => const _ScanFromDesktopScreen()));
 
 /// The flow's steps. [scanning] is the live camera; [pairing] shows the code and
-/// polls the desktop; [preview] is the MANDATORY review (type + endpoint per
-/// remote, collision renames); [applying]/[report] run and summarise the merge;
-/// [error] is a terminal dead-end with a retry.
-enum _Step { scanning, pairing, preview, applying, report, error }
+/// polls the desktop (LAN QR); [offlineCode] prompts for the unlock code of a
+/// self-contained OFFLINE QR; [preview] is the MANDATORY review (type + endpoint
+/// per remote, collision renames); [applying]/[report] run and summarise the
+/// merge; [error] is a terminal dead-end with a retry.
+enum _Step { scanning, pairing, offlineCode, preview, applying, report, error }
 
 class _ScanFromDesktopScreen extends ConsumerStatefulWidget {
   const _ScanFromDesktopScreen();
@@ -59,6 +61,13 @@ class _ScanFromDesktopScreenState
   String? _code;
   String _status = '';
 
+  // Offline-QR path: the scanned self-contained payload + the code the user
+  // enters here to decrypt it (lives only in the controller, never logged).
+  String? _offlinePayload;
+  final _offlineCode = TextEditingController();
+  bool _offlineBusy = false;
+  String? _offlineError;
+
   // Import review state (mirrors the file-import wizard's preview).
   ConfigModel? _incoming;
   ConfigModel? _existing;
@@ -78,6 +87,7 @@ class _ScanFromDesktopScreenState
   void dispose() {
     _disposed = true;
     _scanner.dispose();
+    _offlineCode.dispose();
     _disposeRenames();
     super.dispose();
   }
@@ -107,6 +117,16 @@ class _ScanFromDesktopScreenState
     if (raw == null) return;
     _handledScan = true;
     unawaited(_scanner.stop());
+    // A self-contained OFFLINE QR carries the whole encrypted config — no network
+    // handshake. Route to the code prompt instead of the LAN pairing flow.
+    if (isOfflineQrPayload(raw)) {
+      setState(() {
+        _offlinePayload = raw;
+        _offlineError = null;
+        _step = _Step.offlineCode;
+      });
+      return;
+    }
     try {
       final qr = parseQrPayload(raw);
       setState(() {
@@ -123,6 +143,54 @@ class _ScanFromDesktopScreenState
       );
     } catch (_) {
       _toError("That QR code couldn't be read. Try generating a fresh one.");
+    }
+  }
+
+  // --- Offline QR (decrypt-in-place, no network) ----------------------------
+
+  /// Decrypts the scanned offline QR with the entered code, parses the config,
+  /// and lands in the MANDATORY preview — reusing the same merge review as every
+  /// other import. A wrong code stays on this step (recoverable); a malformed or
+  /// foreign QR is a terminal error.
+  Future<void> _openOffline() async {
+    final payload = _offlinePayload;
+    if (payload == null) return;
+    final code = _offlineCode.text;
+    if (code.isEmpty) {
+      setState(() => _offlineError = 'Enter the code from your computer.');
+      return;
+    }
+    setState(() {
+      _offlineBusy = true;
+      _offlineError = null;
+    });
+    try {
+      final text = await openOfflineQrPayload(payload, code);
+      if (_disposed) return;
+      _incoming = parseIni(text);
+      _offlineBusy = false;
+      await _enterPreview();
+    } on WrongPassphrase {
+      if (_disposed) return;
+      setState(() {
+        _offlineBusy = false;
+        _offlineError =
+            "That code didn't work — check your computer and re-enter it.";
+      });
+    } on NotAnOfflineQr {
+      _toError("That QR isn't an Airclone offline transfer.");
+    } on CorruptEnvelope catch (e) {
+      _toError(
+        "That offline QR couldn't be read (${e.message}). Generate a fresh one.",
+      );
+    } on FormatException {
+      _toError('That offline QR is malformed. Generate a fresh one.');
+    } catch (_) {
+      if (_disposed) return;
+      setState(() {
+        _offlineBusy = false;
+        _offlineError = "Couldn't open that QR. Try again.";
+      });
     }
   }
 
@@ -294,10 +362,14 @@ class _ScanFromDesktopScreenState
   /// material). Used by the error step's "Scan again".
   void _restartScan() {
     _disposeRenames();
+    _offlineCode.clear();
     setState(() {
       _handledScan = false;
       _qr = null;
       _code = null;
+      _offlinePayload = null;
+      _offlineError = null;
+      _offlineBusy = false;
       _incoming = null;
       _existing = null;
       _plan = null;
@@ -311,6 +383,71 @@ class _ScanFromDesktopScreenState
   }
 
   // --- Views ----------------------------------------------------------------
+
+  Widget _offlineCodeView(AircloneColors c) => Column(
+    mainAxisSize: MainAxisSize.min,
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      const SizedBox(height: Space.x6),
+      Icon(Icons.lock_outline, size: 40, color: c.primary),
+      const SizedBox(height: Space.x3),
+      Text(
+        'Enter the code',
+        textAlign: TextAlign.center,
+        style: TextStyle(
+          color: c.text,
+          fontSize: 20,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+      const SizedBox(height: Space.x2),
+      Text(
+        'Type the code you set on the computer to unlock this transfer. It is '
+        "not in the QR — that's what keeps it safe.",
+        textAlign: TextAlign.center,
+        style: TextStyle(color: c.textMuted, fontSize: 13),
+      ),
+      const SizedBox(height: Space.x5),
+      TextField(
+        controller: _offlineCode,
+        autofocus: true,
+        obscureText: true,
+        enabled: !_offlineBusy,
+        onSubmitted: (_) => _offlineBusy ? null : _openOffline(),
+        style: TextStyle(color: c.text, fontSize: 16, letterSpacing: 1.5),
+        decoration: InputDecoration(
+          hintText: 'Unlock code',
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(Radii.md),
+          ),
+        ),
+      ),
+      if (_offlineError != null) ...[
+        const SizedBox(height: Space.x2),
+        Text(_offlineError!, style: TextStyle(color: c.error, fontSize: 12)),
+      ],
+      const SizedBox(height: Space.x4),
+      FilledButton.icon(
+        onPressed: _offlineBusy ? null : _openOffline,
+        icon: _offlineBusy
+            ? const SizedBox(
+                height: 16,
+                width: 16,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            : const Icon(Icons.lock_open, size: 18),
+        label: Text(_offlineBusy ? 'Unlocking…' : 'Unlock'),
+      ),
+      const SizedBox(height: Space.x2),
+      TextButton(
+        onPressed: _offlineBusy ? null : _restartScan,
+        child: Text(
+          'Scan a different QR',
+          style: TextStyle(color: c.textMuted),
+        ),
+      ),
+    ],
+  );
 
   @override
   Widget build(BuildContext context) {
@@ -329,6 +466,7 @@ class _ScanFromDesktopScreenState
         child: switch (_step) {
           _Step.scanning => _scanView(c),
           _Step.pairing => _pairingView(c),
+          _Step.offlineCode => _offlineCodeView(c),
           _Step.preview => _previewView(c),
           _Step.applying => _busyView(c, 'Importing…'),
           _Step.report => _reportView(c),

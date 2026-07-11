@@ -27,6 +27,7 @@ import '../state/window_backdrop.dart';
 import 'config_encryption_dialog.dart';
 import 'config_export_dialog.dart';
 import 'config_import_dialog.dart';
+import 'offline_qr_dialog.dart';
 import 'send_to_phone_dialog.dart';
 import 'theme/tokens.dart';
 
@@ -904,6 +905,19 @@ class _ConfigToolsHookState extends ConsumerState<_ConfigToolsHook> {
                 onPressed: () => showSendToPhoneDialog(context),
                 icon: const Icon(Icons.qr_code_2, size: 16),
                 label: const Text('Send to phone…'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: c.text,
+                  side: BorderSide(color: c.borderStrong),
+                  visualDensity: VisualDensity.compact,
+                ),
+              ),
+            // Desktop-only: the self-contained OFFLINE QR (whole encrypted config
+            // in the QR, unlocked by a code) — no Wi-Fi needed.
+            if (desktop)
+              OutlinedButton.icon(
+                onPressed: () => showOfflineQrDialog(context),
+                icon: const Icon(Icons.qr_code_scanner, size: 16),
+                label: const Text('Offline QR…'),
                 style: OutlinedButton.styleFrom(
                   foregroundColor: c.text,
                   side: BorderSide(color: c.borderStrong),
