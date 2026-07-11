@@ -84,4 +84,53 @@ void main() {
       expect(st.state, EngineState.running);
     });
   }, skip: skip);
+
+  group('FfiRcloneClient objectRef bridge (live librclone)', () {
+    test('serves object bytes over loopback — full + Range', () async {
+      final srcDir = await Directory.systemTemp.createTemp('airclone-src');
+      final cacheDir = await Directory.systemTemp.createTemp('airclone-cache');
+      final data = List<int>.generate(5000, (i) => i % 256);
+      await File(
+        '${srcDir.path}${Platform.pathSeparator}blob.bin',
+      ).writeAsBytes(data);
+
+      final client = FfiRcloneClient(
+        libraryPath: libPath!,
+        previewCacheDir: cacheDir.path,
+      );
+      final http = HttpClient();
+      try {
+        await client.start();
+        // The local backend: fs = the source dir, remote = the file within it.
+        final ref = client.objectRef(srcDir.path, 'blob.bin');
+
+        Future<(int, List<int>)> get(String? range) async {
+          final req = await http.getUrl(Uri.parse(ref.url));
+          ref.headers.forEach(req.headers.set);
+          if (range != null) req.headers.set(HttpHeaders.rangeHeader, range);
+          final resp = await req.close();
+          final bytes = await resp.fold<List<int>>([], (a, b) => a..addAll(b));
+          return (resp.statusCode, bytes);
+        }
+
+        final (fullStatus, fullBytes) = await get(null);
+        expect(fullStatus, 200);
+        expect(fullBytes, equals(data));
+
+        final (rangeStatus, rangeBytes) = await get('bytes=100-199');
+        expect(rangeStatus, 206);
+        expect(rangeBytes, equals(data.sublist(100, 200)));
+
+        // Wrong/absent token is rejected.
+        final bad = await http.getUrl(Uri.parse(ref.url));
+        final badResp = await bad.close();
+        expect(badResp.statusCode, HttpStatus.forbidden);
+      } finally {
+        http.close(force: true);
+        await client.quit();
+        await srcDir.delete(recursive: true);
+        await cacheDir.delete(recursive: true);
+      }
+    });
+  }, skip: skip);
 }

@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'librclone_ffi.dart';
+import 'librclone_object_server.dart';
 import 'rclone_client.dart';
 
 /// In-process [RcloneClient]: drives rclone via `librclone` over `dart:ffi`
@@ -14,6 +15,7 @@ class FfiRcloneClient implements RcloneClient {
     required this.libraryPath,
     this.configPath,
     this.configPassword,
+    this.previewCacheDir,
   });
 
   /// Absolute path to the bundled librclone shared library
@@ -28,7 +30,13 @@ class FfiRcloneClient implements RcloneClient {
   /// cleared). Null for unencrypted configs.
   final String? configPassword;
 
+  /// Writable dir for the preview byte bridge ([LibrcloneObjectServer]). When
+  /// null, [objectRef] throws — previews are unavailable but browse/transfer
+  /// still work. The caller resolves it (e.g. path_provider's temp dir).
+  final String? previewCacheDir;
+
   final LibrcloneEngine _engine = LibrcloneEngine();
+  LibrcloneObjectServer? _objectServer;
   String? _version;
   bool _started = false;
 
@@ -50,6 +58,19 @@ class FfiRcloneClient implements RcloneClient {
     // client awaiting core/version), and cache the version for status().
     final res = await rpc('core/version');
     _version = res['version'] as String?;
+    // Bring up the preview byte bridge (the in-process engine has no file
+    // server of its own). Best-effort: a bridge failure must not sink the
+    // engine — browse/transfer keep working, only previews go dark.
+    final cacheDir = previewCacheDir;
+    if (cacheDir != null && cacheDir.isNotEmpty) {
+      try {
+        final server = LibrcloneObjectServer(rpc: rpc, cacheDir: cacheDir);
+        await server.start();
+        _objectServer = server;
+      } catch (_) {
+        _objectServer = null;
+      }
+    }
   }
 
   @override
@@ -73,6 +94,9 @@ class FfiRcloneClient implements RcloneClient {
   Future<void> quit() async {
     _started = false;
     _version = null;
+    final server = _objectServer;
+    _objectServer = null;
+    await server?.stop();
     await _engine.stop();
   }
 
@@ -98,13 +122,16 @@ class FfiRcloneClient implements RcloneClient {
 
   @override
   ObjectRef objectRef(String fs, String remote) {
-    // Phase 2: a Dart-side loopback bridge (HttpServer + copyfile-to-temp) will
-    // serve object bytes so previews keep the Image.network(url, headers) path.
-    // Until then, library mode has no byte endpoint.
-    throw UnsupportedError(
-      'Object bytes (previews/media) are not yet available with the in-process '
-      'engine — use the binary engine, or wait for the preview bridge.',
-    );
+    // The in-process engine has no file server; the loopback bridge serves
+    // object bytes (see LibrcloneObjectServer). It exists only when a preview
+    // cache dir was provided AND start() brought the bridge up.
+    final server = _objectServer;
+    if (server == null || !server.isRunning) {
+      throw UnsupportedError(
+        'Previews are unavailable in library mode (no preview cache configured).',
+      );
+    }
+    return server.objectRef(fs, remote);
   }
 }
 
