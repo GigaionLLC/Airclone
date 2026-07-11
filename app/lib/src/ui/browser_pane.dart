@@ -37,6 +37,7 @@ import 'public_link_dialog.dart';
 import 'quick_look.dart';
 import 'storage_breakdown.dart';
 import 'home_view.dart';
+import 'console_pane.dart';
 import 'tab_strip.dart';
 import 'theme/tokens.dart';
 import 'touch.dart';
@@ -70,6 +71,14 @@ class BrowserPane extends ConsumerWidget {
     final state = ref.watch(paneProvider(index));
     final active = ref.watch(activePaneProvider) == index;
 
+    // A console tab renders the command console instead of the folder view (and
+    // hides the folder toolbar). Guard the index — tabs can be mid-rebuild.
+    final tabs = state.tabs;
+    final activeTab = (state.activeTab >= 0 && state.activeTab < tabs.length)
+        ? tabs[state.activeTab]
+        : null;
+    final isConsole = activeTab != null && activeTab.kind == PaneKind.console;
+
     return GestureDetector(
       onTap: () => ref.read(activePaneProvider.notifier).state = index,
       child: Container(
@@ -78,50 +87,54 @@ class BrowserPane extends ConsumerWidget {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             if (showTabs && state.tabs.length > 1) PaneTabStrip(index: index),
-            if (showToolbar) ...[
-              _PaneToolbar(index: index, active: active, state: state),
-              Divider(height: 1, color: c.border),
+            if (isConsole)
+              Expanded(child: ConsolePane(consoleId: activeTab.consoleId))
+            else ...[
+              if (showToolbar) ...[
+                _PaneToolbar(index: index, active: active, state: state),
+                Divider(height: 1, color: c.border),
+              ],
+              Expanded(
+                child: state.remote == null
+                    ? _empty(context, ref, c)
+                    : NativePaneDropRegion(
+                        // In-app drag → copy into this pane (its listing is
+                        // loaded, so collisions are detected without a re-list).
+                        onDrop: (data) => _dropOnto(
+                          context,
+                          ref,
+                          data,
+                          state.remote!,
+                          state.path,
+                          knownNames: state.entries.map((e) => e.name),
+                        ),
+                        // OS files dragged in from Explorer/Finder → upload.
+                        onOsFiles: (paths) =>
+                            _uploadLocal(ref, paths, state.remote!, state.path),
+                        // Auto-scroll the list while dragging near its edges.
+                        scrollController: ref.watch(paneScrollProvider(index)),
+                        highlightColor: c.primary,
+                        child: GestureDetector(
+                          behavior: HitTestBehavior.translucent,
+                          onSecondaryTapUp: (d) => _showEmptyMenu(
+                            context,
+                            ref,
+                            state,
+                            d.globalPosition,
+                          ),
+                          // Touch: long-press on empty space = the folder menu
+                          // (rows win the gesture arena with their own handler).
+                          onLongPressStart: (d) => _showEmptyMenu(
+                            context,
+                            ref,
+                            state,
+                            d.globalPosition,
+                          ),
+                          child: _body(context, ref, state, highlight: false),
+                        ),
+                      ),
+              ),
             ],
-            Expanded(
-              child: state.remote == null
-                  ? _empty(context, ref, c)
-                  : NativePaneDropRegion(
-                      // In-app drag → copy into this pane (its listing is
-                      // loaded, so collisions are detected without a re-list).
-                      onDrop: (data) => _dropOnto(
-                        context,
-                        ref,
-                        data,
-                        state.remote!,
-                        state.path,
-                        knownNames: state.entries.map((e) => e.name),
-                      ),
-                      // OS files dragged in from Explorer/Finder → upload.
-                      onOsFiles: (paths) =>
-                          _uploadLocal(ref, paths, state.remote!, state.path),
-                      // Auto-scroll the list while dragging near its edges.
-                      scrollController: ref.watch(paneScrollProvider(index)),
-                      highlightColor: c.primary,
-                      child: GestureDetector(
-                        behavior: HitTestBehavior.translucent,
-                        onSecondaryTapUp: (d) => _showEmptyMenu(
-                          context,
-                          ref,
-                          state,
-                          d.globalPosition,
-                        ),
-                        // Touch: long-press on empty space = the folder menu
-                        // (rows win the gesture arena with their own handler).
-                        onLongPressStart: (d) => _showEmptyMenu(
-                          context,
-                          ref,
-                          state,
-                          d.globalPosition,
-                        ),
-                        child: _body(context, ref, state, highlight: false),
-                      ),
-                    ),
-            ),
           ],
         ),
       ),

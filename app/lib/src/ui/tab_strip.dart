@@ -1,6 +1,9 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../state/advanced_mode.dart';
 import '../state/browser_controller.dart';
 import 'theme/tokens.dart';
 
@@ -65,6 +68,14 @@ class PaneTabStrip extends ConsumerWidget {
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
+                          if (tabs[i].kind == PaneKind.console) ...[
+                            Icon(
+                              Icons.terminal,
+                              size: touch ? 14 : 12,
+                              color: on ? c.text : c.textMuted,
+                            ),
+                            const SizedBox(width: 4),
+                          ],
                           Flexible(
                             child: Text(
                               tabs[i].label,
@@ -108,8 +119,20 @@ class PaneTabStrip extends ConsumerWidget {
             tooltip: 'New tab (Ctrl+T)',
             visualDensity: VisualDensity.compact,
           ),
+          // Advanced, desktop-only: open the rclone command console in a new tab.
+          if (_consoleAvailable(ref))
+            IconButton(
+              onPressed: ctrl.newConsoleTab,
+              icon: Icon(Icons.terminal, size: addSize),
+              tooltip: 'New console tab',
+              visualDensity: VisualDensity.compact,
+            ),
         ],
       ),
     );
   }
+
+  static bool _consoleAvailable(WidgetRef ref) =>
+      (Platform.isWindows || Platform.isMacOS || Platform.isLinux) &&
+      ref.watch(advancedModeProvider);
 }

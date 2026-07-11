@@ -3,7 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'transfer_item.dart';
 
 /// What kind of transfer a [Job] represents. Drives the row label in the UI.
-enum JobType { copy, move, sync, delete, upload, download }
+enum JobType { copy, move, sync, delete, upload, download, command }
 
 /// Lifecycle of a [Job]. A job may sit [queued] (waiting for a transfer slot
 /// when a concurrency limit is set), runs as [running] until the underlying

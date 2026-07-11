@@ -14,11 +14,26 @@ enum ViewMode { list, grid, media }
 /// Default grid tile target width (px). Tunable live via the density slider.
 const double kDefaultGridSize = 112;
 
+/// What a pane's tab shows: the file browser, or the rclone command console.
+enum PaneKind { browser, console }
+
 /// Lightweight descriptor of one open tab, for rendering the tab strip.
 @immutable
 class TabInfo {
-  const TabInfo({required this.label});
+  const TabInfo({
+    required this.label,
+    this.kind = PaneKind.browser,
+    this.consoleId = '',
+  });
   final String label;
+
+  /// Whether this tab is a browser or a console. A console tab renders a
+  /// [ConsolePane] instead of the file view (see BrowserPane).
+  final PaneKind kind;
+
+  /// The stable console id (for `consoleControllerProvider`) — empty for browser
+  /// tabs.
+  final String consoleId;
 }
 
 @immutable
@@ -113,12 +128,16 @@ class BrowserState {
   );
 }
 
-/// One tab's full state + its own back/forward history.
+/// One tab's full state + its own back/forward history. A [PaneKind.console]
+/// session carries a stable [consoleId] and an empty browser state (its content
+/// lives in `consoleControllerProvider(consoleId)`, not here).
 class _Session {
   _Session([BrowserState? initial]) : state = initial ?? const BrowserState();
   BrowserState state;
   List<String> history = [''];
   int idx = 0;
+  PaneKind kind = PaneKind.browser;
+  String consoleId = '';
 }
 
 /// Drives ONE browser pane with **tabs**: each tab is an independent session
@@ -139,9 +158,17 @@ class BrowserController extends Notifier<BrowserState> {
 
   /// Public snapshot: the active session's state + the tab metadata.
   BrowserState _emit() => _s.state.copyWith(
-    tabs: [for (final ses in _sessions) TabInfo(label: _labelFor(ses.state))],
+    tabs: [for (final ses in _sessions) _tabInfo(ses)],
     activeTab: _active,
   );
+
+  static TabInfo _tabInfo(_Session ses) => ses.kind == PaneKind.console
+      ? TabInfo(
+          label: 'Console',
+          kind: PaneKind.console,
+          consoleId: ses.consoleId,
+        )
+      : TabInfo(label: _labelFor(ses.state));
 
   static String _labelFor(BrowserState s) {
     final r = s.remote;
@@ -162,6 +189,20 @@ class BrowserController extends Notifier<BrowserState> {
         BrowserState(viewMode: state.viewMode, gridSize: state.gridSize),
       ),
     );
+    _active = _sessions.length - 1;
+    state = _emit();
+  }
+
+  /// Process-wide counter for stable, globally-unique console ids (the console
+  /// controller family is global, so ids must be unique across both panes).
+  static int _consoleSeq = 0;
+
+  /// Open a new console tab (the rclone command console) and make it active.
+  void newConsoleTab() {
+    final ses = _Session()
+      ..kind = PaneKind.console
+      ..consoleId = 'console-${_consoleSeq++}';
+    _sessions.add(ses);
     _active = _sessions.length - 1;
     state = _emit();
   }

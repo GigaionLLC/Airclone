@@ -421,6 +421,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         .take(8);
 
     return [
+      // Advanced: open the rclone command console in a new tab of the active
+      // pane (a text console instead of the folder view).
+      if (advanced)
+        PaletteAction(
+          label: 'New console tab (run rclone commands)',
+          icon: Icons.terminal,
+          keywords: 'terminal command line cli console shell rclone advanced',
+          run: () => pane().newConsoleTab(),
+        ),
       if (activeRemote != null)
         PaletteAction(
           label: 'Search this folder…',

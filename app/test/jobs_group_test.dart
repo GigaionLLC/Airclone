@@ -56,20 +56,26 @@ void main() {
       );
       addTearDown(c.dispose);
 
-      final job = c.read(jobsControllerProvider.notifier).add(
-        type: JobType.copy,
-        source: 'a:f',
-        dest: 'b:f',
-      );
+      final job = c
+          .read(jobsControllerProvider.notifier)
+          .add(type: JobType.copy, source: 'a:f', dest: 'b:f');
       // Simulate a dispatched transfer: rclone jobid 42, group tagged with the
       // LOCAL id (exactly what TransferService does).
       c.read(jobsControllerProvider.notifier).update(job.id, jobid: 42);
-      expect(job.id, isNot(42), reason: 'local id and rclone jobid must differ');
+      expect(
+        job.id,
+        isNot(42),
+        reason: 'local id and rclone jobid must differ',
+      );
 
       // Wait for one 1 s poller tick to fire.
       await Future<void>.delayed(const Duration(milliseconds: 1200));
 
-      expect(client.statsGroups, isNotEmpty, reason: 'poller should have ticked');
+      expect(
+        client.statsGroups,
+        isNotEmpty,
+        reason: 'poller should have ticked',
+      );
       // Every stats query is scoped to airclone/<localId>, NOT airclone/42.
       expect(client.statsGroups, everyElement('airclone/${job.id}'));
       expect(client.statsGroups, isNot(contains('airclone/42')));
