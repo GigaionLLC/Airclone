@@ -58,9 +58,49 @@ jobs:
           fi
           gh release create "$GITHUB_REF_NAME" "${args[@]}"
 
+  # Build the in-process engine (librclone) ONCE per OS, ISOLATED from the app
+  # build, and hand it to the platform jobs as an artifact. Keeping the Go
+  # toolchain + heavy cgo build OUT of the flutter-build environment is
+  # deliberate: a gcc left on PATH would hijack the Windows MSVC/CMake build, and
+  # the rclone build cache is multi-GB. A leg that fails just means that platform
+  # ships binary-engine-only (the download below is non-fatal). librclone.yml is
+  # the standalone hard gate that also FFI-tests each lib.
+  librclone:
+    needs: release
+    if: ${{ !cancelled() && (needs.release.result == 'success' || github.event_name == 'workflow_dispatch') }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: windows-latest, out: app/windows/librclone/librclone.dll, artifact: librclone-windows }
+          - { os: macos-latest, out: app/macos/librclone/librclone.dylib, artifact: librclone-macos }
+          - { os: ubuntu-latest, out: app/linux/librclone/librclone.so, artifact: librclone-linux }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with: { go-version: 'stable' }
+      - name: Set up mingw-w64 (cgo compiler)
+        if: runner.os == 'Windows'
+        uses: ./.github/actions/ensure-mingw
+      - name: Build librclone (Windows)
+        if: runner.os == 'Windows'
+        working-directory: .
+        shell: pwsh
+        run: ./dev/desktop/build-librclone.ps1
+      - name: Build librclone (macOS/Linux)
+        if: runner.os != 'Windows'
+        working-directory: .
+        run: bash dev/desktop/build-librclone.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: ${{ matrix.out }}
+          if-no-files-found: error
+
   windows:
     runs-on: windows-latest
-    needs: release
+    needs: [release, librclone]
     # Tag push: run once the release exists. workflow_dispatch: release job is
     # skipped by design, build artifacts only.
     if: ${{ !cancelled() && (needs.release.result == 'success' || github.event_name == 'workflow_dispatch') }}
@@ -72,22 +112,16 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - run: flutter config --enable-windows-desktop
       - run: flutter pub get
-      # In-process engine: build librclone.dll BEFORE `flutter build` so the
-      # Windows CMake install picks it up (it EXISTS-checks at configure time)
-      # and bundles it next to airclone.exe. Self-contained (static mingw runtime)
-      # + version-stamped; see dev/desktop/build-librclone.ps1.
-      - uses: actions/setup-go@v5
-        with: { go-version: 'stable' }
-      - name: Set up mingw-w64 (cgo compiler)
-        uses: ./.github/actions/ensure-mingw
-      - name: Build librclone (in-process engine)
-        # Non-blocking: a librclone build hiccup degrades to a binary-engine-only
-        # release (CMake bundles the lib only when present) instead of failing the
-        # whole release. librclone.yml is the hard gate for this pipeline.
+      # Pull in the prebuilt in-process engine (from the `librclone` job) so the
+      # Windows CMake install bundles it next to airclone.exe. Non-fatal: a
+      # missing artifact -> binary-engine-only build (CMake EXISTS-guards it). NO
+      # Go/mingw in this job, so nothing pollutes the MSVC build.
+      - name: Download prebuilt librclone
         continue-on-error: true
-        working-directory: .
-        shell: pwsh
-        run: ./dev/desktop/build-librclone.ps1
+        uses: actions/download-artifact@v4
+        with:
+          name: librclone-windows
+          path: app/windows/librclone
       - run: flutter build windows --release
       - name: Note whether librclone bundled
         shell: pwsh
@@ -113,7 +147,7 @@ jobs:
 
   linux:
     runs-on: ubuntu-latest
-    needs: release
+    needs: [release, librclone]
     if: ${{ !cancelled() && (needs.release.result == 'success' || github.event_name == 'workflow_dispatch') }}
     steps:
       - uses: actions/checkout@v4
@@ -127,16 +161,16 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - run: flutter config --enable-linux-desktop
       - run: flutter pub get
-      # In-process engine: build librclone.so BEFORE `flutter build` so the Linux
-      # CMake install bundles it next to the executable. ubuntu-latest ships gcc;
-      # see dev/desktop/build-librclone.sh.
-      - uses: actions/setup-go@v5
-        with: { go-version: 'stable' }
-      - name: Build librclone (in-process engine)
-        # Non-blocking (see the Windows job) — degrades to binary-engine-only.
+      # Pull in the prebuilt in-process engine (from the `librclone` job) so the
+      # Linux CMake install bundles it next to the executable. Non-fatal (see the
+      # Windows job). NO Go build here, so the rclone build cache never competes
+      # with `flutter build` for the runner's disk.
+      - name: Download prebuilt librclone
         continue-on-error: true
-        working-directory: .
-        run: bash dev/desktop/build-librclone.sh
+        uses: actions/download-artifact@v4
+        with:
+          name: librclone-linux
+          path: app/linux/librclone
       - run: flutter build linux --release
       - name: Note whether librclone bundled
         run: |
@@ -159,7 +193,7 @@ jobs:
 
   macos:
     runs-on: macos-latest
-    needs: release
+    needs: [release, librclone]
     if: ${{ !cancelled() && (needs.release.result == 'success' || github.event_name == 'workflow_dispatch') }}
     timeout-minutes: 90
     env:
@@ -182,18 +216,17 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - run: flutter config --enable-macos-desktop
       - run: flutter pub get
-      # In-process engine: build a UNIVERSAL librclone.dylib (arm64 + x86_64).
-      # macOS bundling is a manual copy (Xcode, not CMake): drop it into
-      # Contents/Frameworks AFTER the app build but BEFORE codesign, so the
+      # Pull in the prebuilt UNIVERSAL librclone.dylib (from the `librclone` job).
+      # macOS bundling is a manual copy (Xcode, not CMake): the next step drops it
+      # into Contents/Frameworks AFTER the app build but BEFORE codesign, so the
       # inside-out codesign pass (which walks Frameworks) seals it and it passes
-      # notarization. See dev/desktop/build-librclone.sh.
-      - uses: actions/setup-go@v5
-        with: { go-version: 'stable' }
-      - name: Build librclone (in-process engine, universal)
-        # Non-blocking (see the Windows job) — degrades to binary-engine-only.
+      # notarization. Non-fatal (see the Windows job).
+      - name: Download prebuilt librclone
         continue-on-error: true
-        working-directory: .
-        run: bash dev/desktop/build-librclone.sh
+        uses: actions/download-artifact@v4
+        with:
+          name: librclone-macos
+          path: app/macos/librclone
       - run: flutter build macos --release
       - name: Bundle librclone into the app (Frameworks)
         # Tolerant of a missing dylib (a failed/ skipped librclone build): the app
