@@ -18,19 +18,40 @@ pushes the already-built AAB to the **internal track** on every tagged release, 
 release notes distilled from `dev/releases/<tag>.md` (Play cap: 500 chars/locale). Steps are gated
 on `PLAY_SERVICE_ACCOUNT_JSON` existing, so nothing changes until the secret lands.
 
-**One-time console setup (maintainer, ~15 min + up to 24 h propagation):**
-1. Google Cloud Console → create/select a project → enable **Google Play Android Publisher API**.
-2. IAM → Service Accounts → create one (no GCP roles needed) → Keys → **Add key (JSON)** → download.
-3. Play Console → Setup → **API access** → link the project → **Grant access** to the service
-   account → app permissions: *Release to testing tracks* (+ *Release to production* later) +
-   *View app information*.
-4. GitHub → org/repo secrets → `PLAY_SERVICE_ACCOUNT_JSON` = the raw JSON file contents.
+### One-time console setup — RUNBOOK (maintainer, ~15 min + up to a few h propagation)
+
+The JSON credential is minted in **Google Cloud**, not Play Console; Play Console only *grants
+that service account access*. Three parts:
+
+**A. Create the service account + JSON key — Google Cloud Console (console.cloud.google.com)**
+1. Create or pick a project (a dedicated one like `airclone-play-ci` is fine).
+2. **APIs & Services → Library →** search **"Google Play Android Developer API" → Enable**.
+3. **IAM & Admin → Service Accounts → Create service account** (e.g. `play-ci-publisher`). No GCP
+   project roles are needed — skip that step → **Done**.
+4. Open the SA → **Keys → Add key → Create new key → JSON → Create**. A `.json` downloads — **this
+   is the secret.** Note the SA email: `play-ci-publisher@<project>.iam.gserviceaccount.com`.
+
+**B. Grant it Play access — Play Console (current UI: Users & permissions, NOT the old "API access")**
+5. Play Console → **Users and permissions → Invite new users**.
+6. **Email** = the SA email from step 4 (service accounts don't accept an invite — access is
+   immediate on save).
+7. **App permissions → add Airclone**, grant **"Release to testing tracks and manage testing track
+   configuration"** + **"View app information and download bulk reports"** (or the app's *Admin* set).
+   → **Invite user / Save.**
+   *(Older consoles instead expose Setup → **API access** → link the GCP project → Grant access — same
+   effect if that page is present.)*
+
+**C. GitHub secret**
+8. Repo → **Settings → Secrets and variables → Actions → New repository secret** →
+   `PLAY_SERVICE_ACCOUNT_JSON` = the **entire** contents of the downloaded `.json`.
 
 **Rules that will bite if forgotten:**
-- The very FIRST app AAB had to go through the Play Console UI (done — the beta.1 upload).
-- Every API upload needs a **strictly higher versionCode** than anything uploaded before —
-  the manual upload was `+87`, so the first automated tag must carry `+88` or higher (our
-  per-release build-number bump already guarantees this).
+- The very FIRST app AAB MUST go through the Play Console UI once (the API can't create an app's
+  first track release). Grab the `airclone-playstore-aab` artifact from any release run (or
+  `flutter build appbundle --release`) and upload it to the **internal** track manually, once.
+- Every API upload needs a **strictly higher versionCode** than anything uploaded before. That is
+  the pubspec build number (`+89` as of v0.2.0-beta.2); our per-release bump guarantees monotonicity.
+- New SA access can take minutes–hours to propagate; a first-run **403** usually means "wait + retry".
 - If the first automated run fails with *"changes cannot be sent for review automatically"*:
   set `changesNotSentForReview: true` for one run, then remove it (it errors the opposite way
   once a reviewed release exists).
