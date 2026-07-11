@@ -173,7 +173,13 @@ dummy-module/`go get`/env-snapshot pattern, targeting the librclone package as
   lib-present machine.
 - **Phase 2 — objectRef bridge:** loopback file server + copyfile-to-temp + Range +
   cache. Previews/media work on FFI.
-- **Phase 3 — mode switch + Settings + EngineController wiring;** `onDied` to interface.
+- **Phase 3 — mode switch + wiring ✅ DONE (99ebf2f):** `EngineMode`
+  {auto,binary,inProcess} + pure `resolveEngineMode`; persisted setting; desktop
+  Settings "Engine" segmented control; `EngineController` resolves the mode and
+  builds the right client, with the encryption gate working binary-free (probe the
+  library's `config/paths`). `onDied` kept OFF the interface (set only on
+  HttpRcloneClient) so the 17 test fakes stay valid. Live UI click-through smoke
+  still owed (machine-lock).
 - **Phase 4 — build+bundle ✅ (Windows verified locally; mac/linux CI-only):**
   - `dev/desktop/build-librclone.ps1` (Windows) — self-contained (`-extldflags -static`
     folds the mingw runtime in; verified: only KERNEL32 + UCRT deps) + version-stamped

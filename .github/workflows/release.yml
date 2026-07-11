@@ -80,10 +80,22 @@ jobs:
         with: { go-version: 'stable' }
       - uses: egor-tensin/setup-mingw@v2
       - name: Build librclone (in-process engine)
+        # Non-blocking: a librclone build hiccup degrades to a binary-engine-only
+        # release (CMake bundles the lib only when present) instead of failing the
+        # whole release. librclone.yml is the hard gate for this pipeline.
+        continue-on-error: true
         working-directory: .
         shell: pwsh
         run: ./dev/desktop/build-librclone.ps1
       - run: flutter build windows --release
+      - name: Note whether librclone bundled
+        shell: pwsh
+        run: |
+          if (Test-Path build/windows/x64/runner/Release/librclone.dll) {
+            Write-Output "in-process engine bundled OK"
+          } else {
+            Write-Output "::warning::librclone.dll not bundled - this build ships the binary engine only."
+          }
       - name: Package
         shell: pwsh
         run: Compress-Archive -Path build/windows/x64/runner/Release/* -DestinationPath airclone-windows-x64.zip
@@ -120,9 +132,18 @@ jobs:
       - uses: actions/setup-go@v5
         with: { go-version: 'stable' }
       - name: Build librclone (in-process engine)
+        # Non-blocking (see the Windows job) — degrades to binary-engine-only.
+        continue-on-error: true
         working-directory: .
         run: bash dev/desktop/build-librclone.sh
       - run: flutter build linux --release
+      - name: Note whether librclone bundled
+        run: |
+          if [ -f build/linux/x64/release/bundle/librclone.so ]; then
+            echo "in-process engine bundled OK"
+          else
+            echo "::warning::librclone.so not bundled - this build ships the binary engine only."
+          fi
       - name: Package
         run: tar -czf airclone-linux-x64.tar.gz -C build/linux/x64/release/bundle .
       - uses: actions/upload-artifact@v4
@@ -168,17 +189,26 @@ jobs:
       - uses: actions/setup-go@v5
         with: { go-version: 'stable' }
       - name: Build librclone (in-process engine, universal)
+        # Non-blocking (see the Windows job) — degrades to binary-engine-only.
+        continue-on-error: true
         working-directory: .
         run: bash dev/desktop/build-librclone.sh
       - run: flutter build macos --release
       - name: Bundle librclone into the app (Frameworks)
+        # Tolerant of a missing dylib (a failed/ skipped librclone build): the app
+        # then ships binary-engine-only rather than failing the release. Runs
+        # BEFORE codesign so the inside-out pass seals the dylib (notarization-safe).
         run: |
           set -euo pipefail
           APP="build/macos/Build/Products/Release/Airclone.app"
-          mkdir -p "$APP/Contents/Frameworks"
-          cp macos/librclone/librclone.dylib "$APP/Contents/Frameworks/librclone.dylib"
-          # Sanity: it must be a universal (arm64 + x86_64) Mach-O dylib.
-          lipo -info "$APP/Contents/Frameworks/librclone.dylib"
+          if [ -f macos/librclone/librclone.dylib ]; then
+            mkdir -p "$APP/Contents/Frameworks"
+            cp macos/librclone/librclone.dylib "$APP/Contents/Frameworks/librclone.dylib"
+            lipo -info "$APP/Contents/Frameworks/librclone.dylib"  # must be universal
+            echo "in-process engine bundled OK"
+          else
+            echo "::warning::librclone.dylib not built - this build ships the binary engine only."
+          fi
       - name: Import Developer ID certificate
         if: env.HAS_SIGNING_CERT == 'true'
         env:

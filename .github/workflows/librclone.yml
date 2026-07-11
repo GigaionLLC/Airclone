@@ -1,0 +1,112 @@
+name: librclone (in-process engine)
+
+# Builds AND validates the in-process rclone engine (librclone) on every desktop
+# OS, WITHOUT cutting a release — the safe way to verify the build scripts + the
+# dart:ffi round-trip before a tagged release (which bundles librclone in
+# release.yml) depends on them. Run it manually from the Actions tab
+# (workflow_dispatch); it also runs automatically when the build scripts or the
+# FFI code change.
+#
+# Each matrix leg: build librclone -> confirm the artifact is well-formed ->
+# run the live FFI integration test (test/librclone_integration_test.dart) AGAINST
+# the freshly-built lib -> upload it for inspection. A green run means the whole
+# build+bundle+FFI pipeline works on that OS.
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'dev/desktop/build-librclone.ps1'
+      - 'dev/desktop/build-librclone.sh'
+      - 'app/lib/src/rclone/librclone_ffi.dart'
+      - 'app/lib/src/rclone/ffi_rclone_client.dart'
+      - 'app/lib/src/rclone/librclone_object_server.dart'
+      - 'app/test/librclone_integration_test.dart'
+      - '.github/workflows/librclone.yml'
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    working-directory: app
+
+jobs:
+  build-and-verify:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            lib: windows/librclone/librclone.dll
+          - os: macos-latest
+            lib: macos/librclone/librclone.dylib
+          - os: ubuntu-latest
+            lib: linux/librclone/librclone.so
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with: { channel: stable, cache: true }
+      - uses: actions/setup-go@v5
+        with: { go-version: 'stable' }
+      - name: Set up mingw-w64 (Windows cgo compiler)
+        if: runner.os == 'Windows'
+        uses: egor-tensin/setup-mingw@v2
+
+      - name: Show toolchain
+        working-directory: .
+        shell: bash
+        run: |
+          echo "go: $(go version)"
+          if [ "$RUNNER_OS" = "Windows" ]; then gcc --version | head -1; else
+            (clang --version || gcc --version) | head -1
+          fi
+
+      - name: Build librclone (Windows)
+        if: runner.os == 'Windows'
+        working-directory: .
+        shell: pwsh
+        run: ./dev/desktop/build-librclone.ps1
+      - name: Build librclone (macOS/Linux)
+        if: runner.os != 'Windows'
+        working-directory: .
+        run: bash dev/desktop/build-librclone.sh
+
+      - name: Verify the built library
+        working-directory: .
+        shell: bash
+        run: |
+          set -euo pipefail
+          LIB="app/${{ matrix.lib }}"
+          test -f "$LIB" || { echo "::error::librclone not built at $LIB"; exit 1; }
+          ls -lh "$LIB"
+          case "$RUNNER_OS" in
+            macOS)
+              # Must be a universal (arm64 + x86_64) dylib.
+              lipo -info "$LIB"
+              lipo -info "$LIB" | grep -q arm64
+              lipo -info "$LIB" | grep -q x86_64 ;;
+            Linux)
+              file "$LIB" | grep -qi 'shared object' ;;
+            Windows)
+              # objdump ships with the mingw we set up; confirm no mingw-runtime dep.
+              objdump -p "$LIB" | grep -i 'DLL Name' || true
+              if objdump -p "$LIB" | grep -Eiq 'libwinpthread|libgcc|libstdc'; then
+                echo "::error::librclone.dll is not self-contained (mingw runtime dep)"; exit 1
+              fi ;;
+          esac
+
+      - run: flutter pub get
+
+      - name: FFI round-trip against the freshly-built lib
+        env:
+          # The integration test opts in only when this points at a real lib.
+          AIRCLONE_LIBRCLONE: ${{ github.workspace }}/app/${{ matrix.lib }}
+        run: flutter test test/librclone_integration_test.dart
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: librclone-${{ matrix.os }}
+          path: app/${{ matrix.lib }}
+          if-no-files-found: error
