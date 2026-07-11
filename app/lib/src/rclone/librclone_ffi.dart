@@ -59,13 +59,23 @@ String librcloneFileName(String operatingSystem) {
   }
 }
 
-/// Best-effort absolute path to the bundled librclone next to the running
-/// executable. On Windows a bare name would also resolve (the exe dir is on the
-/// default DLL search path), but macOS/Linux do NOT search the app dir for a
-/// bare name, so we always resolve an absolute path beside the executable.
+/// Best-effort absolute path to the bundled librclone.
+///
+/// - **Windows/Linux:** beside the executable (Windows would also find a bare
+///   name via the default DLL search path, but Linux does NOT search the app dir,
+///   so resolve absolutely for both). CMake installs it into that dir.
+/// - **macOS:** under `Contents/Frameworks/` (sibling of `Contents/MacOS/`, where
+///   the exe lives). That is where signed dylibs belong — the release codesign
+///   pass already walks Frameworks, so the bundled lib is signed with the app and
+///   passes notarization; a loose dylib in `MacOS/` would be unsigned and rejected.
 String defaultLibrclonePath() {
-  final exeDir = File(Platform.resolvedExecutable).parent.path;
-  return '$exeDir${Platform.pathSeparator}${librcloneFileName(Platform.operatingSystem)}';
+  final name = librcloneFileName(Platform.operatingSystem);
+  final exe = File(Platform.resolvedExecutable);
+  if (Platform.isMacOS) {
+    final contents = exe.parent.parent.path; // Airclone.app/Contents
+    return '$contents/Frameworks/$name';
+  }
+  return '${exe.parent.path}${Platform.pathSeparator}$name';
 }
 
 /// Thrown for a catastrophic FFI/worker failure (symbol missing, isolate died) —

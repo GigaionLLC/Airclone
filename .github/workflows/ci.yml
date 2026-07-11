@@ -58,11 +58,17 @@ jobs:
           set -euo pipefail
           yml=$(grep -oP 'RCLONE_VERSION: \Kv[0-9.]+' .github/workflows/release.yml | head -1)
           ps1=$(grep -oP "RcloneVersion = '\Kv[0-9.]+" dev/android/build-rclone.ps1 | head -1)
+          # Desktop in-process engine pins (dual-engine): must match the Android pin.
+          dps=$(grep -oP "RcloneVersion = '\Kv[0-9.]+" dev/desktop/build-librclone.ps1 | head -1)
+          dsh=$(grep -oP 'RCLONE_VERSION="\Kv[0-9.]+' dev/desktop/build-librclone.sh | head -1)
           latest=$(curl -fsS https://downloads.rclone.org/version.txt | grep -oP 'v[0-9.]+' | head -1 || echo unknown)
-          echo "release.yml pin: $yml | build-rclone.ps1 pin: $ps1 | upstream latest: $latest"
-          if [ "$yml" != "$ps1" ]; then
-            echo "::warning::rclone pin drift: release.yml has $yml but dev/android/build-rclone.ps1 has $ps1 — keep them in sync."
-          fi
+          echo "release.yml: $yml | android ps1: $ps1 | desktop ps1: $dps | desktop sh: $dsh | upstream: $latest"
+          for name in "android build-rclone.ps1:$ps1" "desktop build-librclone.ps1:$dps" "desktop build-librclone.sh:$dsh"; do
+            site=${name%%:*}; ver=${name##*:}
+            if [ "$yml" != "$ver" ]; then
+              echo "::warning::rclone pin drift: release.yml has $yml but $site has $ver — keep them in sync."
+            fi
+          done
           if [ "$latest" != "unknown" ] && [ "$yml" != "$latest" ]; then
-            echo "::warning::rclone pin $yml is behind the latest upstream release $latest — check the changelog (security fixes ship in patch releases) and bump both pin sites."
+            echo "::warning::rclone pin $yml is behind the latest upstream release $latest — check the changelog (security fixes ship in patch releases) and bump every pin site."
           fi

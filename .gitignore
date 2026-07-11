@@ -35,6 +35,13 @@ target/
 # into jniLibs as a per-ABI executable named librclone.so.
 app/android/app/src/main/jniLibs/
 
+# ─── Desktop in-process engine (built librclone, never commit) ─────────────
+# dev/desktop/build-librclone.{ps1,sh} (local) / release.yml (CI) build rclone
+# as a c-shared lib; CMake/build bundles it next to the app. ~60MB artifact.
+app/windows/librclone/
+app/macos/librclone/
+app/linux/librclone/
+
 # ─── Android release signing (SECRETS — never commit) ──────────────────────
 # The release keystore lives outside the repo (~/.airclone-signing); these
 # guards make sure a stray copy or the key.properties that points at it can

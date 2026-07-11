@@ -106,6 +106,18 @@ foreach(bundled_library ${PLUGIN_BUNDLED_LIBRARIES})
     COMPONENT Runtime)
 endforeach(bundled_library)
 
+# Bundle the in-process rclone engine (librclone.so) NEXT TO the executable (the
+# bundle root, not lib/) if it has been built (dev/desktop/build-librclone.sh, or
+# the CI librclone step). FfiRcloneClient loads it from <exeDir>/librclone.so
+# (see defaultLibrclonePath). OPTIONAL: a build without it ships the binary engine
+# only, and the app auto-detects the engine at runtime.
+set(LIBRCLONE_SO "${CMAKE_CURRENT_SOURCE_DIR}/librclone/librclone.so")
+if(EXISTS "${LIBRCLONE_SO}")
+  install(FILES "${LIBRCLONE_SO}"
+    DESTINATION "${CMAKE_INSTALL_PREFIX}"
+    COMPONENT Runtime)
+endif()
+
 # Copy the native assets provided by the build.dart from all packages.
 set(NATIVE_ASSETS_DIR "${PROJECT_BUILD_DIR}native_assets/linux/")
 install(DIRECTORY "${NATIVE_ASSETS_DIR}"

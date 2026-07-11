@@ -72,6 +72,17 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - run: flutter config --enable-windows-desktop
       - run: flutter pub get
+      # In-process engine: build librclone.dll BEFORE `flutter build` so the
+      # Windows CMake install picks it up (it EXISTS-checks at configure time)
+      # and bundles it next to airclone.exe. Self-contained (static mingw runtime)
+      # + version-stamped; see dev/desktop/build-librclone.ps1.
+      - uses: actions/setup-go@v5
+        with: { go-version: 'stable' }
+      - uses: egor-tensin/setup-mingw@v2
+      - name: Build librclone (in-process engine)
+        working-directory: .
+        shell: pwsh
+        run: ./dev/desktop/build-librclone.ps1
       - run: flutter build windows --release
       - name: Package
         shell: pwsh
@@ -103,6 +114,14 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - run: flutter config --enable-linux-desktop
       - run: flutter pub get
+      # In-process engine: build librclone.so BEFORE `flutter build` so the Linux
+      # CMake install bundles it next to the executable. ubuntu-latest ships gcc;
+      # see dev/desktop/build-librclone.sh.
+      - uses: actions/setup-go@v5
+        with: { go-version: 'stable' }
+      - name: Build librclone (in-process engine)
+        working-directory: .
+        run: bash dev/desktop/build-librclone.sh
       - run: flutter build linux --release
       - name: Package
         run: tar -czf airclone-linux-x64.tar.gz -C build/linux/x64/release/bundle .
@@ -141,7 +160,25 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - run: flutter config --enable-macos-desktop
       - run: flutter pub get
+      # In-process engine: build a UNIVERSAL librclone.dylib (arm64 + x86_64).
+      # macOS bundling is a manual copy (Xcode, not CMake): drop it into
+      # Contents/Frameworks AFTER the app build but BEFORE codesign, so the
+      # inside-out codesign pass (which walks Frameworks) seals it and it passes
+      # notarization. See dev/desktop/build-librclone.sh.
+      - uses: actions/setup-go@v5
+        with: { go-version: 'stable' }
+      - name: Build librclone (in-process engine, universal)
+        working-directory: .
+        run: bash dev/desktop/build-librclone.sh
       - run: flutter build macos --release
+      - name: Bundle librclone into the app (Frameworks)
+        run: |
+          set -euo pipefail
+          APP="build/macos/Build/Products/Release/Airclone.app"
+          mkdir -p "$APP/Contents/Frameworks"
+          cp macos/librclone/librclone.dylib "$APP/Contents/Frameworks/librclone.dylib"
+          # Sanity: it must be a universal (arm64 + x86_64) Mach-O dylib.
+          lipo -info "$APP/Contents/Frameworks/librclone.dylib"
       - name: Import Developer ID certificate
         if: env.HAS_SIGNING_CERT == 'true'
         env:

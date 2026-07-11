@@ -87,6 +87,19 @@ if(PLUGIN_BUNDLED_LIBRARIES)
     COMPONENT Runtime)
 endif()
 
+# Bundle the in-process rclone engine (librclone.dll) next to the executable, if
+# it has been built (dev/desktop/build-librclone.ps1, or the CI librclone step).
+# It is a self-contained, version-stamped, static-runtime dll — copying the one
+# file is all that is needed; FfiRcloneClient loads it from <exeDir>/librclone.dll
+# (see defaultLibrclonePath). OPTIONAL: a build without it simply ships the
+# binary engine only, and the app auto-detects the engine at runtime.
+set(LIBRCLONE_DLL "${CMAKE_CURRENT_SOURCE_DIR}/librclone/librclone.dll")
+if(EXISTS "${LIBRCLONE_DLL}")
+  install(FILES "${LIBRCLONE_DLL}"
+    DESTINATION "${INSTALL_BUNDLE_LIB_DIR}"
+    COMPONENT Runtime)
+endif()
+
 # Copy the native assets provided by the build.dart from all packages.
 set(NATIVE_ASSETS_DIR "${PROJECT_BUILD_DIR}native_assets/windows/")
 install(DIRECTORY "${NATIVE_ASSETS_DIR}"

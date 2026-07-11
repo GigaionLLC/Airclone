@@ -174,7 +174,22 @@ dummy-module/`go get`/env-snapshot pattern, targeting the librclone package as
 - **Phase 2 — objectRef bridge:** loopback file server + copyfile-to-temp + Range +
   cache. Previews/media work on FFI.
 - **Phase 3 — mode switch + Settings + EngineController wiring;** `onDied` to interface.
-- **Phase 4 — CI:** build+bundle `dll`/`dylib`/`so` per platform; wire into release.yml.
+- **Phase 4 — build+bundle ✅ (Windows verified locally; mac/linux CI-only):**
+  - `dev/desktop/build-librclone.ps1` (Windows) — self-contained (`-extldflags -static`
+    folds the mingw runtime in; verified: only KERNEL32 + UCRT deps) + version-stamped
+    (`-X fs.Version=v1.74.4`; verified reports clean `v1.74.4`). Loads with mingw OFF PATH.
+  - `dev/desktop/build-librclone.sh` (macOS universal dylib via lipo / Linux .so).
+  - Bundling: Windows `windows/CMakeLists.txt` + Linux `linux/CMakeLists.txt` install
+    the lib NEXT TO the exe (verified on Windows: `librclone.dll` sits beside
+    `airclone.exe` after `flutter build windows`). macOS copies the dylib into
+    `Contents/Frameworks/` in CI after the app build, before codesign (so the
+    inside-out codesign pass seals it → notarization-safe); `defaultLibrclonePath`
+    resolves `Contents/Frameworks/librclone.dylib` on macOS, `<exeDir>/lib…` elsewhere.
+  - CI: `release.yml` builds librclone before each `flutter build` (setup-go +
+    egor-tensin/setup-mingw on Windows). `ci.yml` pin-staleness check extended to the
+    new scripts. **NOT yet run in CI** — verify with a `workflow_dispatch` before a
+    tagged release depends on it (mac/linux bundling is unverifiable locally).
+  - Artifacts gitignored (`app/{windows,macos,linux}/librclone/`).
 - **Phase 5 — iOS/MAS:** `gomobile bind` xcframework; MAS entitlements/signing; forced library.
 
 ## Unit-testable vs integration-only
