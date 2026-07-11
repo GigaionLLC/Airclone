@@ -51,6 +51,13 @@ dependencies:
   # unattended: Windows DPAPI / Credential Manager, macOS Keychain, Linux
   # Secret Service. See state/config_password_vault.dart.
   flutter_secure_storage: ^9.2.2
+  # beta: opt-in biometric RELEASE of the vault-stored config password at launch
+  # (plan §6). Adds no crypto — the OS keystore already binds the secret; a
+  # fingerprint/face prompt just gates its release instead of the typing prompt.
+  # Phone-first (Android/iOS); Windows Hello needs local_auth_windows later.
+  # NOTE: Android requires MainActivity to extend FlutterFragmentActivity and iOS
+  # needs NSFaceIDUsageDescription — see state/biometric_unlock.dart.
+  local_auth: ^2.3.0
 
   # alpha.3: app version (update check), open links, settings store.
   # (OS→app file drop moved to super_drag_and_drop's DropRegion in alpha.35.)
@@ -74,6 +81,26 @@ dependencies:
   # side (super_native_extensions) builds a Rust crate via cargokit, so DESKTOP
   # builds need a Rust toolchain on PATH (CI installs it; see release.yml).
   super_drag_and_drop: ^0.9.1
+
+  # beta: scan the desktop's "Send to phone" QR (config-portability plan §5). The
+  # phone-receiver half of the QR/LAN handoff; the camera permission is requested
+  # in-flow the first time the scanner opens, NOT at launch (Android CAMERA is in
+  # the manifest; iOS needs NSCameraUsageDescription in Info.plist). See
+  # state/pairing_receiver.dart + ui/scan_from_desktop_sheet.dart.
+  mobile_scanner: ^7.0.0
+
+  # beta: DESKTOP-sender half of the "Send to phone" QR/LAN handoff (plan §5, v3
+  # QR-pinned TLS).
+  # - qr_flutter renders the pairing QR (URL + salt + cert fingerprint; the QR
+  #   carries NO key and NO payload).
+  # - basic_utils mints the EPHEMERAL, per-session self-signed TLS cert + RSA
+  #   keypair as PEM at RUNTIME (pure Dart; brings pointycastle transitively) so
+  #   Dart's SecurityContext can bindSecure and the phone can pin exactly that
+  #   cert's SHA-256. API used: CryptoUtils.generateRSAKeyPair /
+  #   encodeRSAPrivateKeyToPem + X509Utils.generateRsaCsrPem /
+  #   generateSelfSignedCertificate. See state/pairing_sender.dart.
+  qr_flutter: ^4.1.0
+  basic_utils: ^5.8.2
 
 dev_dependencies:
   flutter_test:

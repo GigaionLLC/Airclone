@@ -9,6 +9,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../rclone/rclone_engine.dart';
 import '../state/advanced_mode.dart';
 import '../state/app_info.dart';
+import '../state/biometric_unlock.dart';
 import '../state/cache_crypto.dart';
 import '../state/config_password_vault.dart';
 import '../state/config_transfer_controller.dart';
@@ -23,6 +24,7 @@ import '../state/skin.dart';
 import '../state/window_backdrop.dart';
 import 'config_export_dialog.dart';
 import 'config_import_dialog.dart';
+import 'send_to_phone_dialog.dart';
 import 'theme/tokens.dart';
 
 /// Opens the app settings dialog (theme, engine path override, update check).
@@ -105,14 +107,22 @@ class SettingsContent extends ConsumerWidget {
             _RclonePathSection(),
             const SizedBox(height: Space.x4),
             _EngineVersionSection(),
-            const SizedBox(height: Space.x4),
-            _RememberPasswordSection(),
           ],
           if (advanced) ...[
             if (desktop) const SizedBox(height: Space.x4),
             _EngineFlagsSection(),
           ],
         ],
+        // Security: OS-vault release of the encrypted-config password. The vault
+        // opt-in ("Remember config password") works on every platform's keystore;
+        // biometric RELEASE is phone-first — its row hides itself where the device
+        // has no enrolled fingerprint/face (desktop today, until local_auth_windows
+        // lands). Shown on all platforms so mobile — the whole point of biometric
+        // unlock — can reach both toggles.
+        const SizedBox(height: Space.x5),
+        const _GroupHeader('Security'),
+        _RememberPasswordSection(),
+        _BiometricUnlockSection(),
         // Config: visible on every platform (mobile is read-only — the path
         // picker/switch is desktop-only, but everyone sees where their remotes
         // live, whether it's encrypted, and how many are configured).
@@ -841,6 +851,7 @@ class _ConfigToolsHookState extends ConsumerState<_ConfigToolsHook> {
   @override
   Widget build(BuildContext context) {
     final c = AircloneTheme.of(context);
+    final desktop = Platform.isWindows || Platform.isMacOS || Platform.isLinux;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -851,7 +862,11 @@ class _ConfigToolsHookState extends ConsumerState<_ConfigToolsHook> {
               'Move your remotes to another device, or roll back to an '
               'automatic backup.',
         ),
-        Row(
+        // A Wrap (not a Row) so the buttons flow to a second line on a narrow
+        // dialog rather than overflowing.
+        Wrap(
+          spacing: Space.x2,
+          runSpacing: Space.x2,
           children: [
             OutlinedButton.icon(
               onPressed: () => showConfigImportDialog(context),
@@ -863,7 +878,6 @@ class _ConfigToolsHookState extends ConsumerState<_ConfigToolsHook> {
                 visualDensity: VisualDensity.compact,
               ),
             ),
-            const SizedBox(width: Space.x2),
             OutlinedButton.icon(
               onPressed: () => showConfigExportDialog(context),
               icon: const Icon(Icons.file_upload_outlined, size: 16),
@@ -874,6 +888,19 @@ class _ConfigToolsHookState extends ConsumerState<_ConfigToolsHook> {
                 visualDensity: VisualDensity.compact,
               ),
             ),
+            // Desktop-only: the "Send to phone" QR/LAN handoff (plan §5). The
+            // desktop is always the SENDER; the phone scans + receives.
+            if (desktop)
+              OutlinedButton.icon(
+                onPressed: () => showSendToPhoneDialog(context),
+                icon: const Icon(Icons.qr_code_2, size: 16),
+                label: const Text('Send to phone…'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: c.text,
+                  side: BorderSide(color: c.borderStrong),
+                  visualDensity: VisualDensity.compact,
+                ),
+              ),
           ],
         ),
         const SizedBox(height: Space.x3),
@@ -1351,12 +1378,13 @@ class _EngineVersionSectionState extends ConsumerState<_EngineVersionSection> {
   }
 }
 
-/// Desktop: opt-in to storing the encrypted-config password in the OS credential
-/// vault so scheduled/background runs can unlock the config unattended. Default
-/// OFF and security-sensitive, so the sub-label is deliberately blunt about the
-/// exposure. Toggling OFF wipes any stored password immediately; toggling ON
-/// captures the currently-unlocked password now (if any) so it takes effect
-/// without waiting for the next unlock.
+/// Opt-in to storing the encrypted-config password in the OS credential vault so
+/// the config can unlock without re-typing — on desktop for scheduled/background
+/// runs, and everywhere as the prerequisite for biometric release (below).
+/// Default OFF and security-sensitive, so the sub-label is deliberately blunt
+/// about the exposure. Toggling OFF wipes any stored password immediately;
+/// toggling ON captures the currently-unlocked password now (if any) so it takes
+/// effect without waiting for the next unlock.
 class _RememberPasswordSection extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -1378,11 +1406,11 @@ class _RememberPasswordSection extends ConsumerWidget {
               ),
               const SizedBox(height: 2),
               Text(
-                "Stored in the operating system's credential vault (Windows "
-                'Credential Manager / macOS Keychain / Linux Secret Service) so '
-                'scheduled and background runs can unlock the config without '
-                'you; anyone with access to your OS user account can recover it. '
-                'Toggling off clears the stored password immediately.',
+                "Stored in your device's secure credential store (Windows "
+                'Credential Manager / macOS Keychain / Linux Secret Service / '
+                'Android Keystore / iOS Keychain) so the config can unlock '
+                'without re-typing; anyone who can unlock your device can '
+                'recover it. Toggling off clears the stored password immediately.',
                 style: TextStyle(color: c.textFaint, fontSize: 11),
               ),
             ],
@@ -1420,6 +1448,100 @@ class _RememberPasswordSection extends ConsumerWidget {
           },
         ),
       ],
+    );
+  }
+}
+
+/// Phone-first: RELEASE the vault-stored config password with a fingerprint/face
+/// prompt at launch instead of the typing gate (plan §6). Rendered ONLY where the
+/// device actually has an enrolled biometric — [BiometricUnlock.available] — so
+/// it hides itself on desktop (until local_auth_windows) and on phones with no
+/// biometric set up. Enabled ONLY once "Remember config password" is on, because
+/// biometric gates the release of a *stored* secret; with nothing stored the
+/// toggle is meaningless, so it disables and explains rather than lying.
+///
+/// The sub-label is deliberately honest about the threat model: this is a
+/// casual-access gate on an already-unlocked device, NOT protection against
+/// someone who knows the device passcode (they can reach the keystore anyway).
+class _BiometricUnlockSection extends ConsumerStatefulWidget {
+  @override
+  ConsumerState<_BiometricUnlockSection> createState() =>
+      _BiometricUnlockSectionState();
+}
+
+class _BiometricUnlockSectionState
+    extends ConsumerState<_BiometricUnlockSection> {
+  // Null while the async capability probe is in flight; the section renders
+  // nothing until it resolves so the switch never flickers in then out. The
+  // probe is guarded in the seam, so a throwing platform simply resolves false.
+  bool? _available;
+
+  @override
+  void initState() {
+    super.initState();
+    _probe();
+  }
+
+  Future<void> _probe() async {
+    final ok = await ref.read(biometricUnlockProvider).available();
+    if (mounted) setState(() => _available = ok);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // Hidden entirely until we know the device has a biometric — and hidden for
+    // good where it doesn't (desktop today, or no enrolled fingerprint/face).
+    // Collapsing to a zero-size box (no leading gap) keeps the Security group
+    // tight where only "Remember config password" applies.
+    if (_available != true) return const SizedBox.shrink();
+    final c = AircloneTheme.of(context);
+    final remember = ref.watch(rememberConfigPasswordProvider);
+    final on = ref.watch(biometricUnlockOptInProvider);
+    return Padding(
+      padding: const EdgeInsets.only(top: Space.x4),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Unlock with fingerprint / face',
+                  style: TextStyle(
+                    // Dimmed while inert (no stored password to release).
+                    color: remember ? c.text : c.textFaint,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  remember
+                      ? 'Adds a fingerprint or face prompt to unlock the config '
+                            'on launch — your config password still works as a '
+                            'fallback. Protects against casual access on an '
+                            'unlocked device — not against someone who knows your '
+                            'device passcode.'
+                      : "Turn on 'Remember config password' first — "
+                            'biometric unlock releases the stored password, so '
+                            'with nothing stored there is nothing to unlock.',
+                  style: TextStyle(color: c.textFaint, fontSize: 11),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: Space.x3),
+          Switch(
+            // Meaningless without a stored password: show off and disable until
+            // "Remember config password" is on (gating a secret that isn't there
+            // would just prompt for a fingerprint that releases nothing).
+            value: on && remember,
+            onChanged: remember
+                ? (v) => ref.read(biometricUnlockOptInProvider.notifier).set(v)
+                : null,
+          ),
+        ],
+      ),
     );
   }
 }

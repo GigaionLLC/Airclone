@@ -7,6 +7,7 @@ import 'package:path_provider/path_provider.dart';
 import '../rclone/http_rclone_client.dart';
 import '../rclone/rclone_client.dart';
 import '../rclone/rclone_engine.dart';
+import 'biometric_unlock.dart';
 import 'cache_crypto.dart';
 import 'config_password_vault.dart';
 import 'engine_flags.dart';
@@ -272,10 +273,43 @@ class EngineController extends Notifier<EngineUi> {
       // absent one falls through to the needsPassword gate exactly as before. We
       // only reach for it on a cold start (no session password held yet).
       if (ref.read(cachePassphraseProvider) == null) {
-        final remembered = await ref.read(configPasswordVaultProvider).read();
-        if (remembered != null && remembered.isNotEmpty) {
-          await _startWith(rclonePath, password: remembered);
-          if (state.isReady) return;
+        // Biometric release gate (plan §6). Biometric adds NO crypto — the OS
+        // keystore already holds the password; a successful fingerprint/face
+        // prompt merely *releases* it here instead of showing the typing gate.
+        // Hydrate both opt-ins first (their build() default is a synchronous
+        // `false` that fills from disk on a later microtask), then gate: only
+        // when the user opted into biometric unlock AND into remembering the
+        // password AND the device actually has a biometric do we prompt — and
+        // we require it BEFORE reading the stored secret, so the plaintext is
+        // never pulled into memory unless the prompt passes. A failed/cancelled/
+        // locked-out prompt (or no biometrics / opt-in off) leaves the release
+        // exactly as today: silent when un-gated, manual gate when the vault is
+        // empty or the wrong password. Biometric NEVER hard-blocks startup.
+        await ref.read(rememberConfigPasswordProvider.notifier).ensureLoaded();
+        await ref.read(biometricUnlockOptInProvider.notifier).ensureLoaded();
+        final biometricOptIn = ref.read(biometricUnlockOptInProvider);
+        final rememberOptIn = ref.read(rememberConfigPasswordProvider);
+        // Only probe the biometric hardware (a platform call) once the cheap
+        // opt-in flags say it could matter — non-opted-in launches pay nothing.
+        final available = (biometricOptIn && rememberOptIn)
+            ? await ref.read(biometricUnlockProvider).available()
+            : false;
+        var mayReleaseVault = true;
+        if (biometricGateApplies(
+          biometricOptIn: biometricOptIn,
+          rememberOptIn: rememberOptIn,
+          available: available,
+        )) {
+          mayReleaseVault = await ref
+              .read(biometricUnlockProvider)
+              .authenticate('Unlock your rclone config');
+        }
+        if (mayReleaseVault) {
+          final remembered = await ref.read(configPasswordVaultProvider).read();
+          if (remembered != null && remembered.isNotEmpty) {
+            await _startWith(rclonePath, password: remembered);
+            if (state.isReady) return;
+          }
         }
       }
       state = const EngineUi(

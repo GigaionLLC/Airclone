@@ -1,6 +1,11 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <!-- Cloud remotes: the bundled rclone engine talks to storage providers. -->
     <uses-permission android:name="android.permission.INTERNET"/>
+    <!-- Scanning the desktop's "Send to phone" QR (config-portability plan §5).
+         Requested in-flow the first time the scanner opens (never at launch);
+         declared optional so the app still installs on camera-less devices. -->
+    <uses-permission android:name="android.permission.CAMERA"/>
+    <uses-feature android:name="android.hardware.camera" android:required="false"/>
     <!-- Transfers keep running when the app is backgrounded: a dataSync
          foreground service holds the process (and the engine child) alive,
          with a progress notification (runtime-granted on Android 13+). -->

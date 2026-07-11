@@ -16,6 +16,7 @@ import 'add_remote_dialog.dart';
 import 'browser_pane.dart';
 import 'connection_test_dialog.dart';
 import 'encrypt_remote_dialog.dart';
+import 'scan_from_desktop_sheet.dart';
 import 'engine_gate.dart';
 import 'jobs_panel.dart';
 import 'paste_action.dart';
@@ -161,13 +162,26 @@ class _MobileLocations extends ConsumerWidget {
           'Cloud',
           trailing: PopupMenuButton<String>(
             icon: Icon(Icons.add, size: 20, color: c.textMuted),
-            tooltip: 'Add or encrypt a remote',
-            onSelected: (v) => v == 'add'
-                ? showAddRemoteDialog(context)
-                : showEncryptRemoteDialog(context),
+            tooltip: 'Add, encrypt, or import a remote',
+            onSelected: (v) {
+              switch (v) {
+                case 'add':
+                  showAddRemoteDialog(context);
+                case 'encrypt':
+                  showEncryptRemoteDialog(context);
+                case 'qr':
+                  // Phone-first on-ramp: pull remotes off a computer by scanning
+                  // its "Send to phone" QR (config-portability plan §5).
+                  showScanFromDesktopSheet(context);
+              }
+            },
             itemBuilder: (_) => const [
               PopupMenuItem(value: 'add', child: Text('Add a remote…')),
               PopupMenuItem(value: 'encrypt', child: Text('Encrypt a remote…')),
+              PopupMenuItem(
+                value: 'qr',
+                child: Text('Import from a computer (QR)…'),
+              ),
             ],
           ),
         ),
