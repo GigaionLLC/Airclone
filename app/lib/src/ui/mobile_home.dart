@@ -10,6 +10,7 @@ import '../state/browser_controller.dart';
 import '../state/clipboard_controller.dart';
 import '../state/engine_controller.dart';
 import '../state/local_locations.dart';
+import '../state/pane_layout.dart';
 import '../state/remotes_provider.dart';
 import '../state/stats_controller.dart';
 import 'add_remote_dialog.dart';
@@ -19,11 +20,13 @@ import 'encrypt_remote_dialog.dart';
 import 'scan_from_desktop_sheet.dart';
 import 'engine_gate.dart';
 import 'jobs_panel.dart';
+import 'pane_split.dart';
 import 'paste_action.dart';
 import 'recent_activity_panel.dart';
 import 'search_dialog.dart';
 import 'settings_screen.dart';
 import 'stats_panel.dart';
+import 'tab_strip.dart';
 import 'theme/tokens.dart';
 
 /// The phone shell: bottom navigation over Files · Transfers · Settings.
@@ -42,20 +45,35 @@ class _MobileHomeScreenState extends ConsumerState<MobileHomeScreen> {
   @override
   Widget build(BuildContext context) {
     final browsing = ref.watch(paneProvider(0).select((s) => s.remote != null));
+    final split = ref.watch(mobileSplitProvider);
     // When the engine gate is on screen, pane state is irrelevant — back must
     // not get swallowed navigating a browser the user can't see.
     final gated = ref.watch(
       engineControllerProvider.select((e) => e.phase != EnginePhase.ready),
     );
     // System back: leave a folder, then leave the remote, then leave a non-Files
-    // tab — only exit the app from the Files tab's locations list.
-    final canPop = _tab == 0 && (!browsing || gated);
+    // tab — only exit the app from the Files tab's locations list (never while a
+    // split is up: back collapses that first).
+    final canPop = _tab == 0 && (gated || (!browsing && !split));
     return PopScope(
       canPop: canPop,
       onPopInvokedWithResult: (didPop, _) {
         if (didPop) return;
         if (_tab != 0) {
           setState(() => _tab = 0);
+          return;
+        }
+        if (split) {
+          // Back walks the *active* pane up; at its root it collapses the split
+          // back to single-pane rather than exiting the app.
+          final active = ref.read(activePaneProvider);
+          final pane = ref.read(paneProvider(active));
+          if (pane.path.isNotEmpty) {
+            ref.read(paneProvider(active).notifier).up();
+          } else {
+            ref.read(mobileSplitProvider.notifier).state = false;
+            ref.read(activePaneProvider.notifier).state = 0;
+          }
           return;
         }
         final pane = ref.read(paneProvider(0));
@@ -111,7 +129,12 @@ class _MobileFiles extends ConsumerWidget {
       return EngineGate(engine: engine);
     }
     final browsing = ref.watch(paneProvider(0).select((s) => s.remote != null));
-    return browsing ? const _MobileBrowser() : const _MobileLocations();
+    // Split mode keeps the browser on screen even if pane 0 is cleared, so
+    // clearing one pane doesn't tear down the whole split.
+    final split = ref.watch(mobileSplitProvider);
+    return (browsing || split)
+        ? const _MobileBrowser()
+        : const _MobileLocations();
   }
 }
 
@@ -346,43 +369,119 @@ class _MobileLocations extends ConsumerWidget {
 
 // ── Browser ──────────────────────────────────────────────────────────────────
 
-/// A slim phone header over the shared [BrowserPane] (its desktop toolbar is
-/// hidden; navigation and folder actions live here and in the long-press
-/// menus).
+/// The phone browser. Single-pane by default — pane 0 with its slim header +
+/// tab strip. The primary header's split toggle reveals an opt-in second pane
+/// (paneProvider(1)) shown with a resizable, adaptively-oriented [PaneSplit];
+/// each pane keeps its own slim header so both stay independently navigable.
 class _MobileBrowser extends ConsumerWidget {
   const _MobileBrowser();
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final c = AircloneTheme.of(context);
-    final state = ref.watch(paneProvider(0));
-    final ctrl = ref.read(paneProvider(0).notifier);
-    final remote = state.remote;
-    if (remote == null) return const SizedBox.shrink();
+    final split = ref.watch(mobileSplitProvider);
+    if (!split) {
+      return const _MobilePaneColumn(index: 0, primary: true, withTabs: true);
+    }
+    final orientation = ref.watch(paneSplitOrientationProvider);
+    return LayoutBuilder(
+      builder: (context, cons) {
+        // Adaptive: side-by-side on a wide (tablet/landscape) area, stacked on
+        // a narrow (portrait phone) one. A manual choice overrides the width.
+        final axis = resolveSplitAxis(orientation, cons.maxWidth);
+        return PaneSplit(
+          axis: axis,
+          first: const _MobilePaneColumn(
+            index: 0,
+            primary: true,
+            withTabs: true,
+          ),
+          second: const _MobilePaneColumn(
+            index: 1,
+            primary: false,
+            withTabs: false,
+          ),
+        );
+      },
+    );
+  }
+}
 
-    final folder = state.path.isEmpty
-        ? remote.name
-        : state.path.split('/').last;
-    final subtitle = state.path.isEmpty
-        ? remote.type
-        : '${remote.name}/${state.path}';
+/// One pane in the phone browser: its slim [_MobilePaneHeader], the (pane-0)
+/// [PaneTabStrip], then the shared [BrowserPane] body with its desktop toolbar
+/// and internal tab strip suppressed — the header + strip above own those.
+class _MobilePaneColumn extends StatelessWidget {
+  const _MobilePaneColumn({
+    required this.index,
+    required this.primary,
+    required this.withTabs,
+  });
+  final int index;
+  final bool primary;
+  final bool withTabs;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        _MobilePaneHeader(index: index, primary: primary),
+        if (withTabs) PaneTabStrip(index: index, touch: true),
+        Expanded(
+          child: BrowserPane(index: index, showToolbar: false, showTabs: false),
+        ),
+      ],
+    );
+  }
+}
+
+/// The slim per-pane phone header: back/up · the folder title · search · an
+/// overflow menu (refresh · paste · view mode). The [primary] pane also carries
+/// the split toggle (+ orientation cycle when split), the secondary pane a
+/// close-split button. On a narrow (forced side-by-side) pane the trailing
+/// icons fold into the overflow so the row never overflows.
+class _MobilePaneHeader extends ConsumerWidget {
+  const _MobilePaneHeader({required this.index, required this.primary});
+  final int index;
+  final bool primary;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final c = AircloneTheme.of(context);
+    final state = ref.watch(paneProvider(index));
+    final ctrl = ref.read(paneProvider(index).notifier);
+    final remote = state.remote;
+    final hasRemote = remote != null;
+    final split = ref.watch(mobileSplitProvider);
+    final orientation = ref.watch(paneSplitOrientationProvider);
     final clipEmpty = ref.watch(
       clipboardControllerProvider.select((s) => s.isEmpty),
     );
 
-    return Column(
-      children: [
-        Container(
-          height: 52,
-          padding: const EdgeInsets.symmetric(horizontal: Space.x1),
-          decoration: BoxDecoration(
-            color: c.surface,
-            border: Border(bottom: BorderSide(color: c.border)),
-          ),
-          child: Row(
+    final folder = !hasRemote
+        ? 'Home'
+        : (state.path.isEmpty ? remote.name : state.path.split('/').last);
+    final subtitle = !hasRemote
+        ? 'Pick a location'
+        : (state.path.isEmpty ? remote.type : '${remote.name}/${state.path}');
+
+    return Container(
+      height: 52,
+      padding: const EdgeInsets.symmetric(horizontal: Space.x1),
+      decoration: BoxDecoration(
+        color: c.surface,
+        border: Border(bottom: BorderSide(color: c.border)),
+      ),
+      child: LayoutBuilder(
+        builder: (context, cons) {
+          // Fold the trailing icons into the overflow when the pane is too
+          // narrow to lay them out inline (forced side-by-side on a phone).
+          final compact = cons.maxWidth < 300;
+          final showOverflow = hasRemote || compact;
+          return Row(
             children: [
               IconButton(
-                onPressed: () => state.path.isEmpty ? ctrl.clear() : ctrl.up(),
+                onPressed: !hasRemote
+                    ? null
+                    : () => state.path.isEmpty ? ctrl.clear() : ctrl.up(),
                 icon: const Icon(Icons.arrow_back, size: 22),
                 color: c.text,
                 tooltip: state.path.isEmpty ? 'All locations' : 'Up',
@@ -409,55 +508,187 @@ class _MobileBrowser extends ConsumerWidget {
                   ],
                 ),
               ),
-              IconButton(
-                onPressed: () => _search(context, ref),
-                icon: const Icon(Icons.search, size: 20),
-                color: c.textMuted,
-                tooltip: 'Search this folder',
-              ),
-              PopupMenuButton<String>(
-                icon: Icon(Icons.more_vert, size: 20, color: c.textMuted),
-                onSelected: (v) async {
-                  switch (v) {
-                    case 'refresh':
-                      await ctrl.refresh();
-                    case 'paste':
-                      if (context.mounted) {
-                        await pasteClipboardInto(
-                          context,
-                          ref,
-                          dest: ref.read(paneProvider(0)),
-                          paneIndex: 0,
-                        );
-                      }
-                    case 'view-list':
-                      ctrl.setViewMode(ViewMode.list);
-                    case 'view-grid':
-                      ctrl.setViewMode(ViewMode.grid);
-                    case 'view-media':
-                      ctrl.setViewMode(ViewMode.media);
-                  }
-                },
-                itemBuilder: (_) => [
-                  const PopupMenuItem(value: 'refresh', child: Text('Refresh')),
-                  PopupMenuItem(
-                    value: 'paste',
-                    enabled: !clipEmpty,
-                    child: const Text('Paste here'),
+              if (!compact && hasRemote)
+                IconButton(
+                  onPressed: () => _search(context, ref),
+                  icon: const Icon(Icons.search, size: 20),
+                  color: c.textMuted,
+                  tooltip: 'Search this folder',
+                ),
+              if (!compact && primary)
+                IconButton(
+                  onPressed: () => _toggleSplit(ref),
+                  icon: Icon(
+                    split ? Icons.splitscreen : Icons.splitscreen_outlined,
+                    size: 20,
                   ),
-                  const PopupMenuDivider(),
-                  _viewItem('view-list', 'List', ViewMode.list, state),
-                  _viewItem('view-grid', 'Grid', ViewMode.grid, state),
-                  _viewItem('view-media', 'Gallery', ViewMode.media, state),
-                ],
-              ),
+                  color: split ? c.primary : c.textMuted,
+                  tooltip: split ? 'Close split view' : 'Split view',
+                ),
+              if (!compact && primary && split)
+                IconButton(
+                  onPressed: () =>
+                      ref.read(paneSplitOrientationProvider.notifier).cycle(),
+                  icon: Icon(_orientationIcon(orientation), size: 20),
+                  color: c.textMuted,
+                  tooltip: 'Layout: ${orientation.label}',
+                ),
+              if (!compact && !primary)
+                IconButton(
+                  onPressed: () => _closeSplit(ref),
+                  icon: const Icon(Icons.close_fullscreen, size: 18),
+                  color: c.textMuted,
+                  tooltip: 'Close second pane',
+                ),
+              if (showOverflow)
+                _overflow(
+                  context,
+                  ref,
+                  c,
+                  state: state,
+                  hasRemote: hasRemote,
+                  clipEmpty: clipEmpty,
+                  compact: compact,
+                  split: split,
+                  orientation: orientation,
+                ),
             ],
+          );
+        },
+      ),
+    );
+  }
+
+  /// The overflow (⋯) menu. Always holds the folder verbs (refresh · paste ·
+  /// view mode); in [compact] mode it also absorbs search and the split
+  /// controls that the roomy header shows as dedicated icons.
+  Widget _overflow(
+    BuildContext context,
+    WidgetRef ref,
+    AircloneColors c, {
+    required BrowserState state,
+    required bool hasRemote,
+    required bool clipEmpty,
+    required bool compact,
+    required bool split,
+    required PaneSplitOrientation orientation,
+  }) {
+    final ctrl = ref.read(paneProvider(index).notifier);
+    return PopupMenuButton<String>(
+      icon: Icon(Icons.more_vert, size: 20, color: c.textMuted),
+      onSelected: (v) async {
+        switch (v) {
+          case 'search':
+            _search(context, ref);
+          case 'refresh':
+            await ctrl.refresh();
+          case 'paste':
+            if (context.mounted) {
+              await pasteClipboardInto(
+                context,
+                ref,
+                dest: ref.read(paneProvider(index)),
+                paneIndex: index,
+              );
+            }
+          case 'view-list':
+            ctrl.setViewMode(ViewMode.list);
+          case 'view-grid':
+            ctrl.setViewMode(ViewMode.grid);
+          case 'view-media':
+            ctrl.setViewMode(ViewMode.media);
+          case 'split-toggle':
+            _toggleSplit(ref);
+          case 'split-close':
+            _closeSplit(ref);
+          case 'orient-adaptive':
+            ref
+                .read(paneSplitOrientationProvider.notifier)
+                .set(PaneSplitOrientation.adaptive);
+          case 'orient-side':
+            ref
+                .read(paneSplitOrientationProvider.notifier)
+                .set(PaneSplitOrientation.sideBySide);
+          case 'orient-stack':
+            ref
+                .read(paneSplitOrientationProvider.notifier)
+                .set(PaneSplitOrientation.stacked);
+        }
+      },
+      itemBuilder: (_) => [
+        if (compact && hasRemote)
+          const PopupMenuItem(
+            value: 'search',
+            child: Text('Search this folder'),
           ),
-        ),
-        const Expanded(child: BrowserPane(index: 0, showToolbar: false)),
+        if (hasRemote) ...[
+          const PopupMenuItem(value: 'refresh', child: Text('Refresh')),
+          PopupMenuItem(
+            value: 'paste',
+            enabled: !clipEmpty,
+            child: const Text('Paste here'),
+          ),
+          const PopupMenuDivider(),
+          _viewItem('view-list', 'List', ViewMode.list, state),
+          _viewItem('view-grid', 'Grid', ViewMode.grid, state),
+          _viewItem('view-media', 'Gallery', ViewMode.media, state),
+        ],
+        if (compact && primary) ...[
+          const PopupMenuDivider(),
+          PopupMenuItem(
+            value: 'split-toggle',
+            child: Text(split ? 'Close split view' : 'Split view'),
+          ),
+          if (split) ...[
+            _orientItem(
+              'orient-adaptive',
+              'Adaptive layout',
+              PaneSplitOrientation.adaptive,
+              orientation,
+            ),
+            _orientItem(
+              'orient-side',
+              'Side by side',
+              PaneSplitOrientation.sideBySide,
+              orientation,
+            ),
+            _orientItem(
+              'orient-stack',
+              'Stacked',
+              PaneSplitOrientation.stacked,
+              orientation,
+            ),
+          ],
+        ],
+        if (compact && !primary) ...[
+          const PopupMenuDivider(),
+          const PopupMenuItem(
+            value: 'split-close',
+            child: Text('Close second pane'),
+          ),
+        ],
       ],
     );
   }
+
+  /// Turn the second pane on/off. Turning it *off* drops the (now hidden) pane
+  /// as the active one so selection/paste targets fall back to pane 0.
+  void _toggleSplit(WidgetRef ref) {
+    final on = ref.read(mobileSplitProvider);
+    ref.read(mobileSplitProvider.notifier).state = !on;
+    if (on) ref.read(activePaneProvider.notifier).state = 0;
+  }
+
+  void _closeSplit(WidgetRef ref) {
+    ref.read(mobileSplitProvider.notifier).state = false;
+    ref.read(activePaneProvider.notifier).state = 0;
+  }
+
+  IconData _orientationIcon(PaneSplitOrientation o) => switch (o) {
+    PaneSplitOrientation.adaptive => Icons.auto_awesome_mosaic_outlined,
+    PaneSplitOrientation.sideBySide => Icons.view_column_outlined,
+    PaneSplitOrientation.stacked => Icons.view_agenda_outlined,
+  };
 
   PopupMenuItem<String> _viewItem(
     String value,
@@ -479,10 +710,28 @@ class _MobileBrowser extends ConsumerWidget {
     ),
   );
 
-  /// Recursive search rooted at the current folder; opening a match navigates
-  /// to it (same behavior as the desktop Ctrl+Shift+F).
+  PopupMenuItem<String> _orientItem(
+    String value,
+    String label,
+    PaneSplitOrientation mode,
+    PaneSplitOrientation current,
+  ) => PopupMenuItem(
+    value: value,
+    child: Row(
+      children: [
+        SizedBox(
+          width: 24,
+          child: current == mode ? const Icon(Icons.check, size: 16) : null,
+        ),
+        Text(label),
+      ],
+    ),
+  );
+
+  /// Recursive search rooted at this pane's current folder; opening a match
+  /// navigates to it (same behavior as the desktop Ctrl+Shift+F).
   void _search(BuildContext context, WidgetRef ref) {
-    final state = ref.read(paneProvider(0));
+    final state = ref.read(paneProvider(index));
     final remote = state.remote;
     final client = ref.read(engineControllerProvider).client;
     if (remote == null || client == null) return;
@@ -494,7 +743,7 @@ class _MobileBrowser extends ConsumerWidget {
       label: basePath.isEmpty ? remote.name : '${remote.name}/$basePath',
       basePath: basePath,
       onOpen: (RcloneFile m) async {
-        final pane = ref.read(paneProvider(0).notifier);
+        final pane = ref.read(paneProvider(index).notifier);
         final abs = basePath.isEmpty ? m.path : '$basePath/${m.path}';
         if (m.isDir) {
           await pane.navigateTo(abs);
@@ -502,7 +751,7 @@ class _MobileBrowser extends ConsumerWidget {
         }
         final slash = abs.lastIndexOf('/');
         final parent = slash < 0 ? '' : abs.substring(0, slash);
-        if (parent != ref.read(paneProvider(0)).path) {
+        if (parent != ref.read(paneProvider(index)).path) {
           await pane.navigateTo(parent);
         }
         pane.selectOnly(m.name);

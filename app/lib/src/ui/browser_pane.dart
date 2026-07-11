@@ -37,6 +37,7 @@ import 'public_link_dialog.dart';
 import 'quick_look.dart';
 import 'storage_breakdown.dart';
 import 'home_view.dart';
+import 'tab_strip.dart';
 import 'theme/tokens.dart';
 import 'touch.dart';
 import 'transfer_options_dialog.dart';
@@ -46,10 +47,20 @@ import 'transfer_options_dialog.dart';
 /// When [showToolbar] is false the address/command bar is omitted — the OS
 /// skins hoist it to a full-width band above the sidebar (see [PaneToolbar]),
 /// so the pane renders content only.
+///
+/// When [showTabs] is false the pane's own multi-tab strip is suppressed — the
+/// phone shell renders a touch-sized [PaneTabStrip] in its slim header instead,
+/// so it must not be drawn twice.
 class BrowserPane extends ConsumerWidget {
-  const BrowserPane({super.key, required this.index, this.showToolbar = true});
+  const BrowserPane({
+    super.key,
+    required this.index,
+    this.showToolbar = true,
+    this.showTabs = true,
+  });
   final int index;
   final bool showToolbar;
+  final bool showTabs;
 
   int get _other => index == 0 ? 1 : 0;
 
@@ -66,7 +77,7 @@ class BrowserPane extends ConsumerWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            if (state.tabs.length > 1) _TabStrip(index: index),
+            if (showTabs && state.tabs.length > 1) PaneTabStrip(index: index),
             if (showToolbar) ...[
               _PaneToolbar(index: index, active: active, state: state),
               Divider(height: 1, color: c.border),
@@ -830,96 +841,6 @@ class _ViewSegmented extends StatelessWidget {
               ),
             ),
           ],
-        ],
-      ),
-    );
-  }
-}
-
-/// The per-pane tab strip (shown only when a pane has more than one tab).
-/// Each chip switches tabs; its ✕ closes it; the trailing + opens a new tab.
-class _TabStrip extends ConsumerWidget {
-  const _TabStrip({required this.index});
-  final int index;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final c = AircloneTheme.of(context);
-    final state = ref.watch(paneProvider(index));
-    final ctrl = ref.read(paneProvider(index).notifier);
-    final tabs = state.tabs;
-
-    return Container(
-      height: 30,
-      color: c.surface,
-      padding: const EdgeInsets.symmetric(horizontal: Space.x1),
-      child: Row(
-        children: [
-          Expanded(
-            child: ListView.builder(
-              scrollDirection: Axis.horizontal,
-              itemCount: tabs.length,
-              itemBuilder: (_, i) {
-                final on = i == state.activeTab;
-                return Padding(
-                  padding: const EdgeInsets.symmetric(
-                    vertical: 3,
-                    horizontal: 1,
-                  ),
-                  child: InkWell(
-                    borderRadius: BorderRadius.circular(Radii.sm),
-                    onTap: () => ctrl.switchTab(i),
-                    child: Container(
-                      constraints: const BoxConstraints(maxWidth: 168),
-                      padding: const EdgeInsets.only(left: Space.x2, right: 2),
-                      decoration: BoxDecoration(
-                        color: on ? c.surfaceRaised : c.surfaceSunken,
-                        borderRadius: BorderRadius.circular(Radii.sm),
-                        border: Border.all(
-                          color: on ? c.border : Colors.transparent,
-                        ),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Flexible(
-                            child: Text(
-                              tabs[i].label,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                color: on ? c.text : c.textMuted,
-                                fontSize: 12,
-                                fontWeight: on
-                                    ? FontWeight.w600
-                                    : FontWeight.w400,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 2),
-                          InkWell(
-                            borderRadius: BorderRadius.circular(Radii.full),
-                            onTap: () => ctrl.closeTab(i),
-                            child: Icon(
-                              Icons.close,
-                              size: 13,
-                              color: c.textFaint,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                );
-              },
-            ),
-          ),
-          IconButton(
-            onPressed: ctrl.newTab,
-            icon: const Icon(Icons.add, size: 15),
-            tooltip: 'New tab (Ctrl+T)',
-            visualDensity: VisualDensity.compact,
-          ),
         ],
       ),
     );

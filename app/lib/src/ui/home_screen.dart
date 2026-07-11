@@ -46,6 +46,7 @@ import 'jobs_panel.dart';
 import 'mobile_home.dart';
 import 'mount_panel.dart';
 import 'pane_drag.dart';
+import 'pane_split.dart';
 import 'paste_action.dart';
 import 'quick_look.dart';
 import 'recent_activity_panel.dart';
@@ -737,11 +738,17 @@ class _WorkArea extends ConsumerWidget {
                 Expanded(
                   child: BrowserPane(index: active, showToolbar: !hoistToolbar),
                 )
-              else ...[
-                const Expanded(child: BrowserPane(index: 0)),
-                VerticalDivider(width: 1, color: c.border),
-                const Expanded(child: BrowserPane(index: 1)),
-              ],
+              else
+                // Resizable dual-pane: a draggable divider (persisted split
+                // ratio, clamped so neither pane collapses) replaces the old
+                // fixed 50/50. Desktop is always side-by-side.
+                const Expanded(
+                  child: PaneSplit(
+                    axis: Axis.horizontal,
+                    first: BrowserPane(index: 0),
+                    second: BrowserPane(index: 1),
+                  ),
+                ),
               if (inspectorOpen) ...[
                 VerticalDivider(width: 1, color: c.border),
                 const SizedBox(width: 300, child: InspectorPanel()),
