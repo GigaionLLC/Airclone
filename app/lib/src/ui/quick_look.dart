@@ -80,10 +80,28 @@ class _QuickLook extends StatefulWidget {
 
 class _QuickLookState extends State<_QuickLook> {
   late int _i = widget.initialIndex;
+  late final PageController _pager = PageController(
+    initialPage: widget.initialIndex,
+  );
 
+  @override
+  void dispose() {
+    _pager.dispose();
+    super.dispose();
+  }
+
+  /// Move by [delta] pages. The [PageView] owns touch swipes directly; this is
+  /// the path for the keyboard arrows and the on-screen chevrons (desktop),
+  /// animating so it feels the same as a swipe.
   void _go(int delta) {
     final next = (_i + delta).clamp(0, widget.files.length - 1);
-    if (next != _i) setState(() => _i = next);
+    if (next != _i) {
+      _pager.animateToPage(
+        next,
+        duration: const Duration(milliseconds: 220),
+        curve: Curves.easeOutCubic,
+      );
+    }
   }
 
   KeyEventResult _onKey(FocusNode node, KeyEvent event) {
@@ -109,6 +127,12 @@ class _QuickLookState extends State<_QuickLook> {
     final c = AircloneTheme.of(context);
     final file = widget.files[_i];
     final many = widget.files.length > 1;
+    // Touch = swipe (the natural mobile gesture); a coarse pointer also gets the
+    // chevrons + arrow keys. media_kit/InteractiveViewer live inside each page.
+    final touch = switch (Theme.of(context).platform) {
+      TargetPlatform.android || TargetPlatform.iOS => true,
+      _ => false,
+    };
 
     return Focus(
       autofocus: true,
@@ -161,15 +185,28 @@ class _QuickLookState extends State<_QuickLook> {
                       borderRadius: BorderRadius.circular(Radii.lg),
                       child: Stack(
                         children: [
+                          // Swipeable pager: PageView owns the horizontal fling
+                          // on touch, so an image changes with a swipe (each page
+                          // still pinch-zooms via its own InteractiveViewer).
                           Positioned.fill(
-                            child: PreviewContent(
-                              key: ValueKey(file.path),
-                              remote: widget.remote,
-                              parentPath: widget.parentPath,
-                              file: file,
+                            child: PageView.builder(
+                              controller: _pager,
+                              itemCount: widget.files.length,
+                              onPageChanged: (p) => setState(() => _i = p),
+                              itemBuilder: (context, p) {
+                                final f = widget.files[p];
+                                return PreviewContent(
+                                  key: ValueKey(f.path),
+                                  remote: widget.remote,
+                                  parentPath: widget.parentPath,
+                                  file: f,
+                                );
+                              },
                             ),
                           ),
-                          if (many) ...[
+                          // On-screen chevrons for pointer devices; touch has the
+                          // swipe, so hide the extra chrome there.
+                          if (many && !touch) ...[
                             Positioned(
                               left: Space.x3,
                               top: 0,
@@ -200,12 +237,16 @@ class _QuickLookState extends State<_QuickLook> {
                     ),
                   ),
                 ),
-                const Padding(
-                  padding: EdgeInsets.only(top: Space.x2),
+                Padding(
+                  padding: const EdgeInsets.only(top: Space.x2),
                   child: Text(
-                    '< / >  ·  Space or Esc to close',
+                    touch
+                        ? (many
+                              ? 'Swipe to browse · tap outside to close'
+                              : 'Tap outside to close')
+                        : '< / >  ·  Space or Esc to close',
                     textAlign: TextAlign.center,
-                    style: TextStyle(color: Colors.white54, fontSize: 11),
+                    style: const TextStyle(color: Colors.white54, fontSize: 11),
                   ),
                 ),
               ],

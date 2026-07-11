@@ -39,6 +39,7 @@ class MediaGallery extends ConsumerWidget {
     required this.gridSize,
     required this.onOpen,
     required this.onToggle,
+    required this.onSwitchToList,
     required this.onPreview,
     required this.onContextMenu,
     required this.onDropInto,
@@ -59,6 +60,10 @@ class MediaGallery extends ConsumerWidget {
 
   final void Function(RcloneFile) onOpen;
   final void Function(RcloneFile) onToggle;
+
+  /// Switch the pane to the list view — offered from the empty state when this
+  /// folder holds folders/other files the media filter hides.
+  final VoidCallback onSwitchToList;
   final void Function(RcloneFile) onPreview;
   final void Function(RcloneFile file, Offset globalPosition) onContextMenu;
   final void Function(RcloneFile dir, PaneDragData data) onDropInto;
@@ -83,17 +88,47 @@ class MediaGallery extends ConsumerWidget {
         .toList();
 
     if (media.isEmpty) {
+      // Gallery only shows images + video, so a folder full of documents or
+      // subfolders looks "empty" here — which reads as a dead end. Count what
+      // the filter is hiding and offer a one-tap way to see it in the list view,
+      // rather than a bare "nothing here".
+      final folders = entries.where((e) => e.isDir).length;
+      final otherFiles =
+          entries.length - folders; // media is empty, so all non-dirs
+      final hidden = folders + otherFiles;
+      final parts = <String>[
+        if (folders > 0) '$folders folder${folders == 1 ? '' : 's'}',
+        if (otherFiles > 0) '$otherFiles file${otherFiles == 1 ? '' : 's'}',
+      ];
       return Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.photo_library_outlined, color: c.textFaint, size: 40),
-            const SizedBox(height: Space.x2),
-            Text(
-              'No photos or videos here',
-              style: TextStyle(fontSize: 12, color: c.textMuted),
-            ),
-          ],
+        child: Padding(
+          padding: const EdgeInsets.all(Space.x5),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.photo_library_outlined, color: c.textFaint, size: 40),
+              const SizedBox(height: Space.x2),
+              Text(
+                'No photos or videos here',
+                style: TextStyle(fontSize: 13, color: c.textMuted),
+              ),
+              if (hidden > 0) ...[
+                const SizedBox(height: Space.x1),
+                Text(
+                  "Gallery hides everything else — ${parts.join(' · ')} in "
+                  'this folder.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 12, color: c.textFaint),
+                ),
+                const SizedBox(height: Space.x3),
+                FilledButton.tonalIcon(
+                  onPressed: onSwitchToList,
+                  icon: const Icon(Icons.format_list_bulleted, size: 18),
+                  label: const Text('Show all files'),
+                ),
+              ],
+            ],
+          ),
         ),
       );
     }

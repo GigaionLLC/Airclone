@@ -280,6 +280,7 @@ class BrowserPane extends ConsumerWidget {
             gridSize: state.gridSize,
             onOpen: (f) => ctrl.enterDir(f),
             onToggle: (f) => ctrl.toggleSelect(f.name),
+            onSwitchToList: () => ctrl.setViewMode(ViewMode.list),
             onPreview: quickLook,
             onContextMenu: (f, pos) =>
                 _showFileMenu(context, ref, state, f, pos),
