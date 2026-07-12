@@ -248,8 +248,19 @@ class BrowserPane extends ConsumerWidget {
   }) {
     final c = AircloneTheme.of(context);
     final ctrl = ref.read(paneProvider(index).notifier);
+    // Pull-to-refresh (touch only): make the scrollables always-scrollable so a
+    // short/empty listing still pulls, and turn the error/empty message into a
+    // scrollable so it can be pulled to retry too. Desktop keeps its defaults.
+    final physics = isTouchPrimary
+        ? const AlwaysScrollableScrollPhysics()
+        : null;
+    // Full-screen spinner only when there is nothing to show yet. A
+    // pull-to-refresh over an existing listing keeps the list on screen (state
+    // retains the old entries until the reload lands), so the RefreshIndicator's
+    // own inline spinner stays mounted instead of the content blanking out.
+    final initialLoad = state.loading && state.visibleEntries.isEmpty;
     Widget content;
-    if (state.loading) {
+    if (initialLoad) {
       content = const Center(
         child: SizedBox(
           height: 22,
@@ -258,8 +269,9 @@ class BrowserPane extends ConsumerWidget {
         ),
       );
     } else if (state.error != null) {
-      content = Center(
-        child: Padding(
+      content = _pullableMessage(
+        physics,
+        Padding(
           padding: const EdgeInsets.all(Space.x6),
           child: Text(
             state.error!,
@@ -269,8 +281,9 @@ class BrowserPane extends ConsumerWidget {
         ),
       );
     } else if (state.visibleEntries.isEmpty) {
-      content = Center(
-        child: Text(
+      content = _pullableMessage(
+        physics,
+        Text(
           state.filter.isEmpty ? 'Empty folder' : 'No matches',
           style: TextStyle(color: c.textFaint, fontSize: 13),
         ),
@@ -318,6 +331,7 @@ class BrowserPane extends ConsumerWidget {
             ),
             thumbRequestFor: thumbReqFor,
             folderPreviews: thumbsOn,
+            physics: physics,
           );
         case ViewMode.media:
           content = MediaGallery(
@@ -339,10 +353,12 @@ class BrowserPane extends ConsumerWidget {
               joinPath(state.path, f.name),
             ),
             thumbRequestFor: thumbReqFor,
+            physics: physics,
           );
         case ViewMode.list:
           content = ListView.builder(
             controller: ref.watch(paneScrollProvider(index)),
+            physics: physics,
             itemCount: visible.length,
             itemBuilder: (_, i) {
               final f = visible[i];
@@ -367,6 +383,12 @@ class BrowserPane extends ConsumerWidget {
           );
       }
     }
+    // On touch, wrap the listing in a pull-to-refresh — except while the initial
+    // spinner is up (nothing to pull yet; a refresh over content stays wrapped so
+    // its inline spinner shows).
+    final body = isTouchPrimary && !initialLoad
+        ? RefreshIndicator(onRefresh: ctrl.refresh, child: content)
+        : content;
     return Container(
       decoration: highlight
           ? BoxDecoration(
@@ -384,8 +406,24 @@ class BrowserPane extends ConsumerWidget {
               ascending: state.ascending,
               onSort: ctrl.setSort,
             ),
-          Expanded(child: content),
+          Expanded(child: body),
         ],
+      ),
+    );
+  }
+
+  /// A centered [child] that is ALSO scrollable on touch (via [physics]), so
+  /// pull-to-refresh works over an empty folder or an error message — desktop
+  /// (physics == null) just centers it as before.
+  Widget _pullableMessage(ScrollPhysics? physics, Widget child) {
+    if (physics == null) return Center(child: child);
+    return LayoutBuilder(
+      builder: (_, cons) => SingleChildScrollView(
+        physics: physics,
+        child: ConstrainedBox(
+          constraints: BoxConstraints(minHeight: cons.maxHeight),
+          child: Center(child: child),
+        ),
       ),
     );
   }

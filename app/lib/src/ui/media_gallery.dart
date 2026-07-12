@@ -44,6 +44,7 @@ class MediaGallery extends ConsumerWidget {
     required this.onContextMenu,
     required this.onDropInto,
     required this.thumbRequestFor,
+    this.physics,
   });
 
   /// Already sorted; we filter to media (images + video).
@@ -70,6 +71,10 @@ class MediaGallery extends ConsumerWidget {
 
   /// Null => render an icon only (no thumbnail).
   final ThumbRequest? Function(RcloneFile) thumbRequestFor;
+
+  /// Scroll physics (AlwaysScrollableScrollPhysics for pull-to-refresh on touch);
+  /// null keeps the platform default.
+  final ScrollPhysics? physics;
 
   /// "MMM d, yyyy" via [_months] (no intl).
   static String _dayLabel(DateTime d) =>
@@ -191,7 +196,7 @@ class MediaGallery extends ConsumerWidget {
     }
     if (unknown.isNotEmpty) addGroup('Unknown date', unknown);
 
-    return CustomScrollView(slivers: slivers);
+    return CustomScrollView(physics: physics, slivers: slivers);
   }
 }
 

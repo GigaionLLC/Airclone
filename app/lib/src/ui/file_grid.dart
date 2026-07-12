@@ -30,6 +30,7 @@ class FileGrid extends ConsumerWidget {
     required this.onDropInto,
     required this.thumbRequestFor,
     this.folderPreviews = false,
+    this.physics,
   });
 
   /// Already filtered + sorted; rendered as-is.
@@ -56,10 +57,15 @@ class FileGrid extends ConsumerWidget {
   /// When true, folders render a composite preview of their first images.
   final bool folderPreviews;
 
+  /// Scroll physics (e.g. AlwaysScrollableScrollPhysics so a short grid can still
+  /// be pulled to refresh on touch); null keeps the platform default.
+  final ScrollPhysics? physics;
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final c = AircloneTheme.of(context);
     return GridView.builder(
+      physics: physics,
       padding: const EdgeInsets.all(Space.x3),
       gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
         maxCrossAxisExtent: gridSize,
