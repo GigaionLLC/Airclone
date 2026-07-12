@@ -3,29 +3,21 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../rclone/models/rclone_file.dart';
 import '../rclone/models/remote.dart';
 import '../state/advanced_mode.dart';
 import '../state/android_native.dart';
 import '../state/browser_controller.dart';
-import '../state/clipboard_controller.dart';
 import '../state/engine_controller.dart';
 import '../state/local_locations.dart';
 import '../state/pane_layout.dart';
 import '../state/remotes_provider.dart';
 import '../state/stats_controller.dart';
-import 'add_remote_dialog.dart';
 import 'browser_pane.dart';
-import 'connection_test_dialog.dart';
-import 'encrypt_remote_dialog.dart';
-import 'scan_from_desktop_sheet.dart';
 import 'engine_gate.dart';
 import 'jobs_panel.dart';
-import 'mobile_features_sheet.dart';
+import 'mobile_action_sheets.dart';
 import 'pane_split.dart';
-import 'paste_action.dart';
 import 'recent_activity_panel.dart';
-import 'search_dialog.dart';
 import 'settings_screen.dart';
 import 'stats_panel.dart';
 import 'tab_strip.dart';
@@ -55,6 +47,22 @@ class _MobileHomeScreenState extends ConsumerState<MobileHomeScreen> {
     final gated = ref.watch(
       engineControllerProvider.select((e) => e.phase != EnginePhase.ready),
     );
+    // The + FAB — shown on the Files tab when a real folder is open in the target
+    // pane (not a console), as the primary "add something here" affordance, the
+    // way other mobile file apps do. Opens the create bottom sheet.
+    // In single-pane the visible pane is ALWAYS pane 0; only trust activePane
+    // when a split is actually on screen — it can linger at 1 after an "open in
+    // other pane" with no split, and the FAB must never target a hidden pane.
+    final activePane = ref.watch(activePaneProvider);
+    final fabPane = split ? activePane : 0;
+    final fabVisible =
+        _tab == 0 &&
+        !gated &&
+        ref.watch(
+          paneProvider(
+            fabPane,
+          ).select((s) => s.remote != null && !s.activeIsConsole),
+        );
     // System back: leave a folder, then leave the remote, then leave a non-Files
     // tab — only exit the app from the Files tab's locations list (never while a
     // split is up: back collapses that first).
@@ -103,6 +111,13 @@ class _MobileHomeScreenState extends ConsumerState<MobileHomeScreen> {
             _ => const _MobileSettings(),
           },
         ),
+        floatingActionButton: fabVisible
+            ? FloatingActionButton(
+                onPressed: () => showMobileCreateSheet(context, ref, fabPane),
+                tooltip: 'Add',
+                child: const Icon(Icons.add),
+              )
+            : null,
         bottomNavigationBar: NavigationBar(
           selectedIndex: _tab,
           onDestinationSelected: (i) => setState(() => _tab = i),
@@ -209,29 +224,10 @@ class _MobileLocations extends ConsumerWidget {
         _header(
           c,
           'Cloud',
-          trailing: PopupMenuButton<String>(
-            icon: Icon(Icons.add, size: 20, color: c.textMuted),
+          trailing: IconButton(
+            icon: Icon(Icons.add, size: 22, color: c.textMuted),
             tooltip: 'Add, encrypt, or import a remote',
-            onSelected: (v) {
-              switch (v) {
-                case 'add':
-                  showAddRemoteDialog(context);
-                case 'encrypt':
-                  showEncryptRemoteDialog(context);
-                case 'qr':
-                  // Phone-first on-ramp: pull remotes off a computer by scanning
-                  // its "Send to phone" QR (config-portability plan §5).
-                  showScanFromDesktopSheet(context);
-              }
-            },
-            itemBuilder: (_) => const [
-              PopupMenuItem(value: 'add', child: Text('Add a remote…')),
-              PopupMenuItem(value: 'encrypt', child: Text('Encrypt a remote…')),
-              PopupMenuItem(
-                value: 'qr',
-                child: Text('Import from a computer (QR)…'),
-              ),
-            ],
+            onPressed: () => showMobileAddRemoteSheet(context),
           ),
         ),
         ...remotes.when(
@@ -312,71 +308,14 @@ class _MobileLocations extends ConsumerWidget {
           ? null
           : Text(r.type, style: TextStyle(color: c.textFaint, fontSize: 12)),
       trailing: cloudActions
-          ? PopupMenuButton<String>(
-              icon: Icon(Icons.more_vert, size: 18, color: c.textFaint),
-              onSelected: (v) async {
-                switch (v) {
-                  case 'test':
-                    final client = ref.read(engineControllerProvider).client;
-                    if (client != null) showConnectionTest(context, client, r);
-                  case 'edit':
-                    await showEditRemoteDialog(context, r);
-                  case 'delete':
-                    await _deleteRemote(context, ref, r);
-                }
-              },
-              itemBuilder: (_) => const [
-                PopupMenuItem(value: 'test', child: Text('Test connection')),
-                PopupMenuItem(value: 'edit', child: Text('Edit remote…')),
-                PopupMenuItem(value: 'delete', child: Text('Delete remote')),
-              ],
+          ? IconButton(
+              icon: Icon(Icons.more_vert, size: 20, color: c.textFaint),
+              tooltip: 'Remote actions',
+              onPressed: () => showMobileRemoteSheet(context, ref, r),
             )
           : null,
       onTap: () => _open(ref, r),
     );
-  }
-
-  /// Confirms then removes a remote from the rclone config (cloud files are
-  /// untouched) — the phone-sized twin of the desktop sidebar action.
-  Future<void> _deleteRemote(
-    BuildContext context,
-    WidgetRef ref,
-    Remote remote,
-  ) async {
-    final c = AircloneTheme.of(context);
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (dctx) => AlertDialog(
-        title: Text('Delete "${remote.name}"?'),
-        content: const Text(
-          'This removes the remote from your rclone config. Files stored in '
-          'the cloud are not affected.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dctx, false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: c.error),
-            onPressed: () => Navigator.pop(dctx, true),
-            child: const Text('Delete'),
-          ),
-        ],
-      ),
-    );
-    if (ok != true) return;
-    final client = ref.read(engineControllerProvider).client;
-    if (client == null) return;
-    try {
-      await client.rpc('config/delete', {'name': remote.name});
-    } catch (_) {
-      /* surfaced via the (unchanged) list if it fails */
-    }
-    if (ref.read(paneProvider(0)).remote == remote) {
-      ref.read(paneProvider(0).notifier).clear();
-    }
-    ref.invalidate(remotesProvider);
   }
 
   IconData _kindIcon(LocalKind kind) => switch (kind) {
@@ -479,11 +418,6 @@ class _MobilePaneHeader extends ConsumerWidget {
     // A console tab has an empty browser state (remote == null) but IS content —
     // give it its own header treatment instead of the inert "pick a location".
     final isConsole = state.activeIsConsole;
-    final split = ref.watch(mobileSplitProvider);
-    final orientation = ref.watch(paneSplitOrientationProvider);
-    final clipEmpty = ref.watch(
-      clipboardControllerProvider.select((s) => s.isEmpty),
-    );
 
     final folder = !hasRemote
         ? 'Home'
@@ -504,7 +438,6 @@ class _MobilePaneHeader extends ConsumerWidget {
           // Fold the trailing icons into the overflow when the pane is too
           // narrow to lay them out inline (forced side-by-side on a phone).
           final compact = cons.maxWidth < 300;
-          final showOverflow = hasRemote || compact;
           return Row(
             children: [
               IconButton(
@@ -570,48 +503,35 @@ class _MobilePaneHeader extends ConsumerWidget {
               ),
               if (!compact && hasRemote)
                 IconButton(
-                  onPressed: () => _search(context, ref),
+                  onPressed: () => mobileFolderSearch(context, ref, index),
                   icon: const Icon(Icons.search, size: 20),
                   color: c.textMuted,
                   tooltip: 'Search this folder',
                 ),
-              if (!compact && primary)
+              // Inline quick view-mode toggle: tap to cycle List → Grid →
+              // Gallery. The explicit chooser also lives in the ⋯ sheet.
+              if (!compact && hasRemote)
                 IconButton(
-                  onPressed: () => _toggleSplit(ref),
-                  icon: Icon(
-                    split ? Icons.splitscreen : Icons.splitscreen_outlined,
-                    size: 20,
-                  ),
-                  color: split ? c.primary : c.textMuted,
-                  tooltip: split ? 'Close split view' : 'Split view',
-                ),
-              if (!compact && primary && split)
-                IconButton(
-                  onPressed: () =>
-                      ref.read(paneSplitOrientationProvider.notifier).cycle(),
-                  icon: Icon(_orientationIcon(orientation), size: 20),
+                  onPressed: () => ctrl.setViewMode(_nextView(state.viewMode)),
+                  icon: Icon(_viewIcon(state.viewMode), size: 20),
                   color: c.textMuted,
-                  tooltip: 'Layout: ${orientation.label}',
+                  tooltip: 'View: ${_viewLabel(state.viewMode)}',
                 ),
-              if (!compact && !primary)
-                IconButton(
-                  onPressed: () => _closeSplit(ref),
-                  icon: const Icon(Icons.close_fullscreen, size: 18),
-                  color: c.textMuted,
-                  tooltip: 'Close second pane',
-                ),
-              if (showOverflow)
-                _overflow(
+              // Always present: the ⋯ sheet is never empty — a primary pane
+              // always has the Layout (split) section and a secondary always has
+              // "Close second pane", even with no remote/console open. Gating it
+              // on hasRemote previously stranded the split controls.
+              IconButton(
+                onPressed: () => showMobileActionsSheet(
                   context,
                   ref,
-                  c,
-                  state: state,
-                  hasRemote: hasRemote,
-                  clipEmpty: clipEmpty,
+                  index,
+                  primary: primary,
                   compact: compact,
-                  split: split,
-                  orientation: orientation,
                 ),
+                icon: Icon(Icons.more_vert, size: 20, color: c.textMuted),
+                tooltip: 'More actions',
+              ),
             ],
           );
         },
@@ -619,211 +539,23 @@ class _MobilePaneHeader extends ConsumerWidget {
     );
   }
 
-  /// The overflow (⋯) menu. Always holds the folder verbs (refresh · paste ·
-  /// view mode); in [compact] mode it also absorbs search and the split
-  /// controls that the roomy header shows as dedicated icons.
-  Widget _overflow(
-    BuildContext context,
-    WidgetRef ref,
-    AircloneColors c, {
-    required BrowserState state,
-    required bool hasRemote,
-    required bool clipEmpty,
-    required bool compact,
-    required bool split,
-    required PaneSplitOrientation orientation,
-  }) {
-    final ctrl = ref.read(paneProvider(index).notifier);
-    return PopupMenuButton<String>(
-      icon: Icon(Icons.more_vert, size: 20, color: c.textMuted),
-      onSelected: (v) async {
-        switch (v) {
-          case 'features':
-            await showMobileFeaturesSheet(context, ref, index);
-          case 'search':
-            _search(context, ref);
-          case 'refresh':
-            await ctrl.refresh();
-          case 'paste':
-            if (context.mounted) {
-              await pasteClipboardInto(
-                context,
-                ref,
-                dest: ref.read(paneProvider(index)),
-                paneIndex: index,
-              );
-            }
-          case 'view-list':
-            ctrl.setViewMode(ViewMode.list);
-          case 'view-grid':
-            ctrl.setViewMode(ViewMode.grid);
-          case 'view-media':
-            ctrl.setViewMode(ViewMode.media);
-          case 'split-toggle':
-            _toggleSplit(ref);
-          case 'split-close':
-            _closeSplit(ref);
-          case 'orient-adaptive':
-            ref
-                .read(paneSplitOrientationProvider.notifier)
-                .set(PaneSplitOrientation.adaptive);
-          case 'orient-side':
-            ref
-                .read(paneSplitOrientationProvider.notifier)
-                .set(PaneSplitOrientation.sideBySide);
-          case 'orient-stack':
-            ref
-                .read(paneSplitOrientationProvider.notifier)
-                .set(PaneSplitOrientation.stacked);
-        }
-      },
-      itemBuilder: (_) => [
-        if (hasRemote) ...[
-          const PopupMenuItem(value: 'features', child: Text('All features…')),
-          const PopupMenuDivider(),
-        ],
-        if (compact && hasRemote)
-          const PopupMenuItem(
-            value: 'search',
-            child: Text('Search this folder'),
-          ),
-        if (hasRemote) ...[
-          const PopupMenuItem(value: 'refresh', child: Text('Refresh')),
-          PopupMenuItem(
-            value: 'paste',
-            enabled: !clipEmpty,
-            child: const Text('Paste here'),
-          ),
-          const PopupMenuDivider(),
-          _viewItem('view-list', 'List', ViewMode.list, state),
-          _viewItem('view-grid', 'Grid', ViewMode.grid, state),
-          _viewItem('view-media', 'Gallery', ViewMode.media, state),
-        ],
-        if (compact && primary) ...[
-          const PopupMenuDivider(),
-          PopupMenuItem(
-            value: 'split-toggle',
-            child: Text(split ? 'Close split view' : 'Split view'),
-          ),
-          if (split) ...[
-            _orientItem(
-              'orient-adaptive',
-              'Adaptive layout',
-              PaneSplitOrientation.adaptive,
-              orientation,
-            ),
-            _orientItem(
-              'orient-side',
-              'Side by side',
-              PaneSplitOrientation.sideBySide,
-              orientation,
-            ),
-            _orientItem(
-              'orient-stack',
-              'Stacked',
-              PaneSplitOrientation.stacked,
-              orientation,
-            ),
-          ],
-        ],
-        if (compact && !primary) ...[
-          const PopupMenuDivider(),
-          const PopupMenuItem(
-            value: 'split-close',
-            child: Text('Close second pane'),
-          ),
-        ],
-      ],
-    );
-  }
-
-  /// Turn the second pane on/off. Turning it *off* drops the (now hidden) pane
-  /// as the active one so selection/paste targets fall back to pane 0.
-  void _toggleSplit(WidgetRef ref) {
-    final on = ref.read(mobileSplitProvider);
-    ref.read(mobileSplitProvider.notifier).state = !on;
-    if (on) ref.read(activePaneProvider.notifier).state = 0;
-  }
-
-  void _closeSplit(WidgetRef ref) {
-    ref.read(mobileSplitProvider.notifier).state = false;
-    ref.read(activePaneProvider.notifier).state = 0;
-  }
-
-  IconData _orientationIcon(PaneSplitOrientation o) => switch (o) {
-    PaneSplitOrientation.adaptive => Icons.auto_awesome_mosaic_outlined,
-    PaneSplitOrientation.sideBySide => Icons.view_column_outlined,
-    PaneSplitOrientation.stacked => Icons.view_agenda_outlined,
+  IconData _viewIcon(ViewMode m) => switch (m) {
+    ViewMode.list => Icons.view_list_outlined,
+    ViewMode.grid => Icons.grid_view_outlined,
+    ViewMode.media => Icons.photo_library_outlined,
   };
 
-  PopupMenuItem<String> _viewItem(
-    String value,
-    String label,
-    ViewMode mode,
-    BrowserState state,
-  ) => PopupMenuItem(
-    value: value,
-    child: Row(
-      children: [
-        SizedBox(
-          width: 24,
-          child: state.viewMode == mode
-              ? const Icon(Icons.check, size: 16)
-              : null,
-        ),
-        Text(label),
-      ],
-    ),
-  );
+  ViewMode _nextView(ViewMode m) => switch (m) {
+    ViewMode.list => ViewMode.grid,
+    ViewMode.grid => ViewMode.media,
+    ViewMode.media => ViewMode.list,
+  };
 
-  PopupMenuItem<String> _orientItem(
-    String value,
-    String label,
-    PaneSplitOrientation mode,
-    PaneSplitOrientation current,
-  ) => PopupMenuItem(
-    value: value,
-    child: Row(
-      children: [
-        SizedBox(
-          width: 24,
-          child: current == mode ? const Icon(Icons.check, size: 16) : null,
-        ),
-        Text(label),
-      ],
-    ),
-  );
-
-  /// Recursive search rooted at this pane's current folder; opening a match
-  /// navigates to it (same behavior as the desktop Ctrl+Shift+F).
-  void _search(BuildContext context, WidgetRef ref) {
-    final state = ref.read(paneProvider(index));
-    final remote = state.remote;
-    final client = ref.read(engineControllerProvider).client;
-    if (remote == null || client == null) return;
-    final basePath = state.path;
-    showSearchDialog(
-      context,
-      client: client,
-      fs: remote.fs,
-      label: basePath.isEmpty ? remote.name : '${remote.name}/$basePath',
-      basePath: basePath,
-      onOpen: (RcloneFile m) async {
-        final pane = ref.read(paneProvider(index).notifier);
-        final abs = basePath.isEmpty ? m.path : '$basePath/${m.path}';
-        if (m.isDir) {
-          await pane.navigateTo(abs);
-          return;
-        }
-        final slash = abs.lastIndexOf('/');
-        final parent = slash < 0 ? '' : abs.substring(0, slash);
-        if (parent != ref.read(paneProvider(index)).path) {
-          await pane.navigateTo(parent);
-        }
-        pane.selectOnly(m.name);
-      },
-    );
-  }
+  String _viewLabel(ViewMode m) => switch (m) {
+    ViewMode.list => 'List',
+    ViewMode.grid => 'Grid',
+    ViewMode.media => 'Gallery',
+  };
 }
 
 /// A horizontally-scrollable folder breadcrumb for the phone header:
