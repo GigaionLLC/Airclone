@@ -5,6 +5,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../state/cache_crypto.dart';
 import '../state/config_io.dart';
 import '../state/config_transfer_controller.dart';
+import '../state/offline_qr.dart';
+import '../state/qr_image_decode.dart';
 import 'theme/tokens.dart';
 
 /// Opens the config Import wizard (plan §3): pick a file → (decrypt if needed) →
@@ -21,6 +23,7 @@ Future<void> showConfigImportDialog(BuildContext context) => showDialog<void>(
 /// end with a Close/Back.
 enum _ImportStep {
   pick,
+  qrCode,
   passphrase,
   rclonePassword,
   preview,
@@ -52,6 +55,21 @@ class _ConfigImportDialogState extends ConsumerState<_ConfigImportDialog> {
   List<int>? _bytes;
   String _sourceName = '';
 
+  // --- Offline-QR import (desktop: decode the QR out of a picked image) -------
+  // A computer has no camera, so importing an Offline QR here means picking its
+  // image (a screenshot or photo). [_qrPayload] is the assembled self-contained
+  // payload once a single QR is decoded or every chunk of a multi-QR export is in
+  // hand; chunks accumulate across picks so images can be added a few at a time.
+  // The unlock code lives ONLY in [_qrCode] (disposed on close) — never in
+  // provider state, never logged.
+  String? _qrPayload;
+  final Map<int, String> _qrChunks = {};
+  String? _qrChunkId;
+  int _qrChunkTotal = 0;
+  final _qrCode = TextEditingController();
+  String? _qrError; // inline retry on the code step
+  String? _qrHint; // progress / "not an Offline QR" note on the pick step
+
   ConfigModel? _incoming;
   ConfigModel? _existing;
   List<ImportDecision>? _plan;
@@ -78,6 +96,7 @@ class _ConfigImportDialogState extends ConsumerState<_ConfigImportDialog> {
   void dispose() {
     _passphrase.dispose();
     _rclonePw.dispose();
+    _qrCode.dispose();
     _disposeRenames();
     super.dispose();
   }
@@ -148,24 +167,7 @@ class _ConfigImportDialogState extends ConsumerState<_ConfigImportDialog> {
         passphrase: passphrase,
         rclonePassword: rclonePassword,
       );
-      final existing = await _ctrl.activeConfigModel();
-      if (!mounted) return;
-      final plan = planImport(existing, incoming);
-      _disposeRenames();
-      for (final d in plan) {
-        if (d.collision) {
-          _renames[d.name] = TextEditingController(
-            text: d.renamedTo ?? '${d.name}-imported',
-          );
-        }
-      }
-      setState(() {
-        _incoming = incoming;
-        _existing = existing;
-        _plan = plan;
-        _busy = false;
-        _step = _ImportStep.preview;
-      });
+      await _enterPreviewWith(incoming);
     } on WrongPassphrase {
       setState(() {
         _busy = false;
@@ -183,6 +185,190 @@ class _ConfigImportDialogState extends ConsumerState<_ConfigImportDialog> {
         _errorMessage = "This isn't a valid Airclone export (${e.message}).";
       });
     } catch (e) {
+      setState(() {
+        _busy = false;
+        _step = _ImportStep.error;
+        _errorMessage = e is ConfigTransferError ? e.message : '$e';
+      });
+    }
+  }
+
+  /// Given a decoded incoming config (from a file OR an Offline QR), read the
+  /// live config, plan the merge, seed the collision-rename fields, and show the
+  /// MANDATORY preview. Shared by the file path and the QR path so both land in
+  /// the exact same review before anything is written. Caller wraps this in the
+  /// try that owns error/retry handling; it only throws through.
+  Future<void> _enterPreviewWith(ConfigModel incoming) async {
+    final existing = await _ctrl.activeConfigModel();
+    if (!mounted) return;
+    final plan = planImport(existing, incoming);
+    _disposeRenames();
+    for (final d in plan) {
+      if (d.collision) {
+        _renames[d.name] = TextEditingController(
+          text: d.renamedTo ?? '${d.name}-imported',
+        );
+      }
+    }
+    setState(() {
+      _incoming = incoming;
+      _existing = existing;
+      _plan = plan;
+      _busy = false;
+      _step = _ImportStep.preview;
+    });
+  }
+
+  /// DESKTOP Offline-QR import: pick the QR image(s) — a screenshot or a photo of
+  /// the code(s) shown on the other computer — decode each in a background
+  /// isolate, and route by kind. A single self-contained QR moves straight to the
+  /// code prompt; multi-QR chunks accumulate (across picks, any order) until every
+  /// one is in hand, then reassemble. A "Send to phone" LAN QR (which needs the
+  /// live computer on Wi-Fi) or a non-Airclone image is refused with a clear note
+  /// rather than fed forward. Nothing is decrypted here — that waits for the code.
+  Future<void> _pickQrImages() async {
+    setState(() {
+      _busy = true;
+      _errorMessage = null;
+      _qrError = null;
+      _qrHint = null;
+    });
+    final files = await openFiles(
+      acceptedTypeGroups: const [
+        XTypeGroup(
+          label: 'QR image',
+          extensions: ['png', 'jpg', 'jpeg', 'webp', 'bmp', 'gif'],
+        ),
+      ],
+    );
+    if (files.isEmpty) {
+      if (mounted) setState(() => _busy = false);
+      return;
+    }
+    var unreadable = 0;
+    var foreign = 0;
+    String? single;
+    for (final f in files) {
+      final bytes = await f.readAsBytes();
+      final raw = await decodeQrFromImage(bytes);
+      if (raw == null) {
+        unreadable++;
+        continue;
+      }
+      if (isOfflineQrChunk(raw)) {
+        final chunk = parseOfflineQrChunk(raw);
+        if (chunk == null) {
+          unreadable++;
+          continue;
+        }
+        // A chunk from a different export starts a fresh collection.
+        if (_qrChunkId != chunk.id) {
+          _qrChunkId = chunk.id;
+          _qrChunkTotal = chunk.total;
+          _qrChunks.clear();
+        }
+        _qrChunks[chunk.index] = chunk.body;
+        continue;
+      }
+      if (isOfflineQrPayload(raw)) {
+        single = raw;
+        continue;
+      }
+      foreign++; // a LAN "Send to phone" QR, or not an Airclone QR at all
+    }
+    if (!mounted) return;
+    // A single self-contained QR wins outright; otherwise assemble the chunks if
+    // they're all present now.
+    final assembled =
+        single ??
+        (_qrChunkTotal > 0 && _qrChunks.length >= _qrChunkTotal
+            ? assembleOfflineQrPayload(_qrChunks, _qrChunkTotal)
+            : null);
+    if (assembled != null) {
+      setState(() {
+        _qrPayload = assembled;
+        _sourceName = single != null && files.length == 1
+            ? files.first.name
+            : 'Offline QR ($_qrChunkTotal images)';
+        _qrError = null;
+        _qrHint = null;
+        _busy = false;
+        _step = _ImportStep.qrCode;
+      });
+      return;
+    }
+    // Nothing complete yet — explain precisely and stay on the pick step so more
+    // images can be added.
+    setState(() {
+      _busy = false;
+      final have = _qrChunks.length;
+      if (_qrChunkTotal > 0 && have < _qrChunkTotal) {
+        _qrHint =
+            'Collected $have of $_qrChunkTotal QR images — add the other '
+            '${_qrChunkTotal - have}.';
+      } else if (foreign > 0 && unreadable == 0) {
+        _qrHint =
+            'That looks like a "Send to phone" QR, which needs the computer live '
+            'on Wi-Fi. For image import, use an Offline QR.';
+      } else {
+        _qrHint =
+            "Couldn't find an Airclone Offline QR in "
+            '${files.length == 1 ? 'that image' : 'those images'}. Pick the '
+            'screenshot or photo of the Offline QR.';
+      }
+    });
+  }
+
+  /// Decrypts the assembled Offline-QR payload with the entered code, parses the
+  /// config, and lands in the shared preview. A wrong code stays put (recoverable
+  /// inline retry); a foreign/corrupt/malformed QR is a terminal error.
+  Future<void> _openQr() async {
+    final payload = _qrPayload;
+    if (payload == null) return;
+    final code = _qrCode.text;
+    if (code.isEmpty) {
+      setState(
+        () => _qrError = 'Enter the code that was set when the QR was made.',
+      );
+      return;
+    }
+    setState(() {
+      _busy = true;
+      _qrError = null;
+    });
+    try {
+      final text = await openOfflineQrPayload(payload, code);
+      if (!mounted) return;
+      await _enterPreviewWith(parseIni(text));
+    } on WrongPassphrase {
+      if (!mounted) return;
+      setState(() {
+        _busy = false;
+        _qrError = "That code didn't work — check it and try again.";
+      });
+    } on NotAnOfflineQr {
+      if (!mounted) return;
+      setState(() {
+        _busy = false;
+        _step = _ImportStep.error;
+        _errorMessage = "That QR isn't an Airclone offline config.";
+      });
+    } on CorruptEnvelope catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _busy = false;
+        _step = _ImportStep.error;
+        _errorMessage = "That offline QR couldn't be read (${e.message}).";
+      });
+    } on FormatException {
+      if (!mounted) return;
+      setState(() {
+        _busy = false;
+        _step = _ImportStep.error;
+        _errorMessage = 'That offline QR is malformed.';
+      });
+    } catch (e) {
+      if (!mounted) return;
       setState(() {
         _busy = false;
         _step = _ImportStep.error;
@@ -318,6 +504,7 @@ class _ConfigImportDialogState extends ConsumerState<_ConfigImportDialog> {
           child: SingleChildScrollView(
             child: switch (_step) {
               _ImportStep.pick => _pickView(c),
+              _ImportStep.qrCode => _qrCodeView(c),
               _ImportStep.passphrase => _secretView(c, envelope: true),
               _ImportStep.rclonePassword => _secretView(c, envelope: false),
               _ImportStep.preview => _previewView(c),
@@ -350,18 +537,47 @@ class _ConfigImportDialogState extends ConsumerState<_ConfigImportDialog> {
       _title(c, Icons.file_download_outlined, 'Import a config'),
       const SizedBox(height: Space.x2),
       Text(
-        'Bring in remotes from an rclone.conf, an rclone config-dump, or an '
-        'Airclone encrypted export. Encrypted sources prompt for their '
-        'password. You preview everything before anything is written.',
+        'Bring in remotes from an rclone.conf, an rclone config-dump, an Airclone '
+        'encrypted export, or an Offline QR image (a screenshot or photo of the '
+        'code). Encrypted sources prompt for their password, and you preview '
+        'everything before anything is written.',
         style: TextStyle(color: c.textFaint, fontSize: 12),
       ),
+      if (_qrHint != null) ...[
+        const SizedBox(height: Space.x3),
+        Container(
+          padding: const EdgeInsets.all(Space.x3),
+          decoration: BoxDecoration(
+            color: c.surfaceSunken,
+            borderRadius: BorderRadius.circular(Radii.md),
+          ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(Icons.qr_code_2, size: 16, color: c.textMuted),
+              const SizedBox(width: Space.x2),
+              Expanded(
+                child: Text(
+                  _qrHint!,
+                  style: TextStyle(color: c.textMuted, fontSize: 12),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
       const SizedBox(height: Space.x4),
       Row(
-        mainAxisAlignment: MainAxisAlignment.end,
         children: [
           TextButton(
             onPressed: _busy ? null : () => Navigator.of(context).pop(),
             child: Text('Cancel', style: TextStyle(color: c.textMuted)),
+          ),
+          const Spacer(),
+          OutlinedButton.icon(
+            onPressed: _busy ? null : _pickQrImages,
+            icon: const Icon(Icons.qr_code_2, size: 16),
+            label: const Text('From QR image…'),
           ),
           const SizedBox(width: Space.x2),
           FilledButton.icon(
@@ -374,6 +590,75 @@ class _ConfigImportDialogState extends ConsumerState<_ConfigImportDialog> {
                   )
                 : const Icon(Icons.folder_open_outlined, size: 16),
             label: const Text('Choose a file…'),
+          ),
+        ],
+      ),
+    ],
+  );
+
+  Widget _qrCodeView(AircloneColors c) => Column(
+    mainAxisSize: MainAxisSize.min,
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      _title(c, Icons.lock_outline, 'Enter the QR code'),
+      const SizedBox(height: Space.x2),
+      Text(
+        'Type the unlock code that was set when this Offline QR was made. The '
+        "code was never in the QR — that's what keeps it safe.",
+        style: TextStyle(color: c.textFaint, fontSize: 12),
+      ),
+      const SizedBox(height: Space.x2),
+      Text(
+        _sourceName,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: TextStyle(color: c.textMuted, fontSize: 11),
+      ),
+      const SizedBox(height: Space.x3),
+      TextField(
+        controller: _qrCode,
+        obscureText: true,
+        autofocus: true,
+        enabled: !_busy,
+        onSubmitted: (_) => _busy ? null : _openQr(),
+        style: TextStyle(color: c.text, fontSize: 13, letterSpacing: 1.2),
+        decoration: InputDecoration(
+          isDense: true,
+          hintText: 'Unlock code',
+          hintStyle: TextStyle(color: c.textFaint, fontSize: 13),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(Radii.md),
+          ),
+        ),
+      ),
+      if (_qrError != null) ...[
+        const SizedBox(height: Space.x2),
+        Text(_qrError!, style: TextStyle(color: c.error, fontSize: 12)),
+      ],
+      const SizedBox(height: Space.x4),
+      Row(
+        mainAxisAlignment: MainAxisAlignment.end,
+        children: [
+          TextButton(
+            onPressed: _busy
+                ? null
+                : () => setState(() {
+                    _qrError = null;
+                    _step = _ImportStep.pick;
+                  }),
+            child: Text('Back', style: TextStyle(color: c.textMuted)),
+          ),
+          const SizedBox(width: Space.x2),
+          FilledButton.icon(
+            onPressed: _busy ? null : _openQr,
+            icon: _busy
+                ? const SizedBox(
+                    height: 14,
+                    width: 14,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.lock_open, size: 16),
+            label: const Text('Unlock'),
           ),
         ],
       ),

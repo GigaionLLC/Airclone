@@ -16,7 +16,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-version: 0.3.2+95
+version: 0.3.3+96
 
 environment:
   sdk: ^3.12.0
@@ -102,6 +102,15 @@ dependencies:
   qr_flutter: ^4.1.0
   basic_utils: ^5.8.2
 
+  # Decode an Offline QR straight from an image FILE — the DESKTOP counterpart to
+  # the phone's camera scan (mobile_scanner has no Windows/Linux implementation, so
+  # a computer can't scan). `image` rasterises the PNG/JPG/screenshot; `zxing2`
+  # (pure Dart, no native code) reads the QR out of it. Powers the "From QR image…"
+  # path in ui/config_import_dialog.dart via state/qr_image_decode.dart. `image` was
+  # already resolved transitively; promoted to a direct dep because we import it.
+  image: ^4.8.0
+  zxing2: ^0.2.3
+
   # Desktop pop-out image viewer: opens an image in its own independently-
   # resizable native OS window (multiple images -> multiple windows), each with
   # its own pinch/scroll zoom, decoupled from the main app window. DESKTOP ONLY
@@ -133,6 +142,10 @@ dev_dependencies:
   # rules and activating additional ones.
   flutter_lints: ^6.0.0
   flutter_launcher_icons: ^0.14.4
+  # Test-only: render a QR to a raster so qr_image_decode's round-trip test can
+  # prove the desktop decoder reads its own output back (already resolved
+  # transitively via qr_flutter; declared here because the test imports it).
+  qr: ^3.0.0
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
