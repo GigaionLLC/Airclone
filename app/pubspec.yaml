@@ -146,6 +146,9 @@ dev_dependencies:
   # prove the desktop decoder reads its own output back (already resolved
   # transitively via qr_flutter; declared here because the test imports it).
   qr: ^3.0.0
+  # Packages the Windows build as an .msix for the Microsoft Store (see the
+  # msix_config section below + release.yml). Dev-only tool, not shipped in-app.
+  msix: ^3.18.0
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
@@ -188,3 +191,27 @@ flutter:
   #
   # For details regarding fonts from package dependencies,
   # see https://flutter.dev/to/font-from-package
+
+# Microsoft Store packaging (the `msix` dev dependency). Build with
+# `dart run msix:create` (locally: test-cert signed .msix; release.yml passes
+# --store for a Partner-Center-uploadable, Store-signed package). The version is
+# overridden per-release by CI (--version <x.y.z>.0).
+#
+# BEFORE submitting to the Store, replace the two identity placeholders with the
+# real values from Partner Center → your app → Product management → Product
+# identity:
+#   * identity_name       = the reserved Package/Identity Name (e.g. 1234GigaionLLC.Airclone)
+#   * publisher           = the assigned Publisher ID (CN=<GUID>)
+#   * publisher_display_name = must match the Store publisher display name
+# Until then this still builds a structurally valid (but not-yet-submittable) package.
+msix_config:
+  display_name: Airclone
+  publisher_display_name: GigaionLLC
+  identity_name: GigaionLLC.Airclone
+  publisher: CN=GigaionLLC
+  msix_version: 0.3.6.0
+  logo_path: ../docs/brand/airclone-icon-1024.png
+  capabilities: internetClient
+  # `dart run msix:create --store` (used in CI) produces an unsigned,
+  # Partner-Center-ready package; omit --store locally to get a test-signed one.
+  store: false

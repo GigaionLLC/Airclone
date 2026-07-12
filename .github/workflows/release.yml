@@ -150,19 +150,60 @@ jobs:
           } else {
             Write-Output "::warning::librclone.dll not bundled - this build ships the binary engine only."
           }
-      - name: Package
+      - name: Package (portable zip)
         shell: pwsh
         run: Compress-Archive -Path build/windows/x64/runner/Release/* -DestinationPath airclone-windows-x64.zip
+      - name: Build installer (Inno Setup)
+        shell: pwsh
+        run: |
+          # Inno Setup ships on the windows-latest image; fall back to choco.
+          $iscc = (Get-Command iscc -ErrorAction SilentlyContinue).Source
+          if (-not $iscc) { $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" }
+          if (-not (Test-Path $iscc)) {
+            choco install innosetup -y --no-progress | Out-Null
+            $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          }
+          $ver = ((Select-String -Path pubspec.yaml -Pattern '^version:' | Select-Object -First 1).Line -split ':')[1].Trim().Split('+')[0]
+          Write-Output "Building Airclone installer for $ver with $iscc"
+          & $iscc /DAppVersion=$ver windows/installer/airclone.iss
+          if ($LASTEXITCODE -ne 0) { throw "Inno Setup compile failed ($LASTEXITCODE)" }
       - uses: actions/upload-artifact@v6
         with:
           name: airclone-windows-x64
-          path: app/airclone-windows-x64.zip
+          path: |
+            app/airclone-windows-x64.zip
+            app/windows/installer/airclone-setup-x64.exe
       - name: Upload to release
         if: startsWith(github.ref, 'refs/tags/')
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release upload "$GITHUB_REF_NAME" airclone-windows-x64.zip --clobber --repo "$GITHUB_REPOSITORY"
+        run: |
+          gh release upload "$GITHUB_REF_NAME" airclone-windows-x64.zip --clobber --repo "$GITHUB_REPOSITORY"
+          gh release upload "$GITHUB_REF_NAME" windows/installer/airclone-setup-x64.exe --clobber --repo "$GITHUB_REPOSITORY"
+      # MSIX for the Microsoft Store. --store => unsigned, Partner-Center-ready
+      # (the Store signs it), so no certificate and no interactive prompt. Identity
+      # comes from pubspec's msix_config (placeholders until the app is registered
+      # in Partner Center). Non-fatal: a Store package is optional and must never
+      # break the release.
+      - name: Build MSIX (Microsoft Store package)
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          $ver = ((Select-String -Path pubspec.yaml -Pattern '^version:' | Select-Object -First 1).Line -split ':')[1].Trim().Split('+')[0]
+          dart run msix:create --store --version "$ver.0" --build-windows false --output-path . --output-name airclone
+      - name: Upload MSIX to release
+        if: startsWith(github.ref, 'refs/tags/')
+        continue-on-error: true
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [ -f airclone.msix ]; then
+            gh release upload "$GITHUB_REF_NAME" airclone.msix --clobber --repo "$GITHUB_REPOSITORY"
+          else
+            echo "no airclone.msix produced — skipping (non-fatal)"
+          fi
 
   linux:
     runs-on: ubuntu-latest
