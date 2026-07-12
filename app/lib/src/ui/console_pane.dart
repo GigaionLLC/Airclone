@@ -39,6 +39,13 @@ class _ConsolePaneState extends ConsumerState<ConsolePane> {
   int _sel = 0; // selected suggestion index
   bool _popClosed = false; // Escape hides the popover until the next edit
 
+  /// Command-history cursor: null = editing the live buffer (not recalling);
+  /// otherwise an index into the controller's history (oldest → newest).
+  int? _histIdx;
+
+  /// The partial line stashed when recall started, restored on ↓ past the newest.
+  String _histStash = '';
+
   String get _id => widget.consoleId;
 
   @override
@@ -68,7 +75,11 @@ class _ConsolePaneState extends ConsumerState<ConsolePane> {
       const [];
 
   List<Suggestion> _suggestions() {
-    if (_popClosed || !_inputFocus.hasFocus) return const [];
+    // No popover on an empty prompt: it would just be the full command menu, and
+    // it must stay clear so ↑/↓ recall command history (terminal-style) there.
+    if (_popClosed || !_inputFocus.hasFocus || _input.text.trim().isEmpty) {
+      return const [];
+    }
     return suggestFor(_input.text, remotes: _remoteNames);
   }
 
@@ -78,6 +89,7 @@ class _ConsolePaneState extends ConsumerState<ConsolePane> {
     setState(() {
       _sel = 0;
       _popClosed = false;
+      _histIdx = null;
     });
   }
 
@@ -92,20 +104,64 @@ class _ConsolePaneState extends ConsumerState<ConsolePane> {
       }
       return KeyEventResult.ignored;
     }
-    if (sug.isEmpty) return KeyEventResult.ignored;
-    if (k == LogicalKeyboardKey.arrowDown) {
-      setState(() => _sel = (_sel + 1) % sug.length);
-      return KeyEventResult.handled;
+    // Popover open → arrows drive the suggestion list; Tab accepts.
+    if (sug.isNotEmpty) {
+      if (k == LogicalKeyboardKey.arrowDown) {
+        setState(() => _sel = (_sel + 1) % sug.length);
+        return KeyEventResult.handled;
+      }
+      if (k == LogicalKeyboardKey.arrowUp) {
+        setState(() => _sel = (_sel - 1 + sug.length) % sug.length);
+        return KeyEventResult.handled;
+      }
+      if (k == LogicalKeyboardKey.tab) {
+        _apply(sug[_sel.clamp(0, sug.length - 1)]);
+        return KeyEventResult.handled;
+      }
+      return KeyEventResult.ignored;
     }
-    if (k == LogicalKeyboardKey.arrowUp) {
-      setState(() => _sel = (_sel - 1 + sug.length) % sug.length);
-      return KeyEventResult.handled;
-    }
-    if (k == LogicalKeyboardKey.tab) {
-      _apply(sug[_sel.clamp(0, sug.length - 1)]);
-      return KeyEventResult.handled;
-    }
+    // Popover closed → arrows walk the command history (terminal-style).
+    if (k == LogicalKeyboardKey.arrowUp) return _historyPrev();
+    if (k == LogicalKeyboardKey.arrowDown) return _historyNext();
     return KeyEventResult.ignored;
+  }
+
+  /// Recall the previous (older) command into the input.
+  KeyEventResult _historyPrev() {
+    final hist = ref.read(consoleControllerProvider(_id)).history;
+    if (hist.isEmpty) return KeyEventResult.ignored;
+    if (_histIdx == null) {
+      _histStash = _input.text; // remember the in-progress line
+      _histIdx = hist.length - 1;
+    } else if (_histIdx! > 0) {
+      _histIdx = _histIdx! - 1;
+    } else {
+      return KeyEventResult.handled; // already at the oldest
+    }
+    _recall(hist[_histIdx!]);
+    return KeyEventResult.handled;
+  }
+
+  /// Move toward newer commands; stepping past the newest restores the stash.
+  KeyEventResult _historyNext() {
+    if (_histIdx == null) return KeyEventResult.ignored; // not recalling
+    final hist = ref.read(consoleControllerProvider(_id)).history;
+    if (_histIdx! < hist.length - 1) {
+      _histIdx = _histIdx! + 1;
+      _recall(hist[_histIdx!]);
+    } else {
+      _histIdx = null;
+      _recall(_histStash);
+      _histStash = '';
+    }
+    return KeyEventResult.handled;
+  }
+
+  /// Drop [text] into the input (cursor at end) without opening the popover.
+  void _recall(String text) {
+    _input.text = text;
+    _input.selection = TextSelection.collapsed(offset: text.length);
+    setState(() => _popClosed = true);
   }
 
   Future<void> _submit() async {
@@ -118,7 +174,11 @@ class _ConsolePaneState extends ConsumerState<ConsolePane> {
     }
     ctrl.setDraft(_input.text);
     _input.clear();
-    setState(() => _popClosed = false);
+    setState(() {
+      _popClosed = false;
+      _histIdx = null;
+      _histStash = '';
+    });
     await ctrl.run();
     if (mounted) _inputFocus.requestFocus();
   }
@@ -348,7 +408,8 @@ class _ConsolePaneState extends ConsumerState<ConsolePane> {
       return Center(
         child: Text(
           'Type an rclone command below and press Enter.\n'
-          'e.g.  lsjson gdrive:   ·   size s3:backup   ·   about gdrive:',
+          'e.g.  lsjson gdrive:   ·   size s3:backup   ·   about gdrive:\n'
+          '↑ / ↓ recall previous commands · Tab accepts a suggestion',
           textAlign: TextAlign.center,
           style: TextStyle(color: c.textFaint, fontSize: 12.5, height: 1.6),
         ),
@@ -537,7 +598,11 @@ class _ConsolePaneState extends ConsumerState<ConsolePane> {
               focusNode: _inputFocus,
               autofocus: true,
               enabled: !st.running,
-              onChanged: (_) => setState(() => _popClosed = false),
+              // A real edit exits history recall + re-arms the popover.
+              onChanged: (_) => setState(() {
+                _popClosed = false;
+                _histIdx = null;
+              }),
               onSubmitted: (_) => _submit(),
               style: const TextStyle(fontFamily: 'monospace', fontSize: 13),
               decoration: InputDecoration(

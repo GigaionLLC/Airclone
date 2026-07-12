@@ -165,4 +165,37 @@ void main() {
       expect(c.read(jobsControllerProvider), isEmpty);
     },
   );
+
+  test(
+    'run() records commands in session history, deduping consecutive',
+    () async {
+      final client = _FakeHttp();
+      final c = make(client);
+      final ctrl = c.read(consoleControllerProvider(id).notifier);
+      for (final draft in ['lsjson gdrive:', 'lsjson gdrive:', 'about s3:']) {
+        ctrl.setDraft(draft);
+        await ctrl.run();
+        await _settle();
+      }
+      // The consecutive duplicate collapses (bash ignoredups), order preserved.
+      expect(c.read(consoleControllerProvider(id)).history, [
+        'lsjson gdrive:',
+        'about s3:',
+      ]);
+    },
+  );
+
+  test(
+    'a blocked command is still recorded in history (to fix + rerun)',
+    () async {
+      final client = _FakeHttp();
+      final c = make(client);
+      final ctrl = c.read(consoleControllerProvider(id).notifier);
+      ctrl.setDraft('config show'); // blocked verb — refused, but recallable
+      await ctrl.run();
+      await _settle();
+      expect(client.commandCalls, 0, reason: 'blocked: nothing dispatched');
+      expect(c.read(consoleControllerProvider(id)).history, ['config show']);
+    },
+  );
 }

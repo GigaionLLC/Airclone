@@ -46,6 +46,7 @@ class ConsoleState {
     this.log = const [],
     this.running = false,
     this.activeJobId,
+    this.history = const [],
   });
 
   final String draft;
@@ -56,17 +57,23 @@ class ConsoleState {
   /// pane can bind a live progress row to it. Null for streaming / instant / idle.
   final int? activeJobId;
 
+  /// Session command history (oldest → newest) for terminal-style ↑/↓ recall.
+  /// Holds the raw command lines the user submitted; in-memory only.
+  final List<String> history;
+
   ConsoleState copyWith({
     String? draft,
     List<ConsoleLine>? log,
     bool? running,
     int? activeJobId,
     bool clearActiveJob = false,
+    List<String>? history,
   }) => ConsoleState(
     draft: draft ?? this.draft,
     log: log ?? this.log,
     running: running ?? this.running,
     activeJobId: clearActiveJob ? null : (activeJobId ?? this.activeJobId),
+    history: history ?? this.history,
   );
 }
 
@@ -83,6 +90,9 @@ class ConsoleState {
 class ConsoleController extends FamilyNotifier<ConsoleState, String> {
   /// Largest number of output lines kept (a `-vv` command is unbounded).
   static const int _logCap = 2000;
+
+  /// Largest number of past commands kept for ↑/↓ recall.
+  static const int _historyCap = 100;
 
   /// The live output subscription of a streaming (desktop) command — cancelling
   /// it is the Stop. Null when nothing is streaming.
@@ -129,6 +139,19 @@ class ConsoleController extends FamilyNotifier<ConsoleState, String> {
     if (state.running) return;
     final cmd = ConsoleCommand.parse(state.draft.trim());
     if (cmd.isEmpty) return;
+
+    // Record the raw line in the session history for ↑/↓ recall — BEFORE the
+    // blocked/refused checks below, so a command you need to fix and rerun is
+    // still recallable. Skip a consecutive duplicate (bash `ignoredups`).
+    final entry = state.draft.trim();
+    if (state.history.isEmpty || state.history.last != entry) {
+      final next = [...state.history, entry];
+      state = state.copyWith(
+        history: next.length > _historyCap
+            ? next.sublist(next.length - _historyCap)
+            : next,
+      );
+    }
 
     if (cmd.tier == CommandTier.blocked) {
       _append(
