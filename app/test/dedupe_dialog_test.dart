@@ -1,3 +1,4 @@
+import 'package:airclone/src/rclone/models/remote.dart';
 import 'package:airclone/src/rclone/rclone_client.dart';
 import 'package:airclone/src/ui/dedupe_dialog.dart';
 import 'package:airclone/src/ui/theme/app_theme.dart';
@@ -65,6 +66,13 @@ Future<void> _open(WidgetTester tester, RcloneClient client) async {
               onPressed: () => showDedupeDialog(
                 ctx,
                 client: client,
+                // Cloud remote (type != 'local') so the online-only pre-scan
+                // guard is skipped and the scan runs as before.
+                remote: const Remote(
+                  name: 'gdrive',
+                  type: 'drive',
+                  fs: 'gdrive:',
+                ),
                 fs: 'gdrive:',
                 label: 'gdrive:/Work',
                 basePath: 'Work',
