@@ -164,6 +164,9 @@ const int kOfflineQrChunkChars = 1400;
 
 /// Hard cap on chunks — a config that would need more is refused (with
 /// [OfflineQrTooLarge]) rather than asking the user to scan dozens of codes.
+/// MUST stay <= 99: index/total are written as [_qrNumLen]=2 fixed digits, and
+/// the parser reads them from fixed offsets — a 3-digit count would desync every
+/// header. [buildOfflineQrPayloads] asserts this.
 const int kMaxOfflineQrChunks = 24;
 
 /// One parsed multi-QR chunk (its grouping [id], position, and base45 [body]).
@@ -213,6 +216,11 @@ Future<List<String>> buildOfflineQrPayloads(
   Argon2Params? kdf,
   String? id,
 }) async {
+  // The 2-digit fixed-width index/total header can't encode >99 chunks.
+  assert(
+    kMaxOfflineQrChunks <= 99,
+    'raise _qrNumLen before the chunk cap > 99',
+  );
   final compressed = gzip.encode(utf8.encode(configText));
   final sealed = await sealConfigEnvelopeBytes(
     compressed,
