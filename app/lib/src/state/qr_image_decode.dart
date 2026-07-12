@@ -29,16 +29,19 @@ String? decodeQrFromImageBytes(Uint8List bytes) {
     final decoded = img.decodeImage(bytes);
     if (decoded == null) return null;
 
-    // zxing2 wants one Int32 per pixel. Normalising to 4 channels first handles
-    // palette/grayscale/16-bit sources uniformly. Channel ORDER is irrelevant for
-    // our pure black-and-white QR (R==G==B for every module, so the luminance is
-    // the same whichever way the bytes are read), but we follow the documented
-    // ABGR incantation so a coloured QR would also read correctly.
+    // zxing2 wants one Int32 per pixel in 0xAARRGGBB order (its
+    // RGBLuminanceSource reads r=(p>>16)&0xff, g=(p>>8)&0xff, b=p&0xff).
+    // Normalising to 4 channels first handles palette/grayscale/16-bit sources
+    // uniformly. On little-endian, `ChannelOrder.bgra` lays out bytes [B,G,R,A]
+    // which read back as 0xAARRGGBB — the order zxing expects. (The old `abgr`
+    // produced 0xRRGGBBAA, so luminance was computed from (G,B,ALPHA): a black
+    // module came out at ~63 instead of 0, halving contrast and eroding the
+    // decode margin on noisier photos.)
     final rgba = decoded.numChannels == 4
         ? decoded
         : decoded.convert(numChannels: 4);
     final Int32List pixels = rgba
-        .getBytes(order: img.ChannelOrder.abgr)
+        .getBytes(order: img.ChannelOrder.bgra)
         .buffer
         .asInt32List();
     final source = RGBLuminanceSource(rgba.width, rgba.height, pixels);

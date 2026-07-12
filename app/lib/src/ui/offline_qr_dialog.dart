@@ -402,7 +402,10 @@ class _OfflineQrDialogState extends ConsumerState<_OfflineQrDialog> {
             child: QrImageView(
               data: payloads[idx],
               version: QrVersions.auto,
-              size: 300,
+              // Rendered large: a phone scanning off a lit screen needs enough
+              // pixels-per-module. Paired with the smaller payload/chunk sizing in
+              // offline_qr.dart, this keeps modules comfortably scannable.
+              size: 380,
               backgroundColor: Colors.white,
               // Medium error correction — robust to a screen-photo scan without
               // over-spending capacity.

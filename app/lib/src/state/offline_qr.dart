@@ -24,23 +24,27 @@ import 'pairing_protocol.dart' show base45Decode, base45Encode;
 /// The envelope is byte-for-byte the same format the file/Send-to-phone export
 /// uses, so its versioned header, typed errors, and crypto are all reused.
 ///
-/// The prefix and separator are deliberately kept inside the QR "alphanumeric"
-/// charset (0-9 A-Z space $%*+-./:) — the SAME 45 symbols base45 uses — so the
-/// entire payload encodes in QR alphanumeric mode (~5.5 bits/char) rather than
-/// falling back to byte mode (8 bits/char) which a lowercase prefix or a `|`
-/// separator would force, inflating the QR by ~45%. The payload is parsed by the
-/// fixed prefix LENGTH (not by searching for a separator), so a `:` inside the
-/// base45 body is never ambiguous.
+/// The prefix, separator, and base45 body all stay within the uppercase QR
+/// "alphanumeric" charset (0-9 A-Z space $%*+-./:). NOTE: qr_flutter's
+/// `QrImageView` with `QrVersions.auto` always encodes QR BYTE mode regardless, so
+/// this no longer buys the alphanumeric density the code once assumed — it is kept
+/// only so the payload is 7-bit-clean and copy/paste-safe. Payload SIZING is
+/// therefore driven by byte mode + module DENSITY (a QR too dense doesn't scan off
+/// a screen), see [kOfflineQrMaxPayloadChars]. The payload is parsed by the fixed
+/// prefix LENGTH (not by searching for a separator), so a `:` inside the base45
+/// body is never ambiguous.
 
 /// Scheme prefix (uppercase, QR-alphanumeric, `:`-terminated) — a parsed payload
 /// must start with this verbatim (a v3 LAN QR or any other scheme is refused).
 const String kOfflineQrPrefix = 'AIRCLONE-CFG-Q1:';
 
-/// The largest base45 payload we will emit. base45 is ~1.5x the sealed byte
-/// length; ~1900 chars is roughly a version-33 QR at medium error correction —
-/// still reliably scannable off a screen when shown large. A config that exceeds
-/// this can't fit one offline QR (send fewer remotes, or use the Wi-Fi path).
-const int kOfflineQrMaxPayloadChars = 1900;
+/// The largest SINGLE-QR base45 payload we will emit. qr_flutter renders byte
+/// mode, so scannability is bounded by module DENSITY, not raw capacity: ~700
+/// chars keeps a single QR near version 20 (~97 modules), which a phone camera
+/// reads reliably at the sizes we render off a lit screen. A config larger than
+/// this splits into scannable chunk-QRs instead of one dense code.
+/// (These thresholds are conservative — validate/tune with a real phone scan.)
+const int kOfflineQrMaxPayloadChars = 700;
 
 /// The Argon2id memory ceiling accepted when OPENING a scanned QR — an untrusted
 /// artifact. Refuses a hostile QR that sets a device-OOMing cost while accepting
@@ -84,6 +88,17 @@ class NotAnOfflineQr implements Exception {
 /// pairing flow). Full validation happens in [openOfflineQrPayload].
 bool isOfflineQrPayload(String raw) => raw.startsWith(kOfflineQrPrefix);
 
+/// Canonicalizes an offline-QR unlock [code] before key derivation: strips ASCII
+/// hyphens and whitespace. The app's suggested default is a READABLE dashed
+/// Crockford code (e.g. `K7WX-4PMB`); without this, a phone user who retypes it
+/// dropping the dash (or adds a stray space) derives a different Argon2id key and
+/// gets a spurious "wrong code". Applied IDENTICALLY on seal and open, so it can
+/// never break a round-trip — the only effect on a self-chosen code is that its
+/// dashes/spaces don't count toward the key, a negligible entropy change against
+/// the 128 MiB KDF. (Case is preserved, so a custom passphrase keeps its entropy.)
+String canonicalOfflineCode(String code) =>
+    code.replaceAll(RegExp(r'[\s-]'), '');
+
 /// Builds the offline QR payload for [configText] under [code]:
 /// `gzip(configText)` → [sealConfigEnvelopeBytes] → [base45Encode] → prefixed.
 /// [kdf] overrides the Argon2id cost (tests seal cheaply). Throws
@@ -97,7 +112,7 @@ Future<String> buildOfflineQrPayload(
   // Seal at the heavier QR band by default; [kdf] override lets tests seal cheaply.
   final sealed = await sealConfigEnvelopeBytes(
     compressed,
-    code,
+    canonicalOfflineCode(code),
     kdf: kdf ?? kOfflineQrSealKdf,
   );
   final payload = '$kOfflineQrPrefix${base45Encode(sealed)}';
@@ -122,7 +137,7 @@ Future<String> openOfflineQrPayload(String payload, String code) async {
   // Argon2id cost the (untrusted) QR can demand so it can't OOM the scanner.
   final compressed = await openConfigEnvelopeBytes(
     sealed,
-    code,
+    canonicalOfflineCode(code),
     maxMemoryKiB: kMaxOfflineQrArgon2MemoryKiB,
   );
   final List<int> clear;
@@ -158,16 +173,18 @@ const int _qrIdLen = 4;
 const int _qrNumLen = 2;
 const int _qrHeaderLen = _qrIdLen + _qrNumLen + _qrNumLen; // 8
 
-/// base45 chars carried per chunk — a modest, very reliably-scannable QR, well
-/// under the single-QR ceiling ([kOfflineQrMaxPayloadChars]).
-const int kOfflineQrChunkChars = 1400;
+/// base45 chars carried per chunk — sized for a low-density, very reliably-
+/// scannable QR (~version 20 including the 25-char chunk header). See the
+/// byte-mode / density note on [kOfflineQrMaxPayloadChars].
+const int kOfflineQrChunkChars = 600;
 
 /// Hard cap on chunks — a config that would need more is refused (with
 /// [OfflineQrTooLarge]) rather than asking the user to scan dozens of codes.
 /// MUST stay <= 99: index/total are written as [_qrNumLen]=2 fixed digits, and
 /// the parser reads them from fixed offsets — a 3-digit count would desync every
-/// header. [buildOfflineQrPayloads] asserts this.
-const int kMaxOfflineQrChunks = 24;
+/// header. [buildOfflineQrPayloads] asserts this. Raised alongside the smaller
+/// [kOfflineQrChunkChars] so total capacity (chunks x chars) is preserved.
+const int kMaxOfflineQrChunks = 40;
 
 /// One parsed multi-QR chunk (its grouping [id], position, and base45 [body]).
 class OfflineQrChunk {
@@ -224,7 +241,7 @@ Future<List<String>> buildOfflineQrPayloads(
   final compressed = gzip.encode(utf8.encode(configText));
   final sealed = await sealConfigEnvelopeBytes(
     compressed,
-    code,
+    canonicalOfflineCode(code),
     kdf: kdf ?? kOfflineQrSealKdf,
   );
   final body = base45Encode(sealed);
