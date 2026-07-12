@@ -28,6 +28,7 @@ import 'config_encryption_dialog.dart';
 import 'config_export_dialog.dart';
 import 'config_import_dialog.dart';
 import 'offline_qr_dialog.dart';
+import 'scan_from_desktop_sheet.dart';
 import 'send_to_phone_dialog.dart';
 import 'theme/tokens.dart';
 
@@ -888,6 +889,19 @@ class _ConfigToolsHookState extends ConsumerState<_ConfigToolsHook> {
                 visualDensity: VisualDensity.compact,
               ),
             ),
+            // Phone-only: scan a computer's "Send to phone" or "Offline QR" code
+            // with the camera (desktop can't scan — it's the SENDER side).
+            if (!desktop)
+              OutlinedButton.icon(
+                onPressed: () => showScanFromDesktopSheet(context),
+                icon: const Icon(Icons.qr_code_scanner, size: 16),
+                label: const Text('Import from QR…'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: c.text,
+                  side: BorderSide(color: c.borderStrong),
+                  visualDensity: VisualDensity.compact,
+                ),
+              ),
             OutlinedButton.icon(
               onPressed: () => showConfigExportDialog(context),
               icon: const Icon(Icons.file_upload_outlined, size: 16),

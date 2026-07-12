@@ -68,6 +68,13 @@ class _ScanFromDesktopScreenState
   bool _offlineBusy = false;
   String? _offlineError;
 
+  // Multi-QR accumulation: a big config split across several chunk-QRs. We keep
+  // scanning until all `_chunkTotal` (identified by `_chunkId`) are collected,
+  // then reassemble into a single offline payload and prompt for the code.
+  final Map<int, String> _chunks = {};
+  String? _chunkId;
+  int _chunkTotal = 0;
+
   // Import review state (mirrors the file-import wizard's preview).
   ConfigModel? _incoming;
   ConfigModel? _existing;
@@ -115,6 +122,12 @@ class _ScanFromDesktopScreenState
       }
     }
     if (raw == null) return;
+    // A MULTI-QR chunk (a config too big for one QR): accumulate and KEEP the
+    // camera running until every chunk is in — only then handle it.
+    if (isOfflineQrChunk(raw)) {
+      _collectChunk(raw);
+      return;
+    }
     _handledScan = true;
     unawaited(_scanner.stop());
     // A self-contained OFFLINE QR carries the whole encrypted config — no network
@@ -144,6 +157,36 @@ class _ScanFromDesktopScreenState
     } catch (_) {
       _toError("That QR code couldn't be read. Try generating a fresh one.");
     }
+  }
+
+  /// Collects one multi-QR chunk. A chunk whose [OfflineQrChunk.id] differs from
+  /// the current batch starts a fresh collection (you scanned a different export).
+  /// Once every chunk is present, reassemble into a single offline payload and
+  /// move to the code prompt — reusing the exact single-QR decrypt path.
+  void _collectChunk(String raw) {
+    final chunk = parseOfflineQrChunk(raw);
+    if (chunk == null) return; // malformed frame — ignore, keep scanning
+    setState(() {
+      if (_chunkId != chunk.id) {
+        _chunkId = chunk.id;
+        _chunkTotal = chunk.total;
+        _chunks.clear();
+      }
+      _chunks[chunk.index] = chunk.body;
+    });
+    if (_chunks.length < _chunkTotal) return;
+    _handledScan = true;
+    unawaited(_scanner.stop());
+    final assembled = assembleOfflineQrPayload(_chunks, _chunkTotal);
+    if (assembled == null) {
+      _toError('Some codes were missed. Scan again and capture every QR.');
+      return;
+    }
+    setState(() {
+      _offlinePayload = assembled;
+      _offlineError = null;
+      _step = _Step.offlineCode;
+    });
   }
 
   // --- Offline QR (decrypt-in-place, no network) ----------------------------
@@ -370,6 +413,9 @@ class _ScanFromDesktopScreenState
       _offlinePayload = null;
       _offlineError = null;
       _offlineBusy = false;
+      _chunks.clear();
+      _chunkId = null;
+      _chunkTotal = 0;
       _incoming = null;
       _existing = null;
       _plan = null;
@@ -494,18 +540,40 @@ class _ScanFromDesktopScreenState
       ),
       Padding(
         padding: const EdgeInsets.all(Space.x4),
-        child: Column(
-          children: [
-            Icon(Icons.qr_code_scanner, size: 24, color: c.primary),
-            const SizedBox(height: Space.x2),
-            Text(
-              'On your computer, open Airclone → Settings → "Send to phone", '
-              'then point this camera at the QR code it shows.',
-              textAlign: TextAlign.center,
-              style: TextStyle(color: c.textMuted, fontSize: 13),
-            ),
-          ],
-        ),
+        child: _chunkTotal > 0
+            // Multi-QR in progress: show how many chunks are still to scan.
+            ? Column(
+                children: [
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(Radii.sm),
+                    child: LinearProgressIndicator(
+                      value: _chunks.length / _chunkTotal,
+                      minHeight: 4,
+                      backgroundColor: c.surfaceSunken,
+                    ),
+                  ),
+                  const SizedBox(height: Space.x2),
+                  Text(
+                    'Scanned ${_chunks.length} of $_chunkTotal codes — keep '
+                    'pointing at the rest (any order).',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: c.text, fontSize: 13),
+                  ),
+                ],
+              )
+            : Column(
+                children: [
+                  Icon(Icons.qr_code_scanner, size: 24, color: c.primary),
+                  const SizedBox(height: Space.x2),
+                  Text(
+                    'On your computer, open Airclone → Settings → "Send to '
+                    'phone" or "Offline QR", then point this camera at the code '
+                    'it shows.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: c.textMuted, fontSize: 13),
+                  ),
+                ],
+              ),
       ),
     ],
   );

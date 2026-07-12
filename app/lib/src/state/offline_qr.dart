@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io' show gzip;
+import 'dart:math' show Random;
 
 import 'config_io.dart'
     show
@@ -136,4 +137,134 @@ Future<String> openOfflineQrPayload(String payload, String code) async {
   } on FormatException {
     throw const CorruptEnvelope('offline QR content is not valid UTF-8');
   }
+}
+
+// ── Multi-QR (a config too big for one QR, split across several) ──────────────
+//
+// The config is sealed ONCE (one Argon2id KDF, one code, one GCM tag over
+// everything) and its base45 payload is split into chunk-QRs — encryption is
+// per-transfer, chunking is only transport framing. Each chunk QR is:
+//   AIRCLONE-CFG-Q1M:<id:4><index:2><total:2><base45-slice>
+// The header after the prefix is FIXED WIDTH so a base45 slice (which reuses the
+// same alphanumeric charset) is never mis-split. <id> tags one export so a
+// scanner can reject a chunk from a different one; index/total are 0-based /
+// count, zero-padded decimal. Everything stays in the QR-alphanumeric charset.
+
+/// Multi-QR chunk scheme prefix (uppercase, QR-alphanumeric, `:`-terminated).
+const String kOfflineQrMultiPrefix = 'AIRCLONE-CFG-Q1M:';
+
+/// Fixed header widths after [kOfflineQrMultiPrefix]: id, index, total.
+const int _qrIdLen = 4;
+const int _qrNumLen = 2;
+const int _qrHeaderLen = _qrIdLen + _qrNumLen + _qrNumLen; // 8
+
+/// base45 chars carried per chunk — a modest, very reliably-scannable QR, well
+/// under the single-QR ceiling ([kOfflineQrMaxPayloadChars]).
+const int kOfflineQrChunkChars = 1400;
+
+/// Hard cap on chunks — a config that would need more is refused (with
+/// [OfflineQrTooLarge]) rather than asking the user to scan dozens of codes.
+const int kMaxOfflineQrChunks = 24;
+
+/// One parsed multi-QR chunk (its grouping [id], position, and base45 [body]).
+class OfflineQrChunk {
+  const OfflineQrChunk({
+    required this.id,
+    required this.index,
+    required this.total,
+    required this.body,
+  });
+  final String id;
+  final int index;
+  final int total;
+  final String body;
+}
+
+/// True when [raw] is one chunk of a MULTI-QR offline config (vs the single-QR
+/// [kOfflineQrPrefix] or a LAN pairing QR).
+bool isOfflineQrChunk(String raw) => raw.startsWith(kOfflineQrMultiPrefix);
+
+/// Parses a multi-QR chunk; null if it isn't a well-formed chunk (wrong scheme,
+/// short header, non-numeric or out-of-range index/total, empty body).
+OfflineQrChunk? parseOfflineQrChunk(String raw) {
+  if (!raw.startsWith(kOfflineQrMultiPrefix)) return null;
+  final rest = raw.substring(kOfflineQrMultiPrefix.length);
+  if (rest.length <= _qrHeaderLen) return null;
+  final id = rest.substring(0, _qrIdLen);
+  final index = int.tryParse(rest.substring(_qrIdLen, _qrIdLen + _qrNumLen));
+  final total = int.tryParse(
+    rest.substring(_qrIdLen + _qrNumLen, _qrHeaderLen),
+  );
+  final body = rest.substring(_qrHeaderLen);
+  if (index == null || total == null) return null;
+  if (total < 1 || total > kMaxOfflineQrChunks) return null;
+  if (index < 0 || index >= total) return null;
+  if (body.isEmpty) return null;
+  return OfflineQrChunk(id: id, index: index, total: total, body: body);
+}
+
+/// Builds the offline QR payload(s) for [configText] under [code]. Returns ONE
+/// element (the classic single-QR form) when it fits, else the config sealed
+/// once and split into `<total>` chunk-QRs. Throws [OfflineQrTooLarge] only when
+/// it would need more than [kMaxOfflineQrChunks]. [id] is a test seam.
+Future<List<String>> buildOfflineQrPayloads(
+  String configText,
+  String code, {
+  Argon2Params? kdf,
+  String? id,
+}) async {
+  final compressed = gzip.encode(utf8.encode(configText));
+  final sealed = await sealConfigEnvelopeBytes(
+    compressed,
+    code,
+    kdf: kdf ?? kOfflineQrSealKdf,
+  );
+  final body = base45Encode(sealed);
+  final single = '$kOfflineQrPrefix$body';
+  if (single.length <= kOfflineQrMaxPayloadChars) return [single];
+
+  final total = (body.length / kOfflineQrChunkChars).ceil();
+  if (total > kMaxOfflineQrChunks) {
+    throw OfflineQrTooLarge(
+      single.length,
+      kMaxOfflineQrChunks * kOfflineQrChunkChars,
+    );
+  }
+  final theId = id ?? _randomQrId();
+  final out = <String>[];
+  for (var i = 0; i < total; i++) {
+    final start = i * kOfflineQrChunkChars;
+    final end = start + kOfflineQrChunkChars;
+    final slice = body.substring(start, end < body.length ? end : body.length);
+    out.add(
+      '$kOfflineQrMultiPrefix$theId'
+      '${i.toString().padLeft(_qrNumLen, '0')}'
+      '${total.toString().padLeft(_qrNumLen, '0')}'
+      '$slice',
+    );
+  }
+  return out;
+}
+
+/// Reassembles collected chunk bodies (index → base45 slice) back into the
+/// single-QR payload string, ready for [openOfflineQrPayload]. Returns null
+/// unless exactly [total] contiguous chunks (0..total-1) are present.
+String? assembleOfflineQrPayload(Map<int, String> chunks, int total) {
+  if (total < 1 || chunks.length != total) return null;
+  final buf = StringBuffer(kOfflineQrPrefix);
+  for (var i = 0; i < total; i++) {
+    final slice = chunks[i];
+    if (slice == null) return null;
+    buf.write(slice);
+  }
+  return buf.toString();
+}
+
+String _randomQrId() {
+  const alphabet = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+  final r = Random();
+  return List.generate(
+    _qrIdLen,
+    (_) => alphabet[r.nextInt(alphabet.length)],
+  ).join();
 }

@@ -190,6 +190,108 @@ void main() {
     );
   });
 
+  group('multi-QR (a config too big for one QR, split across several)', () {
+    // A config too big for one QR — unique high-entropy tokens defeat gzip.
+    String bigConfig(int n) {
+      final b = StringBuffer();
+      for (var i = 0; i < n; i++) {
+        b.writeln('[remote$i]');
+        b.writeln('type = s3');
+        b.writeln(
+          'secret_access_key = ${i * 2654435761 % 1000000}Zx${i}Qw${i * 7}',
+        );
+      }
+      return b.toString();
+    }
+
+    test('a small config still yields ONE classic single-QR payload', () async {
+      final payloads = await buildOfflineQrPayloads(_config, 'pw', kdf: _cheap);
+      expect(payloads.length, 1);
+      expect(isOfflineQrPayload(payloads.single), isTrue);
+      expect(isOfflineQrChunk(payloads.single), isFalse);
+    });
+
+    test(
+      'a large config splits into >1 chunk and round-trips (any order)',
+      () async {
+        final cfg = bigConfig(160);
+        final payloads = await buildOfflineQrPayloads(
+          cfg,
+          'K7WX-234M',
+          kdf: _cheap,
+          id: 'AB12',
+        );
+        expect(payloads.length, greaterThan(1));
+        final total = payloads.length;
+        final indices = <int>{};
+        for (final p in payloads) {
+          expect(isOfflineQrChunk(p), isTrue);
+          // Each chunk QR stays scannable + in the QR-alphanumeric charset.
+          expect(p.length, lessThanOrEqualTo(kOfflineQrMaxPayloadChars));
+          expect(RegExp(r'^[0-9A-Z $%*+\-./:]+$').hasMatch(p), isTrue);
+          final ch = parseOfflineQrChunk(p)!;
+          expect(ch.id, 'AB12');
+          expect(ch.total, total);
+          indices.add(ch.index);
+        }
+        expect(indices, {for (var i = 0; i < total; i++) i});
+
+        // Accumulate in REVERSE scan order — assembly is index-based, not order.
+        final collected = <int, String>{};
+        for (final p in payloads.reversed) {
+          final ch = parseOfflineQrChunk(p)!;
+          collected[ch.index] = ch.body;
+        }
+        final assembled = assembleOfflineQrPayload(collected, total)!;
+        expect(await openOfflineQrPayload(assembled, 'K7WX-234M'), cfg);
+      },
+    );
+
+    test('assemble returns null until every chunk is collected', () async {
+      final payloads = await buildOfflineQrPayloads(
+        bigConfig(160),
+        'pw',
+        kdf: _cheap,
+      );
+      final total = payloads.length;
+      final partial = <int, String>{};
+      for (final p in payloads.take(total - 1)) {
+        final ch = parseOfflineQrChunk(p)!;
+        partial[ch.index] = ch.body;
+      }
+      expect(assembleOfflineQrPayload(partial, total), isNull);
+    });
+
+    test('parseOfflineQrChunk rejects malformed / out-of-range chunks', () {
+      // <prefix><id:4><index:2><total:2><body>
+      expect(
+        parseOfflineQrChunk('${kOfflineQrPrefix}xyz'),
+        isNull,
+      ); // wrong scheme
+      expect(
+        parseOfflineQrChunk('${kOfflineQrMultiPrefix}AB'),
+        isNull,
+      ); // short
+      expect(
+        parseOfflineQrChunk('${kOfflineQrMultiPrefix}AB120203'),
+        isNull,
+      ); // no body
+      expect(
+        parseOfflineQrChunk('${kOfflineQrMultiPrefix}AB120500body'),
+        isNull,
+      ); // total 00
+      expect(
+        parseOfflineQrChunk('${kOfflineQrMultiPrefix}AB120303body'),
+        isNull,
+      ); // idx>=total
+      final ok = parseOfflineQrChunk('${kOfflineQrMultiPrefix}AB120203body');
+      expect(ok, isNotNull);
+      expect(ok!.index, 2);
+      expect(ok.total, 3);
+      expect(ok.body, 'body');
+    });
+  });
+
   // The REAL crypto path: the default offline-QR band (128 MiB, t=3). Slower, so
   // one test proves the actual derive works end-to-end and a realistic config fits.
   test(

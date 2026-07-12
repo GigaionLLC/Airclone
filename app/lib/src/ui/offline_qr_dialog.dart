@@ -44,8 +44,10 @@ class _OfflineQrDialogState extends ConsumerState<_OfflineQrDialog> {
   String? _formError;
   String? _errorMessage;
 
-  // The generated payload string, once composed.
-  String? _payload;
+  // The generated QR payload(s), once composed — one for a config that fits a
+  // single QR, several for a large config split across QRs. [_qrIndex] pages them.
+  List<String>? _payloads;
+  int _qrIndex = 0;
 
   ConfigTransferController get _ctrl =>
       ref.read(configTransferControllerProvider);
@@ -149,10 +151,11 @@ class _OfflineQrDialogState extends ConsumerState<_OfflineQrDialog> {
     try {
       final model = _ctrl.scopedModel(full, scope);
       final text = serializeIni(model);
-      final payload = await buildOfflineQrPayload(text, code);
+      final payloads = await buildOfflineQrPayloads(text, code);
       if (!mounted) return;
       setState(() {
-        _payload = payload;
+        _payloads = payloads;
+        _qrIndex = 0;
         _busy = false;
         _step = _Step.qr;
       });
@@ -161,8 +164,8 @@ class _OfflineQrDialogState extends ConsumerState<_OfflineQrDialog> {
       setState(() {
         _busy = false;
         _formError =
-            'This config is too large for a single offline QR. Choose fewer '
-            'remotes, or use "Send to phone" over Wi-Fi instead.';
+            'This config is too large even for a batch of offline QR codes. '
+            'Choose fewer remotes, or use "Send to phone" over Wi-Fi instead.';
       });
     } catch (e) {
       if (!mounted) return;
@@ -327,62 +330,115 @@ class _OfflineQrDialogState extends ConsumerState<_OfflineQrDialog> {
     );
   }
 
-  Widget _qrView(AircloneColors c) => Column(
-    mainAxisSize: MainAxisSize.min,
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
-      _title(c, Icons.qr_code_2, 'Scan with your phone'),
-      const SizedBox(height: Space.x3),
-      Center(
-        child: Container(
-          padding: const EdgeInsets.all(Space.x3),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(Radii.md),
+  Widget _qrView(AircloneColors c) {
+    final payloads = _payloads ?? const [];
+    final multi = payloads.length > 1;
+    final idx = _qrIndex.clamp(0, payloads.length - 1);
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _title(
+          c,
+          Icons.qr_code_2,
+          multi ? 'Scan all ${payloads.length} codes' : 'Scan with your phone',
+        ),
+        if (multi) ...[
+          const SizedBox(height: Space.x2),
+          Text(
+            "This config is too big for one QR, so it's split across "
+            '${payloads.length} codes. On your phone → Scan, point at each in '
+            'turn — it counts them down and reassembles them. Order doesn\'t '
+            'matter; scan every one.',
+            style: TextStyle(color: c.textFaint, fontSize: 12),
           ),
-          child: QrImageView(
-            data: _payload!,
-            version: QrVersions.auto,
-            size: 300,
-            backgroundColor: Colors.white,
-            // Medium error correction — robust to a screen-photo scan without
-            // over-spending capacity.
-            errorCorrectionLevel: QrErrorCorrectLevel.M,
-            eyeStyle: const QrEyeStyle(
-              eyeShape: QrEyeShape.square,
-              color: Color(0xFF000000),
+        ],
+        const SizedBox(height: Space.x3),
+        Center(
+          child: Container(
+            padding: const EdgeInsets.all(Space.x3),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(Radii.md),
             ),
-            dataModuleStyle: const QrDataModuleStyle(
-              dataModuleShape: QrDataModuleShape.square,
-              color: Color(0xFF000000),
+            child: QrImageView(
+              data: payloads[idx],
+              version: QrVersions.auto,
+              size: 300,
+              backgroundColor: Colors.white,
+              // Medium error correction — robust to a screen-photo scan without
+              // over-spending capacity.
+              errorCorrectionLevel: QrErrorCorrectLevel.M,
+              eyeStyle: const QrEyeStyle(
+                eyeShape: QrEyeShape.square,
+                color: Color(0xFF000000),
+              ),
+              dataModuleStyle: const QrDataModuleStyle(
+                dataModuleShape: QrDataModuleShape.square,
+                color: Color(0xFF000000),
+              ),
             ),
           ),
         ),
-      ),
-      const SizedBox(height: Space.x3),
-      Text(
-        'On your phone: open Airclone → Scan, point it at this QR, then enter '
-        'the code you chose. Everything transfers offline — nothing leaves this '
-        'screen except the picture.',
-        style: TextStyle(color: c.textFaint, fontSize: 12),
-      ),
-      const SizedBox(height: Space.x4),
-      Row(
-        mainAxisAlignment: MainAxisAlignment.end,
-        children: [
-          TextButton(
-            onPressed: () => setState(() => _step = _Step.compose),
-            child: Text('Back', style: TextStyle(color: c.textMuted)),
-          ),
-          const SizedBox(width: Space.x2),
-          FilledButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Done'),
+        if (multi) ...[
+          const SizedBox(height: Space.x2),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              IconButton(
+                onPressed: idx > 0
+                    ? () => setState(() => _qrIndex = idx - 1)
+                    : null,
+                icon: const Icon(Icons.chevron_left),
+                tooltip: 'Previous',
+              ),
+              Text(
+                'QR ${idx + 1} of ${payloads.length}',
+                style: TextStyle(
+                  color: c.text,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  fontFeatures: const [FontFeature.tabularFigures()],
+                ),
+              ),
+              IconButton(
+                onPressed: idx < payloads.length - 1
+                    ? () => setState(() => _qrIndex = idx + 1)
+                    : null,
+                icon: const Icon(Icons.chevron_right),
+                tooltip: 'Next',
+              ),
+            ],
           ),
         ],
-      ),
-    ],
-  );
+        const SizedBox(height: Space.x2),
+        Text(
+          multi
+              ? 'The code you chose is never in any QR — enter it on the phone '
+                    'after the last one. Everything transfers offline.'
+              : 'On your phone: open Airclone → Scan, point it at this QR, then '
+                    'enter the code you chose. Everything transfers offline — '
+                    'nothing leaves this screen except the picture.',
+          style: TextStyle(color: c.textFaint, fontSize: 12),
+        ),
+        const SizedBox(height: Space.x4),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.end,
+          children: [
+            TextButton(
+              onPressed: () => setState(() => _step = _Step.compose),
+              child: Text('Back', style: TextStyle(color: c.textMuted)),
+            ),
+            const SizedBox(width: Space.x2),
+            FilledButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Done'),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
 
   Widget _errorView(AircloneColors c) => Column(
     mainAxisSize: MainAxisSize.min,
