@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../rclone/models/rclone_file.dart';
 import '../rclone/models/remote.dart';
+import '../state/cloud_placeholder.dart';
 import '../state/engine_controller.dart';
 import '../state/folder_preview.dart';
 import 'file_icon.dart';
@@ -63,8 +64,16 @@ class _FolderThumbnailState extends ConsumerState<FolderThumbnail> {
           .map(RcloneFile.fromJson)
           .toList();
 
+      // Skip online-only cloud placeholders (composing a folder cover would
+      // hydrate up to 4 files PER folder) and absurdly large originals.
       final images = list
-          .where((e) => !e.isDir && isImageThumbnailable(e))
+          .where(
+            (e) =>
+                !e.isDir &&
+                isImageThumbnailable(e) &&
+                e.size <= kMaxPreviewImageBytes &&
+                !wouldHydrateOnRead(remote, '$folderPath/${e.name}'),
+          )
           .take(4)
           .toList();
       if (images.isEmpty) return;

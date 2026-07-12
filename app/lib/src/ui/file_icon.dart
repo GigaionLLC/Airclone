@@ -134,6 +134,14 @@ bool isVideoThumbnailable(RcloneFile f) => kindOf(f) == FileKind.video;
 bool isThumbnailable(RcloneFile f) =>
     isImageThumbnailable(f) || isVideoThumbnailable(f);
 
+/// Upper bound on an IMAGE original we'll fetch to build a thumbnail. A normal
+/// photo is a few MB; skipping absurdly large originals is a cross-platform net
+/// against wasted memory/egress (a mis-typed or pathological file, or a cloud
+/// image on a platform where placeholder detection is a no-op). Videos stream a
+/// keyframe rather than a full read, so they aren't size-gated here — they're
+/// gated by the online-only placeholder check instead.
+const int kMaxPreviewImageBytes = 128 * 1024 * 1024; // 128 MiB
+
 /// True when [f] appears in the media Gallery view — a non-folder image or
 /// video. The SINGLE source of truth for that filter: used by MediaGallery to
 /// build its grid AND by `selectAll` so "Select all" in gallery view can never

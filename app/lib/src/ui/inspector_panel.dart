@@ -6,6 +6,7 @@ import '../rclone/models/rclone_file.dart';
 import '../rclone/models/remote.dart';
 import '../rclone/rclone_client.dart';
 import '../state/browser_controller.dart';
+import '../state/cloud_placeholder.dart';
 import '../state/download_settings.dart';
 import '../state/engine_controller.dart';
 import '../state/os_integration.dart';
@@ -250,7 +251,9 @@ class _InspectorPanelState extends ConsumerState<InspectorPanel> {
     final thumbsOn =
         thumbnailsOn(remote, ref.watch(thumbnailsDisabledProvider)) &&
         isThumbnailable(f) &&
-        client != null;
+        client != null &&
+        // Don't hydrate an online-only cloud placeholder just to preview it.
+        !wouldHydrateOnRead(remote, joinPath(state.path, f.name));
 
     final placeholder = Center(
       child: Icon(iconFor(f), color: iconColorFor(f, c), size: 56),

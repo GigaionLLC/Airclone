@@ -12,6 +12,7 @@ import '../state/archive_command.dart';
 import '../state/archive_service.dart';
 import '../state/browser_controller.dart';
 import '../state/clipboard_controller.dart';
+import '../state/cloud_placeholder.dart';
 import '../state/download_settings.dart';
 import '../state/engine_controller.dart';
 import '../state/file_ops.dart';
@@ -65,7 +66,16 @@ ThumbRequest? buildThumbRequest(
   if (remote == null || client == null || f.isDir || !isThumbnailable(f)) {
     return null;
   }
-  final oref = client.objectRef(remote.fs, joinPath(state.path, f.name));
+  final within = joinPath(state.path, f.name);
+  // Never fetch an online-only cloud placeholder's bytes just to preview it —
+  // that silently hydrates (downloads) the whole file from Proton/OneDrive/
+  // iCloud "Files On-Demand". Show the kind icon instead. (Windows Cloud Files
+  // API; a no-op on other platforms — see cloud_placeholder.dart.)
+  if (wouldHydrateOnRead(remote, within)) return null;
+  // Cross-platform net: skip an absurdly large IMAGE original (videos stream a
+  // keyframe, so they're gated by the placeholder check above, not by size).
+  if (!isVideoThumbnailable(f) && f.size > kMaxPreviewImageBytes) return null;
+  final oref = client.objectRef(remote.fs, within);
   return ThumbRequest(
     url: oref.url,
     headers: oref.headers,
