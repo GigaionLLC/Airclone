@@ -203,5 +203,14 @@ void main() {
       expect(applySuggestion('copy gdr', 'gdrive:'), 'copy gdrive: ');
       expect(applySuggestion('copy ', 'gdrive:'), 'copy gdrive: ');
     });
+
+    test('the whole remote list is offered, not just the first few', () {
+      // Regression: an 8-item cap only surfaced the alphabetically-first remotes,
+      // so a user with many remotes had to type to reach the rest.
+      final remotes = [for (var i = 0; i < 20; i++) 'remote${i ~/ 10}$i'];
+      final s = suggestFor('copy ', remotes: remotes);
+      expect(s.length, remotes.length);
+      expect(s.map((x) => x.value), contains('remote119:'));
+    });
   });
 }

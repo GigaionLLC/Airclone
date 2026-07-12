@@ -35,8 +35,13 @@ class _ConsolePaneState extends ConsumerState<ConsolePane> {
   final _input = TextEditingController();
   final _inputFocus = FocusNode();
   final _scroll = ScrollController();
+  final _popScroll = ScrollController(); // the suggestion popover's own scroll
   int _lastLogLen = 0;
   int _sel = 0; // selected suggestion index
+
+  /// Fixed row height of a suggestion, so keyboard nav can scroll the popover to
+  /// keep the highlighted row in view.
+  static const double _suggestionExtent = 30;
   bool _popClosed = false; // Escape hides the popover until the next edit
 
   /// Command-history cursor: null = editing the live buffer (not recalling);
@@ -67,6 +72,7 @@ class _ConsolePaneState extends ConsumerState<ConsolePane> {
     _input.dispose();
     _inputFocus.dispose();
     _scroll.dispose();
+    _popScroll.dispose();
     super.dispose();
   }
 
@@ -108,10 +114,12 @@ class _ConsolePaneState extends ConsumerState<ConsolePane> {
     if (sug.isNotEmpty) {
       if (k == LogicalKeyboardKey.arrowDown) {
         setState(() => _sel = (_sel + 1) % sug.length);
+        _revealSelected();
         return KeyEventResult.handled;
       }
       if (k == LogicalKeyboardKey.arrowUp) {
         setState(() => _sel = (_sel - 1 + sug.length) % sug.length);
+        _revealSelected();
         return KeyEventResult.handled;
       }
       if (k == LogicalKeyboardKey.tab) {
@@ -162,6 +170,22 @@ class _ConsolePaneState extends ConsumerState<ConsolePane> {
     _input.text = text;
     _input.selection = TextSelection.collapsed(offset: text.length);
     setState(() => _popClosed = true);
+  }
+
+  /// Keep the highlighted suggestion in view while arrowing through a long list.
+  void _revealSelected() {
+    if (!_popScroll.hasClients) return;
+    final pos = _popScroll.position;
+    final top = _sel * _suggestionExtent;
+    final bottom = top + _suggestionExtent;
+    double? to;
+    if (top < pos.pixels) {
+      to = top; // above the viewport → bring it to the top edge
+    } else if (bottom > pos.pixels + pos.viewportDimension) {
+      to =
+          bottom - pos.viewportDimension; // below → bring it to the bottom edge
+    }
+    if (to != null) _popScroll.jumpTo(to.clamp(0.0, pos.maxScrollExtent));
   }
 
   Future<void> _submit() async {
@@ -449,79 +473,84 @@ class _ConsolePaneState extends ConsumerState<ConsolePane> {
   Widget _popover(AircloneColors c, List<Suggestion> sug) {
     final sel = _sel.clamp(0, sug.length - 1);
     return Container(
-      constraints: const BoxConstraints(maxHeight: 176),
+      constraints: const BoxConstraints(maxHeight: 240),
       margin: const EdgeInsets.fromLTRB(Space.x3, 0, Space.x3, 0),
       decoration: BoxDecoration(
         color: c.surfaceRaised,
         borderRadius: BorderRadius.circular(Radii.sm),
         border: Border.all(color: c.border),
       ),
-      child: ListView.builder(
-        shrinkWrap: true,
-        padding: EdgeInsets.zero,
-        itemCount: sug.length,
-        itemBuilder: (_, i) {
-          final s = sug[i];
-          final on = i == sel;
-          final vColor = s.destructive ? c.error : c.text;
-          return InkWell(
-            onTap: () => _apply(s),
-            child: Container(
-              color: on ? c.primary.withValues(alpha: 0.10) : null,
-              padding: const EdgeInsets.symmetric(
-                horizontal: Space.x3,
-                vertical: 6,
-              ),
-              child: Row(
-                children: [
-                  Icon(
-                    switch (s.kind) {
-                      SuggestionKind.command => Icons.chevron_right,
-                      SuggestionKind.flag => Icons.flag_outlined,
-                      SuggestionKind.remote => Icons.cloud_outlined,
-                    },
-                    size: 13,
-                    color: c.textFaint,
-                  ),
-                  const SizedBox(width: Space.x2),
-                  Text(
-                    s.value,
-                    style: TextStyle(
-                      fontFamily: 'monospace',
-                      fontSize: 12.5,
-                      color: vColor,
-                      fontWeight: FontWeight.w600,
+      child: Scrollbar(
+        controller: _popScroll,
+        child: ListView.builder(
+          controller: _popScroll,
+          shrinkWrap: true,
+          padding: EdgeInsets.zero,
+          itemExtent: _suggestionExtent,
+          itemCount: sug.length,
+          itemBuilder: (_, i) {
+            final s = sug[i];
+            final on = i == sel;
+            final vColor = s.destructive ? c.error : c.text;
+            return InkWell(
+              onTap: () => _apply(s),
+              child: Container(
+                color: on ? c.primary.withValues(alpha: 0.10) : null,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: Space.x3,
+                  vertical: 6,
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      switch (s.kind) {
+                        SuggestionKind.command => Icons.chevron_right,
+                        SuggestionKind.flag => Icons.flag_outlined,
+                        SuggestionKind.remote => Icons.cloud_outlined,
+                      },
+                      size: 13,
+                      color: c.textFaint,
                     ),
-                  ),
-                  const SizedBox(width: Space.x3),
-                  Expanded(
-                    child: Text(
-                      s.help,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(color: c.textFaint, fontSize: 11.5),
-                    ),
-                  ),
-                  if (s.docUrl != null)
-                    InkWell(
-                      onTap: () => _openDoc(s.docUrl),
-                      borderRadius: BorderRadius.circular(Radii.sm),
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 6,
-                          vertical: 1,
-                        ),
-                        child: Text(
-                          'docs ↗',
-                          style: TextStyle(color: c.primary, fontSize: 11),
-                        ),
+                    const SizedBox(width: Space.x2),
+                    Text(
+                      s.value,
+                      style: TextStyle(
+                        fontFamily: 'monospace',
+                        fontSize: 12.5,
+                        color: vColor,
+                        fontWeight: FontWeight.w600,
                       ),
                     ),
-                ],
+                    const SizedBox(width: Space.x3),
+                    Expanded(
+                      child: Text(
+                        s.help,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(color: c.textFaint, fontSize: 11.5),
+                      ),
+                    ),
+                    if (s.docUrl != null)
+                      InkWell(
+                        onTap: () => _openDoc(s.docUrl),
+                        borderRadius: BorderRadius.circular(Radii.sm),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 6,
+                            vertical: 1,
+                          ),
+                          child: Text(
+                            'docs ↗',
+                            style: TextStyle(color: c.primary, fontSize: 11),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
               ),
-            ),
-          );
-        },
+            );
+          },
+        ),
       ),
     );
   }
@@ -598,11 +627,16 @@ class _ConsolePaneState extends ConsumerState<ConsolePane> {
               focusNode: _inputFocus,
               autofocus: true,
               enabled: !st.running,
-              // A real edit exits history recall + re-arms the popover.
-              onChanged: (_) => setState(() {
-                _popClosed = false;
-                _histIdx = null;
-              }),
+              // A real edit exits history recall + re-arms the popover, and
+              // re-selects the top match (scrolled back into view).
+              onChanged: (_) {
+                setState(() {
+                  _popClosed = false;
+                  _histIdx = null;
+                  _sel = 0;
+                });
+                if (_popScroll.hasClients) _popScroll.jumpTo(0);
+              },
               onSubmitted: (_) => _submit(),
               style: const TextStyle(fontFamily: 'monospace', fontSize: 13),
               decoration: InputDecoration(

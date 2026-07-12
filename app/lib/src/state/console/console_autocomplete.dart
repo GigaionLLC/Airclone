@@ -89,7 +89,10 @@ _Cursor _cursorOf(String draft) {
 List<Suggestion> suggestFor(
   String draft, {
   List<String> remotes = const [],
-  int limit = 8,
+  // Generous cap so the whole remote list is offered (users often have many
+  // remotes); the popover is height-bounded and scrolls. Prefix filtering
+  // narrows commands/flags well below this anyway.
+  int limit = 50,
 }) {
   final cur = _cursorOf(draft);
   final q = cur.partial.toLowerCase();
