@@ -48,7 +48,7 @@ jobs:
       - uses: actions/checkout@v5
       - uses: subosito/flutter-action@v2
         with: { channel: stable, cache: true }
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v6
         # cache:false — there is no committed go.sum (the build script synthesizes
         # the pinning module in /tmp), so the default cache lookup would warn on
         # every run and cache nothing.
@@ -108,7 +108,7 @@ jobs:
           AIRCLONE_LIBRCLONE: ${{ github.workspace }}/app/${{ matrix.lib }}
         run: flutter test test/librclone_integration_test.dart
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: librclone-${{ matrix.os }}
           path: app/${{ matrix.lib }}

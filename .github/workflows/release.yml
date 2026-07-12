@@ -78,7 +78,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v5
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v6
         # cache:false — no committed go.sum (the build script synthesizes the
         # pinning module in /tmp), so the default cache lookup warns + caches nothing.
         with: { go-version: 'stable', cache: false }
@@ -94,7 +94,7 @@ jobs:
         if: runner.os != 'Windows'
         working-directory: .
         run: bash dev/desktop/build-librclone.sh
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: ${{ matrix.artifact }}
           path: ${{ matrix.out }}
@@ -120,7 +120,7 @@ jobs:
       # Go/mingw in this job, so nothing pollutes the MSVC build.
       - name: Download prebuilt librclone
         continue-on-error: true
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: librclone-windows
           path: app/windows/librclone
@@ -153,7 +153,7 @@ jobs:
       - name: Package
         shell: pwsh
         run: Compress-Archive -Path build/windows/x64/runner/Release/* -DestinationPath airclone-windows-x64.zip
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: airclone-windows-x64
           path: app/airclone-windows-x64.zip
@@ -189,7 +189,7 @@ jobs:
       # with `flutter build` for the runner's disk.
       - name: Download prebuilt librclone
         continue-on-error: true
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: librclone-linux
           path: app/linux/librclone
@@ -203,7 +203,7 @@ jobs:
           fi
       - name: Package
         run: tar -czf airclone-linux-x64.tar.gz -C build/linux/x64/release/bundle .
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: airclone-linux-x64
           path: app/airclone-linux-x64.tar.gz
@@ -245,7 +245,7 @@ jobs:
       # notarization. Non-fatal (see the Windows job).
       - name: Download prebuilt librclone
         continue-on-error: true
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: librclone-macos
           path: app/macos/librclone
@@ -317,7 +317,7 @@ jobs:
       - name: Package (zip)
         # ditto (not zip) preserves symlinks/metadata the way notarization expects.
         run: ditto -c -k --keepParent build/macos/Build/Products/Release/Airclone.app airclone-macos.zip
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: airclone-macos
           path: app/airclone-macos.zip
@@ -454,7 +454,7 @@ jobs:
       - uses: subosito/flutter-action@v2
         with: { channel: stable, cache: true }
       - uses: dtolnay/rust-toolchain@stable
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v6
         # cache:false — there is no committed go.sum (the pinning module is
         # synthesized in /tmp at build time), so the default cache lookup would
         # warn on every run and cache nothing.
@@ -513,7 +513,7 @@ jobs:
           for abi in arm64-v8a armeabi-v7a x86_64; do
             mv "app-$abi-release.apk" "airclone-android-$abi.apk"
           done
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: airclone-android-apk
           path: app/build/app/outputs/flutter-apk/airclone-android-*.apk
@@ -523,7 +523,7 @@ jobs:
       # UPLOAD key under Play App Signing. Kept as a workflow artifact only —
       # it is for the Play Console, not for end users (they get the APKs).
       - run: flutter build appbundle --release
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: airclone-playstore-aab
           path: app/build/app/outputs/bundle/release/app-release.aab
