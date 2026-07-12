@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:qr_flutter/qr_flutter.dart';
@@ -49,6 +51,14 @@ class _OfflineQrDialogState extends ConsumerState<_OfflineQrDialog> {
   List<String>? _payloads;
   int _qrIndex = 0;
 
+  // For a multi-QR export, auto-CYCLE the codes on one screen (~5.5 fps) so the
+  // phone just points once and the accumulating scanner collects each frame as
+  // it flashes by — far less clunky than paging + holding each still. Looping
+  // means a missed frame comes back around. [_playing] toggles it; manual
+  // prev/next pause it.
+  Timer? _cycle;
+  bool _playing = true;
+
   ConfigTransferController get _ctrl =>
       ref.read(configTransferControllerProvider);
 
@@ -60,9 +70,35 @@ class _OfflineQrDialogState extends ConsumerState<_OfflineQrDialog> {
 
   @override
   void dispose() {
+    _cycle?.cancel();
     _code.dispose();
     _confirm.dispose();
     super.dispose();
+  }
+
+  /// Start/stop the auto-cycle timer to match the current state: it runs only on
+  /// the QR step, with more than one code, while [_playing]. Idempotent — call it
+  /// after any state change that could affect those conditions.
+  void _syncCycle() {
+    _cycle?.cancel();
+    _cycle = null;
+    final n = _payloads?.length ?? 0;
+    if (_step == _Step.qr && n > 1 && _playing) {
+      _cycle = Timer.periodic(const Duration(milliseconds: 180), (_) {
+        if (!mounted) return;
+        setState(() => _qrIndex = (_qrIndex + 1) % n);
+      });
+    }
+  }
+
+  /// Manually jump to code [i] — this pauses the auto-cycle so the user can hold
+  /// a specific one steady.
+  void _stepTo(int i) {
+    setState(() {
+      _playing = false;
+      _qrIndex = i;
+    });
+    _syncCycle();
   }
 
   Future<void> _load() async {
@@ -156,9 +192,11 @@ class _OfflineQrDialogState extends ConsumerState<_OfflineQrDialog> {
       setState(() {
         _payloads = payloads;
         _qrIndex = 0;
+        _playing = true;
         _busy = false;
         _step = _Step.qr;
       });
+      _syncCycle(); // auto-cycle if this produced multiple codes
     } on OfflineQrTooLarge {
       if (!mounted) return;
       setState(() {
@@ -386,11 +424,19 @@ class _OfflineQrDialogState extends ConsumerState<_OfflineQrDialog> {
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               IconButton(
-                onPressed: idx > 0
-                    ? () => setState(() => _qrIndex = idx - 1)
-                    : null,
+                onPressed: () =>
+                    _stepTo((idx - 1 + payloads.length) % payloads.length),
                 icon: const Icon(Icons.chevron_left),
                 tooltip: 'Previous',
+              ),
+              IconButton(
+                onPressed: () {
+                  setState(() => _playing = !_playing);
+                  _syncCycle();
+                },
+                icon: Icon(_playing ? Icons.pause : Icons.play_arrow),
+                color: c.primary,
+                tooltip: _playing ? 'Pause cycling' : 'Resume cycling',
               ),
               Text(
                 'QR ${idx + 1} of ${payloads.length}',
@@ -402,9 +448,7 @@ class _OfflineQrDialogState extends ConsumerState<_OfflineQrDialog> {
                 ),
               ),
               IconButton(
-                onPressed: idx < payloads.length - 1
-                    ? () => setState(() => _qrIndex = idx + 1)
-                    : null,
+                onPressed: () => _stepTo((idx + 1) % payloads.length),
                 icon: const Icon(Icons.chevron_right),
                 tooltip: 'Next',
               ),
@@ -414,8 +458,9 @@ class _OfflineQrDialogState extends ConsumerState<_OfflineQrDialog> {
         const SizedBox(height: Space.x2),
         Text(
           multi
-              ? 'The code you chose is never in any QR — enter it on the phone '
-                    'after the last one. Everything transfers offline.'
+              ? 'These codes cycle on their own — on your phone → Scan, just hold '
+                    'the camera on this square and it collects them all, then '
+                    'enter your code. Everything transfers offline.'
               : 'On your phone: open Airclone → Scan, point it at this QR, then '
                     'enter the code you chose. Everything transfers offline — '
                     'nothing leaves this screen except the picture.',
@@ -426,7 +471,10 @@ class _OfflineQrDialogState extends ConsumerState<_OfflineQrDialog> {
           mainAxisAlignment: MainAxisAlignment.end,
           children: [
             TextButton(
-              onPressed: () => setState(() => _step = _Step.compose),
+              onPressed: () {
+                setState(() => _step = _Step.compose);
+                _syncCycle(); // leaving the QR step stops the cycle
+              },
               child: Text('Back', style: TextStyle(color: c.textMuted)),
             ),
             const SizedBox(width: Space.x2),
