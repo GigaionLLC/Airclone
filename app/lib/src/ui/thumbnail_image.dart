@@ -7,10 +7,6 @@ import '../state/thumbnail_reload.dart';
 import '../state/thumbnail_service.dart';
 import 'theme/tokens.dart';
 
-/// Cache keys that have loaded at least once this session, so a re-mount
-/// (scroll back into view) renders instantly off the disk cache.
-final Set<String> _loadedKeys = <String>{};
-
 /// Lazy thumbnail tile: shows [placeholder] until bytes resolve, then fades
 /// in the decoded image. Loads only when mounted (visible-window-only), so
 /// scrolling a tile into view triggers its fetch.
@@ -89,7 +85,6 @@ class _ThumbnailImageState extends ConsumerState<ThumbnailImage> {
       // Superseded (a newer _start ran) or gone — discard this result.
       if (!mounted || gen != _gen) return;
       if (bytes != null) {
-        _loadedKeys.add(req.cacheKey);
         setState(() => _bytes = bytes);
         return;
       }

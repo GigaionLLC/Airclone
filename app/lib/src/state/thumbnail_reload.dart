@@ -42,10 +42,25 @@ class ThumbnailReloadController extends Notifier<ThumbnailReloadSignal> {
   Future<int> prewarm(List<ThumbRequest> requests) async {
     if (requests.isEmpty) return 0;
     final service = ref.read(thumbnailServiceProvider);
-    await Future.wait(requests.map((r) => service.load(r)));
+    // Warm in bounded batches. A single Future.wait over the whole folder would
+    // (a) pin every decoded thumbnail in RAM simultaneously — the results are
+    // unused here, we want only the disk-cache side effect — risking an OOM on a
+    // large photo folder, and (b) fan the cache-read/decrypt path out unbounded
+    // (the service's semaphore gates generation, not cache reads). Batching caps
+    // both to ~[_batch] and lets each thumbnail's bytes free as it completes.
+    const batch = _batch;
+    for (var i = 0; i < requests.length; i += batch) {
+      await Future.wait(
+        requests.skip(i).take(batch).map((r) => service.load(r).then((_) {})),
+      );
+    }
     state = state.copyWith(tick: state.tick + 1, force: false);
     return requests.length;
   }
+
+  /// Pre-warm batch size — bounds peak retained thumbnail bytes + concurrent
+  /// cache reads regardless of folder size.
+  static const int _batch = 16;
 }
 
 /// App-wide thumbnail reload / pre-warm coordinator.

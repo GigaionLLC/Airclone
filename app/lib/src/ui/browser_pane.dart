@@ -1,3 +1,5 @@
+import 'dart:io' show Platform;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -5,6 +7,7 @@ import '../rclone/models/job.dart';
 import '../rclone/models/rclone_file.dart';
 import '../rclone/models/remote.dart';
 import '../rclone/rclone_client.dart';
+import '../state/advanced_mode.dart';
 import '../state/archive_command.dart';
 import '../state/archive_service.dart';
 import '../state/browser_controller.dart';
@@ -1137,6 +1140,19 @@ class _PaneToolbar extends ConsumerWidget {
                   tooltip: 'New tab (Ctrl+T)',
                   visualDensity: VisualDensity.compact,
                 ),
+                // Advanced, desktop-only: open the rclone command console. Also
+                // reachable from the tab strip + Ctrl+K, but the strip is hidden
+                // with a single tab — so surface it here where it's discoverable.
+                if ((Platform.isWindows ||
+                        Platform.isMacOS ||
+                        Platform.isLinux) &&
+                    ref.watch(advancedModeProvider))
+                  IconButton(
+                    onPressed: ctrl.newConsoleTab,
+                    icon: const Icon(Icons.terminal, size: 15),
+                    tooltip: 'New console tab (run rclone commands)',
+                    visualDensity: VisualDensity.compact,
+                  ),
                 const SizedBox(width: Space.x1),
                 Expanded(
                   child: PathBar(

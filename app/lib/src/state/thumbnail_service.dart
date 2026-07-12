@@ -78,6 +78,13 @@ class ThumbnailService {
   final _waiters = <Completer<void>>[];
   final _inFlight = <String, Future<Uint8List?>>{};
 
+  /// Cache keys whose bytes downloaded fine but could NOT be decoded (e.g. HEIC
+  /// / SVG that pass `isThumbnailable` yet Flutter's image codec rejects). This
+  /// is a PERMANENT failure, not a transient one — recorded so the retry loop
+  /// and every scroll re-mount don't re-download a multi-MB original that will
+  /// never render. Session-scoped; a forced rebuild clears + re-attempts.
+  final _undecodable = <String>{};
+
   Directory? _cacheDir;
 
   /// Load thumbnail bytes (PNG) for [req]; null on any failure. When [force] is
@@ -85,6 +92,14 @@ class ThumbnailService {
   /// corrupt cached thumbnail is regenerated from source.
   Future<Uint8List?> load(ThumbRequest req, {bool force = false}) async {
     final memoryOnly = _ref.read(cacheMemoryOnlyProvider);
+
+    // A known-undecodable file: don't re-download it. A forced rebuild clears
+    // the mark so the user can re-attempt (e.g. after adding codec support).
+    if (force) {
+      _undecodable.remove(req.cacheKey);
+    } else if (_undecodable.contains(req.cacheKey)) {
+      return null;
+    }
 
     // 1) Encrypted disk cache (skipped on a forced rebuild).
     if (!memoryOnly && !force) {
@@ -153,7 +168,11 @@ class ThumbnailService {
           .get(Uri.parse(req.url), headers: req.headers)
           .timeout(const Duration(seconds: 20));
       if (resp.statusCode < 200 || resp.statusCode >= 300) return null;
-      return _downscale(resp.bodyBytes, req.size);
+      final png = await _downscale(resp.bodyBytes, req.size);
+      // Fetch succeeded but the bytes won't decode — permanent, not transient.
+      // Mark it so retries + re-mounts stop re-downloading the original.
+      if (png == null) _undecodable.add(req.cacheKey);
+      return png;
     } catch (_) {
       return null;
     }
