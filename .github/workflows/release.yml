@@ -22,6 +22,15 @@ on:
 permissions:
   contents: write
 
+env:
+  # The single pinned rclone version for the whole release: bundled into the
+  # Store MSIX (windows job), built into librclone, and built as the Android
+  # jniLib (android job). Keep in sync with dev/android/build-rclone.ps1 +
+  # dev/desktop/build-librclone.sh — ci.yml greps this line and enforces it.
+  # v1.74.4 (2026-07-08) is a security patch: CVEs in serve s3 / serve webdav /
+  # local-backend symlink escape — all surfaces Airclone ships.
+  RCLONE_VERSION: v1.74.4
+
 defaults:
   run:
     working-directory: app
@@ -213,6 +222,32 @@ jobs:
         run: |
           gh release upload "$GITHUB_REF_NAME" airclone-windows-x64.zip --clobber --repo "$GITHUB_REPOSITORY"
           gh release upload "$GITHUB_REF_NAME" windows/installer/airclone-setup-x64.exe --clobber --repo "$GITHUB_REPOSITORY"
+      # Bundle a verified rclone.exe into the Store MSIX ONLY. Done here — AFTER
+      # the zip + installer are packaged — so those two keep shipping without the
+      # engine and download-on-first-run as before; only the MSIX carries it.
+      # Why: the Microsoft Store discourages downloading executable code at
+      # runtime, so the Store build ships the engine and never auto-downloads.
+      # RcloneEngine.bundledDesktopBinary() finds this file beside airclone.exe.
+      # Fail-closed SHA256 verify mirrors the app's own engine provisioning.
+      - name: Bundle rclone into the MSIX build (verified)
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          $ver = "${env:RCLONE_VERSION}"          # workflow-level pin, e.g. v1.74.4
+          $triple = "windows-amd64"
+          $zip = "rclone-$ver-$triple.zip"
+          $base = "https://downloads.rclone.org/$ver"
+          Invoke-WebRequest "$base/$zip" -OutFile $zip
+          $sums = (Invoke-WebRequest "$base/SHA256SUMS").Content
+          $line = $sums -split "`n" | Where-Object { $_ -match ([regex]::Escape($zip) + '$') } | Select-Object -First 1
+          $expected = ($line -split '\s+')[0].Trim().ToUpper()
+          if (-not $expected) { throw "no checksum for $zip in SHA256SUMS" }
+          $actual = (Get-FileHash $zip -Algorithm SHA256).Hash.ToUpper()
+          if ($actual -ne $expected) { throw "rclone checksum mismatch (expected $expected, got $actual)" }
+          Expand-Archive $zip -DestinationPath rclone-extract -Force
+          $rel = "build/windows/x64/runner/Release"
+          Copy-Item "rclone-extract/rclone-$ver-$triple/rclone.exe" "$rel/rclone.exe" -Force
+          Write-Output "Bundled rclone $ver into $rel for MSIX packaging."
       # MSIX for the Microsoft Store. --store => unsigned, Partner-Center-ready
       # (the Store signs it), so no certificate and no interactive prompt. Identity
       # comes from pubspec's msix_config (placeholders until the app is registered
@@ -222,6 +257,16 @@ jobs:
         continue-on-error: true
         shell: pwsh
         run: |
+          # Refuse to build an engine-less Store package. The bundle step above is
+          # continue-on-error (a transient rclone.org hiccup must not fail the whole
+          # release), so guard here: if rclone.exe didn't land, throw — this step is
+          # itself continue-on-error, so the result is simply NO msix this tag (the
+          # Store lane is optional) rather than a silently engine-less one that would
+          # re-enable runtime download. Mirrors the macOS notarize outcome-gate.
+          $rel = "build/windows/x64/runner/Release"
+          if (-not (Test-Path "$rel/rclone.exe")) {
+            throw "rclone.exe was not bundled into $rel (bundle step failed) — refusing to build an engine-less Store MSIX."
+          }
           $ver = ((Select-String -Path pubspec.yaml -Pattern '^version:' | Select-Object -First 1).Line -split ':')[1].Trim().Split('+')[0]
           dart run msix:create --store --version "$ver.0" --build-windows false --output-path . --output-name airclone
       - name: Upload MSIX to release
@@ -515,10 +560,8 @@ jobs:
     # The "Build rclone engine" step (alpha.84) bundles rclone as a per-ABI jniLib
     # so the app works on-device; release signing (alpha.86) uses AIRCLONE_* secrets.
     env:
-      # Keep in sync with dev/android/build-rclone.ps1 (the local equivalent).
-      # v1.74.4 (2026-07-08) is a security patch: CVEs in serve s3 / serve
-      # webdav / local-backend symlink escape — all surfaces Airclone ships.
-      RCLONE_VERSION: v1.74.4
+      # RCLONE_VERSION is workflow-level (see the top of this file). The Android
+      # jniLib is built from it via `go get github.com/rclone/rclone@$RCLONE_VERSION`.
       NDK_VERSION: 28.2.13676358
       NDK_API: 24
       # Release signing. Base64-encoded keystore is job-level so the decode

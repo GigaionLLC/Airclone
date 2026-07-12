@@ -1373,6 +1373,19 @@ class _EngineVersionSectionState extends ConsumerState<_EngineVersionSection> {
   String? _latest; // latest tag resolved by the last successful check
   String? _error; // friendly message when a check/update failed
   bool _updated = false; // success confirmation after a hot-swap
+  bool _bundled =
+      false; // engine ships beside the app (Store MSIX) — no in-app update
+
+  @override
+  void initState() {
+    super.initState();
+    // A build that bundles the engine (the Store MSIX) must not offer an in-app
+    // download/update — it updates only when the app itself updates. Resolve the
+    // signal (a binary beside the app) once and hide the update controls.
+    RcloneEngine.bundledDesktopBinary().then((p) {
+      if (mounted && p != null) setState(() => _bundled = true);
+    });
+  }
 
   Future<void> _check() async {
     setState(() {
@@ -1448,7 +1461,12 @@ class _EngineVersionSectionState extends ConsumerState<_EngineVersionSection> {
               style: TextStyle(color: c.textMuted, fontSize: 13),
             ),
             const Spacer(),
-            if (busy)
+            if (_bundled)
+              Text(
+                'Bundled with the app',
+                style: TextStyle(color: c.textMuted, fontSize: 12),
+              )
+            else if (busy)
               const SizedBox(
                 height: 14,
                 width: 14,

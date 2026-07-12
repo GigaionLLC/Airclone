@@ -14,8 +14,15 @@ class RcloneEngine {
   /// Resolution order for an existing binary:
   ///   1. explicit override (settings) — passed in by the caller,
   ///   2. Android: the engine bundled in the APK (nothing else can exist),
-  ///   3. the app-managed engine dir,
-  ///   4. `rclone` on the system PATH.
+  ///   3. the app-managed engine dir (where an in-app engine update lands),
+  ///   4. a binary bundled beside the app (the Microsoft Store MSIX ships one so
+  ///      it never auto-downloads executable code — see [bundledDesktopBinary]),
+  ///   5. `rclone` on the system PATH.
+  ///
+  /// The managed dir is checked *before* the bundled one on purpose: a fresh
+  /// Store install has no managed binary, so it falls through to the bundled
+  /// engine (no download), but a user-initiated "update engine" that lands in
+  /// the managed dir then takes precedence on the next launch.
   static Future<String?> findExisting({String? overridePath}) async {
     if (overridePath != null && overridePath.isNotEmpty) {
       if (await File(overridePath).exists()) return overridePath;
@@ -24,8 +31,31 @@ class RcloneEngine {
     final managed = await _managedBinaryPath();
     if (await File(managed).exists()) return managed;
 
+    final bundled = await bundledDesktopBinary();
+    if (bundled != null) return bundled;
+
     final onPath = await _whichRclone();
     return onPath;
+  }
+
+  /// A desktop rclone binary that ships *inside* the app package, placed beside
+  /// the app executable. Only the Microsoft Store MSIX bundles one (CI drops a
+  /// SHA256-verified `rclone.exe` into the packaged build; see release.yml):
+  /// Store policy discourages downloading executable code at runtime, so the
+  /// Store build carries the engine instead of fetching it on first run. The
+  /// portable zip / Inno installer ship no such file, so this returns null for
+  /// them and they keep the download-on-first-run + in-app-update behaviour.
+  /// Desktop-only; returns null when absent or on any error.
+  static Future<String?> bundledDesktopBinary() async {
+    if (Platform.isAndroid || Platform.isIOS) return null;
+    try {
+      final exeDir = File(Platform.resolvedExecutable).parent.path;
+      final name = Platform.isWindows ? 'rclone.exe' : 'rclone';
+      final path = '$exeDir${Platform.pathSeparator}$name';
+      return await File(path).exists() ? path : null;
+    } catch (_) {
+      return null;
+    }
   }
 
   /// The rclone executable that ships inside the APK as a per-ABI jniLib named
@@ -105,6 +135,19 @@ class RcloneEngine {
       // No downloadable engine exists for Android (and exec from app storage is
       // forbidden anyway) — the binary must come bundled in the APK.
       throw StateError('The bundled rclone engine is missing from this build.');
+    }
+    // A build that SHIPS a bundled engine (the Microsoft Store MSIX places one
+    // beside the app) must never download + exec rclone at runtime — the Store
+    // discourages downloading executable code. Presence of the bundled binary is
+    // the runtime signal for "this flavour is engine-managed" (a `--dart-define`
+    // wouldn't work: the Store MSIX repackages the already-compiled desktop build
+    // via `msix:create --build-windows false`). The engine then updates only when
+    // the app itself updates. Portable zip / installer builds ship no bundled
+    // binary, so this never triggers for them.
+    if (await bundledDesktopBinary() != null) {
+      throw StateError(
+        'This build bundles the rclone engine — update it by updating the app.',
+      );
     }
     final triple = _targetTriple();
     onStatus?.call('Resolving latest rclone version…');
