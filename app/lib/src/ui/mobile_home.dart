@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../rclone/models/rclone_file.dart';
 import '../rclone/models/remote.dart';
+import '../state/advanced_mode.dart';
 import '../state/android_native.dart';
 import '../state/browser_controller.dart';
 import '../state/clipboard_controller.dart';
@@ -20,6 +21,7 @@ import 'encrypt_remote_dialog.dart';
 import 'scan_from_desktop_sheet.dart';
 import 'engine_gate.dart';
 import 'jobs_panel.dart';
+import 'mobile_features_sheet.dart';
 import 'pane_split.dart';
 import 'paste_action.dart';
 import 'recent_activity_panel.dart';
@@ -44,7 +46,9 @@ class _MobileHomeScreenState extends ConsumerState<MobileHomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final browsing = ref.watch(paneProvider(0).select((s) => s.remote != null));
+    final browsing = ref.watch(
+      paneProvider(0).select((s) => s.remote != null || s.activeIsConsole),
+    );
     final split = ref.watch(mobileSplitProvider);
     // When the engine gate is on screen, pane state is irrelevant — back must
     // not get swallowed navigating a browser the user can't see.
@@ -68,8 +72,11 @@ class _MobileHomeScreenState extends ConsumerState<MobileHomeScreen> {
           // back to single-pane rather than exiting the app.
           final active = ref.read(activePaneProvider);
           final pane = ref.read(paneProvider(active));
-          if (pane.path.isNotEmpty) {
-            ref.read(paneProvider(active).notifier).up();
+          final actrl = ref.read(paneProvider(active).notifier);
+          if (pane.activeIsConsole) {
+            actrl.closeTab(pane.activeTab);
+          } else if (pane.path.isNotEmpty) {
+            actrl.up();
           } else {
             ref.read(mobileSplitProvider.notifier).state = false;
             ref.read(activePaneProvider.notifier).state = 0;
@@ -78,7 +85,11 @@ class _MobileHomeScreenState extends ConsumerState<MobileHomeScreen> {
         }
         final pane = ref.read(paneProvider(0));
         final ctrl = ref.read(paneProvider(0).notifier);
-        if (pane.path.isNotEmpty) {
+        if (pane.activeIsConsole) {
+          // Back on a console tab closes it (there's always a browser tab
+          // beneath — the console is opened on top of one).
+          ctrl.closeTab(pane.activeTab);
+        } else if (pane.path.isNotEmpty) {
           ctrl.up();
         } else {
           ctrl.clear();
@@ -128,7 +139,9 @@ class _MobileFiles extends ConsumerWidget {
     if (engine.phase != EnginePhase.ready) {
       return EngineGate(engine: engine);
     }
-    final browsing = ref.watch(paneProvider(0).select((s) => s.remote != null));
+    final browsing = ref.watch(
+      paneProvider(0).select((s) => s.remote != null || s.activeIsConsole),
+    );
     // Split mode keeps the browser on screen even if pane 0 is cleared, so
     // clearing one pane doesn't tear down the whole split.
     final split = ref.watch(mobileSplitProvider);
@@ -174,6 +187,19 @@ class _MobileLocations extends ConsumerWidget {
                 fontWeight: FontWeight.w600,
               ),
             ),
+            const Spacer(),
+            // Advanced: open the rclone command console (parity with desktop).
+            // Reachable here so it doesn't require opening a location first to
+            // reveal the tab strip's console button. Opening it makes pane 0's
+            // active tab a console, which flips the Files tab to the browser.
+            if (ref.watch(advancedModeProvider))
+              IconButton(
+                onPressed: () =>
+                    ref.read(paneProvider(0).notifier).newConsoleTab(),
+                icon: Icon(Icons.terminal, size: 20, color: c.textMuted),
+                tooltip: 'Open console',
+                visualDensity: VisualDensity.compact,
+              ),
           ],
         ),
         if (needsAccess) const StorageAccessBanner(),
@@ -450,6 +476,9 @@ class _MobilePaneHeader extends ConsumerWidget {
     final ctrl = ref.read(paneProvider(index).notifier);
     final remote = state.remote;
     final hasRemote = remote != null;
+    // A console tab has an empty browser state (remote == null) but IS content —
+    // give it its own header treatment instead of the inert "pick a location".
+    final isConsole = state.activeIsConsole;
     final split = ref.watch(mobileSplitProvider);
     final orientation = ref.watch(paneSplitOrientationProvider);
     final clipEmpty = ref.watch(
@@ -479,34 +508,65 @@ class _MobilePaneHeader extends ConsumerWidget {
           return Row(
             children: [
               IconButton(
-                onPressed: !hasRemote
+                onPressed: isConsole
+                    ? () => ctrl.closeTab(state.activeTab)
+                    : !hasRemote
                     ? null
                     : () => state.path.isEmpty ? ctrl.clear() : ctrl.up(),
-                icon: const Icon(Icons.arrow_back, size: 22),
+                icon: Icon(
+                  isConsole ? Icons.close : Icons.arrow_back,
+                  size: 22,
+                ),
                 color: c.text,
-                tooltip: state.path.isEmpty ? 'All locations' : 'Up',
+                tooltip: isConsole
+                    ? 'Close console'
+                    : (state.path.isEmpty ? 'All locations' : 'Up'),
               ),
               Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Text(
-                      folder,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: c.text,
-                        fontSize: 15,
-                        fontWeight: FontWeight.w600,
+                // Console tab → a plain "Console" title. A remote is open → a
+                // clickable, scrollable breadcrumb so you can jump to any ancestor
+                // (or the remote root) in one tap. Otherwise → the Home title.
+                child: isConsole
+                    ? Row(
+                        children: [
+                          Icon(Icons.terminal, size: 18, color: c.textMuted),
+                          const SizedBox(width: Space.x2),
+                          Text(
+                            'Console',
+                            style: TextStyle(
+                              color: c.text,
+                              fontSize: 15,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      )
+                    : hasRemote
+                    ? _Breadcrumb(
+                        rootLabel: remote.name,
+                        segments: state.segments,
+                        onTap: ctrl.goToSegment,
+                      )
+                    : Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Text(
+                            folder,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: c.text,
+                              fontSize: 15,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          Text(
+                            subtitle,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(color: c.textFaint, fontSize: 11),
+                          ),
+                        ],
                       ),
-                    ),
-                    Text(
-                      subtitle,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(color: c.textFaint, fontSize: 11),
-                    ),
-                  ],
-                ),
               ),
               if (!compact && hasRemote)
                 IconButton(
@@ -578,6 +638,8 @@ class _MobilePaneHeader extends ConsumerWidget {
       icon: Icon(Icons.more_vert, size: 20, color: c.textMuted),
       onSelected: (v) async {
         switch (v) {
+          case 'features':
+            await showMobileFeaturesSheet(context, ref, index);
           case 'search':
             _search(context, ref);
           case 'refresh':
@@ -616,6 +678,10 @@ class _MobilePaneHeader extends ConsumerWidget {
         }
       },
       itemBuilder: (_) => [
+        if (hasRemote) ...[
+          const PopupMenuItem(value: 'features', child: Text('All features…')),
+          const PopupMenuDivider(),
+        ],
         if (compact && hasRemote)
           const PopupMenuItem(
             value: 'search',
@@ -756,6 +822,137 @@ class _MobilePaneHeader extends ConsumerWidget {
         }
         pane.selectOnly(m.name);
       },
+    );
+  }
+}
+
+/// A horizontally-scrollable folder breadcrumb for the phone header:
+/// `[remote] › sub › sub-sub`. Tapping the root chip or any ancestor navigates
+/// there via the pane controller (`goToSegment`, where -1 = the remote root and
+/// `i` = the i-th path segment). The last crumb is the current folder (not
+/// tappable), and the row auto-scrolls to the end so the deepest folder shows.
+class _Breadcrumb extends StatefulWidget {
+  const _Breadcrumb({
+    required this.rootLabel,
+    required this.segments,
+    required this.onTap,
+  });
+
+  final String rootLabel;
+  final List<String> segments;
+
+  /// -1 = the remote root; 0..n-1 = that path segment.
+  final void Function(int index) onTap;
+
+  @override
+  State<_Breadcrumb> createState() => _BreadcrumbState();
+}
+
+class _BreadcrumbState extends State<_Breadcrumb> {
+  final _scroll = ScrollController();
+
+  @override
+  void initState() {
+    super.initState();
+    _jumpToEnd();
+  }
+
+  @override
+  void didUpdateWidget(_Breadcrumb old) {
+    super.didUpdateWidget(old);
+    // Navigating deeper/shallower changes the crumbs — keep the current folder
+    // (the tail) in view.
+    _jumpToEnd();
+  }
+
+  void _jumpToEnd() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_scroll.hasClients) {
+        _scroll.jumpTo(_scroll.position.maxScrollExtent);
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _scroll.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final c = AircloneTheme.of(context);
+    final segs = widget.segments;
+    final crumbs = <Widget>[
+      _crumb(
+        c,
+        widget.rootLabel,
+        current: segs.isEmpty,
+        onTap: () => widget.onTap(-1),
+        root: true,
+      ),
+    ];
+    for (var i = 0; i < segs.length; i++) {
+      crumbs.add(Icon(Icons.chevron_right, size: 16, color: c.textFaint));
+      crumbs.add(
+        _crumb(
+          c,
+          segs[i],
+          current: i == segs.length - 1,
+          onTap: () => widget.onTap(i),
+        ),
+      );
+    }
+    return SingleChildScrollView(
+      controller: _scroll,
+      scrollDirection: Axis.horizontal,
+      child: Row(mainAxisSize: MainAxisSize.min, children: crumbs),
+    );
+  }
+
+  Widget _crumb(
+    AircloneColors c,
+    String label, {
+    required bool current,
+    required VoidCallback onTap,
+    bool root = false,
+  }) {
+    final content = Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (root) ...[
+          Icon(
+            Icons.folder_outlined,
+            size: 15,
+            color: current ? c.text : c.textMuted,
+          ),
+          const SizedBox(width: Space.x1),
+        ],
+        Text(
+          label,
+          maxLines: 1,
+          style: TextStyle(
+            color: current ? c.text : c.textMuted,
+            fontSize: 15,
+            fontWeight: current ? FontWeight.w600 : FontWeight.w500,
+          ),
+        ),
+      ],
+    );
+    // The current folder isn't a link (you're already here); ancestors are.
+    if (current) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
+        child: content,
+      );
+    }
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(Radii.sm),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
+        child: content,
+      ),
     );
   }
 }

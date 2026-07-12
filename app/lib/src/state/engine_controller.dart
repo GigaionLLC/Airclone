@@ -186,12 +186,13 @@ class EngineController extends Notifier<EngineUi> {
     }
     final support = await getApplicationSupportDirectory();
     final cache = await getTemporaryDirectory();
+    final configPath = resolveConfigPath(
+      isAndroid: true,
+      androidConfigPath: '${support.path}/rclone.conf',
+      override: override,
+    );
     return (
-      resolveConfigPath(
-        isAndroid: true,
-        androidConfigPath: '${support.path}/rclone.conf',
-        override: override,
-      ),
+      configPath,
       <String, String>{
         'TMPDIR': cache.path,
         'HOME': support.path,
@@ -199,6 +200,13 @@ class EngineController extends Notifier<EngineUi> {
         // cache data lands in persistent app storage the OS can't reclaim.
         'XDG_CACHE_HOME': cache.path,
         'RCLONE_LOCAL_NO_SET_MODTIME': 'true',
+        // The parent `rcd` gets --config explicitly, but `core/command` (the
+        // console) and the archive subprocess re-exec a FRESH rclone that does
+        // NOT inherit that flag. Pass the config via env too so those children
+        // read the SAME config (rclone precedence flag > env > default, so the
+        // parent is unaffected). Without this they resolve an empty
+        // $HOME/.config/rclone/rclone.conf — none of the user's remotes.
+        'RCLONE_CONFIG': ?configPath,
       },
     );
   }

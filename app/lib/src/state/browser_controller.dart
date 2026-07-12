@@ -86,6 +86,15 @@ class BrowserState {
       ? const []
       : path.split('/').where((s) => s.isNotEmpty).toList();
 
+  /// True when the active tab is a console session. A console's browser state is
+  /// empty (`remote == null`), so callers that gate "is this pane showing
+  /// content?" on `remote != null` must also accept a console tab — otherwise the
+  /// phone shell bounces a console back to the locations list.
+  bool get activeIsConsole =>
+      activeTab >= 0 &&
+      activeTab < tabs.length &&
+      tabs[activeTab].kind == PaneKind.console;
+
   bool isSelected(String name) => selected.contains(name);
 
   List<RcloneFile> get selectedEntries =>

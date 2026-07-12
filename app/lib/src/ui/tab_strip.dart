@@ -1,5 +1,3 @@
-import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -132,7 +130,9 @@ class PaneTabStrip extends ConsumerWidget {
     );
   }
 
+  // The console runs on every engine — streaming `core/command` on the spawned
+  // binary (desktop + Android), the RC-method path on the in-process/FFI engine
+  // (iOS/MAS). So it's available anywhere Advanced mode is on, not desktop-only.
   static bool _consoleAvailable(WidgetRef ref) =>
-      (Platform.isWindows || Platform.isMacOS || Platform.isLinux) &&
       ref.watch(advancedModeProvider);
 }
