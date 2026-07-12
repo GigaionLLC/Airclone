@@ -3,8 +3,6 @@ import 'dart:typed_data';
 import 'package:airclone/src/state/config_io.dart'
     show Argon2Params, CorruptEnvelope, WrongPassphrase;
 import 'package:airclone/src/state/offline_qr.dart';
-import 'package:airclone/src/state/pairing_protocol.dart'
-    show base45Decode, base45Encode;
 import 'package:flutter_test/flutter_test.dart';
 
 /// A deliberately CHEAP Argon2id so the round-trip tests don't pay the 64 MiB
@@ -304,4 +302,64 @@ void main() {
     },
     timeout: const Timeout(Duration(minutes: 2)),
   );
+
+  // base45 + the unlock-code generator moved into offline_qr.dart when the LAN
+  // pairing_protocol.dart was deleted; these keep their direct coverage.
+  group('base45 codec (RFC 9285)', () {
+    test('round-trips arbitrary bytes', () {
+      for (final bytes in <List<int>>[
+        [],
+        [0],
+        [255],
+        [0, 0],
+        [255, 255],
+        [1, 2, 3, 4, 5],
+        List<int>.generate(64, (i) => (i * 37) & 0xFF),
+      ]) {
+        final enc = base45Encode(bytes);
+        expect(
+          base45Decode(enc),
+          Uint8List.fromList(bytes),
+          reason: 'len ${bytes.length}',
+        );
+      }
+    });
+
+    test('stays within the QR-alphanumeric charset', () {
+      const alnum = r'0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ $%*+-./:';
+      final enc = base45Encode(List<int>.generate(50, (i) => (i * 5) & 0xFF));
+      for (final ch in enc.split('')) {
+        expect(alnum.contains(ch), isTrue, reason: 'char "$ch"');
+      }
+    });
+
+    test('rejects an out-of-alphabet symbol', () {
+      expect(() => base45Decode('AB!'), throwsFormatException);
+    });
+
+    test('rejects a length that cannot frame bytes (len % 3 == 1)', () {
+      expect(() => base45Decode('0000'), throwsFormatException);
+    });
+
+    test('rejects an overlong (non-canonical) group', () {
+      expect(() => base45Decode(':::'), throwsFormatException);
+    });
+  });
+
+  group('unlock code generator', () {
+    final shape = RegExp(r'^[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}$');
+    test('newPairingCode mints 8 Crockford symbols as XXXX-XXXX', () {
+      for (var i = 0; i < 50; i++) {
+        final code = newPairingCode();
+        expect(shape.hasMatch(code), isTrue, reason: code);
+      }
+    });
+
+    test('formatPairingCode groups into dash-separated blocks of four', () {
+      expect(formatPairingCode('K7WX4PMB'), 'K7WX-4PMB');
+      expect(formatPairingCode('K7WX-4PMB'), 'K7WX-4PMB'); // idempotent
+      expect(formatPairingCode('ABC'), 'ABC');
+      expect(formatPairingCode('ABCDE'), 'ABCD-E');
+    });
+  });
 }

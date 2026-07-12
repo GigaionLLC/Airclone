@@ -7,15 +7,14 @@ import 'package:qr_flutter/qr_flutter.dart';
 import '../state/config_io.dart';
 import '../state/config_transfer_controller.dart';
 import '../state/offline_qr.dart';
-import '../state/pairing_protocol.dart' show newPairingCode;
 import 'theme/tokens.dart';
 
 /// Desktop "Offline QR" export (config-portability plan §5, user-requested): seal
 /// the (scoped) config into a self-contained QR that carries the WHOLE encrypted
 /// config — no Wi-Fi, no server. You choose an unlock CODE (never shown in the QR);
-/// the phone scans the QR and enters the same code to decrypt. A thief needs BOTH
-/// the QR photo AND the code. Distinct from "Send to phone…", which streams the
-/// config over the local network. Desktop-only (mounted behind a desktop gate).
+/// the other device scans the QR and enters the same code to decrypt. A thief
+/// needs BOTH the QR photo AND the code. Shown on desktop and mobile (the dialog
+/// sizes itself to fit a narrow phone).
 Future<void> showOfflineQrDialog(BuildContext context) => showDialog<void>(
   context: context,
   builder: (_) => const _OfflineQrDialog(),
@@ -203,7 +202,7 @@ class _OfflineQrDialogState extends ConsumerState<_OfflineQrDialog> {
         _busy = false;
         _formError =
             'This config is too large even for a batch of offline QR codes. '
-            'Choose fewer remotes, or use "Send to phone" over Wi-Fi instead.';
+            'Choose fewer remotes and try again.';
       });
     } catch (e) {
       if (!mounted) return;
@@ -227,13 +226,22 @@ class _OfflineQrDialogState extends ConsumerState<_OfflineQrDialog> {
   @override
   Widget build(BuildContext context) {
     final c = AircloneTheme.of(context);
+    // Shown on desktop AND mobile now: cap at a comfortable width, but shrink to
+    // fit a narrow phone (with tighter inset margins) so nothing overflows.
+    final screenW = MediaQuery.of(context).size.width;
+    final narrow = screenW < 560;
+    final dialogW = narrow ? screenW - Space.x3 * 2 : 520.0;
     return Dialog(
       backgroundColor: c.surfaceRaised,
+      insetPadding: EdgeInsets.symmetric(
+        horizontal: narrow ? Space.x3 : Space.x5,
+        vertical: Space.x5,
+      ),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(Radii.lg),
       ),
       child: SizedBox(
-        width: 520,
+        width: dialogW,
         child: Padding(
           padding: const EdgeInsets.all(Space.x5),
           child: SingleChildScrollView(
@@ -399,25 +407,32 @@ class _OfflineQrDialogState extends ConsumerState<_OfflineQrDialog> {
               color: Colors.white,
               borderRadius: BorderRadius.circular(Radii.md),
             ),
-            child: QrImageView(
-              data: payloads[idx],
-              version: QrVersions.auto,
-              // Rendered large: a phone scanning off a lit screen needs enough
-              // pixels-per-module. Paired with the smaller payload/chunk sizing in
-              // offline_qr.dart, this keeps modules comfortably scannable.
-              size: 380,
-              backgroundColor: Colors.white,
-              // Medium error correction — robust to a screen-photo scan without
-              // over-spending capacity.
-              errorCorrectionLevel: QrErrorCorrectLevel.M,
-              eyeStyle: const QrEyeStyle(
-                eyeShape: QrEyeShape.square,
-                color: Color(0xFF000000),
-              ),
-              dataModuleStyle: const QrDataModuleStyle(
-                dataModuleShape: QrDataModuleShape.square,
-                color: Color(0xFF000000),
-              ),
+            child: LayoutBuilder(
+              builder: (context, cns) {
+                // Render as large as the (possibly narrow, mobile) dialog allows,
+                // capped at 380: a phone scanning off a lit screen needs enough
+                // pixels-per-module, and the smaller payload/chunk sizing in
+                // offline_qr.dart keeps the module count comfortably scannable.
+                final qrSize = (cns.maxWidth.isFinite ? cns.maxWidth : 380.0)
+                    .clamp(160.0, 380.0);
+                return QrImageView(
+                  data: payloads[idx],
+                  version: QrVersions.auto,
+                  size: qrSize,
+                  backgroundColor: Colors.white,
+                  // Medium error correction — robust to a screen-photo scan
+                  // without over-spending capacity.
+                  errorCorrectionLevel: QrErrorCorrectLevel.M,
+                  eyeStyle: const QrEyeStyle(
+                    eyeShape: QrEyeShape.square,
+                    color: Color(0xFF000000),
+                  ),
+                  dataModuleStyle: const QrDataModuleStyle(
+                    dataModuleShape: QrDataModuleShape.square,
+                    color: Color(0xFF000000),
+                  ),
+                );
+              },
             ),
           ),
         ),

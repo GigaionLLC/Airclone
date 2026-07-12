@@ -12,9 +12,12 @@ import 'theme/tokens.dart';
 
 /// Opens the config Import wizard (plan §3): pick a file → (decrypt if needed) →
 /// preview the incoming remotes with collision renames → merge, or replace.
-Future<void> showConfigImportDialog(BuildContext context) => showDialog<void>(
+Future<void> showConfigImportDialog(
+  BuildContext context, {
+  bool startOnQr = false,
+}) => showDialog<void>(
   context: context,
-  builder: (_) => const _ConfigImportDialog(),
+  builder: (_) => _ConfigImportDialog(startOnQr: startOnQr),
 );
 
 /// Wizard steps. [pick] chooses a file; [passphrase]/[rclonePassword] unlock the
@@ -35,7 +38,11 @@ enum _ImportStep {
 }
 
 class _ConfigImportDialog extends ConsumerStatefulWidget {
-  const _ConfigImportDialog();
+  const _ConfigImportDialog({this.startOnQr = false});
+
+  /// Open straight into the "From QR image" pick — the desktop "Import QR
+  /// Config" entry (vs "Import File Config", which starts on the file pick).
+  final bool startOnQr;
 
   @override
   ConsumerState<_ConfigImportDialog> createState() =>
@@ -92,6 +99,17 @@ class _ConfigImportDialogState extends ConsumerState<_ConfigImportDialog> {
 
   ConfigTransferController get _ctrl =>
       ref.read(configTransferControllerProvider);
+
+  @override
+  void initState() {
+    super.initState();
+    // Desktop "Import QR Config" opens directly into the QR-image pick.
+    if (widget.startOnQr) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _pickQrImages();
+      });
+    }
+  }
 
   @override
   void dispose() {
@@ -224,9 +242,9 @@ class _ConfigImportDialogState extends ConsumerState<_ConfigImportDialog> {
   /// the code(s) shown on the other computer — decode each in a background
   /// isolate, and route by kind. A single self-contained QR moves straight to the
   /// code prompt; multi-QR chunks accumulate (across picks, any order) until every
-  /// one is in hand, then reassemble. A "Send to phone" LAN QR (which needs the
-  /// live computer on Wi-Fi) or a non-Airclone image is refused with a clear note
-  /// rather than fed forward. Nothing is decrypted here — that waits for the code.
+  /// one is in hand, then reassemble. A non-Airclone (or non-Offline-QR) image is
+  /// refused with a clear note rather than fed forward. Nothing is decrypted here
+  /// — that waits for the code.
   Future<void> _pickQrImages() async {
     setState(() {
       _busy = true;
@@ -281,7 +299,7 @@ class _ConfigImportDialogState extends ConsumerState<_ConfigImportDialog> {
         single = raw;
         continue;
       }
-      foreign++; // a LAN "Send to phone" QR, or not an Airclone QR at all
+      foreign++; // not an Airclone Offline QR (or not an Airclone QR at all)
     }
     if (!mounted) return;
     // A single self-contained QR wins outright; otherwise assemble the chunks if
@@ -322,8 +340,8 @@ class _ConfigImportDialogState extends ConsumerState<_ConfigImportDialog> {
             '${_qrChunkTotal - have}.';
       } else if (foreign > 0 && unreadable == 0) {
         _qrHint =
-            'That looks like a "Send to phone" QR, which needs the computer live '
-            'on Wi-Fi. For image import, use an Offline QR.';
+            "That image isn't an Airclone Offline QR. On the other computer, use "
+            'Settings → "Export QR Config" to make one.';
       } else {
         _qrHint =
             "Couldn't find an Airclone Offline QR in "

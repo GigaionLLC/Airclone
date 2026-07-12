@@ -7,29 +7,25 @@ import 'package:mobile_scanner/mobile_scanner.dart';
 import '../state/config_io.dart';
 import '../state/config_transfer_controller.dart';
 import '../state/offline_qr.dart';
-import '../state/pairing_protocol.dart';
-import '../state/pairing_receiver.dart';
 import '../state/remote_summary.dart';
 import 'theme/tokens.dart';
 
-/// Opens the phone-side "Import from a computer (QR)" flow (config-portability
-/// plan §5, v3 QR-pinned-TLS): scan the desktop's QR → show a pairing code to type
-/// on the computer → run the pinned-TLS authenticate-before-serve handshake → land
-/// in the MANDATORY preview/merge review before anything is written.
+/// Opens the phone-side "Import QR Config" flow: scan the computer's Offline QR
+/// (a single code or a multi-code batch), enter the unlock code that decrypts it
+/// in place, and land in the MANDATORY preview/merge review before anything is
+/// written. There is NO network — the whole config travels inside the QR itself.
 ///
 /// Pushed as a full-screen route (the camera + multi-step flow needs the height);
-/// the crypto/networking all lives in [PairingReceiver] and the import apply reuses
-/// [ConfigTransferController] — this widget is only the phone-first choreography.
+/// the import apply reuses [ConfigTransferController].
 Future<void> showScanFromDesktopSheet(BuildContext context) => Navigator.of(
   context,
 ).push<void>(MaterialPageRoute(builder: (_) => const _ScanFromDesktopScreen()));
 
-/// The flow's steps. [scanning] is the live camera; [pairing] shows the code and
-/// polls the desktop (LAN QR); [offlineCode] prompts for the unlock code of a
-/// self-contained OFFLINE QR; [preview] is the MANDATORY review (type + endpoint
-/// per remote, collision renames); [applying]/[report] run and summarise the
-/// merge; [error] is a terminal dead-end with a retry.
-enum _Step { scanning, pairing, offlineCode, preview, applying, report, error }
+/// The flow's steps. [scanning] is the live camera; [offlineCode] prompts for the
+/// unlock code of the scanned OFFLINE QR; [preview] is the MANDATORY review (type +
+/// endpoint per remote, collision renames); [applying]/[report] run and summarise
+/// the merge; [error] is a terminal dead-end with a retry.
+enum _Step { scanning, offlineCode, preview, applying, report, error }
 
 class _ScanFromDesktopScreen extends ConsumerStatefulWidget {
   const _ScanFromDesktopScreen();
@@ -54,13 +50,6 @@ class _ScanFromDesktopScreenState
 
   _Step _step = _Step.scanning;
   bool _handledScan = false; // guard: process the first valid QR exactly once
-
-  ParsedQrPayload? _qr;
-  // The pairing code is minted once per session on THIS phone and shown for the
-  // user to type on the desktop. A short-lived String (immutable — can't be
-  // wiped); it lives only for the pairing step and is dropped when we leave.
-  String? _code;
-  String _status = '';
 
   // Offline-QR path: the scanned self-contained payload + the code the user
   // enters here to decrypt it (lives only in the controller, never logged).
@@ -131,8 +120,8 @@ class _ScanFromDesktopScreenState
     }
     _handledScan = true;
     unawaited(_scanner.stop());
-    // A self-contained OFFLINE QR carries the whole encrypted config — no network
-    // handshake. Route to the code prompt instead of the LAN pairing flow.
+    // A self-contained OFFLINE QR carries the whole encrypted config — route to
+    // the unlock-code prompt. Anything else isn't an Airclone config QR.
     if (isOfflineQrPayload(raw)) {
       setState(() {
         _offlinePayload = raw;
@@ -141,23 +130,10 @@ class _ScanFromDesktopScreenState
       });
       return;
     }
-    try {
-      final qr = parseQrPayload(raw);
-      setState(() {
-        _qr = qr;
-        _code = newPairingCode();
-        _status = 'Waiting for the computer…';
-        _step = _Step.pairing;
-      });
-      unawaited(_runPairing());
-    } on QrPayloadError catch (e) {
-      _toError(
-        "That QR code isn't a valid Airclone transfer (${e.message}). Make sure "
-        "you're scanning the code from the Airclone \"Send to phone\" window.",
-      );
-    } catch (_) {
-      _toError("That QR code couldn't be read. Try generating a fresh one.");
-    }
+    _toError(
+      "That QR isn't an Airclone config QR. On your computer, open Airclone → "
+      'Settings → "Export QR Config", then scan the code it shows.',
+    );
   }
 
   /// Collects one multi-QR chunk. A chunk whose [OfflineQrChunk.id] differs from
@@ -235,54 +211,6 @@ class _ScanFromDesktopScreenState
         _offlineBusy = false;
         _offlineError = "Couldn't open that QR. Try again.";
       });
-    }
-  }
-
-  // --- Pairing (handshake + retry-until-code-typed) -------------------------
-
-  /// Runs the authenticated fetch, retrying on [PairingFailureKind.notReady] (the
-  /// desktop is still waiting for the code) on a fresh connection each time until a
-  /// short deadline. Every other outcome is terminal with an honest message.
-  Future<void> _runPairing() async {
-    final receiver = ref.read(pairingReceiverProvider);
-    final qr = _qr!;
-    final code = _code!;
-    final deadline = DateTime.now().add(const Duration(seconds: 90));
-
-    while (!_disposed && _step == _Step.pairing) {
-      try {
-        await receiver.receive(
-          qr: qr,
-          code: code,
-          onConfig: (model) => _incoming = model,
-        );
-        // Success: onConfig stashed the config. Build the mandatory preview.
-        if (_disposed) return;
-        await _enterPreview();
-        return;
-      } on PairingReceiverError catch (e) {
-        if (_disposed) return;
-        if (e.kind == PairingFailureKind.notReady) {
-          if (DateTime.now().isAfter(deadline)) {
-            _toError(
-              'The computer never picked up. Type the code before it times out, '
-              'and check both devices are on the same Wi-Fi.',
-            );
-            return;
-          }
-          setState(() => _status = 'Waiting for you to type the code…');
-          // A plain delay; the loop re-checks `_disposed`/`_step` after it fires,
-          // so leaving the screen mid-wait just ends the poll cleanly.
-          await Future<void>.delayed(const Duration(milliseconds: 1200));
-          continue; // fresh connection + challenge
-        }
-        _toError(e.message);
-        return;
-      } catch (_) {
-        if (_disposed) return;
-        _toError('Something went wrong during the transfer.');
-        return;
-      }
     }
   }
 
@@ -409,8 +337,6 @@ class _ScanFromDesktopScreenState
     _offlineCode.clear();
     setState(() {
       _handledScan = false;
-      _qr = null;
-      _code = null;
       _offlinePayload = null;
       _offlineError = null;
       _offlineBusy = false;
@@ -423,7 +349,6 @@ class _ScanFromDesktopScreenState
       _report = null;
       _errorMessage = null;
       _previewError = null;
-      _status = '';
       _step = _Step.scanning;
     });
     unawaited(_scanner.start());
@@ -512,7 +437,6 @@ class _ScanFromDesktopScreenState
       body: SafeArea(
         child: switch (_step) {
           _Step.scanning => _scanView(c),
-          _Step.pairing => _pairingView(c),
           _Step.offlineCode => _offlineCodeView(c),
           _Step.preview => _previewView(c),
           _Step.applying => _busyView(c, 'Importing…'),
@@ -567,9 +491,8 @@ class _ScanFromDesktopScreenState
                   Icon(Icons.qr_code_scanner, size: 24, color: c.primary),
                   const SizedBox(height: Space.x2),
                   Text(
-                    'On your computer, open Airclone → Settings → "Send to '
-                    'phone" or "Offline QR", then point this camera at the code '
-                    'it shows.',
+                    'On your computer, open Airclone → Settings → "Export QR '
+                    'Config", then point this camera at the code it shows.',
                     textAlign: TextAlign.center,
                     style: TextStyle(color: c.textMuted, fontSize: 13),
                   ),
@@ -609,78 +532,6 @@ class _ScanFromDesktopScreenState
             ),
           ],
         ),
-      ),
-    );
-  }
-
-  Widget _pairingView(AircloneColors c) {
-    final code = _code ?? '';
-    return Padding(
-      padding: const EdgeInsets.all(Space.x5),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(Icons.laptop_mac, size: 32, color: c.primary),
-          const SizedBox(height: Space.x4),
-          Text(
-            'Type this code on your computer',
-            style: TextStyle(
-              color: c.text,
-              fontSize: 16,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          const SizedBox(height: Space.x4),
-          Container(
-            padding: const EdgeInsets.symmetric(
-              horizontal: Space.x5,
-              vertical: Space.x4,
-            ),
-            decoration: BoxDecoration(
-              color: c.surfaceRaised,
-              borderRadius: BorderRadius.circular(Radii.lg),
-              border: Border.all(color: c.border),
-            ),
-            child: Text(
-              code,
-              style: TextStyle(
-                color: c.text,
-                fontSize: 34,
-                fontWeight: FontWeight.w700,
-                letterSpacing: 4,
-                fontFeatures: const [FontFeature.tabularFigures()],
-              ),
-            ),
-          ),
-          const SizedBox(height: Space.x5),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              SizedBox(
-                height: 14,
-                width: 14,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  color: c.textMuted,
-                ),
-              ),
-              const SizedBox(width: Space.x2),
-              Flexible(
-                child: Text(
-                  _status,
-                  style: TextStyle(color: c.textMuted, fontSize: 13),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: Space.x3),
-          Text(
-            'Keep both devices on the same Wi-Fi. The code never leaves this '
-            'screen — nobody else can see it.',
-            textAlign: TextAlign.center,
-            style: TextStyle(color: c.textFaint, fontSize: 11),
-          ),
-        ],
       ),
     );
   }

@@ -57,17 +57,19 @@ void main() {
       );
     });
 
-    test('wouldHydrateOnRead is false for cloud remotes and unresolvable paths',
-        () {
-      const s3 = Remote(name: 's3', type: 's3', fs: 's3:');
-      expect(wouldHydrateOnRead(s3, 'bucket/big.tar'), isFalse);
-      const disk = Remote(
-        name: 'C',
-        type: 'local',
-        fs: 'C:/definitely/missing/dir/',
-        isLocal: true,
-      );
-      expect(wouldHydrateOnRead(disk, 'nope-4c1a.bin'), isFalse);
-    });
+    test(
+      'wouldHydrateOnRead is false for cloud remotes and unresolvable paths',
+      () {
+        const s3 = Remote(name: 's3', type: 's3', fs: 's3:');
+        expect(wouldHydrateOnRead(s3, 'bucket/big.tar'), isFalse);
+        const disk = Remote(
+          name: 'C',
+          type: 'local',
+          fs: 'C:/definitely/missing/dir/',
+          isLocal: true,
+        );
+        expect(wouldHydrateOnRead(disk, 'nope-4c1a.bin'), isFalse);
+      },
+    );
   });
 }

@@ -82,25 +82,16 @@ dependencies:
   # builds need a Rust toolchain on PATH (CI installs it; see release.yml).
   super_drag_and_drop: ^0.9.1
 
-  # beta: scan the desktop's "Send to phone" QR (config-portability plan §5). The
-  # phone-receiver half of the QR/LAN handoff; the camera permission is requested
+  # Scan an Offline QR with the phone camera to import a config (the camera
+  # counterpart to the desktop's image-decode). The permission is requested
   # in-flow the first time the scanner opens, NOT at launch (Android CAMERA is in
   # the manifest; iOS needs NSCameraUsageDescription in Info.plist). See
-  # state/pairing_receiver.dart + ui/scan_from_desktop_sheet.dart.
+  # ui/scan_from_desktop_sheet.dart.
   mobile_scanner: ^7.0.0
 
-  # beta: DESKTOP-sender half of the "Send to phone" QR/LAN handoff (plan §5, v3
-  # QR-pinned TLS).
-  # - qr_flutter renders the pairing QR (URL + salt + cert fingerprint; the QR
-  #   carries NO key and NO payload).
-  # - basic_utils mints the EPHEMERAL, per-session self-signed TLS cert + RSA
-  #   keypair as PEM at RUNTIME (pure Dart; brings pointycastle transitively) so
-  #   Dart's SecurityContext can bindSecure and the phone can pin exactly that
-  #   cert's SHA-256. API used: CryptoUtils.generateRSAKeyPair /
-  #   encodeRSAPrivateKeyToPem + X509Utils.generateRsaCsrPem /
-  #   generateSelfSignedCertificate. See state/pairing_sender.dart.
+  # Renders the Offline QR for "Export QR Config" (the whole encrypted config is
+  # IN the QR — no key, no URL travels separately). See ui/offline_qr_dialog.dart.
   qr_flutter: ^4.1.0
-  basic_utils: ^5.8.2
 
   # Decode an Offline QR straight from an image FILE — the DESKTOP counterpart to
   # the phone's camera scan (mobile_scanner has no Windows/Linux implementation, so

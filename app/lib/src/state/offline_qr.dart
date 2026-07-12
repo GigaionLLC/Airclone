@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io' show gzip;
-import 'dart:math' show Random;
+import 'dart:math' show Random, min;
+import 'dart:typed_data';
 
 import 'config_io.dart'
     show
@@ -8,7 +9,6 @@ import 'config_io.dart'
         CorruptEnvelope,
         openConfigEnvelopeBytes,
         sealConfigEnvelopeBytes;
-import 'pairing_protocol.dart' show base45Decode, base45Encode;
 
 /// The OFFLINE, self-contained config QR (dev/plans/config-portability-plan.md §5,
 /// user-requested 2026-07). Unlike the LAN pairing QR (`airclone-cfg:v3|url|salt|
@@ -292,4 +292,110 @@ String _randomQrId() {
     _qrIdLen,
     (_) => alphabet[r.nextInt(alphabet.length)],
   ).join();
+}
+
+// ── Unlock-code generation + base45 codec ────────────────────────────────────
+//
+// Relocated here from the former LAN pairing_protocol.dart (now deleted): these
+// are the only pieces of it the offline-QR path ever needed. base45 (RFC 9285)
+// keeps the payload inside the QR alphanumeric charset; the code generator mints
+// the readable default the export dialog suggests.
+
+/// CSPRNG for the suggested unlock code. `Random.secure()` is mandatory — a
+/// predictable PRNG would let an attacker guess a generated code.
+final Random _secureRng = Random.secure();
+
+/// Crockford's base32 alphabet: digits + uppercase letters minus the four
+/// ambiguous ones (`I`, `L`, `O`, `U`). 32 symbols → 5 bits each.
+const String _crockford = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
+
+/// A fresh 8-symbol Crockford unlock code in the readable grouped `XXXX-XXXX`
+/// form (e.g. `K7WX-4PMB`). The offline-QR seal/open strip the dash via
+/// [canonicalOfflineCode], so the dash is purely cosmetic.
+String newPairingCode() {
+  final symbols = List<String>.generate(
+    8,
+    (_) => _crockford[_secureRng.nextInt(_crockford.length)],
+  );
+  return formatPairingCode(symbols.join());
+}
+
+/// Groups a code into dash-separated blocks of four for display
+/// (`K7WX4PMB` → `K7WX-4PMB`). Existing dashes/spaces are normalised out first.
+String formatPairingCode(String code) {
+  final canonical = code.replaceAll('-', '').replaceAll(' ', '');
+  final groups = <String>[];
+  for (var i = 0; i < canonical.length; i += 4) {
+    groups.add(canonical.substring(i, min(i + 4, canonical.length)));
+  }
+  return groups.join('-');
+}
+
+/// RFC 9285 base45 alphabet, in value order (index == symbol value).
+const String _base45 = r'0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ $%*+-./:';
+
+/// Reverse lookup for base45 decode: symbol code-unit → value (built once).
+final Map<int, int> _base45Decode = {
+  for (var i = 0; i < _base45.length; i++) _base45.codeUnitAt(i): i,
+};
+
+/// Encodes [input] bytes to a base45 string (RFC 9285). Two input bytes become a
+/// 16-bit value written as THREE base45 symbols (least-significant first); a
+/// trailing odd byte becomes TWO symbols. Pure inverse of [base45Decode].
+String base45Encode(List<int> input) {
+  final out = StringBuffer();
+  var i = 0;
+  for (; i + 1 < input.length; i += 2) {
+    final x = (input[i] << 8) + input[i + 1]; // 0..65535
+    final c = x % 45;
+    final d = (x ~/ 45) % 45;
+    final e = x ~/ (45 * 45);
+    out
+      ..write(_base45[c])
+      ..write(_base45[d])
+      ..write(_base45[e]);
+  }
+  if (i < input.length) {
+    final x = input[i]; // 0..255
+    out
+      ..write(_base45[x % 45])
+      ..write(_base45[x ~/ 45]);
+  }
+  return out.toString();
+}
+
+/// Decodes a base45 string back to bytes (RFC 9285), the exact inverse of
+/// [base45Encode]. Throws [FormatException] on an out-of-alphabet symbol, a
+/// length `≡ 1 (mod 3)`, or an overlong (non-canonical) group.
+Uint8List base45Decode(String input) {
+  final vals = <int>[];
+  for (final unit in input.codeUnits) {
+    final v = _base45Decode[unit];
+    if (v == null) {
+      throw FormatException('invalid base45 character', input);
+    }
+    vals.add(v);
+  }
+  final remainder = vals.length % 3;
+  if (remainder == 1) {
+    throw FormatException('invalid base45 length (${vals.length})', input);
+  }
+  final out = <int>[];
+  var i = 0;
+  for (; i + 3 <= vals.length; i += 3) {
+    final x = vals[i] + vals[i + 1] * 45 + vals[i + 2] * 45 * 45;
+    if (x > 0xFFFF) {
+      throw FormatException('base45 group out of range', input);
+    }
+    out.add((x >> 8) & 0xFF);
+    out.add(x & 0xFF);
+  }
+  if (remainder == 2) {
+    final x = vals[i] + vals[i + 1] * 45;
+    if (x > 0xFF) {
+      throw FormatException('base45 tail out of range', input);
+    }
+    out.add(x);
+  }
+  return Uint8List.fromList(out);
 }

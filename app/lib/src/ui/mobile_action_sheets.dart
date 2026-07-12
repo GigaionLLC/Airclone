@@ -340,9 +340,9 @@ Future<void> showMobileAddRemoteSheet(BuildContext context) =>
           _tile(
             c,
             Icons.qr_code_scanner,
-            'Import from a computer (QR)',
-            // Phone-first on-ramp: pull remotes off a computer by scanning its
-            // "Send to phone" QR (config-portability plan §5).
+            'Import QR Config',
+            // Phone-first on-ramp: pull remotes off a computer by scanning the
+            // Offline QR it shows (its Settings → "Export QR Config").
             () => run(() => showScanFromDesktopSheet(context)),
           ),
         ],

@@ -29,7 +29,6 @@ import 'config_export_dialog.dart';
 import 'config_import_dialog.dart';
 import 'offline_qr_dialog.dart';
 import 'scan_from_desktop_sheet.dart';
-import 'send_to_phone_dialog.dart';
 import 'theme/tokens.dart';
 
 /// Opens the app settings dialog (theme, engine path override, update check).
@@ -879,65 +878,52 @@ class _ConfigToolsHookState extends ConsumerState<_ConfigToolsHook> {
           spacing: Space.x2,
           runSpacing: Space.x2,
           children: [
+            // Four config-transfer actions, the same set on desktop and mobile:
+            // a specific config FILE, or the offline "data-in-the-QR" method.
             OutlinedButton.icon(
               onPressed: () => showConfigImportDialog(context),
               icon: const Icon(Icons.file_download_outlined, size: 16),
-              label: const Text('Import…'),
+              label: const Text('Import File Config'),
               style: OutlinedButton.styleFrom(
                 foregroundColor: c.text,
                 side: BorderSide(color: c.borderStrong),
                 visualDensity: VisualDensity.compact,
               ),
             ),
-            // Phone-only: scan a computer's "Send to phone" or "Offline QR" code
-            // with the camera (desktop can't scan — it's the SENDER side).
-            if (!desktop)
-              OutlinedButton.icon(
-                onPressed: () => showScanFromDesktopSheet(context),
-                icon: const Icon(Icons.qr_code_scanner, size: 16),
-                label: const Text('Import from QR…'),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: c.text,
-                  side: BorderSide(color: c.borderStrong),
-                  visualDensity: VisualDensity.compact,
-                ),
-              ),
             OutlinedButton.icon(
               onPressed: () => showConfigExportDialog(context),
               icon: const Icon(Icons.file_upload_outlined, size: 16),
-              label: const Text('Export…'),
+              label: const Text('Export File Config'),
               style: OutlinedButton.styleFrom(
                 foregroundColor: c.text,
                 side: BorderSide(color: c.borderStrong),
                 visualDensity: VisualDensity.compact,
               ),
             ),
-            // Desktop-only: the "Send to phone" QR/LAN handoff (plan §5). The
-            // desktop is always the SENDER; the phone scans + receives.
-            if (desktop)
-              OutlinedButton.icon(
-                onPressed: () => showSendToPhoneDialog(context),
-                icon: const Icon(Icons.qr_code_2, size: 16),
-                label: const Text('Send to phone…'),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: c.text,
-                  side: BorderSide(color: c.borderStrong),
-                  visualDensity: VisualDensity.compact,
-                ),
+            OutlinedButton.icon(
+              // Desktop has no camera → decode the QR from a picked image; a phone
+              // scans it live. Both land in the same import review.
+              onPressed: () => desktop
+                  ? showConfigImportDialog(context, startOnQr: true)
+                  : showScanFromDesktopSheet(context),
+              icon: const Icon(Icons.qr_code_scanner, size: 16),
+              label: const Text('Import QR Config'),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: c.text,
+                side: BorderSide(color: c.borderStrong),
+                visualDensity: VisualDensity.compact,
               ),
-            // Desktop-only: the self-contained OFFLINE QR (whole encrypted config
-            // in the QR, unlocked by a code) — no Wi-Fi needed.
-            if (desktop)
-              OutlinedButton.icon(
-                onPressed: () => showOfflineQrDialog(context),
-                icon: const Icon(Icons.qr_code_scanner, size: 16),
-                label: const Text('Offline QR…'),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: c.text,
-                  side: BorderSide(color: c.borderStrong),
-                  visualDensity: VisualDensity.compact,
-                ),
+            ),
+            OutlinedButton.icon(
+              onPressed: () => showOfflineQrDialog(context),
+              icon: const Icon(Icons.qr_code_2, size: 16),
+              label: const Text('Export QR Config'),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: c.text,
+                side: BorderSide(color: c.borderStrong),
+                visualDensity: VisualDensity.compact,
               ),
+            ),
           ],
         ),
         const SizedBox(height: Space.x3),
