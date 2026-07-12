@@ -42,7 +42,21 @@ class _ConsolePaneState extends ConsumerState<ConsolePane> {
   String get _id => widget.consoleId;
 
   @override
+  void initState() {
+    super.initState();
+    // The popover's visibility gates on _inputFocus.hasFocus (in _suggestions),
+    // so rebuild when focus changes — hide the suggestions on blur, restore them
+    // on refocus — instead of leaving a stale popover until the next keystroke.
+    _inputFocus.addListener(_onFocusChange);
+  }
+
+  void _onFocusChange() {
+    if (mounted) setState(() {});
+  }
+
+  @override
   void dispose() {
+    _inputFocus.removeListener(_onFocusChange);
     _input.dispose();
     _inputFocus.dispose();
     _scroll.dispose();
@@ -177,17 +191,49 @@ class _ConsolePaneState extends ConsumerState<ConsolePane> {
     final live = ConsoleCommand.parse(_input.text.trim());
     final suggestions = _suggestions();
 
+    // Stable keys are load-bearing here, not cosmetic. The popover + preview are
+    // CONDITIONAL siblings rendered directly above the input row, and every child
+    // is a Container — so without keys, when the popover appears/disappears the
+    // children list length changes and Flutter re-matches by position+type,
+    // repurposing the input row's element (with its TextField) as the popover.
+    // That tears down the field, drops its focus, which empties the suggestion
+    // list (it gates on hasFocus), which removes the popover — a focus thrash
+    // that reads as "I typed and suddenly couldn't type anymore". Keys pin each
+    // child's identity so the input keeps its element + focus across the change.
     return Container(
       color: c.surfaceSunken,
       child: Column(
         children: [
-          _header(c),
-          _engineBanner(c),
-          Expanded(child: _output(c, st)),
-          _progressRow(c, st),
-          if (suggestions.isNotEmpty) _popover(c, suggestions),
-          if (!live.isEmpty) _previewBar(c, live),
-          _inputRow(c, st),
+          KeyedSubtree(
+            key: const ValueKey('console-header'),
+            child: _header(c),
+          ),
+          KeyedSubtree(
+            key: const ValueKey('console-banner'),
+            child: _engineBanner(c),
+          ),
+          Expanded(
+            key: const ValueKey('console-output'),
+            child: _output(c, st),
+          ),
+          KeyedSubtree(
+            key: const ValueKey('console-progress'),
+            child: _progressRow(c, st),
+          ),
+          if (suggestions.isNotEmpty)
+            KeyedSubtree(
+              key: const ValueKey('console-popover'),
+              child: _popover(c, suggestions),
+            ),
+          if (!live.isEmpty)
+            KeyedSubtree(
+              key: const ValueKey('console-preview'),
+              child: _previewBar(c, live),
+            ),
+          KeyedSubtree(
+            key: const ValueKey('console-input'),
+            child: _inputRow(c, st),
+          ),
         ],
       ),
     );
