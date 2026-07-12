@@ -80,12 +80,14 @@ class ThumbnailService {
 
   Directory? _cacheDir;
 
-  /// Load thumbnail bytes (PNG) for [req]; null on any failure.
-  Future<Uint8List?> load(ThumbRequest req) async {
+  /// Load thumbnail bytes (PNG) for [req]; null on any failure. When [force] is
+  /// set the disk cache is bypassed (and later overwritten) so a stale or
+  /// corrupt cached thumbnail is regenerated from source.
+  Future<Uint8List?> load(ThumbRequest req, {bool force = false}) async {
     final memoryOnly = _ref.read(cacheMemoryOnlyProvider);
 
-    // 1) Encrypted disk cache.
-    if (!memoryOnly) {
+    // 1) Encrypted disk cache (skipped on a forced rebuild).
+    if (!memoryOnly && !force) {
       try {
         final dir = await _ensureDir();
         final file = File('${dir.path}/${req.cacheKey}.bin');

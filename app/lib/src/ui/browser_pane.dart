@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../rclone/models/job.dart';
 import '../rclone/models/rclone_file.dart';
 import '../rclone/models/remote.dart';
+import '../rclone/rclone_client.dart';
 import '../state/archive_command.dart';
 import '../state/archive_service.dart';
 import '../state/browser_controller.dart';
@@ -15,6 +16,7 @@ import '../state/os_integration.dart';
 import '../state/remote_features.dart';
 import '../state/remotes_provider.dart';
 import '../state/thumbnail_prefs.dart';
+import '../state/thumbnail_reload.dart';
 import '../state/thumbnail_service.dart';
 import '../state/transfer_options.dart';
 import '../state/transfer_service.dart';
@@ -45,6 +47,30 @@ import 'tab_strip.dart';
 import 'theme/tokens.dart';
 import 'touch.dart';
 import 'transfer_options_dialog.dart';
+
+/// Builds the [ThumbRequest] for a single file, or null when it isn't
+/// thumbnailable (a directory, an unsupported kind, or no engine/remote).
+/// Shared by the per-tile builder and the whole-folder pre-warm so both derive
+/// the identical URL + cache key.
+ThumbRequest? buildThumbRequest(
+  BrowserState state,
+  RcloneClient? client,
+  RcloneFile f, {
+  int size = 256,
+}) {
+  final remote = state.remote;
+  if (remote == null || client == null || f.isDir || !isThumbnailable(f)) {
+    return null;
+  }
+  final oref = client.objectRef(remote.fs, joinPath(state.path, f.name));
+  return ThumbRequest(
+    url: oref.url,
+    headers: oref.headers,
+    cacheKey: thumbCacheKey(remote.fs, f.path, f.modTime, f.size, size),
+    cacheSecret: remote.name,
+    isVideo: isVideoThumbnailable(f),
+  );
+}
 
 /// One of the two dual-pane browsers. [index] 0 = A (left), 1 = B (right).
 ///
@@ -256,28 +282,8 @@ class BrowserPane extends ConsumerWidget {
 
       // Build a thumbnail request for an image OR video when thumbnails are on
       // for this remote — shared by the grid and media views.
-      ThumbRequest? thumbReqFor(RcloneFile f) {
-        if (!thumbsOn || client == null || f.isDir || !isThumbnailable(f)) {
-          return null;
-        }
-        final oref = client.objectRef(
-          state.remote!.fs,
-          joinPath(state.path, f.name),
-        );
-        return ThumbRequest(
-          url: oref.url,
-          headers: oref.headers,
-          cacheKey: thumbCacheKey(
-            state.remote!.fs,
-            f.path,
-            f.modTime,
-            f.size,
-            256,
-          ),
-          cacheSecret: state.remote!.name,
-          isVideo: isVideoThumbnailable(f),
-        );
-      }
+      ThumbRequest? thumbReqFor(RcloneFile f) =>
+          thumbsOn ? buildThumbRequest(state, client, f) : null;
 
       // Open the immersive Quick Look on [f], navigable across the listing.
       void quickLook(RcloneFile f) => showQuickLook(
@@ -1821,10 +1827,59 @@ class _PaneToolbar extends ConsumerWidget {
                 : 'Thumbnails',
           ),
         ),
+        if (thumbsOn) ...[
+          const Divider(height: 8),
+          MenuItemButton(
+            leadingIcon: Icon(Icons.refresh, size: 16, color: c.textMuted),
+            onPressed: () =>
+                ref.read(thumbnailReloadProvider.notifier).reload(),
+            child: const Text('Reload thumbnails'),
+          ),
+          MenuItemButton(
+            leadingIcon: Icon(
+              Icons.download_for_offline_outlined,
+              size: 16,
+              color: c.textMuted,
+            ),
+            onPressed: () => _prewarmThumbnails(context, ref),
+            child: const Text('Load all in this folder'),
+          ),
+          MenuItemButton(
+            leadingIcon: Icon(
+              Icons.delete_sweep_outlined,
+              size: 16,
+              color: c.textMuted,
+            ),
+            onPressed: () =>
+                ref.read(thumbnailReloadProvider.notifier).rebuild(),
+            child: const Text('Rebuild (clear cache)'),
+          ),
+        ],
       ],
       builder: (context, controller, _) =>
           _menuButton(c, 'View', Icons.grid_view_rounded, controller),
     );
+  }
+
+  /// Warm the thumbnail cache for EVERY image/video in the current listing —
+  /// not just the tiles currently on screen — so scrolling is instant.
+  Future<void> _prewarmThumbnails(BuildContext context, WidgetRef ref) async {
+    final client = ref.read(engineControllerProvider).client;
+    final reqs = <ThumbRequest>[
+      for (final f in state.visibleEntries)
+        ?buildThumbRequest(state, client, f),
+    ];
+    final messenger = ScaffoldMessenger.maybeOf(context);
+    if (reqs.isEmpty) {
+      messenger?.showSnackBar(
+        const SnackBar(content: Text('No images or videos to load here')),
+      );
+      return;
+    }
+    messenger?.showSnackBar(
+      SnackBar(content: Text('Loading ${reqs.length} thumbnails…')),
+    );
+    await ref.read(thumbnailReloadProvider.notifier).prewarm(reqs);
   }
 
   // ── handlers ─────────────────────────────────────────────────────────────
