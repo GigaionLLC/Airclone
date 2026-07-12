@@ -21,47 +21,50 @@ import 'package:zxing2/qrcode.dart';
 /// crash. It does NOT interpret the payload — the caller decides whether the
 /// decoded string is an Airclone Offline QR (and unseals it with the code).
 String? decodeQrFromImageBytes(Uint8List bytes) {
-  final img.Image? decoded;
+  // One catch-all so the never-throws contract holds through EVERY step — not
+  // just the decode, but the pixel-buffer allocations below too. A corrupt image,
+  // an unsupported format, or an out-of-memory on an oversized/decompression-bomb
+  // image all come back as null rather than escaping to the caller.
   try {
-    decoded = img.decodeImage(bytes);
-  } catch (_) {
-    return null; // not an image we can read
-  }
-  if (decoded == null) return null;
+    final decoded = img.decodeImage(bytes);
+    if (decoded == null) return null;
 
-  // zxing2 wants one Int32 per pixel. Normalising to 4 channels first handles
-  // palette/grayscale/16-bit sources uniformly. Channel ORDER is irrelevant for
-  // our pure black-and-white QR (R==G==B for every module, so the luminance is
-  // the same whichever way the bytes are read), but we follow the documented
-  // ABGR incantation so a coloured QR would also read correctly.
-  final rgba = decoded.numChannels == 4
-      ? decoded
-      : decoded.convert(numChannels: 4);
-  final Int32List pixels = rgba
-      .getBytes(order: img.ChannelOrder.abgr)
-      .buffer
-      .asInt32List();
-  final source = RGBLuminanceSource(rgba.width, rgba.height, pixels);
+    // zxing2 wants one Int32 per pixel. Normalising to 4 channels first handles
+    // palette/grayscale/16-bit sources uniformly. Channel ORDER is irrelevant for
+    // our pure black-and-white QR (R==G==B for every module, so the luminance is
+    // the same whichever way the bytes are read), but we follow the documented
+    // ABGR incantation so a coloured QR would also read correctly.
+    final rgba = decoded.numChannels == 4
+        ? decoded
+        : decoded.convert(numChannels: 4);
+    final Int32List pixels = rgba
+        .getBytes(order: img.ChannelOrder.abgr)
+        .buffer
+        .asInt32List();
+    final source = RGBLuminanceSource(rgba.width, rgba.height, pixels);
 
-  final hints = DecodeHints()..put(DecodeHintType.tryHarder);
-  // Hybrid first — best for photos / uneven screen lighting; global histogram
-  // second — best for a crisp synthetic render. NotFound/format/checksum on one
-  // just falls through to the next; both failing means "no QR here" -> null.
-  for (final binarizer in [
-    HybridBinarizer(source),
-    GlobalHistogramBinarizer(source),
-  ]) {
-    try {
-      final result = QRCodeReader().decode(
-        BinaryBitmap(binarizer),
-        hints: hints,
-      );
-      if (result.text.isNotEmpty) return result.text;
-    } catch (_) {
-      // Try the next binarizer.
+    final hints = DecodeHints()..put(DecodeHintType.tryHarder);
+    // Hybrid first — best for photos / uneven screen lighting; global histogram
+    // second — best for a crisp synthetic render. NotFound/format/checksum on one
+    // just falls through to the next; both failing means "no QR here" -> null.
+    for (final binarizer in [
+      HybridBinarizer(source),
+      GlobalHistogramBinarizer(source),
+    ]) {
+      try {
+        final result = QRCodeReader().decode(
+          BinaryBitmap(binarizer),
+          hints: hints,
+        );
+        if (result.text.isNotEmpty) return result.text;
+      } catch (_) {
+        // Try the next binarizer.
+      }
     }
+    return null;
+  } catch (_) {
+    return null;
   }
-  return null;
 }
 
 /// [decodeQrFromImageBytes] off the UI isolate. Decoding a full-resolution phone

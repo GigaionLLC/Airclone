@@ -7,6 +7,7 @@ import '../state/config_io.dart';
 import '../state/config_transfer_controller.dart';
 import '../state/offline_qr.dart';
 import '../state/qr_image_decode.dart';
+import '../state/remote_summary.dart';
 import 'theme/tokens.dart';
 
 /// Opens the config Import wizard (plan §3): pick a file → (decrypt if needed) →
@@ -250,7 +251,13 @@ class _ConfigImportDialogState extends ConsumerState<_ConfigImportDialog> {
     String? single;
     for (final f in files) {
       final bytes = await f.readAsBytes();
-      final raw = await decodeQrFromImage(bytes);
+      String? raw;
+      try {
+        raw = await decodeQrFromImage(bytes);
+      } catch (_) {
+        raw =
+            null; // a decode failure (e.g. an oversized image) is "unreadable"
+      }
       if (raw == null) {
         unreadable++;
         continue;
@@ -285,15 +292,22 @@ class _ConfigImportDialogState extends ConsumerState<_ConfigImportDialog> {
             ? assembleOfflineQrPayload(_qrChunks, _qrChunkTotal)
             : null);
     if (assembled != null) {
+      final label = single != null
+          ? (files.length == 1 ? files.first.name : 'Offline QR')
+          : 'Offline QR ($_qrChunkTotal images)';
       setState(() {
         _qrPayload = assembled;
-        _sourceName = single != null && files.length == 1
-            ? files.first.name
-            : 'Offline QR ($_qrChunkTotal images)';
+        _sourceName = label;
         _qrError = null;
         _qrHint = null;
         _busy = false;
         _step = _ImportStep.qrCode;
+        // The collection is complete and captured in _qrPayload — drop it so a
+        // later foreign pick can't re-fire the assembly guard and resurrect this
+        // export instead of reporting the newly picked image.
+        _qrChunks.clear();
+        _qrChunkId = null;
+        _qrChunkTotal = 0;
       });
       return;
     }
@@ -800,6 +814,7 @@ class _ConfigImportDialogState extends ConsumerState<_ConfigImportDialog> {
 
   Widget _decisionRow(AircloneColors c, ImportDecision d) {
     final typeLabel = d.type.isEmpty ? 'unknown type' : d.type;
+    final endpoint = remoteEndpointSummary(_incoming?[d.name] ?? const {});
     return Padding(
       padding: const EdgeInsets.only(bottom: Space.x2),
       child: Row(
@@ -836,6 +851,19 @@ class _ConfigImportDialogState extends ConsumerState<_ConfigImportDialog> {
                     ),
                   ],
                 ),
+                // The remote's endpoint (host/url/…) — surfaced so a swapped or
+                // poisoned import (a picked QR image is untrusted) can't silently
+                // re-point a remote at an attacker's target unseen (plan §5).
+                if (endpoint.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 2),
+                    child: Text(
+                      endpoint,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(color: c.textMuted, fontSize: 11),
+                    ),
+                  ),
                 if (d.collision) ...[
                   const SizedBox(height: 4),
                   Row(

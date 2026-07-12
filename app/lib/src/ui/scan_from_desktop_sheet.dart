@@ -9,6 +9,7 @@ import '../state/config_transfer_controller.dart';
 import '../state/offline_qr.dart';
 import '../state/pairing_protocol.dart';
 import '../state/pairing_receiver.dart';
+import '../state/remote_summary.dart';
 import 'theme/tokens.dart';
 
 /// Opens the phone-side "Import from a computer (QR)" flow (config-portability
@@ -763,7 +764,7 @@ class _ScanFromDesktopScreenState
   /// re-point a remote at an attacker's target without the user seeing it.
   Widget _decisionRow(AircloneColors c, ImportDecision d) {
     final section = _incoming?[d.name] ?? const <String, String>{};
-    final endpoint = _endpointOf(section);
+    final endpoint = remoteEndpointSummary(section);
     return Padding(
       padding: const EdgeInsets.only(bottom: Space.x3),
       child: Row(
@@ -847,24 +848,6 @@ class _ScanFromDesktopScreenState
         ],
       ),
     );
-  }
-
-  /// A best-effort human "endpoint" for the review: the first meaningful
-  /// location-ish key present. Never shows secrets (tokens/passwords/keys).
-  String _endpointOf(Map<String, String> section) {
-    for (final k in const [
-      'host',
-      'url',
-      'endpoint',
-      'remote',
-      'account',
-      'region',
-      'provider',
-    ]) {
-      final v = section[k];
-      if (v != null && v.isNotEmpty) return '$k: $v';
-    }
-    return '';
   }
 
   Widget _busyView(AircloneColors c, String label) => Center(
