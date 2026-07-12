@@ -9,6 +9,93 @@ unset flag skips the step entirely (its secrets are never read).
 
 ---
 
+## As-built record — GigaionLLC / Airclone (started 2026-07-12)
+
+Concrete values for THIS setup (none are secret — the client secret lives only in
+the GitHub `AZURE_CLIENT_SECRET` secret, nowhere else):
+
+| Thing | Value |
+|---|---|
+| Trusted/Artifact Signing account | `GigaionLLC` |
+| Resource group | `GigaionLLC-ResourceGroup1` |
+| Subscription id | `<subscription id>` |
+| Entra tenant id | `<tenant id>` |
+| Region / endpoint | West US / `https://wus.codesigning.azure.net/` |
+| Entra app registration | `GigaionLLC-Signing`, appId `<app id>` |
+| RBAC role (data-plane signing) | **`Artifact Signing Certificate Profile Signer`** (the service is branded "Artifact Signing"; the old name was "Trusted Signing …") |
+| Client secret | 2-year, minted 2026-07-12 → rotate before **2028-07** |
+
+**Provisioned + wired (done):** app registration + SP, role at the account scope,
+client secret, and — at the **GitHub org (GigaionLLC), visibility = Selected
+repositories → Airclone** — secrets `AZURE_TENANT_ID` / `AZURE_CLIENT_ID` /
+`AZURE_CLIENT_SECRET` and variables `AZURE_SIGNING_ACCOUNT` / `AZURE_SIGNING_ENDPOINT`.
+Org-level so every GigaionLLC product shares one signing setup; to add a product,
+add its repo to each secret/variable's selected list (see runbook). No repo-level
+signing secrets remain on Airclone.
+
+**Still blocked on Microsoft:** submit **Identity validation** (portal) → after
+approval create a **Certificate profile** (Public Trust) → set variable
+`AZURE_SIGNING_PROFILE=<profile name>` → set `WINDOWS_SIGNING_ENABLED=true` → cut a
+release and confirm the installer is signed.
+
+## Reproduce — CLI runbook (idempotent-ish)
+
+Everything below is **free** (Entra + RBAC ops); the only paid resource is the
+signing account itself. Prereqs: `az` (`winget install Microsoft.AzureCLI`) and
+`gh` (authenticated with repo admin). Run in PowerShell.
+
+```powershell
+# --- 0. sign in (device code works headless: prints a code to enter in a browser)
+az login --use-device-code
+
+# --- parameters (edit for a new org/app) ---
+$SUB="<subscription id>"
+$RG="GigaionLLC-ResourceGroup1"
+$ACCOUNT="GigaionLLC"
+$APPNAME="Airclone-Signing"
+$REPO="GigaionLLC/Airclone"
+$ENDPOINT="https://wus.codesigning.azure.net/"     # from the account's "Account URI"
+$acct="/subscriptions/$SUB/resourceGroups/$RG/providers/Microsoft.CodeSigning/codeSigningAccounts/$ACCOUNT"
+$TENANT=(az account show --query tenantId -o tsv)
+
+# --- 1. find the exact signing role name (branding changed: "Artifact Signing …")
+az role definition list --scope $acct --query "[?contains(roleName,'Sign')].roleName" -o tsv
+$ROLE="Artifact Signing Certificate Profile Signer"
+
+# --- 2. app registration + service principal
+$APPID=(az ad app create --display-name $APPNAME --sign-in-audience AzureADMyOrg --query appId -o tsv)
+az ad sp create --id $APPID | Out-Null
+$SPID=(az ad sp show --id $APPID --query id -o tsv)
+
+# --- 3. assign the signer role at the ACCOUNT scope (retry: new SP may need to replicate)
+az role assignment create --assignee-object-id $SPID --assignee-principal-type ServicePrincipal --role $ROLE --scope $acct
+
+# --- 4. client secret (2 yr). Capture it; pipe straight into GitHub — never print it.
+$SECRET=(az ad app credential reset --id $APPID --display-name "github-actions-org" --years 2 --query password -o tsv)
+# ORG-level (shared across GigaionLLC products — one Artifact Signing account +
+# one org-identity cert profile signs them all), scoped to the repos that sign.
+# Needs the admin:org scope on gh:  gh auth refresh -h github.com -s admin:org
+$ORG="GigaionLLC"
+gh secret   set AZURE_TENANT_ID       --org $ORG --visibility selected --repos Airclone --body $TENANT
+gh secret   set AZURE_CLIENT_ID        --org $ORG --visibility selected --repos Airclone --body $APPID
+gh secret   set AZURE_CLIENT_SECRET    --org $ORG --visibility selected --repos Airclone --body $SECRET
+gh variable set AZURE_SIGNING_ACCOUNT  --org $ORG --visibility selected --repos Airclone --body $ACCOUNT
+gh variable set AZURE_SIGNING_ENDPOINT --org $ORG --visibility selected --repos Airclone --body $ENDPOINT
+# To let ANOTHER org repo sign, add it to every secret/var's selected list, e.g.:
+#   gh secret set AZURE_CLIENT_SECRET --org GigaionLLC --visibility selected --repos Airclone,abcli --body $SECRET
+
+# --- 5. AFTER identity validation is approved + a certificate profile exists:
+# gh variable set AZURE_SIGNING_PROFILE   --body "<profile name>" --repo $REPO
+# gh variable set WINDOWS_SIGNING_ENABLED --body "true"           --repo $REPO
+```
+
+**Rotate the client secret** (e.g. before it expires): re-run step 4 (it resets the
+credential and updates the GitHub secret). **Identity validation + certificate
+profile are portal/manual** (identity validation needs Microsoft approval and can't
+be scripted meaningfully).
+
+---
+
 ## 1. Code signing — Azure Trusted Signing (~$10/month)
 
 Signs `airclone.exe` **and** the installer `airclone-setup-x64.exe` so Windows
@@ -24,11 +111,12 @@ shows a real publisher instead of "unknown publisher". A cloud-HSM service —
    This triggers **identity validation** (org: D-U-N-S / business docs; individual:
    ID). Note the **profile name** and the **account name**.
 3. Create an **Entra ID (Azure AD) app registration** with a **client secret**.
-   Grant it the **"Trusted Signing Certificate Profile Signer"** role on the
-   Trusted Signing account (Access control (IAM) → Add role assignment).
+   Grant it the **"Artifact Signing Certificate Profile Signer"** role on the
+   signing account (Access control (IAM) → Add role assignment). (The service is
+   branded "Artifact Signing"; some older docs say "Trusted Signing …".)
    Note the **tenant id**, **client id**, **client secret**.
 
-### GitHub config (repo → Settings → Secrets and variables → Actions)
+### GitHub config — ORG-level (Org → Settings → Secrets and variables → Actions → Organization; visibility = Selected repositories → the repos that sign)
 Secrets:
 - `AZURE_TENANT_ID`
 - `AZURE_CLIENT_ID`
