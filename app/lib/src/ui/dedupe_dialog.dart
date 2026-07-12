@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
+import '../rclone/models/remote.dart';
 import '../rclone/rclone_client.dart';
+import '../state/cloud_placeholder.dart';
 import '../state/dedupe.dart';
 import 'format.dart';
 import 'theme/tokens.dart';
@@ -13,6 +15,7 @@ import 'theme/tokens.dart';
 Future<void> showDedupeDialog(
   BuildContext context, {
   required RcloneClient client,
+  required Remote remote,
   required String fs,
   required String label,
   required String basePath,
@@ -23,6 +26,7 @@ Future<void> showDedupeDialog(
   barrierDismissible: false,
   builder: (_) => _DedupeDialog(
     client: client,
+    remote: remote,
     fs: fs,
     label: label,
     basePath: basePath,
@@ -33,12 +37,14 @@ Future<void> showDedupeDialog(
 class _DedupeDialog extends StatefulWidget {
   const _DedupeDialog({
     required this.client,
+    required this.remote,
     required this.fs,
     required this.label,
     required this.basePath,
     required this.onChanged,
   });
   final RcloneClient client;
+  final Remote remote;
   final String fs;
   final String label;
   final String basePath;
@@ -74,6 +80,46 @@ class _DedupeDialogState extends State<_DedupeDialog> {
       _skip.clear();
     });
     try {
+      // Guard: on a LOCAL backend, the recursive content-hash scan below reads
+      // every file — which HYDRATES any online-only cloud placeholder (Proton
+      // Drive / OneDrive / iCloud "Files On-Demand") in scope, silently
+      // downloading it in full. Detect those first WITHOUT hydrating (a
+      // metadata-only list never hydrates) and require explicit consent, with the
+      // total bytes, before the hashing pass touches their content.
+      if (widget.remote.type == 'local') {
+        final probe = await widget.client.rpc('operations/list', {
+          'fs': widget.fs,
+          'remote': widget.basePath,
+          'opt': {'recurse': true, 'showHash': false, 'noModTime': true},
+        });
+        if (g != _gen || !mounted) return;
+        var onlineCount = 0;
+        var onlineBytes = 0;
+        for (final item in (probe['list'] as List? ?? const [])) {
+          final m = (item as Map).cast<String, dynamic>();
+          if ((m['IsDir'] ?? false) as bool) continue;
+          final p = (m['Path'] ?? '') as String;
+          final within = widget.basePath.isEmpty ? p : '${widget.basePath}/$p';
+          if (wouldHydrateOnRead(widget.remote, within)) {
+            onlineCount++;
+            final s = m['Size'];
+            if (s is num && s > 0) onlineBytes += s.toInt();
+          }
+        }
+        if (g != _gen || !mounted) return;
+        if (onlineCount > 0) {
+          final ok = await _confirmHydrate(onlineCount, onlineBytes);
+          if (!ok || g != _gen || !mounted) {
+            if (mounted && g == _gen) {
+              setState(() {
+                _scanning = false;
+                _status = 'Scan cancelled — nothing was downloaded.';
+              });
+            }
+            return;
+          }
+        }
+      }
       final res = await widget.client.rpc('operations/list', {
         'fs': widget.fs,
         'remote': widget.basePath,
@@ -97,6 +143,35 @@ class _DedupeDialogState extends State<_DedupeDialog> {
         _error = e is RcloneException ? e.message : '$e';
       });
     }
+  }
+
+  /// Consent gate shown when a scan would hydrate online-only cloud files.
+  Future<bool> _confirmHydrate(int count, int bytes) async {
+    final c = AircloneTheme.of(context);
+    final n = count == 1 ? '1 file' : '$count files';
+    return await showDialog<bool>(
+          context: context,
+          builder: (_) => AlertDialog(
+            backgroundColor: c.surfaceRaised,
+            title: const Text('Download online-only files?'),
+            content: Text(
+              '$n in this folder (${humanSize(bytes)}) live only in the cloud. '
+              'Comparing file contents to find duplicates will DOWNLOAD them in '
+              'full to this device. Continue?',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(false),
+                child: const Text('Cancel'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.of(context).pop(true),
+                child: const Text('Download & scan'),
+              ),
+            ],
+          ),
+        ) ??
+        false;
   }
 
   /// The copies queued for deletion across all non-skipped groups.

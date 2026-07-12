@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../rclone/models/remote.dart';
 import '../rclone/rclone_client.dart';
+import '../state/cloud_placeholder.dart';
 import 'theme/tokens.dart';
 
 /// Hash types requested for LOCAL files. Cloud backends store hashes as
@@ -47,6 +49,7 @@ Future<Map<String, String>?> fetchChecksums(
 Future<void> showChecksumDialog(
   BuildContext context,
   RcloneClient client, {
+  required Remote remoteInfo,
   required String fs,
   required String remote,
   required String name,
@@ -55,6 +58,7 @@ Future<void> showChecksumDialog(
   context: context,
   builder: (_) => _ChecksumDialog(
     client: client,
+    remoteInfo: remoteInfo,
     fs: fs,
     remote: remote,
     name: name,
@@ -65,12 +69,14 @@ Future<void> showChecksumDialog(
 class _ChecksumDialog extends StatefulWidget {
   const _ChecksumDialog({
     required this.client,
+    required this.remoteInfo,
     required this.fs,
     required this.remote,
     required this.name,
     this.hashTypes,
   });
   final RcloneClient client;
+  final Remote remoteInfo;
   final String fs;
   final String remote;
   final String name;
@@ -85,11 +91,19 @@ class _ChecksumDialogState extends State<_ChecksumDialog> {
   bool _notFound = false;
   String? _error;
   String? _copied;
+  bool _needsConsent = false; // online-only file: don't hydrate without an OK
 
   @override
   void initState() {
     super.initState();
-    _load();
+    // Computing a LOCAL file's checksum reads all of it — which HYDRATES an
+    // online-only cloud placeholder (Proton/OneDrive/iCloud), downloading it in
+    // full. Gate behind explicit consent instead of fetching on open.
+    if (wouldHydrateOnRead(widget.remoteInfo, widget.remote)) {
+      _needsConsent = true;
+    } else {
+      _load();
+    }
   }
 
   Future<void> _load() async {
@@ -135,6 +149,30 @@ class _ChecksumDialogState extends State<_ChecksumDialog> {
   }
 
   Widget _body(AircloneColors c) {
+    if (_needsConsent) {
+      return Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'This file is stored online only. Computing its checksum reads the '
+            'whole file, which downloads it in full to this device.',
+            style: TextStyle(color: c.textMuted, fontSize: 13),
+          ),
+          const SizedBox(height: Space.x3),
+          Align(
+            alignment: Alignment.centerRight,
+            child: FilledButton(
+              onPressed: () {
+                setState(() => _needsConsent = false);
+                _load();
+              },
+              child: const Text('Download & compute'),
+            ),
+          ),
+        ],
+      );
+    }
     if (_error != null) {
       return Text(_error!, style: TextStyle(color: c.error, fontSize: 12));
     }

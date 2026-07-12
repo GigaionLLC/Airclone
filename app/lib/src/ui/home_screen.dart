@@ -369,6 +369,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     showDedupeDialog(
       context,
       client: client,
+      remote: remote,
       fs: remote.fs,
       label: st.path.isEmpty ? remote.name : '${remote.name}/${st.path}',
       basePath: st.path,

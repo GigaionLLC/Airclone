@@ -862,6 +862,7 @@ class BrowserPane extends ConsumerWidget {
     await showChecksumDialog(
       context,
       client,
+      remoteInfo: state.remote!,
       fs: state.remote!.fs,
       remote: joinPath(state.path, f.name),
       name: f.name,
