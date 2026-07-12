@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../rclone/models/rclone_file.dart';
 import '../rclone/models/remote.dart';
 import '../ui/column_header.dart' show SortKey, compareRcloneFiles;
+import '../ui/file_icon.dart' show isGalleryMedia;
 import 'console/console_controller.dart';
 import 'engine_controller.dart';
 import 'view_memory.dart';
@@ -374,9 +375,16 @@ class BrowserController extends Notifier<BrowserState> {
   /// Replace the selection with just [name] (used by type-to-navigate).
   void selectOnly(String name) => _set(state.copyWith(selected: {name}));
 
-  void selectAll() => _set(
-    state.copyWith(selected: state.visibleEntries.map((e) => e.name).toSet()),
-  );
+  /// Select everything CURRENTLY DISPLAYED in this pane. In the media Gallery
+  /// view that's the images/videos only — never the folders/other files the
+  /// gallery hides, since selecting those would let a later bulk Delete
+  /// recursively purge items the user can't see.
+  void selectAll() {
+    final displayed = state.viewMode == ViewMode.media
+        ? state.visibleEntries.where(isGalleryMedia)
+        : state.visibleEntries;
+    _set(state.copyWith(selected: displayed.map((e) => e.name).toSet()));
+  }
 
   /// Switch this pane between list and grid rendering.
   void setViewMode(ViewMode mode) {

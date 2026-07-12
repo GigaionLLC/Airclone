@@ -134,6 +134,13 @@ bool isVideoThumbnailable(RcloneFile f) => kindOf(f) == FileKind.video;
 bool isThumbnailable(RcloneFile f) =>
     isImageThumbnailable(f) || isVideoThumbnailable(f);
 
+/// True when [f] appears in the media Gallery view — a non-folder image or
+/// video. The SINGLE source of truth for that filter: used by MediaGallery to
+/// build its grid AND by `selectAll` so "Select all" in gallery view can never
+/// select hidden folders/other files that would then be (recursively) deleted.
+bool isGalleryMedia(RcloneFile f) =>
+    !f.isDir && (kindOf(f) == FileKind.image || kindOf(f) == FileKind.video);
+
 /// A rounded Material icon representing the file's [FileKind].
 IconData iconFor(RcloneFile f) {
   switch (kindOf(f)) {

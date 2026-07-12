@@ -6,6 +6,7 @@ import 'theme/tokens.dart';
 
 /// Actions offered when right-clicking a file or folder row.
 enum FileMenuAction {
+  select,
   open,
   preview,
   openWith,
@@ -68,8 +69,15 @@ Future<FileMenuAction?> showFileContextMenu(
   bool canPublicLink = false,
   bool isLocal = false,
   bool isArchive = false,
+  bool canSelect = false,
 }) {
   final entries = <_Entry<FileMenuAction>>[
+    // Touch entry point to multi-select: picks this item and drops the pane into
+    // selection mode (tap toggles others; the phone selection bar takes over).
+    if (canSelect) ...[
+      _item(FileMenuAction.select, Icons.check_circle_outline, 'Select'),
+      const _Entry.divider(),
+    ],
     if (isDir)
       _item(FileMenuAction.open, Icons.folder_open_outlined, 'Open')
     else

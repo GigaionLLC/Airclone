@@ -460,11 +460,16 @@ class BrowserPane extends ConsumerWidget {
       canPublicLink: feats?['PublicLink'] == true,
       isLocal: state.remote!.isLocal,
       isArchive: !file.isDir && looksLikeArchive(file.name),
+      canSelect: isTouchPrimary,
     );
     if (action == null || state.remote == null) return;
     final files = _targetFiles(state, file);
     final clipCtrl = ref.read(clipboardControllerProvider.notifier);
     switch (action) {
+      case FileMenuAction.select:
+        // Enter multi-select on touch: pick this item; the phone selection bar
+        // takes over and tapping other rows toggles them.
+        ref.read(paneProvider(index).notifier).toggleSelect(file.name);
       case FileMenuAction.open:
         if (file.isDir) ref.read(paneProvider(index).notifier).enterDir(file);
       case FileMenuAction.preview:
@@ -2141,6 +2146,9 @@ class _FileRowState extends ConsumerState<_FileRow> {
     final t = AircloneTheme.tokensOf(context);
     final widths = ref.watch(columnWidthsProvider);
     final selected = state.isSelected(file.name);
+    // In touch selection mode, a plain tap toggles the row (folders included)
+    // instead of opening/previewing — the phone multi-select convention.
+    final selectionMode = isTouchPrimary && state.selected.isNotEmpty;
 
     // What gets dragged: the whole selection if this row is selected, else just this row.
     final dragFiles = selected ? state.selectedEntries : <RcloneFile>[file];
@@ -2162,7 +2170,9 @@ class _FileRowState extends ConsumerState<_FileRow> {
         // toggling selection.
         onLongPressStart: (d) => onContextMenu(d.globalPosition),
         child: InkWell(
-          onTap: file.isDir ? onOpen : (isTouchPrimary ? onPreview : onToggle),
+          onTap: selectionMode
+              ? onToggle
+              : (file.isDir ? onOpen : (isTouchPrimary ? onPreview : onToggle)),
           // Touch: no double-tap — a registered recognizer would delay every
           // single tap ~300 ms while the arena waits for a second tap.
           onDoubleTap: isTouchPrimary

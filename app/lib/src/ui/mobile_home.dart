@@ -18,10 +18,12 @@ import 'jobs_panel.dart';
 import 'mobile_action_sheets.dart';
 import 'pane_split.dart';
 import 'recent_activity_panel.dart';
+import 'selection_actions.dart';
 import 'settings_screen.dart';
 import 'stats_panel.dart';
 import 'tab_strip.dart';
 import 'theme/tokens.dart';
+import 'touch.dart';
 
 /// The phone shell: bottom navigation over Files · Transfers · Settings.
 /// Everything runs off the same providers as the desktop shell — the Files tab
@@ -63,14 +65,33 @@ class _MobileHomeScreenState extends ConsumerState<MobileHomeScreen> {
             fabPane,
           ).select((s) => s.remote != null && !s.activeIsConsole),
         );
+    // A live multi-selection (touch): system-back clears it first, before it
+    // would otherwise navigate up or leave the folder. Checked on BOTH panes —
+    // a selection can live on the non-active pane in split view, and its bar is
+    // rendered per-pane regardless of which pane is active.
+    final touching = _tab == 0 && isTouchPrimary;
+    final sel0 =
+        touching &&
+        ref.watch(paneProvider(0).select((s) => s.selected.isNotEmpty));
+    final sel1 =
+        touching &&
+        split &&
+        ref.watch(paneProvider(1).select((s) => s.selected.isNotEmpty));
+    final hasSelection = sel0 || sel1;
     // System back: leave a folder, then leave the remote, then leave a non-Files
     // tab — only exit the app from the Files tab's locations list (never while a
     // split is up: back collapses that first).
-    final canPop = _tab == 0 && (gated || (!browsing && !split));
+    final canPop =
+        _tab == 0 && !hasSelection && (gated || (!browsing && !split));
     return PopScope(
       canPop: canPop,
       onPopInvokedWithResult: (didPop, _) {
         if (didPop) return;
+        if (hasSelection) {
+          if (sel0) ref.read(paneProvider(0).notifier).clearSelection();
+          if (sel1) ref.read(paneProvider(1).notifier).clearSelection();
+          return;
+        }
         if (_tab != 0) {
           setState(() => _tab = 0);
           return;
@@ -419,6 +440,11 @@ class _MobilePaneHeader extends ConsumerWidget {
     // give it its own header treatment instead of the inert "pick a location".
     final isConsole = state.activeIsConsole;
 
+    // Multi-select active on touch → the header becomes the selection action bar.
+    if (isTouchPrimary && state.selected.isNotEmpty) {
+      return _selectionBar(context, ref, c, state);
+    }
+
     final folder = !hasRemote
         ? 'Home'
         : (state.path.isEmpty ? remote.name : state.path.split('/').last);
@@ -535,6 +561,110 @@ class _MobilePaneHeader extends ConsumerWidget {
             ],
           );
         },
+      ),
+    );
+  }
+
+  /// Touch multi-select: the header morphs into this action bar — close, the live
+  /// count, select-all, and the bulk verbs (copy · cut · delete) over the current
+  /// selection. Copy/Cut drop the selection and confirm with a snackbar
+  /// ("… tap + → Paste"); Delete confirms, deletes, then clears.
+  Widget _selectionBar(
+    BuildContext context,
+    WidgetRef ref,
+    AircloneColors c,
+    BrowserState state,
+  ) {
+    final ctrl = ref.read(paneProvider(index).notifier);
+    final n = state.selected.length;
+    final visible = state.visibleEntries.length;
+    final allSelected = visible > 0 && n >= visible;
+    final plural = n == 1 ? '' : 's';
+
+    void snack(String msg) {
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(SnackBar(content: Text(msg)));
+    }
+
+    return Container(
+      height: 52,
+      padding: const EdgeInsets.symmetric(horizontal: Space.x1),
+      decoration: BoxDecoration(
+        color: c.surface,
+        border: Border(bottom: BorderSide(color: c.border)),
+      ),
+      child: Row(
+        children: [
+          IconButton(
+            onPressed: ctrl.clearSelection,
+            icon: const Icon(Icons.close, size: 22),
+            color: c.text,
+            tooltip: 'Clear selection',
+          ),
+          Expanded(
+            child: Text(
+              '$n selected',
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: c.text,
+                fontSize: 15,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+          IconButton(
+            onPressed: () =>
+                allSelected ? ctrl.clearSelection() : ctrl.selectAll(),
+            visualDensity: VisualDensity.compact,
+            icon: Icon(
+              allSelected ? Icons.deselect : Icons.select_all,
+              size: 22,
+            ),
+            color: c.textMuted,
+            tooltip: allSelected ? 'Deselect all' : 'Select all',
+          ),
+          IconButton(
+            onPressed: () {
+              selectionClip(ref, index, cut: false);
+              ctrl.clearSelection();
+              snack('Copied $n item$plural — open a folder and tap + → Paste');
+            },
+            visualDensity: VisualDensity.compact,
+            icon: const Icon(Icons.copy_outlined, size: 22),
+            color: c.textMuted,
+            tooltip: 'Copy',
+          ),
+          IconButton(
+            onPressed: () {
+              selectionClip(ref, index, cut: true);
+              ctrl.clearSelection();
+              snack(
+                'Cut $n item$plural — open a folder and tap + → Paste to move',
+              );
+            },
+            visualDensity: VisualDensity.compact,
+            icon: const Icon(Icons.content_cut, size: 22),
+            color: c.textMuted,
+            tooltip: 'Cut',
+          ),
+          IconButton(
+            onPressed: () async {
+              final r = await selectionDelete(context, ref, index);
+              if (!r.ran) return;
+              ctrl.clearSelection();
+              if (r.failed > 0 && context.mounted) {
+                snack(
+                  "Couldn't delete ${r.failed} item${r.failed == 1 ? '' : 's'}.",
+                );
+              }
+            },
+            visualDensity: VisualDensity.compact,
+            icon: const Icon(Icons.delete_outline, size: 22),
+            color: c.error,
+            tooltip: 'Delete',
+          ),
+        ],
       ),
     );
   }

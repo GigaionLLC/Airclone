@@ -84,13 +84,9 @@ class MediaGallery extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final c = AircloneTheme.of(context);
 
-    final media = entries
-        .where(
-          (f) =>
-              !f.isDir &&
-              (kindOf(f) == FileKind.image || kindOf(f) == FileKind.video),
-        )
-        .toList();
+    // Same predicate `selectAll` uses (isGalleryMedia) so "Select all" in this
+    // view never picks the folders/other files the gallery hides.
+    final media = entries.where(isGalleryMedia).toList();
 
     if (media.isEmpty) {
       // Gallery only shows images + video, so a folder full of documents or
@@ -326,7 +322,10 @@ class _MediaTile extends StatelessWidget {
       onLongPressStart: (d) => onContextMenu(file, d.globalPosition),
       child: InkWell(
         borderRadius: BorderRadius.circular(Radii.sm),
-        onTap: isTouchPrimary ? () => onPreview(file) : () => onToggle(file),
+        // Touch selection mode: a tap toggles the tile instead of previewing.
+        onTap: (isTouchPrimary && state.selected.isNotEmpty)
+            ? () => onToggle(file)
+            : (isTouchPrimary ? () => onPreview(file) : () => onToggle(file)),
         // Touch: no double-tap — it would delay every single tap ~300 ms.
         onDoubleTap: isTouchPrimary ? null : () => onPreview(file),
         child: framed,

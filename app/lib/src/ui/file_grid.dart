@@ -154,9 +154,14 @@ class _GridTile extends StatelessWidget {
       onLongPressStart: (d) => onContextMenu(file, d.globalPosition),
       child: InkWell(
         borderRadius: BorderRadius.circular(Radii.md),
-        onTap: file.isDir
-            ? () => onOpen(file)
-            : (isTouchPrimary ? () => onPreview(file) : () => onToggle(file)),
+        // Touch selection mode: a tap toggles the tile (folders included).
+        onTap: (isTouchPrimary && state.selected.isNotEmpty)
+            ? () => onToggle(file)
+            : (file.isDir
+                  ? () => onOpen(file)
+                  : (isTouchPrimary
+                        ? () => onPreview(file)
+                        : () => onToggle(file))),
         // Touch: no double-tap — it would delay every single tap ~300 ms.
         onDoubleTap: isTouchPrimary
             ? null
