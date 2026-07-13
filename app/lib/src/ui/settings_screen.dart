@@ -901,10 +901,11 @@ class _ConfigToolsHookState extends ConsumerState<_ConfigToolsHook> {
               ),
             ),
             OutlinedButton.icon(
-              // Desktop has no camera → decode the QR from a picked image; a phone
-              // scans it live. Both land in the same import review.
+              // QR import is phone-camera only. A phone scans the QR live; a
+              // computer has no camera, so it explains that and points at the
+              // file-based flows (opening a file is for Import File Config).
               onPressed: () => desktop
-                  ? showConfigImportDialog(context, startOnQr: true)
+                  ? showQrCameraUnavailableDialog(context)
                   : showScanFromDesktopSheet(context),
               icon: const Icon(Icons.qr_code_scanner, size: 16),
               label: const Text('Import QR Config'),

@@ -638,8 +638,8 @@ jobs:
             echo "AIRCLONE_KEY_ALIAS=${{ secrets.AIRCLONE_KEY_ALIAS }}"
             echo "AIRCLONE_KEY_PASSWORD=${{ secrets.AIRCLONE_KEY_PASSWORD }}"
           } >> "$GITHUB_ENV"
-      # Split per ABI: rclone is ~76 MB per ABI, so a universal APK would be
-      # enormous. Virtually every modern phone wants arm64-v8a.
+      # Split per ABI: rclone is ~76 MB per ABI, so per-ABI APKs keep the download
+      # small. Virtually every modern phone wants arm64-v8a.
       - run: flutter build apk --release --split-per-abi
       - name: Rename APKs
         run: |
@@ -647,9 +647,21 @@ jobs:
           for abi in arm64-v8a armeabi-v7a x86_64; do
             mv "app-$abi-release.apk" "airclone-android-$abi.apk"
           done
+      # ALSO build a single UNIVERSAL APK (every ABI in one file) for catalogues
+      # and stores that take one APK rather than per-ABI splits — e.g. F-Droid,
+      # Obtainium, or a plain sideload where the user shouldn't have to pick an
+      # ABI. It's ~3x the size of a per-ABI APK (bundling all three rclone
+      # engines), so the per-ABI files above stay the recommended download; this
+      # is the convenience artifact for single-APK channels. Runs after the split
+      # build (both reuse the compiled native libs); its output is app-release.apk,
+      # which doesn't collide with the already-renamed per-ABI files.
+      - run: flutter build apk --release
+      - name: Rename universal APK
+        run: mv build/app/outputs/flutter-apk/app-release.apk build/app/outputs/flutter-apk/airclone-android-universal.apk
       - uses: actions/upload-artifact@v6
         with:
           name: airclone-android-apk
+          # Glob catches the per-ABI files AND airclone-android-universal.apk.
           path: app/build/app/outputs/flutter-apk/airclone-android-*.apk
       # Google Play upload artifact: Play only accepts App Bundles (.aab) for
       # new apps and generates per-device APKs (incl. per-ABI engine splits)

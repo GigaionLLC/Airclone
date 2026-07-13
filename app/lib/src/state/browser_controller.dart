@@ -350,8 +350,18 @@ class BrowserController extends Notifier<BrowserState> {
       _s.history = [..._s.history, path];
       _s.idx = _s.history.length - 1;
     }
+    // Clear the OLD folder's entries as we start loading the new path, so the
+    // pane shows a loading spinner (initialLoad = loading && no entries) instead
+    // of the previous folder's list until the new listing lands. refresh() below
+    // deliberately does NOT clear — a same-folder reload keeps its list on screen.
     _set(
-      state.copyWith(path: path, loading: true, selected: const {}, filter: ''),
+      state.copyWith(
+        path: path,
+        entries: const [],
+        loading: true,
+        selected: const {},
+        filter: '',
+      ),
     );
     await _load();
   }
@@ -414,11 +424,17 @@ class BrowserController extends Notifier<BrowserState> {
       _set(state.copyWith(loading: false, error: 'Engine not ready'));
       return;
     }
+    // Snapshot what THIS load targets. Loads overlap (fast folder clicks, a
+    // pull-to-refresh, the jobs-done auto-refresh, or slow cloud lists racing
+    // thumbnail traffic on the one engine), and whichever RPC returns last would
+    // otherwise win — clobbering the current folder with a stale/empty response
+    // and flashing "Empty folder". Guard by re-checking remote+path after the
+    // await and bailing (committing nothing) if navigation has moved on.
+    final path = state.path;
+    bool superseded() => state.remote != remote || state.path != path;
     try {
-      final res = await client.rpc(
-        'operations/list',
-        remote.listParams(state.path),
-      );
+      final res = await client.rpc('operations/list', remote.listParams(path));
+      if (superseded()) return;
       final list =
           (res['list'] as List? ?? const [])
               .cast<Map<String, dynamic>>()
@@ -430,6 +446,7 @@ class BrowserController extends Notifier<BrowserState> {
             );
       _set(state.copyWith(entries: list, loading: false));
     } catch (e) {
+      if (superseded()) return;
       _set(state.copyWith(entries: const [], loading: false, error: '$e'));
     }
   }

@@ -299,7 +299,8 @@ String _randomQrId() {
 // Relocated here from the former LAN pairing_protocol.dart (now deleted): these
 // are the only pieces of it the offline-QR path ever needed. base45 (RFC 9285)
 // keeps the payload inside the QR alphanumeric charset; the code generator mints
-// the readable default the export dialog suggests.
+// the readable one-time code the phone's "Import QR Config" screen shows (the
+// user types it into the computer's "Export QR Config" to seal the QR).
 
 /// CSPRNG for the suggested unlock code. `Random.secure()` is mandatory — a
 /// predictable PRNG would let an attacker guess a generated code.

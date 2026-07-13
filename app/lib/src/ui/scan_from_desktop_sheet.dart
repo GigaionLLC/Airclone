@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 
@@ -10,22 +11,78 @@ import '../state/offline_qr.dart';
 import '../state/remote_summary.dart';
 import 'theme/tokens.dart';
 
-/// Opens the phone-side "Import QR Config" flow: scan the computer's Offline QR
-/// (a single code or a multi-code batch), enter the unlock code that decrypts it
-/// in place, and land in the MANDATORY preview/merge review before anything is
-/// written. There is NO network — the whole config travels inside the QR itself.
+/// Opens the phone-side "Import QR Config" flow (reworked 2026-07):
+///  1. This phone GENERATES a one-time unlock code and shows it.
+///  2. You enter that code on the computer's "Export QR Config" screen and make
+///     the QR (the code is typed there privately — it never appears on the
+///     computer's screen, so a screen-grab of the QR alone can't open it).
+///  3. You scan the QR here. Because this phone already knows the code, it
+///     decrypts AUTOMATICALLY — no code to retype on the phone.
 ///
-/// Pushed as a full-screen route (the camera + multi-step flow needs the height);
-/// the import apply reuses [ConfigTransferController].
+/// The whole config travels inside the QR; there is NO network. The import lands
+/// in the MANDATORY preview/merge review before anything is written.
 Future<void> showScanFromDesktopSheet(BuildContext context) => Navigator.of(
   context,
 ).push<void>(MaterialPageRoute(builder: (_) => const _ScanFromDesktopScreen()));
 
-/// The flow's steps. [scanning] is the live camera; [offlineCode] prompts for the
-/// unlock code of the scanned OFFLINE QR; [preview] is the MANDATORY review (type +
-/// endpoint per remote, collision renames); [applying]/[report] run and summarise
-/// the merge; [error] is a terminal dead-end with a retry.
-enum _Step { scanning, offlineCode, preview, applying, report, error }
+/// A computer can't scan a QR (no camera / no camera plugin on desktop), so its
+/// "Import QR Config" explains that and points at the file-based flows instead.
+/// QR transfer is phone-camera only, by design.
+Future<void> showQrCameraUnavailableDialog(BuildContext context) {
+  final c = AircloneTheme.of(context);
+  return showDialog<void>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      backgroundColor: c.surfaceRaised,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(Radii.lg),
+      ),
+      title: Row(
+        children: [
+          Icon(Icons.no_photography_outlined, size: 20, color: c.primary),
+          const SizedBox(width: Space.x2),
+          Text(
+            'QR import needs a camera',
+            style: TextStyle(
+              color: c.text,
+              fontSize: 17,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+      content: SizedBox(
+        width: 420,
+        child: Text(
+          'Scanning a QR uses a camera, which this computer can\'t do. To move a '
+          'config here, use "Import File Config". To send THIS computer\'s config '
+          'to a phone, use "Export QR Config" and scan it with the phone\'s '
+          'camera (its "Import QR Config").',
+          style: TextStyle(color: c.textMuted, fontSize: 13, height: 1.4),
+        ),
+      ),
+      actionsPadding: const EdgeInsets.fromLTRB(
+        Space.x4,
+        0,
+        Space.x4,
+        Space.x4,
+      ),
+      actions: [
+        FilledButton(
+          onPressed: () => Navigator.of(ctx).pop(),
+          child: const Text('Got it'),
+        ),
+      ],
+    ),
+  );
+}
+
+/// The flow's steps. [showCode] displays this phone's generated unlock code;
+/// [scanning] is the live camera; [unlocking] decrypts the scanned QR with that
+/// code; [preview] is the MANDATORY review (type + endpoint per remote, collision
+/// renames); [applying]/[report] run and summarise the merge; [error] is a
+/// terminal dead-end with a retry.
+enum _Step { showCode, scanning, unlocking, preview, applying, report, error }
 
 class _ScanFromDesktopScreen extends ConsumerStatefulWidget {
   const _ScanFromDesktopScreen();
@@ -41,26 +98,29 @@ class _ScanFromDesktopScreenState
   /// collision rename before apply, exactly as the file-import wizard does.
   static final RegExp _validRemoteName = RegExp(r'^[A-Za-z0-9_.-]+$');
 
-  /// Only-scan-QRs, and ignore repeated reads of the same code — we act on the
-  /// first frame that carries a valid payload and then stop the camera.
+  /// Only-scan-QRs, and ignore repeated reads of the same code. autoStart:false —
+  /// we drive start()/stop() ourselves so the camera is off on the code screen
+  /// and the permission prompt only appears when the user taps "Scan the QR".
   final MobileScannerController _scanner = MobileScannerController(
     formats: const [BarcodeFormat.qrCode],
     detectionSpeed: DetectionSpeed.noDuplicates,
+    autoStart: false,
   );
 
-  _Step _step = _Step.scanning;
+  _Step _step = _Step.showCode;
   bool _handledScan = false; // guard: process the first valid QR exactly once
 
-  // Offline-QR path: the scanned self-contained payload + the code the user
-  // enters here to decrypt it (lives only in the controller, never logged).
-  String? _offlinePayload;
-  final _offlineCode = TextEditingController();
-  bool _offlineBusy = false;
-  String? _offlineError;
+  /// This phone's one-time unlock code, generated once for the session and shown
+  /// on the code screen. The user enters it on the computer's Export QR Config;
+  /// we decrypt the scanned QR with it automatically. Lives only here — never in
+  /// provider state, never logged, never in the QR.
+  final String _code = newPairingCode();
+  String?
+  _codeError; // "that didn't match" note carried back to the code screen
 
   // Multi-QR accumulation: a big config split across several chunk-QRs. We keep
   // scanning until all `_chunkTotal` (identified by `_chunkId`) are collected,
-  // then reassemble into a single offline payload and prompt for the code.
+  // then reassemble into a single offline payload.
   final Map<int, String> _chunks = {};
   String? _chunkId;
   int _chunkTotal = 0;
@@ -84,7 +144,6 @@ class _ScanFromDesktopScreenState
   void dispose() {
     _disposed = true;
     _scanner.dispose();
-    _offlineCode.dispose();
     _disposeRenames();
     super.dispose();
   }
@@ -98,10 +157,25 @@ class _ScanFromDesktopScreenState
 
   // --- Scan -----------------------------------------------------------------
 
-  /// Handles a camera detection: take the first non-empty raw QR value, stop the
-  /// camera, and strictly parse it. A parse rejection (wrong scheme, non-private
-  /// host, bad lengths) is a clear terminal error — NEVER a fetch — matching the
-  /// two-channel security model.
+  /// Arm and open the camera: clear any partial chunk collection, re-arm the
+  /// one-shot guard, and start the scanner. The permission prompt (Android
+  /// CAMERA / iOS NSCameraUsageDescription) surfaces here, in-flow, not at launch.
+  void _beginScan() {
+    _handledScan = false;
+    setState(() {
+      _codeError = null;
+      _chunks.clear();
+      _chunkId = null;
+      _chunkTotal = 0;
+      _step = _Step.scanning;
+    });
+    unawaited(_scanner.start());
+  }
+
+  /// Handles a camera detection: take the first non-empty raw QR value and route
+  /// it. A self-contained Offline QR decrypts immediately; a multi-QR chunk is
+  /// accumulated (camera stays live) until every chunk is in; anything else is a
+  /// clear terminal error — NEVER a network fetch.
   void _onDetect(BarcodeCapture capture) {
     if (_handledScan) return;
     String? raw;
@@ -120,26 +194,22 @@ class _ScanFromDesktopScreenState
     }
     _handledScan = true;
     unawaited(_scanner.stop());
-    // A self-contained OFFLINE QR carries the whole encrypted config — route to
-    // the unlock-code prompt. Anything else isn't an Airclone config QR.
+    // A self-contained OFFLINE QR carries the whole encrypted config — decrypt it
+    // with the code this phone generated. Anything else isn't an Airclone config QR.
     if (isOfflineQrPayload(raw)) {
-      setState(() {
-        _offlinePayload = raw;
-        _offlineError = null;
-        _step = _Step.offlineCode;
-      });
+      _decrypt(raw);
       return;
     }
     _toError(
       "That QR isn't an Airclone config QR. On your computer, open Airclone → "
-      'Settings → "Export QR Config", then scan the code it shows.',
+      'Settings → "Export QR Config", enter the code shown on this phone, then '
+      'scan the QR it makes.',
     );
   }
 
   /// Collects one multi-QR chunk. A chunk whose [OfflineQrChunk.id] differs from
   /// the current batch starts a fresh collection (you scanned a different export).
-  /// Once every chunk is present, reassemble into a single offline payload and
-  /// move to the code prompt — reusing the exact single-QR decrypt path.
+  /// Once every chunk is present, reassemble and decrypt.
   void _collectChunk(String raw) {
     final chunk = parseOfflineQrChunk(raw);
     if (chunk == null) return; // malformed frame — ignore, keep scanning
@@ -159,43 +229,29 @@ class _ScanFromDesktopScreenState
       _toError('Some codes were missed. Scan again and capture every QR.');
       return;
     }
-    setState(() {
-      _offlinePayload = assembled;
-      _offlineError = null;
-      _step = _Step.offlineCode;
-    });
+    _decrypt(assembled);
   }
 
-  // --- Offline QR (decrypt-in-place, no network) ----------------------------
+  // --- Decrypt (with this phone's own code) + preview -----------------------
 
-  /// Decrypts the scanned offline QR with the entered code, parses the config,
-  /// and lands in the MANDATORY preview — reusing the same merge review as every
-  /// other import. A wrong code stays on this step (recoverable); a malformed or
-  /// foreign QR is a terminal error.
-  Future<void> _openOffline() async {
-    final payload = _offlinePayload;
-    if (payload == null) return;
-    final code = _offlineCode.text;
-    if (code.isEmpty) {
-      setState(() => _offlineError = 'Enter the code from your computer.');
-      return;
-    }
-    setState(() {
-      _offlineBusy = true;
-      _offlineError = null;
-    });
+  /// Decrypts the scanned payload with the code this phone generated, parses the
+  /// config, and lands in the MANDATORY preview. A wrong code (the computer typed
+  /// it differently) returns to the code screen so the user can re-check + re-make
+  /// the QR; a malformed or foreign QR is a terminal error.
+  Future<void> _decrypt(String payload) async {
+    setState(() => _step = _Step.unlocking);
     try {
-      final text = await openOfflineQrPayload(payload, code);
+      final text = await openOfflineQrPayload(payload, _code);
       if (_disposed) return;
       _incoming = parseIni(text);
-      _offlineBusy = false;
       await _enterPreview();
     } on WrongPassphrase {
       if (_disposed) return;
       setState(() {
-        _offlineBusy = false;
-        _offlineError =
-            "That code didn't work — check your computer and re-enter it.";
+        _codeError =
+            "That QR was made with a different code. On your computer, enter the "
+            'code below EXACTLY, make the QR again, then scan it.';
+        _step = _Step.showCode;
       });
     } on NotAnOfflineQr {
       _toError("That QR isn't an Airclone offline transfer.");
@@ -206,15 +262,9 @@ class _ScanFromDesktopScreenState
     } on FormatException {
       _toError('That offline QR is malformed. Generate a fresh one.');
     } catch (_) {
-      if (_disposed) return;
-      setState(() {
-        _offlineBusy = false;
-        _offlineError = "Couldn't open that QR. Try again.";
-      });
+      _toError("Couldn't open that QR. Try again.");
     }
   }
-
-  // --- Preview / merge (MANDATORY review; reuses the transfer controller) ----
 
   /// Reads the live config, plans the merge, seeds collision-rename fields, and
   /// shows the review. Nothing is written until the user confirms the merge.
@@ -330,16 +380,13 @@ class _ScanFromDesktopScreenState
     });
   }
 
-  /// Rewind to a fresh scan (re-arm the guard, restart the camera, drop session
-  /// material). Used by the error step's "Scan again".
-  void _restartScan() {
+  /// Full reset back to the code screen (fresh scan session, same code so the
+  /// computer's already-typed code still matches).
+  void _restart() {
     _disposeRenames();
-    _offlineCode.clear();
     setState(() {
       _handledScan = false;
-      _offlinePayload = null;
-      _offlineError = null;
-      _offlineBusy = false;
+      _codeError = null;
       _chunks.clear();
       _chunkId = null;
       _chunkTotal = 0;
@@ -349,76 +396,121 @@ class _ScanFromDesktopScreenState
       _report = null;
       _errorMessage = null;
       _previewError = null;
-      _step = _Step.scanning;
+      _step = _Step.showCode;
     });
-    unawaited(_scanner.start());
   }
 
   // --- Views ----------------------------------------------------------------
 
-  Widget _offlineCodeView(AircloneColors c) => Column(
-    mainAxisSize: MainAxisSize.min,
-    crossAxisAlignment: CrossAxisAlignment.stretch,
-    children: [
-      const SizedBox(height: Space.x6),
-      Icon(Icons.lock_outline, size: 40, color: c.primary),
-      const SizedBox(height: Space.x3),
-      Text(
-        'Enter the code',
-        textAlign: TextAlign.center,
-        style: TextStyle(
-          color: c.text,
-          fontSize: 20,
-          fontWeight: FontWeight.w600,
-        ),
-      ),
-      const SizedBox(height: Space.x2),
-      Text(
-        'Type the code you set on the computer to unlock this transfer. It is '
-        "not in the QR — that's what keeps it safe.",
-        textAlign: TextAlign.center,
-        style: TextStyle(color: c.textMuted, fontSize: 13),
-      ),
-      const SizedBox(height: Space.x5),
-      TextField(
-        controller: _offlineCode,
-        autofocus: true,
-        obscureText: true,
-        enabled: !_offlineBusy,
-        onSubmitted: (_) => _offlineBusy ? null : _openOffline(),
-        style: TextStyle(color: c.text, fontSize: 16, letterSpacing: 1.5),
-        decoration: InputDecoration(
-          hintText: 'Unlock code',
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(Radii.md),
+  Widget _showCodeView(AircloneColors c) => SingleChildScrollView(
+    padding: const EdgeInsets.all(Space.x5),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const SizedBox(height: Space.x3),
+        Icon(Icons.key_outlined, size: 40, color: c.primary),
+        const SizedBox(height: Space.x3),
+        Text(
+          'Your one-time code',
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            color: c.text,
+            fontSize: 20,
+            fontWeight: FontWeight.w600,
           ),
         ),
-      ),
-      if (_offlineError != null) ...[
         const SizedBox(height: Space.x2),
-        Text(_offlineError!, style: TextStyle(color: c.error, fontSize: 12)),
-      ],
-      const SizedBox(height: Space.x4),
-      FilledButton.icon(
-        onPressed: _offlineBusy ? null : _openOffline,
-        icon: _offlineBusy
-            ? const SizedBox(
-                height: 16,
-                width: 16,
-                child: CircularProgressIndicator(strokeWidth: 2),
-              )
-            : const Icon(Icons.lock_open, size: 18),
-        label: Text(_offlineBusy ? 'Unlocking…' : 'Unlock'),
-      ),
-      const SizedBox(height: Space.x2),
-      TextButton(
-        onPressed: _offlineBusy ? null : _restartScan,
-        child: Text(
-          'Scan a different QR',
-          style: TextStyle(color: c.textMuted),
+        Text(
+          'On your computer, open Airclone → Settings → "Export QR Config", '
+          'enter this code, and make the QR. Then scan it below.',
+          textAlign: TextAlign.center,
+          style: TextStyle(color: c.textMuted, fontSize: 13),
         ),
-      ),
-    ],
+        const SizedBox(height: Space.x5),
+        // The code itself — big, monospaced, with a copy affordance.
+        Container(
+          padding: const EdgeInsets.symmetric(
+            horizontal: Space.x4,
+            vertical: Space.x4,
+          ),
+          decoration: BoxDecoration(
+            color: c.surfaceSunken,
+            borderRadius: BorderRadius.circular(Radii.md),
+            border: Border.all(color: c.border),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Flexible(
+                child: Text(
+                  _code,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: c.text,
+                    fontSize: 30,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 3,
+                    fontFeatures: const [FontFeature.tabularFigures()],
+                  ),
+                ),
+              ),
+              const SizedBox(width: Space.x2),
+              IconButton(
+                tooltip: 'Copy code',
+                onPressed: () async {
+                  await Clipboard.setData(ClipboardData(text: _code));
+                  if (!mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Code copied'),
+                      duration: Duration(seconds: 1),
+                    ),
+                  );
+                },
+                icon: Icon(Icons.copy_outlined, size: 18, color: c.textMuted),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: Space.x3),
+        Text(
+          "The code is case-insensitive to type — your computer uppercases it. "
+          "It never travels in the QR, so a photo of the QR alone can't open "
+          'your remotes.',
+          textAlign: TextAlign.center,
+          style: TextStyle(color: c.textFaint, fontSize: 11),
+        ),
+        if (_codeError != null) ...[
+          const SizedBox(height: Space.x3),
+          Container(
+            padding: const EdgeInsets.all(Space.x3),
+            decoration: BoxDecoration(
+              color: c.errorBg,
+              borderRadius: BorderRadius.circular(Radii.md),
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(Icons.error_outline, size: 16, color: c.error),
+                const SizedBox(width: Space.x2),
+                Expanded(
+                  child: Text(
+                    _codeError!,
+                    style: TextStyle(color: c.error, fontSize: 12),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+        const SizedBox(height: Space.x5),
+        FilledButton.icon(
+          onPressed: _beginScan,
+          icon: const Icon(Icons.qr_code_scanner, size: 18),
+          label: const Text('Scan the QR'),
+        ),
+      ],
+    ),
   );
 
   @override
@@ -428,7 +520,7 @@ class _ScanFromDesktopScreenState
       backgroundColor: c.surface,
       appBar: AppBar(
         backgroundColor: c.surface,
-        title: const Text('Import from a computer'),
+        title: const Text('Import QR Config'),
         leading: IconButton(
           icon: const Icon(Icons.close),
           onPressed: () => Navigator.of(context).maybePop(),
@@ -436,8 +528,9 @@ class _ScanFromDesktopScreenState
       ),
       body: SafeArea(
         child: switch (_step) {
+          _Step.showCode => _showCodeView(c),
           _Step.scanning => _scanView(c),
-          _Step.offlineCode => _offlineCodeView(c),
+          _Step.unlocking => _busyView(c, 'Unlocking…'),
           _Step.preview => _previewView(c),
           _Step.applying => _busyView(c, 'Importing…'),
           _Step.report => _reportView(c),
@@ -456,10 +549,6 @@ class _ScanFromDesktopScreenState
           // Camera unavailable / permission denied: a clear message, never a
           // crash. The permission is requested in-flow by mobile_scanner the
           // first time the camera starts (never at launch).
-          // NOTE: this is the mobile_scanner 7.x errorBuilder arity
-          // `(context, error)`. If pub resolves a build whose signature still
-          // carries the trailing `Widget? child`, add it here — the body ignores
-          // it either way.
           errorBuilder: (context, error) => _cameraError(c, error),
         ),
       ),
@@ -491,8 +580,8 @@ class _ScanFromDesktopScreenState
                   Icon(Icons.qr_code_scanner, size: 24, color: c.primary),
                   const SizedBox(height: Space.x2),
                   Text(
-                    'On your computer, open Airclone → Settings → "Export QR '
-                    'Config", then point this camera at the code it shows.',
+                    'Point the camera at the QR your computer is showing '
+                    '(Export QR Config). It opens automatically.',
                     textAlign: TextAlign.center,
                     style: TextStyle(color: c.textMuted, fontSize: 13),
                   ),
@@ -525,8 +614,9 @@ class _ScanFromDesktopScreenState
               denied
                   ? 'Airclone needs the camera to scan the QR code. Turn it on '
                         'in your phone Settings → Apps → Airclone → Permissions, '
-                        'then come back.'
-                  : 'Close other apps using the camera and try again.',
+                        'then come back — or use "Import File Config" instead.'
+                  : "This device can't scan a QR. Use \"Import File Config\" / "
+                        '"Export File Config" to move your config instead.',
               textAlign: TextAlign.center,
               style: TextStyle(color: c.textMuted, fontSize: 13),
             ),
@@ -843,10 +933,7 @@ class _ScanFromDesktopScreenState
               child: Text('Close', style: TextStyle(color: c.textMuted)),
             ),
             const SizedBox(width: Space.x2),
-            FilledButton(
-              onPressed: _restartScan,
-              child: const Text('Scan again'),
-            ),
+            FilledButton(onPressed: _restart, child: const Text('Start over')),
           ],
         ),
       ],

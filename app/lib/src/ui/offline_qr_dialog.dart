@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
@@ -9,18 +10,34 @@ import '../state/config_transfer_controller.dart';
 import '../state/offline_qr.dart';
 import 'theme/tokens.dart';
 
-/// Desktop "Offline QR" export (config-portability plan §5, user-requested): seal
-/// the (scoped) config into a self-contained QR that carries the WHOLE encrypted
-/// config — no Wi-Fi, no server. You choose an unlock CODE (never shown in the QR);
-/// the other device scans the QR and enters the same code to decrypt. A thief
-/// needs BOTH the QR photo AND the code. Shown on desktop and mobile (the dialog
-/// sizes itself to fit a narrow phone).
+/// Desktop/mobile "Export QR Config" (config-portability plan §5, reworked
+/// 2026-07): seal the (scoped) config into a self-contained QR that carries the
+/// WHOLE encrypted config — no Wi-Fi, no server.
+///
+/// The unlock CODE is NOT generated or shown here. Instead the OTHER device (the
+/// one that will scan) opens "Import QR Config" first, which shows a one-time
+/// code; you TYPE that code here — obscured, so a shoulder-surfer or a screen
+/// recording of this window captures only the QR, never the code. The scanning
+/// device already knows the code, so it opens automatically. A thief needs BOTH
+/// the QR photo AND the code, and the code never appears on this screen at all.
 Future<void> showOfflineQrDialog(BuildContext context) => showDialog<void>(
   context: context,
   builder: (_) => const _OfflineQrDialog(),
 );
 
 enum _Step { loading, compose, qr, error }
+
+/// Auto-uppercases typed input. The scanning device's code is uppercase Crockford
+/// (see [newPairingCode]); the seal/open is case-sensitive, so uppercasing what
+/// the user types removes the #1 "wrong code" cause — retyping `k7wx` for `K7WX`.
+class _UpperCaseFormatter extends TextInputFormatter {
+  const _UpperCaseFormatter();
+  @override
+  TextEditingValue formatEditUpdate(
+    TextEditingValue _,
+    TextEditingValue next,
+  ) => next.copyWith(text: next.text.toUpperCase());
+}
 
 class _OfflineQrDialog extends ConsumerStatefulWidget {
   const _OfflineQrDialog();
@@ -36,10 +53,10 @@ class _OfflineQrDialogState extends ConsumerState<_OfflineQrDialog> {
   bool _allScope = true;
   final _selected = <String>{};
 
-  // The code lives ONLY in these controllers (disposed on close) — never in
-  // provider state, never logged, never in the QR.
+  // The code lives ONLY in this controller (disposed on close) — never in
+  // provider state, never logged, never in the QR. Obscured by default; the eye
+  // toggle lets the user verify it matches the phone before sealing.
   final _code = TextEditingController();
-  final _confirm = TextEditingController();
   bool _reveal = false;
   bool _busy = false;
   String? _formError;
@@ -71,7 +88,6 @@ class _OfflineQrDialogState extends ConsumerState<_OfflineQrDialog> {
   void dispose() {
     _cycle?.cancel();
     _code.dispose();
-    _confirm.dispose();
     super.dispose();
   }
 
@@ -104,17 +120,9 @@ class _OfflineQrDialogState extends ConsumerState<_OfflineQrDialog> {
     try {
       final full = await _ctrl.activeConfigModel();
       if (!mounted) return;
-      // Default to a strong GENERATED code (the secure path). A weak self-chosen
-      // code is the offline QR's main risk — an attacker with the QR photo can
-      // brute-force it offline — so make the strong code the default, revealed so
-      // the user can read + type it on the phone.
-      final code = newPairingCode();
       setState(() {
         _full = full;
         _step = _Step.compose;
-        _code.text = code;
-        _confirm.text = code;
-        _reveal = true;
       });
     } catch (e) {
       if (!mounted) return;
@@ -157,26 +165,14 @@ class _OfflineQrDialogState extends ConsumerState<_OfflineQrDialog> {
       );
       return;
     }
+    // Validate against the canonical form (dashes/spaces stripped) — the phone
+    // shows a dashed code like K7WX-4PMB, so 6+ real symbols is the real floor.
     final code = _code.text;
-    if (code.length < 8) {
-      setState(
-        () =>
-            _formError = 'Use a longer code — or tap "Suggest a strong code".',
-      );
-      return;
-    }
-    // A word-like (all-lowercase) code is easy to brute-force from the QR photo
-    // unless it's very long. Steer to the strong generated code instead.
-    if (RegExp(r'^[a-z]+$').hasMatch(code) && code.length < 14) {
+    if (canonicalOfflineCode(code).length < 6) {
       setState(
         () => _formError =
-            'That code is too guessable. Use the suggested code, add capitals/'
-            'digits, or make it much longer.',
+            "Enter the code from the phone's Import QR Config screen.",
       );
-      return;
-    }
-    if (code != _confirm.text) {
-      setState(() => _formError = "The codes don't match.");
       return;
     }
     setState(() {
@@ -211,16 +207,6 @@ class _OfflineQrDialogState extends ConsumerState<_OfflineQrDialog> {
         _formError = e is ConfigTransferError ? e.message : '$e';
       });
     }
-  }
-
-  void _suggest() {
-    final code = newPairingCode(); // e.g. K7WX-4PMB — easy to read + type
-    setState(() {
-      _code.text = code;
-      _confirm.text = code;
-      _reveal = true; // reveal so the user can note the generated code
-      _formError = null;
-    });
   }
 
   @override
@@ -276,12 +262,12 @@ class _OfflineQrDialogState extends ConsumerState<_OfflineQrDialog> {
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _title(c, Icons.qr_code_2, 'Offline QR'),
+        _title(c, Icons.qr_code_2, 'Export QR Config'),
         const SizedBox(height: Space.x2),
         Text(
-          'Put your remotes in a single QR — no Wi-Fi, no account. Choose a code; '
-          'the QR holds the encrypted config, and your phone needs that same code '
-          'to open it. The code is never in the QR.',
+          'Send your remotes to a phone in a single QR — no Wi-Fi, no account. '
+          'On the phone, open "Import QR Config" first: it shows a one-time code. '
+          'Enter that code below, make the QR, then scan it with the phone.',
           style: TextStyle(color: c.textFaint, fontSize: 12),
         ),
         const SizedBox(height: Space.x4),
@@ -315,35 +301,14 @@ class _OfflineQrDialogState extends ConsumerState<_OfflineQrDialog> {
             ),
         ],
         const SizedBox(height: Space.x4),
-        _sectionLabel(c, 'Unlock code'),
-        _codeField(c, _code, 'Code', autofocus: true),
-        const SizedBox(height: Space.x2),
-        _codeField(c, _confirm, 'Confirm code'),
+        _sectionLabel(c, 'Code from the phone'),
+        _codeField(c, autofocus: true),
         const SizedBox(height: Space.x1),
-        Row(
-          children: [
-            TextButton.icon(
-              onPressed: _suggest,
-              icon: const Icon(Icons.casino_outlined, size: 15),
-              label: const Text('Suggest a strong code'),
-              style: TextButton.styleFrom(visualDensity: VisualDensity.compact),
-            ),
-            const Spacer(),
-            IconButton(
-              tooltip: _reveal ? 'Hide code' : 'Show code',
-              onPressed: () => setState(() => _reveal = !_reveal),
-              icon: Icon(
-                _reveal ? Icons.visibility_off : Icons.visibility,
-                size: 16,
-                color: c.textMuted,
-              ),
-            ),
-          ],
-        ),
         Text(
-          "Anyone with both the QR and this code can read your remotes' secrets. "
-          'The QR is easy to photograph, so the code is your only protection — '
-          'use the suggested one (or a long random code), not a word you know.',
+          "Type the code shown on the phone's Import QR Config screen (the dash is "
+          "optional). It's case-sensitive, so we uppercase it for you. The code "
+          'is never stored in the QR — a photo of the QR alone cannot open your '
+          'remotes.',
           style: TextStyle(color: c.textFaint, fontSize: 11),
         ),
         if (_formError != null) ...[
@@ -393,9 +358,9 @@ class _OfflineQrDialogState extends ConsumerState<_OfflineQrDialog> {
           const SizedBox(height: Space.x2),
           Text(
             "This config is too big for one QR, so it's split across "
-            '${payloads.length} codes. On your phone → Scan, point at each in '
-            'turn — it counts them down and reassembles them. Order doesn\'t '
-            'matter; scan every one.',
+            '${payloads.length} codes. On the phone → Import QR Config → Scan, '
+            "point at each in turn — it counts them down and reassembles them. "
+            "Order doesn't matter; scan every one.",
             style: TextStyle(color: c.textFaint, fontSize: 12),
           ),
         ],
@@ -476,12 +441,13 @@ class _OfflineQrDialogState extends ConsumerState<_OfflineQrDialog> {
         const SizedBox(height: Space.x2),
         Text(
           multi
-              ? 'These codes cycle on their own — on your phone → Scan, just hold '
-                    'the camera on this square and it collects them all, then '
-                    'enter your code. Everything transfers offline.'
-              : 'On your phone: open Airclone → Scan, point it at this QR, then '
-                    'enter the code you chose. Everything transfers offline — '
-                    'nothing leaves this screen except the picture.',
+              ? 'These codes cycle on their own — on the phone → Import QR Config → '
+                    'Scan, just hold the camera on this square and it collects them '
+                    'all, then opens automatically. Everything transfers offline.'
+              : "Point the phone's camera (Import QR Config → Scan) at this code. "
+                    'The phone already has the unlock code, so it opens '
+                    'automatically. Everything transfers offline — nothing leaves '
+                    'this screen except the picture.',
           style: TextStyle(color: c.textFaint, fontSize: 12),
         ),
         const SizedBox(height: Space.x4),
@@ -529,20 +495,29 @@ class _OfflineQrDialogState extends ConsumerState<_OfflineQrDialog> {
 
   // --- building blocks ------------------------------------------------------
 
-  Widget _codeField(
-    AircloneColors c,
-    TextEditingController ctrl,
-    String label, {
-    bool autofocus = false,
-  }) => TextField(
-    controller: ctrl,
+  Widget _codeField(AircloneColors c, {bool autofocus = false}) => TextField(
+    controller: _code,
     obscureText: !_reveal,
     autofocus: autofocus,
+    autocorrect: false,
+    enableSuggestions: false,
+    inputFormatters: const [_UpperCaseFormatter()],
+    textCapitalization: TextCapitalization.characters,
+    onSubmitted: (_) => _busy ? null : _generate(),
     style: TextStyle(color: c.text, letterSpacing: 1.2),
     decoration: InputDecoration(
       isDense: true,
-      labelText: label,
+      labelText: 'Code',
       border: OutlineInputBorder(borderRadius: BorderRadius.circular(Radii.md)),
+      suffixIcon: IconButton(
+        tooltip: _reveal ? 'Hide code' : 'Show code',
+        onPressed: () => setState(() => _reveal = !_reveal),
+        icon: Icon(
+          _reveal ? Icons.visibility_off : Icons.visibility,
+          size: 16,
+          color: c.textMuted,
+        ),
+      ),
     ),
   );
 
