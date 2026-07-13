@@ -144,7 +144,9 @@ the [Cross-Platform Plan](dev/plans/cross-platform-architecture-plan.md).
 Airclone is AI-authored under Gigaion, LLC's direction. Review it with the same judgment you would
 apply to any production tool you trust with your files.
 
-> 🥚 *The name is a little wink at those roots:* **Airclone** = **(AI)rclone** *— an AI‑built companion to [rclone](https://rclone.org/).*
+> 🥚 *The name is a double wink:* **Airclone** reads as **(AI)rclone** *— an AI‑built companion to
+> [rclone](https://rclone.org/) —* and as **air + clone**, *cloning your files through the "air" across
+> the clouds rclone reaches.*
 
 ## License
 
