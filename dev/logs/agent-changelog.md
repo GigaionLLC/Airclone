@@ -4,6 +4,20 @@ All changes made by AI agents are tracked chronologically below (most recent fir
 
 ---
 
+## [2026-07-15 20:12] - Reliability and product hardening audit handoff
+
+**Agent:** Codex (GPT-5)
+**Files Modified:**
+- `dev/backlog/hardening-audit-2026-07-15.md`
+- `dev/backlog/backlog-index.md`
+- `dev/backlog/beta-quality-review.md`
+- `dev/backlog/feature-backlog.md`
+- `dev/logs/agent-changelog.md`
+**Database/API Changes:** None
+**Summary:** Added a durable, prioritized handoff for the v0.5 audit with 18 evidence-linked candidate
+fixes, acceptance notes, implementation order, and cross-links from the master and historical beta
+backlogs; no product code changed.
+
 <!-- New entries go above this line, most recent first -->
 
 ## [2026-07-02] - v0.1.0-alpha.85: native desktop by default — Explorer/Finder/GNOME out of the box

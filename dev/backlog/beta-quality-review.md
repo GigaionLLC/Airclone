@@ -1,8 +1,8 @@
 ---
 type: "backlog"
 name: "Beta Quality Review (alpha.86 → beta)"
-status: "proposed"
-description: "General product-quality findings from the 2026-07-09 beta-readiness review — data-loss guards, error surfaces, docs accuracy, tests."
+status: "historical"
+description: "Historical product-quality findings from the 2026-07-09 beta-readiness review; reconciled by the 2026-07-15 hardening audit."
 ---
 
 # 🔍 Beta Quality Review — 2026-07-09
@@ -11,6 +11,11 @@ General product review run while preparing v0.1.0-beta.1. README staleness (P0 #
 beta.1 commit itself; everything else is queued here. **#2 is the top candidate for beta.2** and, per
 project policy ([avoid `core/command`](../../wiki/core/15-security.md), destructive features get
 adversarial safety review), should be built + reviewed as its own change, not rushed.
+
+> **Follow-up audit:** several items below shipped partially after this review. Use the newer
+> [Reliability and Product Hardening Audit](hardening-audit-2026-07-15.md) as the active handoff for
+> current evidence, execution-boundary gaps, acceptance notes, and implementation order. Keep this
+> document as historical context rather than assuming every unchecked item still matches `main`.
 
 ## Findings
 

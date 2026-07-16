@@ -81,12 +81,17 @@ Prioritized roadmap distilled from competitive + engine research. Tags: `[D]` de
   a random key sealed in the **OS secure store** (Windows DPAPI / macOS Keychain / Linux Secret Service)
   — *stronger than a remote-name hash, which is not secret and gives only obfuscation*. Also offer a
   **memory-only / no-disk-cache** mode for the paranoid.
+- [ ] **Bring in-process preview materialization under the same cache/privacy policy** — the v0.5
+  object server currently downloads whole remote objects into general plaintext temp storage, does
+  not consult memory-only mode, and can reuse stale `(fs,path)` entries. See
+  [hardening audit H-09](hardening-audit-2026-07-15.md).
 
 ### 🐞 Known robustness bugs
-- [x] **Orphaned engine processes** — a16 records the spawned `rcd` PID and reaps that exact child on next
-  launch (targeted; never the user's other rclone). Original report: force-killing `airclone.exe` left its
-  `rcd` child running (15+ stray accumulating). Remaining belt-and-suspenders: tie `rcd`'s lifetime to the
-  app at the OS level (Windows Job Object / `CREATE_BREAKAWAY` off; POSIX `PR_SET_PDEATHSIG`).
+- [ ] **Engine process ownership / orphan cleanup** — reopened by the 2026-07-15 audit. a16 reduced
+  accumulated orphan processes, but all desktop/headless instances share one raw temp PID marker and
+  hard-kill its current numeric PID without validating ownership. Replace it with an ownership-safe
+  lease/mutex/IPC design plus OS process containment; test concurrent GUI/headless instances and PID
+  reuse. See [hardening audit H-01](hardening-audit-2026-07-15.md).
 
 ### 💡 Recommended additions (proposed)
 - [x] **Type-to-navigate** (typeahead) — a20; **keyboard map** F2 · Del · Enter · Ctrl+A · Esc — a26
