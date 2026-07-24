@@ -1,11 +1,13 @@
 # Windows code signing + Microsoft Store — activation guide
 
-Both are **pre-wired in `release.yml` but OFF by default**. Nothing runs until you
-set the enable **variable** and add the **secrets** below — so releases keep
-working unsigned until you're ready. Flip each on independently.
+**Windows code signing is LIVE** as of **v0.5.1** — every tagged release signs `airclone.exe` + the
+installer + the bundled `rclone.exe` (subject "Gigaion, LLC"), gated on org vars
+`AZURE_SIGNING_PROFILE=GigaionLLC-PublicCertProfile` + `WINDOWS_SIGNING_ENABLED=true` (both set). The
+**Microsoft Store** is also LIVE but via the **manual EXE path** (§2) — the CI Store-submission
+AUTOMATION (the `msstore`/MSIX lane) remains intentionally OFF and must stay that way (see §2).
 
-The gating: each block is guarded by `if: ${{ vars.<FLAG> == 'true' }}`, so an
-unset flag skips the step entirely (its secrets are never read).
+Historical note: each CI block is guarded by `if: ${{ vars.<FLAG> == 'true' }}`, so before activation an
+unset flag skipped the step entirely (its secrets were never read).
 
 ---
 
@@ -52,6 +54,7 @@ Values for THIS setup (identifiers redacted per the note above):
 | Region / endpoint | West US / `https://wus.codesigning.azure.net/` |
 | Entra app registration | `GigaionLLC-Signing`, appId `<app id>` |
 | RBAC role (data-plane signing) | **`Artifact Signing Certificate Profile Signer`** (the service is branded "Artifact Signing"; the old name was "Trusted Signing …") |
+| Certificate profile | **`GigaionLLC-PublicCertProfile`** (type Public Trust, West US, created 2026-07-23) = `vars.AZURE_SIGNING_PROFILE` |
 | Client secret | 2-year, minted 2026-07-12 → rotate before **2028-07** |
 
 **Provisioned + wired (done):** app registration + SP, role at the account scope,
@@ -62,21 +65,25 @@ Org-level so every GigaionLLC product shares one signing setup; to add a product
 add its repo to each secret/variable's selected list (see runbook). No repo-level
 signing secrets remain on Airclone.
 
-**Identity validation (portal, manual) — SUBMITTED 2026-07-12, status In Progress:**
-- validation id `<identity validation id>`, org **"Gigaion, LLC"**, type
-  **Public**, US.
-- Needed the **`Artifact Signing Identity Verifier`** role on your USER account,
-  assigned at the account scope — SEPARATE from the app's Signer role.
-- Portal path: the Artifact/Trusted Signing account → **Identity validation** → **New
-  identity** → **Organization** → **Public** → fill legal name / address / (D-U-N-S if
-  prompted) → **Submit** → status goes **In Progress** → wait for Microsoft (days). A
-  **Public Trust** certificate profile requires this **Completed/Approved** first.
+**Identity validation (portal, manual) — COMPLETED 2026-07-23:**
+- validation id `<identity validation id>`, org **"Gigaion, LLC"**, type **Public**, US.
+- Needed the **`Artifact Signing Identity Verifier`** role on your USER account, assigned at the account
+  scope — SEPARATE from the app's Signer role.
+- Portal path: the Artifact/Trusted Signing account → **Identity validation** → **New identity** →
+  **Organization** → **Public** → fill legal name / address / (D-U-N-S if prompted) → **Submit** →
+  status **In Progress → Completed** (days). A **Public Trust** certificate profile requires this
+  **Completed** first.
 
-**Still blocked on Microsoft (after the validation is Approved):** create a
-**Certificate profile** of type **Public Trust** → note its name → do runbook **step 5**
-(flip the two ORG vars) → cut a release and confirm the exe + installer are signed. (A
-**Public Trust Test** profile needs no validation and can smoke-test the CI signing
-early, but its signatures are NOT publicly trusted — plumbing check only.)
+**Certificate profile (portal, manual) — CREATED 2026-07-23:** in the signing account →
+**Objects → Certificate profiles → Create → Public Trust** → picked the Completed identity under
+"Verified CN and O" → named it **`GigaionLLC-PublicCertProfile`**. Creating a profile needs
+**Contributor/Owner** (control-plane); the `GigaionLLC-Signing` SP already held the data-plane
+**Signer** role at ACCOUNT scope, which inherits to the new profile. (A **Public Trust *Test*** profile
+needs no validation and can smoke-test CI signing early, but its signatures are NOT publicly trusted.)
+
+**Activated (runbook step 5):** set org vars `AZURE_SIGNING_PROFILE=GigaionLLC-PublicCertProfile` +
+`WINDOWS_SIGNING_ENABLED=true`. First signed release **v0.5.1** confirmed — `Get-AuthenticodeSignature`
+returns **Valid / CN="Gigaion, LLC"**, chain `Microsoft ID Verified CS AOC CA 03`, RFC-3161 timestamped.
 
 ## Reproduce — CLI runbook (idempotent-ish)
 
@@ -124,10 +131,10 @@ gh variable set AZURE_SIGNING_ENDPOINT --org $ORG --visibility selected --repos 
 # To let ANOTHER org repo sign, add it to every secret/var's selected list, e.g.:
 #   gh secret set AZURE_CLIENT_SECRET --org GigaionLLC --visibility selected --repos Airclone,abcli --body $SECRET
 
-# --- 5. AFTER identity validation is approved + a certificate profile exists,
-# flip the two ORG-level variables on (same visibility=selected -> Airclone as the rest):
-# gh variable set AZURE_SIGNING_PROFILE   --org $ORG --visibility selected --repos Airclone --body "<profile name>"
-# gh variable set WINDOWS_SIGNING_ENABLED --org $ORG --visibility selected --repos Airclone --body "true"
+# --- 5. DONE 2026-07-23 (profile GigaionLLC-PublicCertProfile) — the two ORG-level vars ARE set
+# (same visibility=selected -> Airclone as the rest). Shown for reproduction / to change the profile:
+gh variable set AZURE_SIGNING_PROFILE   --org $ORG --visibility selected --repos Airclone --body "GigaionLLC-PublicCertProfile"
+gh variable set WINDOWS_SIGNING_ENABLED --org $ORG --visibility selected --repos Airclone --body "true"
 ```
 
 **Rotate the client secret** (e.g. before it expires): re-run step 4 (it resets the
@@ -189,14 +196,94 @@ download reputation (days–weeks); an **EV** profile is trusted instantly.
 
 ---
 
-## 2. Microsoft Store — company account + automated MSIX submission (FREE via the new flow)
+## 2. Microsoft Store — company account + per-release submission
 
-Store apps are signed **by Microsoft**, so Store users get no warning and this path
-needs no signing cert of ours. It is **independent of §1** — NOT blocked on the Azure
-identity validation, so it proceeds in parallel. CI already builds `airclone.msix`
-with `--store` (unsigned, Store-ready) **and bundles a SHA256-verified `rclone.exe`
-inside it** (commit `dda4c7c`), so the packaged app never downloads executable code at
-runtime — clear of Store policy 10.2.x.
+> **PATH DECISION (2026-07-23): we ship as an UNPACKAGED Win32 EXE app, NOT MSIX.**
+> The "Airclone" app in Partner Center is the **EXE/MSI** product type — you host your
+> own **signed** installer at a **direct (non-redirecting) URL** and the Store points at
+> it. This reuses the `airclone-setup-x64.exe` we already build + sign and needs no MSIX
+> identity plumbing. The `--store` MSIX is still built by CI (a possible future pivot /
+> winget) but is NOT what we submit. §2a (account) still applies; **§§2b–2g are the
+> ORIGINAL, now-SUPERSEDED MSIX plan**, kept only for reference.
+>
+> **Keep `STORE_PUBLISH_ENABLED` UNSET / false permanently** — the CI "Submit MSIX to Microsoft Store"
+> step (`msstore publish`) targets the superseded MSIX and does NOT fit the EXE product type now used
+> in Partner Center; turning it on would publish the wrong package.
+
+### Per-release submission runbook (EXE path) — do this for every Store update
+
+The Store requires a **versioned** URL and the binary at it **must not change** after
+submission, so bump the app version each release.
+
+**A. Build + VERIFY the signed, self-contained installer**
+1. Cut a release tag `vX.Y.Z` → CI's windows job builds `airclone-setup-x64.exe`, bundles
+   a SHA256-verified `rclone.exe`, and Trusted-Signs both exes (Gigaion, LLC).
+2. **Verify the artifact — do NOT trust the green check** (a `continue-on-error` bundle
+   step once masked a real failure). Download the installer + zip: confirm the installer
+   is ~66 MB (rclone bundled), `rclone.exe` is inside the zip, and
+   `Get-AuthenticodeSignature` on the installer + `airclone.exe` + `rclone.exe` all return
+   **Valid / CN="Gigaion, LLC"**, timestamped.
+
+**B. Host it at a DIRECT URL** (GitHub release URLs do NOT work — see gotchas)
+3. Upload the verified installer to
+   **`https://gigaion.com/releases/airclone/vX.Y.Z/airclone-setup-x64.exe`** (our web
+   host). Confirm `curl -I` → **HTTP 200, no redirect**, `application/octet-stream`, and
+   SHA256 matches the CI installer.
+
+**C. Partner Center → Packages → Package details** (App type = EXE)
+
+| Field | Value |
+|---|---|
+| Package URL | `https://gigaion.com/releases/airclone/vX.Y.Z/airclone-setup-x64.exe` (versioned, direct) |
+| Architecture | **x64** |
+| Installer parameters | **`/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /ALLUSERS`** (leave "silent, no switches" UNCHECKED) |
+| Languages | English (United States) |
+| App type | **EXE** |
+| Installer handling URL | (blank) |
+| Install scenarios (Inno exit codes) | successful `0` · cancelled `2` **and** `5` · disk-full `4` · reboot `8` · leave *already exists / in progress / network / rejected* blank |
+
+**D. Store listing** — paste from **`docs/store/windows/listing-en-US.md`** (Description,
+What's new, Short description, Product features, Keywords, Copyright, **Applicable license
+terms** [required], Developed by). Images from **`docs/store/windows/`**: box art
+`store-boxart-1080.png` (1:1 required — use 1080, not the soft 2160), poster
+`store-poster-720x1080.png` (2:3), screenshots `screenshots/01–05`. **Privacy-policy URL**
+(required): `https://github.com/GigaionLLC/Airclone/blob/main/PRIVACY.md`.
+> **PAID release** — the Store version carries the small store-listing fee; the listing
+> copy must NOT claim the app is free / no-paywall (only the license-terms field states
+> AGPLv3). Direct-download / self-build stays free.
+
+**E. Properties / Age ratings / Availability** — Category *Utilities & tools › Backup &
+manage* (+ secondary *Developer tools*); run the age-ratings questionnaire (utility, no
+objectionable content); set pricing + markets.
+
+**F. Package validation → Submit** — run validation only AFTER the URL is live.
+**Malware + Code sign** pass; **Silent install / Add-Remove-Programs / Bundleware** may
+show **"?" (inconclusive → "manually verify") — these are NOT failures, submit-through.**
+The `/ALLUSERS` per-machine install (HKLM ARP entry) + `AppPublisher="Gigaion, LLC"` are
+what make them go green. Then submit for certification (days).
+
+### Gotchas (learned the hard way, 2026-07-23)
+- **GitHub release URLs 302-redirect** to a temporary signed `release-assets.githubusercontent.com`
+  URL → Partner Center rejects them ("does not contain, Win32 Package" when the asset 404s
+  pre-build; "The package URL redirects to another URL" once it exists). Self-host a direct URL.
+- **Installer must be standalone** (bundle rclone) — a downloader stub is rejected and trips
+  policy 10.2.x. Bundling had silently NEVER worked (a `continue-on-error` SHA256SUMS
+  `.Content -split` parse bug); fixed v0.5.3 (file-based parse, FATAL). Store MSIX had never
+  been produced as a result — now it is.
+- **Per-user installs hide the ARP entry** (HKCU) from validation (looks machine-wide/HKLM).
+  Fixed v0.5.4: `PrivilegesRequiredOverridesAllowed=commandline dialog` + `DefaultDirName={autopf}`;
+  the Store passes `/ALLUSERS` → per-machine HKLM entry. Direct-download double-click stays
+  per-user, no UAC. **UAC during a Store install IS allowed** (only the installer's own UI
+  must be silent).
+- **`AppPublisher`** must match the Store publisher / cert subject → `Gigaion, LLC` (was `GigaionLLC`).
+
+---
+
+## 2-MSIX (SUPERSEDED — original plan, kept for reference only)
+
+> We did NOT take this path (see the PATH DECISION above). The `--store` MSIX is still
+> built by CI, so if we ever pivot to a packaged Store app or winget, §§2c–2g here are the
+> starting point. **§2a below (account registration) is STILL the real, as-built account.**
 
 ### 2a. Register the COMPANY account — the ACTUAL flow (done 2026-07-12)
 Microsoft moved onboarding to a new wizard at **<https://storedeveloper.microsoft.com>**,

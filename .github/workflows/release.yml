@@ -268,12 +268,11 @@ jobs:
         continue-on-error: true
         shell: pwsh
         run: |
-          # Refuse to build an engine-less Store package. The bundle step above is
-          # continue-on-error (a transient rclone.org hiccup must not fail the whole
-          # release), so guard here: if rclone.exe didn't land, throw — this step is
-          # itself continue-on-error, so the result is simply NO msix this tag (the
-          # Store lane is optional) rather than a silently engine-less one that would
-          # re-enable runtime download. Mirrors the macOS notarize outcome-gate.
+          # Refuse to build an engine-less Store package. The "Bundle rclone" step above
+          # is now FATAL (v0.5.3 fix), so rclone.exe is guaranteed present by the time we
+          # reach here — this is a belt-and-suspenders guard. If it were ever missing,
+          # throw: this step is continue-on-error, so the result is simply NO msix this
+          # tag (the Store lane is optional) rather than a silently engine-less one.
           $rel = "build/windows/x64/runner/Release"
           if (-not (Test-Path "$rel/rclone.exe")) {
             throw "rclone.exe was not bundled into $rel (bundle step failed) — refusing to build an engine-less Store MSIX."

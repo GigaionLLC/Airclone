@@ -55,9 +55,9 @@ Airclone runs entirely on your device. There are no accounts, no tracking, and n
 telemetry. Your files and your cloud credentials never pass through our servers —
 because we don't have any.
 
-FREE AND OPEN SOURCE
-Airclone is free to use and open source (AGPLv3). Every feature is free — there are no
-ads and nothing locked behind a paywall.
+OPEN SOURCE
+Airclone is open-source software (AGPLv3). It runs entirely on your device, with no ads and no
+tracking.
 
 BUILT ON RCLONE
 The full rclone engine ships inside the app, so there is nothing else to install.
@@ -73,9 +73,9 @@ OS-keychain secret storage, and local audit logging — all without phoning home
 
 ## Screenshot checklist (the actual blocker for the rejection)
 
-- [ ] Replace `tablet-*/03-thumbnails.png` — the gradient swatches (IMG_0100–0105.jpg)
-      read as placeholder images. Re-capture with REAL photos, or show a different
-      feature (live transfer / sync dry-run / native skins).
+- [x] `tablet-*/03-thumbnails.png` is INTENTIONALLY OMITTED from the upload set (see
+      `store-ready/MANIFEST.md`) — its gradient swatches (IMG_0100–0105.jpg) read as placeholder
+      images and were dropped. Re-capture with REAL photos to re-enable; NOT an open TODO.
 - [ ] Frame + caption the tablet screenshots like the phone ones (background, frame,
       caption banner). Crop tight so UI fills the frame.
 - [ ] Use realistic demo data — avoid every remote reading "webdav"; use believable

@@ -75,9 +75,14 @@ tracked in the roadmap). When it does:
 - Prereqs checklist: register `com.gigaionllc.airclone` (iOS) in the developer portal, create the
   ASC app record, then wire the lane.
 
-## Mac App Store — VERDICT: SKIP (stay Developer-ID + notarized)
+## Mac App Store — VERDICT: SUPERSEDED (see REVISED below)
 
-MAS is structurally incompatible with Airclone as architected — this is not a CI problem:
+> This SKIP verdict was **overtaken** by the REVISED decision further down (dual-engine mode makes MAS
+> viable). Current Apple status + the LIVE macOS direct-download path live in
+> `dev/apple-appstore-and-macos.md`; the store-doc index is `docs/store/README.md`.
+
+MAS is structurally incompatible with Airclone as architected **under the subprocess engine** — this is
+not a CI problem:
 1. **Runtime-downloaded engine is forbidden**: sandboxed/MAS apps may only exec code bundled and
    signed at build time. rclone would have to be bundled and signed with exactly
    `app-sandbox` + `inherit` entitlements.

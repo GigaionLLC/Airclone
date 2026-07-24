@@ -31,6 +31,8 @@ The full rclone engine ships inside the app, so there is nothing else to install
 
 ## What's new in this version
 
+<!-- Update this per release before pasting — see dev/windows-signing-and-store.md §2 Step D. First-release text below. -->
+
 ```
 First release of Airclone on the Microsoft Store. Browse, transfer, and sync files across 70+ cloud storage services from one clean desktop app — the full rclone engine is built in, so there's no command line and nothing else to install.
 ```

@@ -36,11 +36,12 @@ experience**, and brings it to the desktop *and* the phone:
   kill-switches, OS-keychain/Vault secrets, local audit + opt-in SIEM, signed/SBOM'd builds, optional
   self-hosted control plane). Enterprise control flows only through customer-owned channels.
 
-> **Status: beta** — first beta release `v0.1.0-beta.1` (2026-07-09). Windows, macOS, Linux and
-> Android builds ship on the [Releases](https://github.com/GigaionLLC/Airclone/releases) page —
-> macOS builds are Developer ID **signed + notarized**; iOS hasn't shipped yet. Stack: **Flutter**
-> with a single engine abstraction (`rclone rcd` over HTTP on desktop; a bundled rclone engine on
-> Android).
+> **Status: 0.x, active development** — see the latest on the
+> [Releases](https://github.com/GigaionLLC/Airclone/releases) page. Windows, macOS, Linux and Android
+> builds ship there — **Windows** builds are code-signed (Azure Artifact Signing, "Gigaion, LLC") and
+> **macOS** builds are Developer ID **signed + notarized**; iOS hasn't shipped yet. Windows and Android
+> builds bundle the rclone engine (no first-run download). Stack: **Flutter** with a single engine
+> abstraction (`rclone rcd` over HTTP on desktop; a bundled rclone engine on Android).
 
 ## 📸 A tour
 
@@ -118,8 +119,10 @@ docker compose run --rm flutter flutter test      # unit tests
 
 **Downloads:** Windows/macOS/Linux/Android builds are published on the
 [Releases](https://github.com/GigaionLLC/Airclone/releases) page (alpha/beta builds are marked
-pre-release; macOS builds are signed + notarized). On first launch Airclone downloads + verifies the
-rclone engine for you — nothing else to install.
+pre-release; **Windows** builds are code-signed and **macOS** builds are signed + notarized).
+**Windows and Android** builds bundle the rclone engine (nothing to download on first launch); other
+desktop builds fetch + verify it on first launch, and any desktop build can update the engine from
+Settings.
 
 ## 💸 Pricing
 
