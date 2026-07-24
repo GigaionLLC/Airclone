@@ -1361,17 +1361,16 @@ class _EngineVersionSectionState extends ConsumerState<_EngineVersionSection> {
   String? _error; // friendly message when a check/update failed
   bool _updated = false; // success confirmation after a hot-swap
   bool _bundled =
-      false; // engine ships beside the app (Store MSIX) — no in-app update
+      false; // Store-managed (MSIX) build — engine updates with the app, no in-app update
 
   @override
   void initState() {
     super.initState();
-    // A build that bundles the engine (the Store MSIX) must not offer an in-app
-    // download/update — it updates only when the app itself updates. Resolve the
-    // signal (a binary beside the app) once and hide the update controls.
-    RcloneEngine.bundledDesktopBinary().then((p) {
-      if (mounted && p != null) setState(() => _bundled = true);
-    });
+    // The packaged Store (MSIX) build must not offer an in-app engine download —
+    // it updates only when the app itself updates. Every build now bundles the
+    // engine, so the signal is "am I the packaged Store build?" ([isStoreManaged]),
+    // not merely "is a binary beside the app?". Resolved once (sync, cached).
+    _bundled = RcloneEngine.isStoreManaged();
   }
 
   Future<void> _check() async {

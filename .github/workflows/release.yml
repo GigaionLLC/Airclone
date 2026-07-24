@@ -159,11 +159,41 @@ jobs:
           } else {
             Write-Output "::warning::librclone.dll not bundled - this build ships the binary engine only."
           }
+      # Bundle a SHA256-verified rclone.exe into EVERY Windows artifact (portable
+      # zip, Inno installer, AND the Store MSIX). Done HERE — before signing and
+      # packaging — so (a) the Trusted Signing step below also signs rclone.exe,
+      # and (b) all three artifacts are self-contained and never download the
+      # engine on first run. The app uses this bundled engine by default;
+      # unpackaged builds may still update it in-app, while the MSIX (detected at
+      # runtime via GetCurrentPackageFullName) never downloads — Store policy.
+      # Non-fatal: a transient rclone.org hiccup must not fail the release — the
+      # zip/installer then fall back to download-on-first-run (still fully working),
+      # and the Build MSIX step below refuses to package an engine-less Store build.
+      - name: Bundle rclone into the Windows build (verified)
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          $ver = "${env:RCLONE_VERSION}"          # workflow-level pin, e.g. v1.74.4
+          $triple = "windows-amd64"
+          $zip = "rclone-$ver-$triple.zip"
+          $base = "https://downloads.rclone.org/$ver"
+          Invoke-WebRequest "$base/$zip" -OutFile $zip
+          $sums = (Invoke-WebRequest "$base/SHA256SUMS").Content
+          $line = $sums -split "`n" | Where-Object { $_ -match ([regex]::Escape($zip) + '$') } | Select-Object -First 1
+          $expected = ($line -split '\s+')[0].Trim().ToUpper()
+          if (-not $expected) { throw "no checksum for $zip in SHA256SUMS" }
+          $actual = (Get-FileHash $zip -Algorithm SHA256).Hash.ToUpper()
+          if ($actual -ne $expected) { throw "rclone checksum mismatch (expected $expected, got $actual)" }
+          Expand-Archive $zip -DestinationPath rclone-extract -Force
+          $rel = "build/windows/x64/runner/Release"
+          Copy-Item "rclone-extract/rclone-$ver-$triple/rclone.exe" "$rel/rclone.exe" -Force
+          Write-Output "Bundled rclone $ver into $rel (zip + installer + MSIX)."
       # Code signing (Azure Trusted Signing) — PRE-WIRED, OFF until you set repo
       # var WINDOWS_SIGNING_ENABLED=true + the AZURE_* secrets/vars (see
-      # dev/windows-signing-and-store.md). Signs airclone.exe HERE, before the zip
-      # and installer package it, so the installed app is trusted too. `uses:`
-      # steps ignore the job's working-directory, so paths are workspace-relative.
+      # dev/windows-signing-and-store.md). Signs airclone.exe AND the bundled
+      # rclone.exe (both .exe in the Release dir) HERE, before the zip and installer
+      # package them, so the installed app is trusted too. `uses:` steps ignore the
+      # job's working-directory, so paths are workspace-relative.
       - name: Sign app binary (Azure Trusted Signing)
         if: ${{ vars.WINDOWS_SIGNING_ENABLED == 'true' }}
         uses: azure/trusted-signing-action@v2.0.0
@@ -222,32 +252,6 @@ jobs:
         run: |
           gh release upload "$GITHUB_REF_NAME" airclone-windows-x64.zip --clobber --repo "$GITHUB_REPOSITORY"
           gh release upload "$GITHUB_REF_NAME" windows/installer/airclone-setup-x64.exe --clobber --repo "$GITHUB_REPOSITORY"
-      # Bundle a verified rclone.exe into the Store MSIX ONLY. Done here — AFTER
-      # the zip + installer are packaged — so those two keep shipping without the
-      # engine and download-on-first-run as before; only the MSIX carries it.
-      # Why: the Microsoft Store discourages downloading executable code at
-      # runtime, so the Store build ships the engine and never auto-downloads.
-      # RcloneEngine.bundledDesktopBinary() finds this file beside airclone.exe.
-      # Fail-closed SHA256 verify mirrors the app's own engine provisioning.
-      - name: Bundle rclone into the MSIX build (verified)
-        continue-on-error: true
-        shell: pwsh
-        run: |
-          $ver = "${env:RCLONE_VERSION}"          # workflow-level pin, e.g. v1.74.4
-          $triple = "windows-amd64"
-          $zip = "rclone-$ver-$triple.zip"
-          $base = "https://downloads.rclone.org/$ver"
-          Invoke-WebRequest "$base/$zip" -OutFile $zip
-          $sums = (Invoke-WebRequest "$base/SHA256SUMS").Content
-          $line = $sums -split "`n" | Where-Object { $_ -match ([regex]::Escape($zip) + '$') } | Select-Object -First 1
-          $expected = ($line -split '\s+')[0].Trim().ToUpper()
-          if (-not $expected) { throw "no checksum for $zip in SHA256SUMS" }
-          $actual = (Get-FileHash $zip -Algorithm SHA256).Hash.ToUpper()
-          if ($actual -ne $expected) { throw "rclone checksum mismatch (expected $expected, got $actual)" }
-          Expand-Archive $zip -DestinationPath rclone-extract -Force
-          $rel = "build/windows/x64/runner/Release"
-          Copy-Item "rclone-extract/rclone-$ver-$triple/rclone.exe" "$rel/rclone.exe" -Force
-          Write-Output "Bundled rclone $ver into $rel for MSIX packaging."
       # MSIX for the Microsoft Store. --store => unsigned, Partner-Center-ready
       # (the Store signs it), so no certificate and no interactive prompt. Identity
       # comes from pubspec's msix_config (placeholders until the app is registered

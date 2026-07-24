@@ -1,8 +1,9 @@
-import 'dart:ffi' show Abi;
+import 'dart:ffi';
 import 'dart:io';
 
 import 'package:archive/archive.dart';
 import 'package:crypto/crypto.dart';
+import 'package:ffi/ffi.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
@@ -15,14 +16,15 @@ class RcloneEngine {
   ///   1. explicit override (settings) — passed in by the caller,
   ///   2. Android: the engine bundled in the APK (nothing else can exist),
   ///   3. the app-managed engine dir (where an in-app engine update lands),
-  ///   4. a binary bundled beside the app (the Microsoft Store MSIX ships one so
-  ///      it never auto-downloads executable code — see [bundledDesktopBinary]),
+  ///   4. a binary bundled beside the app (every desktop build now ships one —
+  ///      see [bundledDesktopBinary]),
   ///   5. `rclone` on the system PATH.
   ///
   /// The managed dir is checked *before* the bundled one on purpose: a fresh
-  /// Store install has no managed binary, so it falls through to the bundled
-  /// engine (no download), but a user-initiated "update engine" that lands in
-  /// the managed dir then takes precedence on the next launch.
+  /// install has only the bundled engine (so first run needs no download), but a
+  /// user-initiated "update engine" that lands in the managed dir then takes
+  /// precedence on the next launch. Whether an update is even *offered* is a
+  /// separate question — see [isStoreManaged] (the Store build never downloads).
   static Future<String?> findExisting({String? overridePath}) async {
     if (overridePath != null && overridePath.isNotEmpty) {
       if (await File(overridePath).exists()) return overridePath;
@@ -39,12 +41,12 @@ class RcloneEngine {
   }
 
   /// A desktop rclone binary that ships *inside* the app package, placed beside
-  /// the app executable. Only the Microsoft Store MSIX bundles one (CI drops a
-  /// SHA256-verified `rclone.exe` into the packaged build; see release.yml):
-  /// Store policy discourages downloading executable code at runtime, so the
-  /// Store build carries the engine instead of fetching it on first run. The
-  /// portable zip / Inno installer ship no such file, so this returns null for
-  /// them and they keep the download-on-first-run + in-app-update behaviour.
+  /// the app executable. Every desktop build now bundles one (CI drops a
+  /// SHA256-verified `rclone.exe` into the Release dir before packaging; see
+  /// release.yml), so first run never has to download the engine. This reports
+  /// only *whether such a binary is present to use* — it says nothing about
+  /// whether an in-app engine update is allowed; that is [isStoreManaged] (the
+  /// Store/MSIX build must not download executable code at runtime).
   /// Desktop-only; returns null when absent or on any error.
   static Future<String?> bundledDesktopBinary() async {
     if (Platform.isAndroid || Platform.isIOS) return null;
@@ -55,6 +57,48 @@ class RcloneEngine {
       return await File(path).exists() ? path : null;
     } catch (_) {
       return null;
+    }
+  }
+
+  /// Whether this is the packaged Microsoft Store (MSIX) build, which must never
+  /// download or update the engine at runtime — the Store forbids downloading
+  /// executable code, and it refreshes the bundled engine when the app itself
+  /// updates. The Inno installer and portable zip share the *identical* compiled
+  /// executable with the MSIX (the MSIX just repackages the desktop build via
+  /// `msix:create --build-windows false`), so nothing at compile time tells them
+  /// apart — but the Windows `GetCurrentPackageFullName` API can: it returns
+  /// `APPMODEL_ERROR_NO_PACKAGE` for the unpackaged builds and success for the
+  /// MSIX. Non-Windows is never Store-packaged today; a future macOS App Store
+  /// (sandboxed) build would need its OWN check added here before it may ship,
+  /// since a sandbox likewise forbids downloading + exec'ing an engine. Cached —
+  /// packaging state cannot change within a run.
+  static bool isStoreManaged() => _storeManaged ??= _detectStoreManaged();
+
+  static bool? _storeManaged;
+
+  static bool _detectStoreManaged() {
+    if (!Platform.isWindows) return false;
+    const appmodelErrorNoPackage = 15700; // APPMODEL_ERROR_NO_PACKAGE
+    try {
+      final getCurrentPackageFullName = DynamicLibrary.open('kernel32.dll')
+          .lookupFunction<
+            Int32 Function(Pointer<Uint32>, Pointer<Utf16>),
+            int Function(Pointer<Uint32>, Pointer<Utf16>)
+          >('GetCurrentPackageFullName');
+      final length = malloc<Uint32>()..value = 0;
+      try {
+        // A null name buffer: unpackaged -> APPMODEL_ERROR_NO_PACKAGE; packaged ->
+        // ERROR_INSUFFICIENT_BUFFER (122) or ERROR_SUCCESS (0).
+        final rc = getCurrentPackageFullName(length, nullptr);
+        return rc != appmodelErrorNoPackage;
+      } finally {
+        malloc.free(length);
+      }
+    } catch (_) {
+      // GetCurrentPackageFullName exists on Windows 8+ (we require 10), so this is
+      // unexpected. Default to "not Store-managed": the common case is the
+      // unpackaged installer/zip, and an MSIX reliably resolves via the API above.
+      return false;
     }
   }
 
@@ -136,17 +180,18 @@ class RcloneEngine {
       // forbidden anyway) — the binary must come bundled in the APK.
       throw StateError('The bundled rclone engine is missing from this build.');
     }
-    // A build that SHIPS a bundled engine (the Microsoft Store MSIX places one
-    // beside the app) must never download + exec rclone at runtime — the Store
-    // discourages downloading executable code. Presence of the bundled binary is
-    // the runtime signal for "this flavour is engine-managed" (a `--dart-define`
-    // wouldn't work: the Store MSIX repackages the already-compiled desktop build
-    // via `msix:create --build-windows false`). The engine then updates only when
-    // the app itself updates. Portable zip / installer builds ship no bundled
-    // binary, so this never triggers for them.
-    if (await bundledDesktopBinary() != null) {
+    // The packaged Microsoft Store (MSIX) build must never download + exec rclone
+    // at runtime — the Store forbids downloading executable code and refreshes the
+    // bundled engine when the app updates. Every desktop build now bundles the
+    // engine, so *presence of a bundled binary* is no longer the signal (that
+    // would wrongly block the zip/installer from updating too); the signal is "am
+    // I the packaged Store build?" ([isStoreManaged], via GetCurrentPackageFullName
+    // — the MSIX shares the compiled exe with the installer, so nothing at compile
+    // time distinguishes them). Unpackaged builds fall through and may update.
+    if (isStoreManaged()) {
       throw StateError(
-        'This build bundles the rclone engine — update it by updating the app.',
+        'This build is managed by the Microsoft Store — the bundled rclone '
+        'engine updates when the app itself updates.',
       );
     }
     final triple = _targetTriple();

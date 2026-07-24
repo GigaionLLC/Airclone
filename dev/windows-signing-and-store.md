@@ -309,10 +309,15 @@ complete); turn it on later for tag-triggered updates.
 - `airclone.iss` (Inno Setup) → `airclone-setup-x64.exe` installer, on every release.
 - `msix_config` + `dart run msix:create --store` → `airclone.msix`, on every release
   (non-fatal). Ships unsigned/placeholder-identity until §2 above is completed.
-- The Store MSIX **bundles a SHA256-verified `rclone.exe`** (commit `dda4c7c`): the
-  release windows job downloads + verifies it into the Release dir AFTER the zip +
-  installer are built (so ONLY the MSIX carries it), and the "Build MSIX" step refuses
-  to package an engine-less one. `RcloneEngine.bundledDesktopBinary()` finds it beside
-  the app, and `downloadLatest()` refuses on a bundled build — so the Store flavour
-  never downloads executable code at runtime. Portable zip / installer are unchanged
-  (download-on-first-run + in-app engine update).
+- **Every Windows artifact bundles a SHA256-verified `rclone.exe`** (zip, Inno
+  installer, AND the Store MSIX): the release windows job downloads + verifies it into
+  the Release dir **before signing + packaging**, so the Trusted Signing pass also
+  signs `rclone.exe` and all three artifacts are self-contained (no engine download on
+  first run). `RcloneEngine.bundledDesktopBinary()` finds it beside the app and uses it
+  by default. Whether an in-app engine *update* is allowed is gated by
+  `RcloneEngine.isStoreManaged()` (Windows `GetCurrentPackageFullName`): the packaged
+  MSIX never downloads executable code (Store policy 10.2.x), while the unpackaged
+  zip/installer may still update the engine in-app — a user update lands in the managed
+  dir and takes precedence over the bundled one on next launch. This is why the
+  **standard `airclone-setup-x64.exe` is a valid, self-contained Store submission** for
+  the EXE/MSI (unpackaged Win32) app type — no separate "store installer" needed.

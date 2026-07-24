@@ -308,8 +308,11 @@ class EngineController extends Notifier<EngineUi> {
   /// Desktop: download the latest verified rclone, repoint the cached path, and
   /// restart the engine — preserving the held config password so an encrypted
   /// config stays unlocked across the swap. Throws on failure so the caller (the
-  /// settings "Update engine" affordance) can surface it inline. Android bundles
-  /// its engine, so [RcloneEngine.downloadLatest] throws there by design.
+  /// settings "Update engine" affordance) can surface it inline. Android and the
+  /// desktop Microsoft Store (MSIX) build ship a managed engine, so
+  /// [RcloneEngine.downloadLatest] throws for them by design (see
+  /// [RcloneEngine.isStoreManaged]); the unpackaged zip/installer bundle rclone
+  /// but may still update it here.
   Future<void> updateEngine() async {
     final password = ref.read(cachePassphraseProvider);
     final path = await RcloneEngine.downloadLatest();
