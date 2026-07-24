@@ -166,28 +166,35 @@ jobs:
       # engine on first run. The app uses this bundled engine by default;
       # unpackaged builds may still update it in-app, while the MSIX (detected at
       # runtime via GetCurrentPackageFullName) never downloads — Store policy.
-      # Non-fatal: a transient rclone.org hiccup must not fail the release — the
-      # zip/installer then fall back to download-on-first-run (still fully working),
-      # and the Build MSIX step below refuses to package an engine-less Store build.
+      # FATAL (with download retries): a self-contained installer is the whole point
+      # now, so a bundling failure must stop the build loudly rather than silently
+      # ship an engine-less one. (This was `continue-on-error` and it HID a real bug
+      # across many releases — no artifact ever actually bundled rclone.) SHA256SUMS
+      # is read from a FILE via Get-Content, NOT `(...).Content -split`: the server's
+      # content-type made the in-memory parse yield $null, so nothing was copied.
       - name: Bundle rclone into the Windows build (verified)
-        continue-on-error: true
         shell: pwsh
         run: |
+          $ErrorActionPreference = 'Stop'
           $ver = "${env:RCLONE_VERSION}"          # workflow-level pin, e.g. v1.74.4
           $triple = "windows-amd64"
           $zip = "rclone-$ver-$triple.zip"
           $base = "https://downloads.rclone.org/$ver"
-          Invoke-WebRequest "$base/$zip" -OutFile $zip
-          $sums = (Invoke-WebRequest "$base/SHA256SUMS").Content
-          $line = $sums -split "`n" | Where-Object { $_ -match ([regex]::Escape($zip) + '$') } | Select-Object -First 1
-          $expected = ($line -split '\s+')[0].Trim().ToUpper()
+          Invoke-WebRequest "$base/$zip" -OutFile $zip -MaximumRetryCount 3 -RetryIntervalSec 5
+          Invoke-WebRequest "$base/SHA256SUMS" -OutFile SHA256SUMS.txt -MaximumRetryCount 3 -RetryIntervalSec 5
+          $expected = $null
+          foreach ($l in (Get-Content SHA256SUMS.txt)) {
+            $parts = $l -split '\s+'
+            if ($parts.Count -ge 2 -and ($parts[-1].TrimStart('*', '.', '/')) -eq $zip) { $expected = $parts[0].ToUpper(); break }
+          }
           if (-not $expected) { throw "no checksum for $zip in SHA256SUMS" }
           $actual = (Get-FileHash $zip -Algorithm SHA256).Hash.ToUpper()
           if ($actual -ne $expected) { throw "rclone checksum mismatch (expected $expected, got $actual)" }
           Expand-Archive $zip -DestinationPath rclone-extract -Force
           $rel = "build/windows/x64/runner/Release"
           Copy-Item "rclone-extract/rclone-$ver-$triple/rclone.exe" "$rel/rclone.exe" -Force
-          Write-Output "Bundled rclone $ver into $rel (zip + installer + MSIX)."
+          if (-not (Test-Path "$rel/rclone.exe")) { throw "rclone.exe was not copied into $rel" }
+          Write-Output "Bundled rclone $ver into $rel ($((Get-Item "$rel/rclone.exe").Length) bytes) for zip + installer + MSIX."
       # Code signing (Azure Trusted Signing) — PRE-WIRED, OFF until you set repo
       # var WINDOWS_SIGNING_ENABLED=true + the AZURE_* secrets/vars (see
       # dev/windows-signing-and-store.md). Signs airclone.exe AND the bundled
