@@ -4,9 +4,12 @@
 ;   ISCC /DAppVersion=<x.y.z> [/DSourceDir=<path to Release>] airclone.iss
 ; -> produces airclone-setup-x64.exe next to this script (OutputDir=.).
 ;
-; Per-user install (no UAC): lands in %LOCALAPPDATA%\Programs\Airclone, the same
-; place the old portable zip was extracted to, so it upgrades cleanly. The user's
-; config lives under %APPDATA%\app.airclone and is never touched by (un)install.
+; Per-user by default (no UAC): lands in %LOCALAPPDATA%\Programs\Airclone, the same
+; place the old portable zip was extracted to, so it upgrades cleanly. The Microsoft
+; Store installs per-machine via /ALLUSERS (to Program Files) so its package
+; validation finds the machine-wide Add/Remove Programs entry — a UAC prompt is
+; explicitly allowed for Store installs. The user's config lives under
+; %APPDATA%\app.airclone and is never touched by (un)install.
 
 #ifndef AppVersion
   #define AppVersion "0.0.0-dev"
@@ -17,7 +20,7 @@
   #define SourceDir "..\..\build\windows\x64\runner\Release"
 #endif
 #define AppName "Airclone"
-#define AppPublisher "GigaionLLC"
+#define AppPublisher "Gigaion, LLC"
 #define AppExeName "airclone.exe"
 #define AppUrl "https://github.com/GigaionLLC/Airclone"
 
@@ -33,8 +36,13 @@ AppPublisherURL={#AppUrl}
 AppSupportURL={#AppUrl}/issues
 AppUpdatesURL={#AppUrl}/releases
 ; Per-user by default (no admin); a running Airclone is closed for the upgrade.
+; The Store passes /ALLUSERS to install per-machine (UAC allowed) so a machine-wide
+; Add/Remove Programs entry is registered for its package validation.
 PrivilegesRequired=lowest
-DefaultDirName={localappdata}\Programs\Airclone
+PrivilegesRequiredOverridesAllowed=commandline dialog
+; {autopf} = Program Files when per-machine (/ALLUSERS), else {localappdata}\Programs
+; — the latter is exactly the old per-user path, so existing installs still upgrade.
+DefaultDirName={autopf}\Airclone
 DefaultGroupName={#AppName}
 DisableProgramGroupPage=yes
 DisableDirPage=auto
