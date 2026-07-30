@@ -165,4 +165,57 @@ void main() {
       );
     });
   });
+
+  // Microsoft Store certification, 2026-07-29, policy 10.1.2.10: a reviewer ran
+  // `config create local local`, got a refusal that named no alternative, and
+  // logged it as "Unusable Feature: Create a local remote". A blocked verb must
+  // always say where to do the thing instead.
+  group('blockedMessage', () {
+    String messageFor(String line) {
+      final c = ConsoleCommand.parse(line);
+      return blockedMessage(c.verb, c.flags);
+    }
+
+    test('config points at the in-app way to create a remote', () {
+      final msg = messageFor('config create local local');
+      expect(msg, contains('config'));
+      expect(msg, contains('CLOUD'));
+    });
+
+    test(
+      'every blocked verb in the catalog offers an alternative or a reason',
+      () {
+        final blocked = kRcloneCommands.values.where(
+          (c) => c.tier == CommandTier.blocked,
+        );
+        expect(blocked, isNotEmpty);
+        for (final c in blocked) {
+          final msg = blockedMessage(c.name, const []);
+          expect(msg, startsWith('Blocked:'), reason: c.name);
+          // Longer than the bare refusal => it carries guidance. The few meta
+          // verbs with no in-app equivalent (gendocs, gitannex) are exempt.
+          if (!const {'gendocs', 'gitannex'}.contains(c.name)) {
+            expect(
+              msg.length,
+              greaterThan(100),
+              reason: '${c.name} refuses without saying what to do instead',
+            );
+          }
+        }
+      },
+    );
+
+    test('an unknown verb is reported as unknown, not as a secret leak', () {
+      final msg = messageFor('lss remote:');
+      expect(msg, contains('Unknown command'));
+      expect(msg, isNot(contains('leaks secrets')));
+    });
+
+    test('a blocked FLAG blames the flag, not the verb', () {
+      final msg = messageFor('ls remote: --rc-addr :5572');
+      expect(msg, contains('--rc-addr'));
+      // "ls" itself is perfectly runnable — the message must not imply otherwise.
+      expect(msg, isNot(contains('"ls" is not permitted')));
+    });
+  });
 }

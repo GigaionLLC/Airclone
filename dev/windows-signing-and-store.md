@@ -285,6 +285,47 @@ terms** [required], Developed by). Images from **`docs/store/windows/`**: box ar
 > copy must NOT claim the app is free / no-paywall (only the license-terms field states
 > AGPLv3). Direct-download / self-build stays free.
 
+**D2. Notes for certification (testers)** — paste the block below verbatim.
+
+> ⚠️ **This field failed us once — read this before editing it.** The notes used for the
+> v0.5.4 submission told the reviewer to run **`config create local local` in the command
+> console**. The console *deliberately refuses* `config` (it mutates config / prints
+> secrets), so the reviewer hit "Blocked: …", filed **10.1.2.10 Unusable Feature: Create a
+> local remote**, and failed the submission. **Never point testers at a console command; the
+> console's allowlist is in `app/lib/src/state/console/rclone_commands.dart`.** Since v0.5.5
+> the refusal itself also names the in-app alternative, so the same mistake degrades to a
+> hint instead of a dead end.
+
+```
+Airclone is a desktop GUI for rclone. No account, sign-in, subscription or cloud
+credentials are needed to test it.
+
+BROWSING WORKS WITH NO SETUP
+On first launch the left sidebar already lists Home, Desktop, Documents, Downloads,
+Pictures, Videos, Music and every local disk. Click any of them to exercise browsing,
+previews, right-click actions, and copy/move with the transfer queue (turn on the
+dual-pane button in the toolbar to drag between two folders).
+
+TO CREATE A REMOTE WITHOUT ANY CLOUD ACCOUNT
+1. In the left sidebar, click the + button next to CLOUD ("Add or encrypt a remote").
+2. In the "Search storage types..." box, type: local
+3. Select "local - Local Disk", enter a name such as mydisk, and save.
+   ("alias - Alias for an existing remote" works the same way.)
+The remote then appears under CLOUD in the sidebar and browses like any cloud remote.
+
+PLEASE DO NOT CREATE REMOTES FROM THE COMMAND CONSOLE
+The console intentionally refuses config, mount, serve and rc commands because they
+change the rclone configuration, print stored secrets, or start servers. Remote
+creation is done in the UI, as described above. The console is for read-only and
+transfer commands, for example:
+    ls mydisk:
+    size mydisk:
+
+NO OTHER SOFTWARE IS REQUIRED
+The installer contains the full rclone engine and the Microsoft Visual C++ runtime
+files. Nothing is downloaded on first run.
+```
+
 **E. Properties / Age ratings / Availability** — Category *Utilities & tools › Backup &
 manage* (+ secondary *Developer tools*); run the age-ratings questionnaire (utility, no
 objectionable content); set pricing + markets.
@@ -319,13 +360,17 @@ fixed in **v0.5.5**. Keep this list — the same traps re-apply to every future 
 | Policy | What they said | Root cause | Fix (v0.5.5) |
 |---|---|---|---|
 | **10.2.4.1** Security – Software Dependencies | "Your product does not disclose dependencies on non-integrated software … **Undisclosed software: VC++**" | Flutter's Windows build links the **dynamic MSVC runtime** (`msvcp140.dll`, `vcruntime140*.dll`), which is NOT part of Windows. We shipped neither the DLLs nor a disclosure, so on a clean device the app can't even start. | **Bundle it app-local**: `windows/CMakeLists.txt` now installs `CMAKE_INSTALL_SYSTEM_RUNTIME_LIBS` (via `InstallRequiredSystemLibraries`) beside `airclone.exe`; release.yml **hard-fails** if `msvcp140.dll` is missing from the Release dir. Plus a disclosure in **the first two lines** of the Store description. |
-| **10.1.2.10** Functionality | "While testing the primary functionality of the product, we found the following issues." (row was collapsed in the portal — expand it / read the **Supporting files ZIP** for the specifics) | **Almost certainly the same missing VC++ runtime** — a clean Surface Laptop with no redistributable fails to launch Flutter apps outright. Confirm against the expanded row before assuming. | Same as above. **Re-read the expanded 10.1.2.10 text on the next report** and reopen this if it describes something else. |
+| **10.1.2.10** Functionality | "**Unusable Feature: Create a local remote.** Error message: `Blocked: "config" is not permitted in the console…`" — steps: launch → open the command console → run `config create local local`. (Observed on an ASUS ExpertBook P5405CSA, OS build 26200.8875.) | **Self-inflicted: our own "Notes for testers" told the reviewer to run `config create local local` in the console**, but the console's allowlist refuses `config` by design (it mutates config / prints secrets). The reviewer followed our instructions into a hard block whose message named no alternative — so a working feature looked broken. NOT a VC++ problem. | **Fix the notes** (see step D2 — they now walk the reviewer through **+ next to CLOUD → search "local" → "local - Local Disk"**, which is the real two-click path), and **fix the message**: `blockedMessage()` in `console/rclone_commands.dart` now names the in-app alternative for every blocked verb, reports an unknown verb as unknown instead of as a secret leak, and blames the *flag* when a safe verb carries a blocked global flag. |
 | **10.2.7** Security – Product Removal | "Products need to support a method of clean removal… The files (or folders) were found in: **C:\Program Files\Airclone**" | Windows does not kill children with their parent, and nothing stopped `rcd` on window close (`EngineController`'s `ref.onDispose(quit)` never runs — the ProviderScope isn't disposed, the process just ends). The orphaned `rclone.exe` kept an open handle **on the copy inside the install dir**, so the uninstaller couldn't delete it. | Three layers: `AppLifecycleListener.onExitRequested` in `ui/app.dart` quits the engine on window close; `rclone/windows_child_job.dart` puts every rclone child in a **kill-on-close Job Object** so even a crash can't orphan one; the installer adds `CloseApplications=force` + `[UninstallDelete] Type: filesandordirs; Name: "{app}"`, and offers to remove app data (never `rclone.conf`). |
 
 Process notes for the next round:
 - **Expand every collapsed row** in the certification report before starting work, and grab
   **Supporting files → Download ZIP** — the collapsed summary line ("we found the following
   issues") carries no actionable detail, and the ZIP has the reviewer's logs/screenshots.
+  This one cost real work: 10.1.2.10 looked like a symptom of the VC++ finding and was in
+  fact unrelated.
+- **Walk the tester notes yourself, in the shipping build, before submitting.** Every step in
+  that field is a promise about behaviour; one stale instruction fails the whole submission.
 - Include the **Product ID** in any message to the Microsoft representative.
 - A resubmission needs a **new version + new versioned URL** (step A→B): the binary behind a
   submitted Package URL must never change.

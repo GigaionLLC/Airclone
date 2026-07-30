@@ -164,3 +164,63 @@ String _flagName(String flag) {
   final eq = flag.indexOf('=');
   return eq < 0 ? flag : flag.substring(0, eq);
 }
+
+/// Where to do it INSTEAD, per blocked verb. Every entry names a real, reachable
+/// affordance — keep these strings in step with the actual UI labels
+/// (`ui/home_screen.dart` tooltips) or they become worse than no advice at all.
+const Map<String, String> _inAppAlternative = {
+  'config':
+      'Use the + button next to CLOUD in the sidebar ("Add or encrypt a '
+      'remote") to add, edit or encrypt a remote; import and export live in '
+      'Settings → Config.',
+  'obscure':
+      'Passwords are obscured for you when you add or edit a remote (+ next '
+      'to CLOUD).',
+  'reveal':
+      'Airclone never prints stored secrets. Edit the remote from the + next '
+      'to CLOUD if you need to change one.',
+  'authorize':
+      'Add the remote with the + next to CLOUD — Airclone runs the provider '
+      'sign-in for you.',
+  'reconnect':
+      'Re-run the provider sign-in by editing the remote from the + next to '
+      'CLOUD.',
+  'mount': 'Use "Mount as a drive" in the toolbar.',
+  'serve': 'Use "Serve / Share on LAN" in the toolbar.',
+  'rc': 'Airclone already runs and drives the rclone engine for you.',
+  'rcd': 'Airclone already runs and drives the rclone engine for you.',
+  'selfupdate': 'Update the engine from Settings → Engine.',
+};
+
+/// The message shown when [classifyTier] refuses a line. A bare "Blocked: …"
+/// is a dead end, and Microsoft Store certification failed the product on
+/// exactly that (report 2026-07-29, policy 10.1.2.10 "Unusable Feature: Create
+/// a local remote" — the reviewer ran `config create local local` and got a
+/// refusal that named no alternative, even though the sidebar can create that
+/// remote in two clicks).
+///
+/// Three distinct cases, because the old single string was wrong for two of
+/// them: a typo'd verb was told it "leaks secrets", and a safe verb carrying a
+/// blocked flag was reported as though the VERB were forbidden.
+String blockedMessage(String verb, List<String> flags) {
+  final info = kRcloneCommands[verb];
+  if (info == null) {
+    return 'Unknown command "$verb". The console accepts a curated set of '
+        'rclone commands — start typing to see the matching ones.';
+  }
+  if (info.tier != CommandTier.blocked) {
+    // Reached only via a blocked global flag on an otherwise-runnable verb.
+    for (final f in flags) {
+      final name = _flagName(f);
+      if (isBlockedGlobalFlag(name)) {
+        return 'Blocked: "$name" cannot be used in the console — it can expose '
+            'credentials or start a server. Remove it and run "$verb" again.';
+      }
+    }
+  }
+  final alternative = _inAppAlternative[verb];
+  final why =
+      'Blocked: "$verb" is not permitted in the console '
+      '(it leaks secrets, mutates config, or runs a server).';
+  return alternative == null ? why : '$why $alternative';
+}

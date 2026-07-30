@@ -208,6 +208,13 @@ class AddRemoteController extends Notifier<AddRemoteState> {
       body: {
         'name': state.isEdit ? state.editName! : state.name.trim(),
         if (!state.isEdit) 'type': p.name,
+        // REQUIRED even on a `continue` step: rclone's rc argument parser
+        // rejects config/create and config/update with HTTP 400 "Didn't find
+        // key \"parameters\" in input" when it is absent, so every answer to an
+        // interactive question used to fail. Empty on purpose — the values from
+        // the opening call are already persisted, and re-sending them here
+        // (without `obscure`) would write any password back in the clear.
+        'parameters': const <String, dynamic>{},
         'opt': {
           'nonInteractive': true,
           'continue': true,

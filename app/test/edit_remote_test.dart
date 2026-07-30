@@ -134,6 +134,68 @@ void main() {
     expect(client.calls.any((c) => c.method == 'config/update'), isFalse);
   });
 
+  // rclone's rc argument parser REQUIRES `parameters` on config/create and
+  // config/update — including the `continue` steps of the interactive loop. It
+  // was missing there, so every answer to a provider question came back HTTP 400
+  // ("Didn't find key \"parameters\" in input") and remote creation could not be
+  // completed for any provider that asks one. Found while verifying the
+  // create-a-remote flow the Microsoft Store reviewer failed us on (2026-07-29).
+  group('interactive config loop always sends parameters', () {
+    Map<String, dynamic> askOnce(String method, Map<String, dynamic>? params) {
+      final opt = params?['opt'] as Map<String, dynamic>?;
+      // The opening call asks a question; the continue call completes.
+      if (opt?['continue'] == true) return <String, dynamic>{};
+      return {
+        'State': '*all-set,0,false',
+        'Option': {'Name': 'nounc', 'Type': 'bool'},
+      };
+    }
+
+    test('config/create continue carries parameters', () async {
+      final client = _CapturingClient()..onRpc = askOnce;
+      final c = _container(client);
+      final ctrl = c.read(addRemoteControllerProvider.notifier);
+      ctrl.pickProvider(_s3);
+      ctrl.setName('mydisk');
+      await ctrl.submit();
+      expect(
+        c.read(addRemoteControllerProvider).phase,
+        AddPhase.question,
+        reason: 'the fake engine asked a question',
+      );
+      await ctrl.answer('');
+      final continues = client.calls
+          .where((c) => c.method == 'config/create')
+          .where((c) => (c.params?['opt'] as Map?)?['continue'] == true);
+      expect(continues, isNotEmpty);
+      for (final call in continues) {
+        expect(
+          call.params!.containsKey('parameters'),
+          isTrue,
+          reason: 'rclone 400s without it',
+        );
+      }
+    });
+
+    test('config/update continue carries parameters', () async {
+      final client = _CapturingClient()
+        ..onRpc = (m, p) =>
+            m == 'config/get' ? _getResponse(m, p) : askOnce(m, p);
+      final c = _container(client);
+      final ctrl = c.read(addRemoteControllerProvider.notifier);
+      await ctrl.startEdit(const Remote(name: 'myS3', type: 's3', fs: 'myS3:'));
+      await ctrl.submitEdit();
+      await ctrl.answer('');
+      final continues = client.calls
+          .where((c) => c.method == 'config/update')
+          .where((c) => (c.params?['opt'] as Map?)?['continue'] == true);
+      expect(continues, isNotEmpty);
+      for (final call in continues) {
+        expect(call.params!.containsKey('parameters'), isTrue);
+      }
+    });
+  });
+
   test(
     'duplicate copies obscured values verbatim with noObscure:true',
     () async {

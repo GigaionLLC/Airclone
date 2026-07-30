@@ -105,6 +105,27 @@ void main() {
     expect(c.read(jobsControllerProvider), isEmpty);
   });
 
+  // The exact line a Microsoft Store reviewer ran on 2026-07-29. It must stay
+  // refused (it mutates config) but must NOT read as a dead end — the refusal
+  // that named no alternative is what got logged as "Unusable Feature: Create a
+  // local remote" and failed certification under policy 10.1.2.10.
+  test('the refusal tells you where to create a remote instead', () async {
+    final client = _FakeHttp();
+    final c = make(client);
+    final ctrl = c.read(consoleControllerProvider(id).notifier);
+    ctrl.setDraft('config create local local');
+    await ctrl.run();
+    await _settle();
+    expect(client.commandCalls, 0, reason: 'config must never dispatch');
+    final log = c
+        .read(consoleControllerProvider(id))
+        .log
+        .map((l) => l.text)
+        .join();
+    expect(log, contains('Blocked'));
+    expect(log, contains('CLOUD'), reason: 'must name the in-app alternative');
+  });
+
   test('a server global flag (--rc) is refused (critical hole)', () async {
     final client = _FakeHttp();
     final c = make(client);

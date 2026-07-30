@@ -154,11 +154,10 @@ class ConsoleController extends FamilyNotifier<ConsoleState, String> {
     }
 
     if (cmd.tier == CommandTier.blocked) {
-      _append(
-        'Blocked: "${cmd.verb}" is not permitted in the console '
-        '(it leaks secrets, mutates config, or runs a server).',
-        ConsoleLineKind.error,
-      );
+      // Says WHY and, where one exists, where to do it in the app instead — a
+      // refusal that names no alternative reads as a broken feature (see
+      // blockedMessage).
+      _append(blockedMessage(cmd.verb, cmd.flags), ConsoleLineKind.error);
       return;
     }
     // Refuse credential-dumping verbosity (-vv / --dump …) rather than trying to
