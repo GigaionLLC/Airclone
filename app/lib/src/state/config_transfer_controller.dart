@@ -9,6 +9,7 @@ import 'package:path_provider/path_provider.dart';
 
 import '../rclone/rclone_client.dart';
 import '../rclone/rclone_engine.dart';
+import '../rclone/windows_child_job.dart';
 import 'cache_crypto.dart';
 import 'config_backups.dart';
 import 'config_encryption.dart';
@@ -401,6 +402,9 @@ class ConfigTransferController {
       await tmp.writeAsBytes(bytes, flush: true);
       final cmd = rcloneEncryptedDumpCommand(tmp.path, password);
       final proc = await Process.start(rclone, cmd.args, environment: cmd.env);
+      // Windows: no rclone child may outlive us holding rclone.exe open in the
+      // install dir (clean-uninstall requirement) — see WindowsChildJob.
+      WindowsChildJob.adopt(proc.pid);
       // Collect stdout (the dump); discard stderr unread — it can echo a path,
       // so it is never surfaced. Draining both avoids a full-pipe deadlock.
       final stdoutFuture = proc.stdout.transform(utf8.decoder).join();
@@ -885,6 +889,7 @@ class ConfigTransferController {
       runInShell: false,
       environment: cmd.env.isEmpty ? null : cmd.env,
     );
+    WindowsChildJob.adopt(proc.pid);
     final err = StringBuffer();
     final drainErr = proc.stderr.transform(utf8.decoder).forEach(err.write);
     final stdinText = cmd.stdin;

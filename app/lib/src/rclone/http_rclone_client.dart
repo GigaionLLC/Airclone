@@ -7,6 +7,7 @@ import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:http/http.dart' as http;
 
 import 'rclone_client.dart';
+import 'windows_child_job.dart';
 
 /// Desktop [RcloneClient]: spawns `rclone rcd` bound to loopback with per-session
 /// credentials, and drives it over HTTP. See `wiki/core/08-core-architecture.md` §3.
@@ -140,6 +141,12 @@ class HttpRcloneClient implements RcloneClient {
       runInShell: false,
       environment: env.isEmpty ? null : env,
     );
+    // Windows: bind the child to a kill-on-close job object so that even a hard
+    // exit of THIS process (crash, "End task") cannot leave an orphaned rcd
+    // running — an orphan keeps a handle open on rclone.exe in the install dir
+    // and defeats clean uninstall. See WindowsChildJob. The PID marker below
+    // stays as the belt-and-braces reap-on-next-launch path.
+    WindowsChildJob.adopt(_process!.pid);
     // Record the new child's PID so a future launch can reap it if we crash.
     if (!Platform.isAndroid) {
       try {

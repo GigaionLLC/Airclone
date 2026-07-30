@@ -5,12 +5,21 @@ is **paid**, so this copy does NOT claim the app is free / no-paywall. Windows-
 desktop-focused (no mobile/enterprise details). Includes the rclone non-affiliation
 line to avoid trademark/impersonation rejections.
 
+> **DO NOT reorder the first two lines of the Description.** Store policy
+> **10.2.4.1** requires any dependency on non-integrated software to be disclosed
+> *within the first two lines*, and certification failed us on 2026-07-29 for an
+> undisclosed **VC++** dependency. v0.5.5 also bundles the Visual C++ runtime
+> app-local so the dependency is genuinely gone — line 2 keeps the reviewer from
+> having to take that on faith. The **CLEAN REMOVAL** paragraph likewise answers
+> policy **10.2.7** from the same report.
+
 ---
 
 ## Description
 
 ```
 Airclone is a modern, easy-to-use file manager for rclone.
+Everything it needs is included in the download — the full rclone engine and the Microsoft Visual C++ runtime files ship inside the app, so there is no separate redistributable, runtime, or command-line tool to install.
 
 rclone is a powerful open-source tool that can move and sync files across 70+ cloud storage services — Google Drive, Dropbox, OneDrive, Amazon S3, SFTP, WebDAV and many more. Airclone gives it a clean, fast interface, so you can manage all of your clouds from one app without ever touching the command line.
 
@@ -27,14 +36,17 @@ Airclone runs entirely on your PC. There are no accounts, no tracking, and no te
 
 BUILT ON RCLONE
 The full rclone engine ships inside the app, so there is nothing else to install. Airclone is an independent companion to rclone and is not affiliated with, sponsored by, or endorsed by the rclone project.
+
+CLEAN REMOVAL
+Uninstalling removes Airclone completely. The uninstaller also offers to delete Airclone's own settings and cached thumbnails; decline and they are kept so a reinstall picks up where you left off. Your rclone configuration file is never touched — it belongs to rclone and is shared with the rclone command line.
 ```
 
 ## What's new in this version
 
-<!-- Update this per release before pasting — see dev/windows-signing-and-store.md §2 Step D. First-release text below. -->
+<!-- Update this per release before pasting — see dev/windows-signing-and-store.md §2 Step D. Text below is for v0.5.5, the first Store submission to pass certification. -->
 
 ```
-First release of Airclone on the Microsoft Store. Browse, transfer, and sync files across 70+ cloud storage services from one clean desktop app — the full rclone engine is built in, so there's no command line and nothing else to install.
+First release of Airclone on the Microsoft Store. Browse, transfer, and sync files across 70+ cloud storage services from one clean desktop app — the full rclone engine and the Visual C++ runtime are built in, so there's no command line and nothing else to install. This build also makes uninstalling completely clean and shuts the rclone engine down the moment you close the window.
 ```
 
 ## Short description (<= 270 chars)
@@ -55,6 +67,7 @@ Built-in rclone command console
 Create and extract archives
 No accounts, no tracking, no telemetry
 Full rclone engine built in — nothing else to install
+Self-contained install — no Visual C++ redistributable needed
 ```
 
 ## Keywords (up to 7)

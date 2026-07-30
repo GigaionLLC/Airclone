@@ -230,6 +230,36 @@ submission, so bump the app version each release.
    host). Confirm `curl -I` → **HTTP 200, no redirect**, `application/octet-stream`, and
    SHA256 matches the CI installer.
 
+   The host is our 1Panel box, reached over SSH as `<release-ssh-host>` (LAN-only
+   hostname; the account + path are in PRIVATE notes — this repo is public). The
+   served tree is `<release-root>/airclone/vX.Y.Z/airclone-setup-x64.exe`, which
+   1Panel maps to `https://gigaion.com/releases/airclone/...`. One version per
+   directory, and **never overwrite a submitted binary** — Partner Center pins the
+   bytes at the URL. Run from the machine holding the verified installer:
+
+   ```powershell
+   $VER  = "vX.Y.Z"
+   $SSH  = "<release-ssh-host>"            # e.g. user@host
+   $ROOT = "<release-root>/airclone"       # 1Panel site path, from private notes
+
+   # Pull the CI-built, CI-signed installer rather than a local build.
+   gh release download $VER --repo GigaionLLC/Airclone --pattern airclone-setup-x64.exe
+
+   # Verify BEFORE publishing: signed by us, and ~66 MB (i.e. rclone is bundled).
+   Get-AuthenticodeSignature .\airclone-setup-x64.exe | Format-List Status, SignerCertificate
+   (Get-Item .\airclone-setup-x64.exe).Length
+
+   ssh $SSH "mkdir -p $ROOT/$VER"
+   scp .\airclone-setup-x64.exe "${SSH}:$ROOT/$VER/airclone-setup-x64.exe"
+
+   # The served bytes must equal the bytes we verified.
+   (Get-FileHash .\airclone-setup-x64.exe -Algorithm SHA256).Hash.ToLower()
+   ssh $SSH "sha256sum $ROOT/$VER/airclone-setup-x64.exe"
+
+   # And the URL must answer 200 with NO redirect (Partner Center rejects 3xx).
+   curl.exe -sSI "https://gigaion.com/releases/airclone/$VER/airclone-setup-x64.exe"
+   ```
+
 **C. Partner Center → Packages → Package details** (App type = EXE)
 
 | Field | Value |
@@ -276,6 +306,28 @@ what make them go green. Then submit for certification (days).
   per-user, no UAC. **UAC during a Store install IS allowed** (only the installer's own UI
   must be silent).
 - **`AppPublisher`** must match the Store publisher / cert subject → `Gigaion, LLC` (was `GigaionLLC`).
+
+### Certification report 2026-07-29 (v0.5.4) — FAILED "Attention needed", and the fixes
+
+First real certification pass on the EXE product. Product ID `b75d35c4-…`, tested on a
+Microsoft Surface Laptop. Three findings; **all three trace back to two real defects**, both
+fixed in **v0.5.5**. Keep this list — the same traps re-apply to every future submission.
+
+| Policy | What they said | Root cause | Fix (v0.5.5) |
+|---|---|---|---|
+| **10.2.4.1** Security – Software Dependencies | "Your product does not disclose dependencies on non-integrated software … **Undisclosed software: VC++**" | Flutter's Windows build links the **dynamic MSVC runtime** (`msvcp140.dll`, `vcruntime140*.dll`), which is NOT part of Windows. We shipped neither the DLLs nor a disclosure, so on a clean device the app can't even start. | **Bundle it app-local**: `windows/CMakeLists.txt` now installs `CMAKE_INSTALL_SYSTEM_RUNTIME_LIBS` (via `InstallRequiredSystemLibraries`) beside `airclone.exe`; release.yml **hard-fails** if `msvcp140.dll` is missing from the Release dir. Plus a disclosure in **the first two lines** of the Store description. |
+| **10.1.2.10** Functionality | "While testing the primary functionality of the product, we found the following issues." (row was collapsed in the portal — expand it / read the **Supporting files ZIP** for the specifics) | **Almost certainly the same missing VC++ runtime** — a clean Surface Laptop with no redistributable fails to launch Flutter apps outright. Confirm against the expanded row before assuming. | Same as above. **Re-read the expanded 10.1.2.10 text on the next report** and reopen this if it describes something else. |
+| **10.2.7** Security – Product Removal | "Products need to support a method of clean removal… The files (or folders) were found in: **C:\Program Files\Airclone**" | Windows does not kill children with their parent, and nothing stopped `rcd` on window close (`EngineController`'s `ref.onDispose(quit)` never runs — the ProviderScope isn't disposed, the process just ends). The orphaned `rclone.exe` kept an open handle **on the copy inside the install dir**, so the uninstaller couldn't delete it. | Three layers: `AppLifecycleListener.onExitRequested` in `ui/app.dart` quits the engine on window close; `rclone/windows_child_job.dart` puts every rclone child in a **kill-on-close Job Object** so even a crash can't orphan one; the installer adds `CloseApplications=force` + `[UninstallDelete] Type: filesandordirs; Name: "{app}"`, and offers to remove app data (never `rclone.conf`). |
+
+Process notes for the next round:
+- **Expand every collapsed row** in the certification report before starting work, and grab
+  **Supporting files → Download ZIP** — the collapsed summary line ("we found the following
+  issues") carries no actionable detail, and the ZIP has the reviewer's logs/screenshots.
+- Include the **Product ID** in any message to the Microsoft representative.
+- A resubmission needs a **new version + new versioned URL** (step A→B): the binary behind a
+  submitted Package URL must never change.
+- Re-test **on a machine with no Visual C++ Redistributable installed** — a dev box always has
+  one, which is exactly why this shipped. Verify by artifact, not by the green check.
 
 ---
 

@@ -107,6 +107,36 @@ if(EXISTS "${LIBRCLONE_DLL}")
     COMPONENT Runtime)
 endif()
 
+# Bundle the Microsoft Visual C++ runtime NEXT TO the executable ("app-local
+# deployment", which Microsoft supports and documents as an alternative to the
+# central redistributable). airclone.exe, flutter_windows.dll and every plugin
+# DLL are built against the dynamic MSVC runtime (msvcp140.dll, vcruntime140.dll,
+# vcruntime140_1.dll), and that runtime is NOT part of Windows — it normally
+# arrives with the "Visual C++ Redistributable". Without it bundled:
+#   * on a clean machine the app fails to launch at all ("msvcp140.dll was not
+#     found") — Microsoft Store certification hit exactly this, 2026-07-29; and
+#   * the Store treats it as an undisclosed dependency on non-integrated
+#     software (policy 10.2.4.1).
+# Only the VC++ runtime is copied, NOT the Universal CRT — CMAKE_INSTALL_UCRT_LIBRARIES
+# is deliberately left unset because ucrtbase.dll + the api-ms-win-crt-* set ship
+# in-box from Windows 10, which is our MinVersion. _SKIP stops the module from
+# emitting its own install() rules (they would land in bin/ under the default
+# component); we install the list it resolves ourselves, beside the exe.
+set(CMAKE_INSTALL_SYSTEM_RUNTIME_LIBS_SKIP TRUE)
+include(InstallRequiredSystemLibraries)
+if(CMAKE_INSTALL_SYSTEM_RUNTIME_LIBS)
+  install(FILES ${CMAKE_INSTALL_SYSTEM_RUNTIME_LIBS}
+    DESTINATION "${INSTALL_BUNDLE_LIB_DIR}"
+    COMPONENT Runtime)
+else()
+  # A warning, not a FATAL_ERROR, so an unusual local VS layout can still build
+  # and run (the dev machine has the runtime installed anyway). The gate that
+  # matters is in CI: release.yml hard-fails a Release dir with no msvcp140.dll,
+  # so no shippable artifact can regress to depending on the redistributable.
+  message(WARNING "MSVC runtime redistributable not found - this build will "
+                  "require the Visual C++ Redistributable to be installed separately.")
+endif()
+
 # Copy the native assets provided by the build.dart from all packages.
 set(NATIVE_ASSETS_DIR "${PROJECT_BUILD_DIR}native_assets/windows/")
 install(DIRECTORY "${NATIVE_ASSETS_DIR}"

@@ -34,6 +34,14 @@ capability the tagged build doesn't actually have. On any platform, before submi
 - [ ] Confirm screenshots/assets match the shipped UI (no stale skins, no placeholder thumbnails — see
       each platform's asset manifest).
 - [ ] Confirm the **version / versionCode** was bumped (every store rejects a non-increasing version).
+- [ ] **Microsoft Store only** — the two things certification actually failed us on (report
+      2026-07-29, fixed in v0.5.5; details in `dev/windows-signing-and-store.md` §2):
+      the first **two lines** of the Description must still disclose the bundled Visual C++
+      runtime (policy **10.2.4.1**), and the build must still bundle it — CI hard-fails if not.
+      Install → run → uninstall on a **clean VM with no VC++ Redistributable** and confirm
+      `C:\Program Files\Airclone` is gone afterwards (policy **10.2.7**).
+- [ ] On a **failed** certification, expand **every** collapsed row in the report and download the
+      **Supporting files ZIP** before starting work — the collapsed summary has no detail.
 
 ## PII / public-repo reminder
 

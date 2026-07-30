@@ -151,6 +151,25 @@ jobs:
           }
           & $nuget sources list
       - run: flutter build windows --release
+      # HARD GATE: the build must be self-contained with respect to the MSVC
+      # runtime. windows/CMakeLists.txt copies it app-local via
+      # InstallRequiredSystemLibraries, but a missing/renamed VS redist directory
+      # only makes CMake *warn* — so verify the artifact, never the green check
+      # (the rclone-bundling bug hid behind exactly that for v0.5.0-v0.5.2).
+      # Microsoft Store certification failed this on 2026-07-29: policy 10.2.4.1
+      # (undisclosed dependency on non-integrated software: "VC++"), and on a
+      # clean device the app cannot even start without these next to the exe.
+      - name: Verify the VC++ runtime is bundled (self-contained build)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $rel = "build/windows/x64/runner/Release"
+          foreach ($dll in @('msvcp140.dll', 'vcruntime140.dll', 'vcruntime140_1.dll')) {
+            if (-not (Test-Path "$rel/$dll")) {
+              throw "$dll is not next to airclone.exe in $rel - this build would require the Visual C++ Redistributable (Store policy 10.2.4.1) and would not launch on a clean machine."
+            }
+          }
+          Get-ChildItem $rel -Filter '*140*.dll' | ForEach-Object { Write-Output "bundled MSVC runtime: $($_.Name) ($($_.Length) bytes)" }
       - name: Note whether librclone bundled
         shell: pwsh
         run: |

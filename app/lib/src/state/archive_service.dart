@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../rclone/models/job.dart';
 import '../rclone/rclone_engine.dart';
+import '../rclone/windows_child_job.dart';
 import 'archive_command.dart';
 import 'cache_crypto.dart';
 import 'jobs_controller.dart';
@@ -90,6 +91,9 @@ class ArchiveService {
       jobs.markDone(job.id, JobStatus.failed, error: '$e');
       return job.id;
     }
+    // Windows: no rclone child may outlive us and keep rclone.exe open in the
+    // install dir (clean-uninstall requirement) — see WindowsChildJob.
+    WindowsChildJob.adopt(proc.pid);
     var terminal = false;
     // Stop routes here (kill the child); markDone guards against a later exit flip.
     jobs.registerCancel(job.id, () async {
@@ -170,6 +174,7 @@ class ArchiveService {
     } catch (e) {
       throw ArchiveError('$e');
     }
+    WindowsChildJob.adopt(proc.pid);
     final lines = <String>[];
     var truncated = false;
     final err = StringBuffer();
