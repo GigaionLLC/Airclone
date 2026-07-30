@@ -310,6 +310,8 @@ TO CREATE A REMOTE WITHOUT ANY CLOUD ACCOUNT
 1. In the left sidebar, click the + button next to CLOUD ("Add or encrypt a remote").
 2. In the "Search storage types..." box, type: local
 3. Select "local - Local Disk", enter a name such as mydisk, and save.
+4. Airclone then asks two short setup questions ("nounc", and whether to edit
+   advanced config). Accept the defaults - just confirm each one.
    ("alias - Alias for an existing remote" works the same way.)
 The remote then appears under CLOUD in the sidebar and browses like any cloud remote.
 
