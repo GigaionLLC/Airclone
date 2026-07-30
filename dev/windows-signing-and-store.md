@@ -222,7 +222,10 @@ submission, so bump the app version each release.
    step once masked a real failure). Download the installer + zip: confirm the installer
    is ~66 MB (rclone bundled), `rclone.exe` is inside the zip, and
    `Get-AuthenticodeSignature` on the installer + `airclone.exe` + `rclone.exe` all return
-   **Valid / CN="Gigaion, LLC"**, timestamped.
+   **Valid / CN="Gigaion, LLC"**, timestamped. Since v0.5.5 also confirm the zip carries
+   **`msvcp140.dll` + `vcruntime140.dll` + `vcruntime140_1.dll`** next to `airclone.exe`
+   (the app-local MSVC runtime — policy 10.2.4.1, and without it the app will not start on
+   a clean machine). The build step is a hard gate, so this is a re-check, not the gate.
 
 **B. Host it at a DIRECT URL** (GitHub release URLs do NOT work — see gotchas)
 3. Upload the verified installer to
