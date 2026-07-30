@@ -92,6 +92,24 @@ Prioritized roadmap distilled from competitive + engine research. Tags: `[D]` de
   hard-kill its current numeric PID without validating ownership. Replace it with an ownership-safe
   lease/mutex/IPC design plus OS process containment; test concurrent GUI/headless instances and PID
   reuse. See [hardening audit H-01](hardening-audit-2026-07-15.md).
+  - **Partly addressed in v0.5.5 (Windows only):** the *OS process containment* half now exists —
+    `rclone/windows_child_job.dart` puts every rclone child in a **kill-on-close Job Object**, so no
+    child can outlive its own instance regardless of how that instance dies, and
+    `AppLifecycleListener.onExitRequested` stops `rcd` on window close. That makes the PID marker a
+    pure fallback on Windows and removes the PID-reuse hazard there. **Still open:** the
+    ownership-unsafe shared temp PID marker itself, and the equivalent containment on
+    **macOS/Linux** (a process group + `kill(-pgid)`, or `prctl(PR_SET_PDEATHSIG)` on Linux). Landed
+    for Microsoft Store policy 10.2.7 — see `dev/windows-signing-and-store.md` §2.
+- [ ] **Scheduled Tasks survive uninstall (Windows)** — `state/windows_task_scheduler.dart` registers
+  tasks as `Airclone\<id>`, which Windows stores as real files under
+  `C:\Windows\System32\Tasks\Airclone\`. Uninstalling removes neither them nor that folder, so any
+  schedule the user created is left behind pointing at a deleted `airclone.exe` and fails forever.
+  Residual state of exactly the kind Store policy **10.2.7** targets — the 2026-07-29 report did not
+  cite it (a reviewer who never creates a schedule cannot hit it), so it was deliberately left out of
+  the v0.5.5 fix rather than churn a release in flight. Fix: an `[UninstallRun]` entry running
+  `schtasks /Delete /TN "Airclone\*" /F` (tolerate a non-zero exit — the folder may not exist), and
+  drop the now-empty Task Scheduler folder, which needs `ITaskService` COM since `schtasks` cannot
+  remove folders.
 
 ### 💡 Recommended additions (proposed)
 - [x] **Type-to-navigate** (typeahead) — a20; **keyboard map** F2 · Del · Enter · Ctrl+A · Esc — a26
