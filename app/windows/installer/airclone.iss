@@ -95,6 +95,61 @@ Filename: "{app}\{#AppExeName}"; Description: "{cm:LaunchProgram,{#AppName}}"; F
 Type: filesandordirs; Name: "{app}"
 
 [Code]
+// Terminate anything still running FROM the install directory, BEFORE the
+// uninstaller starts deleting.
+//
+// CloseApplications=force is a SETUP-time feature. Verified by experiment on
+// 2026-07-30 (per-machine install, /VERYSILENT uninstall, full /LOG): the
+// uninstall performs NO Restart Manager check at all, so a running airclone.exe
+// — or an rclone.exe under {app} — makes its own file undeletable:
+//     Deleting file: C:\Program Files\Airclone\rclone.exe
+//     Failed to delete the file; it may be in use (32).
+//     Failed to delete directory (145).
+// [UninstallDelete] cannot help: a sweep still cannot delete a locked file. That
+// leftover IS the Store 10.2.7 failure, and a reviewer who uninstalls without
+// closing the app hits it every time.
+//
+// Scoped to {app} BY PATH on purpose. Never kill by image name: the user may run
+// their own rclone.exe from anywhere, and a per-user Airclone install can be
+// running from %LOCALAPPDATA% at the same time as this per-machine one. Killing
+// airclone.exe is normally enough on its own — its rclone children are in a
+// kill-on-close job object (rclone/windows_child_job.dart) and die with it — but
+// the query covers every process under {app} so a pre-v0.5.5 orphan left by an
+// older build is cleaned up too.
+//
+// Best-effort: PowerShell is present on every supported Windows, `-Command` is
+// not subject to script ExecutionPolicy, and any failure just leaves us where we
+// were. Nothing here is allowed to block the uninstall.
+procedure TerminateProcessesInAppDir;
+var
+  Params: String;
+  ResultCode: Integer;
+begin
+  // The `unins*` exclusion is NOT optional. Inno's uninstall runs in two phases:
+  // unins000.exe in {app} launches a copy of itself from %TEMP% and waits for it.
+  // This code runs in that second phase, so an unfiltered "kill everything under
+  // {app}" kills the first-phase process that is waiting on us — the uninstall
+  // still completes, but the process tree returns **-1 instead of 0**, which any
+  // exit-code mapping (the Store's included) reads as a failure. Observed exactly
+  // that on 2026-07-30 before this filter was added.
+  Params :=
+    '-NoProfile -NonInteractive -Command "' +
+    'Get-CimInstance Win32_Process | ' +
+    'Where-Object { $_.ExecutablePath -like ''' + ExpandConstant('{app}') + '\*'' ' +
+    '-and $_.Name -notlike ''unins*'' } | ' +
+    'ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }"';
+  if Exec('powershell.exe', Params, '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
+    // Handles are released asynchronously after the process dies; give the
+    // kernel a moment before the first delete attempt.
+    Sleep(750);
+end;
+
+function InitializeUninstall(): Boolean;
+begin
+  TerminateProcessesInAppDir;
+  Result := True;
+end;
+
 // Offer to remove Airclone's OWN data too, so an uninstall can be complete.
 // Deliberately opt-IN and narrowly scoped to two dirs: the app-support one
 // (userappdata: the managed engine dir, config backups, shared_preferences) and
@@ -133,5 +188,17 @@ end;
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 begin
   if CurUninstallStep = usPostUninstall then
+  begin
+    // Last line of defence for 10.2.7: if anything at all is still in {app} —
+    // a file that was locked on the first pass and has since been released, or
+    // something dropped there after install — take it out now. The running
+    // unins000.* are skipped (still locked) and Inno's own self-delete removes
+    // them plus the directory immediately after this.
+    if DirExists(ExpandConstant('{app}')) then
+    begin
+      TerminateProcessesInAppDir;
+      DelTree(ExpandConstant('{app}\*'), False, True, True);
+    end;
     RemoveUserDataIfConfirmed;
+  end;
 end;

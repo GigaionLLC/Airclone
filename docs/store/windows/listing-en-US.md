@@ -43,7 +43,7 @@ Uninstalling removes Airclone completely. The uninstaller also offers to delete 
 
 ## What's new in this version
 
-<!-- Update this per release before pasting — see dev/windows-signing-and-store.md §2 Step D. Text below is for v0.5.6. -->
+<!-- Update this per release before pasting — see dev/windows-signing-and-store.md §2 Step D. Text below is for v0.5.7. -->
 
 ```
 First release of Airclone on the Microsoft Store. Browse, transfer, and sync files across 70+ cloud storage services from one clean desktop app — the full rclone engine and the Visual C++ runtime are built in, so there's no command line and nothing else to install. This build also fixes setting up a remote when the provider asks a follow-up question, makes uninstalling completely clean, and shuts the rclone engine down the moment you close the window.
