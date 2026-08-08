@@ -53,6 +53,21 @@
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
         </activity>
+        <!-- "Open in another app": open_external.dart stages a cloud object in
+             the app cache, then MainActivity mints a content:// URI for it here
+             and attaches a one-shot read grant to the chooser Intent. A raw
+             file:// Uri would throw FileUriExposedException. exported=false —
+             only our own grants let anything else read it, and file_paths.xml
+             scopes it to the staging dir alone (never rclone.conf). -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
         <!-- Holds the app (and the engine child process) alive while transfers
              run in the background. Started/stopped from Dart. -->
         <service
@@ -74,6 +89,18 @@
         <intent>
             <action android:name="android.intent.action.PROCESS_TEXT"/>
             <data android:mimeType="text/plain"/>
+        </intent>
+        <!-- "Open in another app" launches VIEW/SEND choosers for a staged
+             file. The chooser itself is system-resolved, but declaring the
+             intents keeps resolution predictable under Android 11+ package
+             visibility. -->
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
+            <data android:mimeType="*/*"/>
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.SEND"/>
+            <data android:mimeType="*/*"/>
         </intent>
     </queries>
 </manifest>

@@ -10,8 +10,10 @@ import '../rclone/models/rclone_file.dart';
 import '../rclone/models/remote.dart';
 import '../rclone/rclone_client.dart';
 import '../state/engine_controller.dart';
+import '../state/open_external.dart';
 import 'format.dart';
 import 'media_preview.dart';
+import 'open_external_action.dart';
 import 'theme/tokens.dart';
 import 'zoomable_network_image.dart';
 
@@ -217,11 +219,17 @@ class PreviewContent extends ConsumerWidget {
     required this.remote,
     required this.parentPath,
     required this.file,
+    this.imageBackground,
   });
 
   final Remote remote;
   final String parentPath;
   final RcloneFile file;
+
+  /// Overrides the matte behind an image. Quick Look's fullscreen phone shape
+  /// passes black so a photo doesn't sit in a light themed band; the dialog
+  /// leaves it null and keeps the sunken surface.
+  final Color? imageBackground;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -248,9 +256,17 @@ class PreviewContent extends ConsumerWidget {
       );
     }
 
+    // The escape hatch offered when we can't render a file ourselves: libmpv
+    // may not decode it, but the OS very likely has an app that can.
+    final VoidCallback? openExternally = canOpenExternally
+        ? () {
+            openFileInAnotherApp(context, ref, remote, parentPath, file);
+          }
+        : null;
+
     switch (_kindFor(file)) {
       case _PreviewKind.image:
-        return _ImageBody(ref0: ref0);
+        return _ImageBody(ref0: ref0, background: imageBackground);
       case _PreviewKind.text:
         return _TextBody(ref0: ref0, asMarkdown: false);
       case _PreviewKind.markdown:
@@ -258,15 +274,20 @@ class PreviewContent extends ConsumerWidget {
       case _PreviewKind.pdf:
         return _PdfBody(ref0: ref0);
       case _PreviewKind.video:
-        return MediaPreviewBody(url: ref0.url, headers: ref0.headers);
+        return MediaPreviewBody(
+          url: ref0.url,
+          headers: ref0.headers,
+          onOpenExternally: openExternally,
+        );
       case _PreviewKind.audio:
         return MediaPreviewBody(
           url: ref0.url,
           headers: ref0.headers,
           audioOnly: true,
+          onOpenExternally: openExternally,
         );
       case _PreviewKind.unsupported:
-        return _UnsupportedBody(file: file);
+        return _UnsupportedBody(file: file, onOpenExternally: openExternally);
     }
   }
 }
@@ -335,9 +356,10 @@ class _Header extends StatelessWidget {
 /// SAME widget the desktop pop-out window uses, so zoom is identical in both),
 /// keeping the sunken surface fill and the dialog's themed error card.
 class _ImageBody extends StatelessWidget {
-  const _ImageBody({required this.ref0});
+  const _ImageBody({required this.ref0, this.background});
 
   final ObjectRef ref0;
+  final Color? background;
 
   @override
   Widget build(BuildContext context) {
@@ -345,7 +367,7 @@ class _ImageBody extends StatelessWidget {
     return ZoomableNetworkImage(
       url: ref0.url,
       headers: ref0.headers,
-      backgroundColor: c.surfaceSunken,
+      backgroundColor: background ?? c.surfaceSunken,
       errorBuilder: (context, error, stack) => _Message(
         icon: Icons.broken_image_outlined,
         title: 'Could not load image',
@@ -509,11 +531,13 @@ class _PdfBody extends StatelessWidget {
   }
 }
 
-/// Fallback card for file types we cannot render inline.
+/// Fallback card for file types we cannot render inline. Offers the hand-off to
+/// another app, which for these files is the only way to actually see them.
 class _UnsupportedBody extends StatelessWidget {
-  const _UnsupportedBody({required this.file});
+  const _UnsupportedBody({required this.file, this.onOpenExternally});
 
   final RcloneFile file;
+  final VoidCallback? onOpenExternally;
 
   @override
   Widget build(BuildContext context) {
@@ -526,6 +550,13 @@ class _UnsupportedBody extends StatelessWidget {
           '${file.name}\n'
           '${humanSize(file.size)} · $mime',
       color: c.textMuted,
+      action: onOpenExternally == null
+          ? null
+          : FilledButton.icon(
+              onPressed: onOpenExternally,
+              icon: const Icon(Icons.open_in_new, size: 18),
+              label: const Text('Open in another app'),
+            ),
     );
   }
 }
@@ -537,12 +568,16 @@ class _Message extends StatelessWidget {
     required this.title,
     this.detail,
     this.color,
+    this.action,
   });
 
   final IconData icon;
   final String title;
   final String? detail;
   final Color? color;
+
+  /// Optional button rendered under the detail text (e.g. the hand-off).
+  final Widget? action;
 
   @override
   Widget build(BuildContext context) {
@@ -573,6 +608,7 @@ class _Message extends StatelessWidget {
                 style: TextStyle(color: c.textFaint, fontSize: 12, height: 1.4),
               ),
             ],
+            if (action != null) ...[const SizedBox(height: Space.x4), action!],
           ],
         ),
       ),

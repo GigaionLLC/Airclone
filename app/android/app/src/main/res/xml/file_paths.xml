@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Which directories the FileProvider declared in AndroidManifest.xml may mint
+     content:// URIs for. Deliberately ONE path: the staging dir that
+     open_external.dart streams a cloud object into before handing it to another
+     app. Nothing else in the app's storage (rclone.conf above all) is exposed. -->
+<paths>
+    <!-- Matches getApplicationCacheDirectory()/airclone_open — path_provider
+         returns Context.getCacheDir() on Android, which is <cache-path>. -->
+    <cache-path name="airclone_open" path="airclone_open/" />
+</paths>

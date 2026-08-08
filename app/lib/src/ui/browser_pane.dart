@@ -39,6 +39,7 @@ import 'format.dart';
 import 'inspector_panel.dart';
 import 'media_gallery.dart';
 import 'native_drag.dart';
+import 'open_external_action.dart';
 import 'pane_drag.dart';
 import 'paste_action.dart';
 import 'path_bar.dart';
@@ -83,6 +84,34 @@ ThumbRequest? buildThumbRequest(
     cacheSecret: remote.name,
     isVideo: isVideoThumbnailable(f),
   );
+}
+
+/// Warm the thumbnail cache for EVERY image/video in pane [index]'s current
+/// listing — not just the tiles on screen — so scrolling is instant.
+///
+/// Top-level so the phone's actions sheet fires the identical action as the
+/// desktop View menu.
+Future<void> prewarmFolderThumbnails(
+  BuildContext context,
+  WidgetRef ref,
+  int index,
+) async {
+  final state = ref.read(paneProvider(index));
+  final client = ref.read(engineControllerProvider).client;
+  final reqs = <ThumbRequest>[
+    for (final f in state.visibleEntries) ?buildThumbRequest(state, client, f),
+  ];
+  final messenger = ScaffoldMessenger.maybeOf(context);
+  if (reqs.isEmpty) {
+    messenger?.showSnackBar(
+      const SnackBar(content: Text('No images or videos to load here')),
+    );
+    return;
+  }
+  messenger?.showSnackBar(
+    SnackBar(content: Text('Loading ${reqs.length} thumbnails…')),
+  );
+  await ref.read(thumbnailReloadProvider.notifier).prewarm(reqs);
 }
 
 /// One of the two dual-pane browsers. [index] 0 = A (left), 1 = B (right).
@@ -490,6 +519,16 @@ class BrowserPane extends ConsumerWidget {
             state.path,
             state.visibleEntries,
             state.visibleEntries.indexOf(file),
+          );
+        }
+      case FileMenuAction.openExternal:
+        if (!file.isDir && context.mounted) {
+          await openFileInAnotherApp(
+            context,
+            ref,
+            state.remote!,
+            state.path,
+            file,
           );
         }
       case FileMenuAction.openWith:
@@ -1376,7 +1415,7 @@ class _PaneToolbar extends ConsumerWidget {
                     Icons.sync,
                     'Copy / Move / Sync selection… (filters · dry-run)',
                     enabled: hasSel,
-                    onTap: () => _advancedTransfer(context, ref),
+                    onTap: () => runAdvancedTransfer(context, ref, index),
                   ),
                   _cmd(
                     c,
@@ -1628,7 +1667,7 @@ class _PaneToolbar extends ConsumerWidget {
           hasSel
               ? 'Copy / Move / Sync selection…'
               : 'Copy / Move / Sync this folder…',
-          hasRemote ? () => _advancedTransfer(context, ref) : null,
+          hasRemote ? () => runAdvancedTransfer(context, ref, index) : null,
         ),
         const Divider(height: 8),
         // Sort stays reachable here (the inline Sort menu is dropped when the
@@ -1776,7 +1815,9 @@ class _PaneToolbar extends ConsumerWidget {
       menuChildren: [
         MenuItemButton(
           leadingIcon: Icon(Icons.sync, size: 16, color: c.textMuted),
-          onPressed: hasRemote ? () => _advancedTransfer(context, ref) : null,
+          onPressed: hasRemote
+              ? () => runAdvancedTransfer(context, ref, index)
+              : null,
           child: const Text('Copy / Move / Sync this folder…'),
         ),
         const Divider(height: 8),
@@ -1911,7 +1952,7 @@ class _PaneToolbar extends ConsumerWidget {
               size: 16,
               color: c.textMuted,
             ),
-            onPressed: () => _prewarmThumbnails(context, ref),
+            onPressed: () => prewarmFolderThumbnails(context, ref, index),
             child: const Text('Load all in this folder'),
           ),
           MenuItemButton(
@@ -1929,27 +1970,6 @@ class _PaneToolbar extends ConsumerWidget {
       builder: (context, controller, _) =>
           _menuButton(c, 'View', Icons.grid_view_rounded, controller),
     );
-  }
-
-  /// Warm the thumbnail cache for EVERY image/video in the current listing —
-  /// not just the tiles currently on screen — so scrolling is instant.
-  Future<void> _prewarmThumbnails(BuildContext context, WidgetRef ref) async {
-    final client = ref.read(engineControllerProvider).client;
-    final reqs = <ThumbRequest>[
-      for (final f in state.visibleEntries)
-        ?buildThumbRequest(state, client, f),
-    ];
-    final messenger = ScaffoldMessenger.maybeOf(context);
-    if (reqs.isEmpty) {
-      messenger?.showSnackBar(
-        const SnackBar(content: Text('No images or videos to load here')),
-      );
-      return;
-    }
-    messenger?.showSnackBar(
-      SnackBar(content: Text('Loading ${reqs.length} thumbnails…')),
-    );
-    await ref.read(thumbnailReloadProvider.notifier).prewarm(reqs);
   }
 
   // ── handlers ─────────────────────────────────────────────────────────────
@@ -2025,89 +2045,96 @@ class _PaneToolbar extends ConsumerWidget {
     }
     ref.read(paneProvider(index).notifier).clearSelection();
   }
+}
 
-  /// Opens the advanced Copy/Move/Sync (and Two-way) options dialog and runs it.
-  /// With a selection it transfers the selected entries; with NO selection it
-  /// transfers the whole current folder → destination (the natural target for
-  /// Sync / Two-way). Destination is the OTHER pane when it has a remote open,
-  /// otherwise the user picks one — so this works in single-pane mode too.
-  Future<void> _advancedTransfer(BuildContext context, WidgetRef ref) async {
-    final from = ref.read(paneProvider(index));
-    if (from.remote == null) return;
+/// Opens the advanced Copy/Move/Sync (and Two-way) options dialog for pane
+/// [index] and runs it. With a selection it transfers the selected entries;
+/// with NO selection it transfers the whole current folder → destination (the
+/// natural target for Sync / Two-way). Destination is the OTHER pane when it has
+/// a remote open, otherwise the user picks one — so this works in single-pane
+/// mode too.
+///
+/// Top-level so the phone's actions sheet fires the identical action as the
+/// desktop Tools menu.
+Future<void> runAdvancedTransfer(
+  BuildContext context,
+  WidgetRef ref,
+  int index,
+) async {
+  final from = ref.read(paneProvider(index));
+  if (from.remote == null) return;
 
-    final other = ref.read(paneProvider(index == 0 ? 1 : 0));
-    Remote dstRemote;
-    String dstPath;
-    if (other.remote != null) {
-      dstRemote = other.remote!;
-      dstPath = other.path;
-    } else {
-      final dst = await showDestinationPicker(context, title: 'Transfer to…');
-      if (dst == null) return;
-      dstRemote = dst.remote;
-      dstPath = dst.path;
-    }
+  final other = ref.read(paneProvider(index == 0 ? 1 : 0));
+  Remote dstRemote;
+  String dstPath;
+  if (other.remote != null) {
+    dstRemote = other.remote!;
+    dstPath = other.path;
+  } else {
+    final dst = await showDestinationPicker(context, title: 'Transfer to…');
+    if (dst == null) return;
+    dstRemote = dst.remote;
+    dstPath = dst.path;
+  }
+  if (!context.mounted) return;
+
+  final selected = from.selectedEntries;
+  final whole = selected.isEmpty; // no selection ⇒ whole-folder (Sync) transfer
+  final options = await showTransferOptionsDialog(
+    context,
+    fromLabel: whole
+        ? '${from.remote!.name}:${from.path}  (whole folder)'
+        : '${from.remote!.name}:${from.path}  (${selected.length} selected)',
+    toLabel: '${dstRemote.name}:$dstPath',
+    // Run dispatches immediately here, so the destructive-Sync confirm
+    // applies (task definition passes false and confirms nothing).
+    isRunNow: true,
+  );
+  if (options == null) return;
+  final svc = ref.read(transferServiceProvider);
+
+  // Two-way sync (bisync) is a folder-pair operation, never per-file, and an
+  // ad-hoc run has no saved baseline — so transferAdvancedRaw would auto-fire
+  // a DESTRUCTIVE --resync. Run it exactly once on the current-folder ↔
+  // destination-folder pair, behind a baseline confirm.
+  if (options.mode == TransferMode.bisync) {
     if (!context.mounted) return;
-
-    final selected = from.selectedEntries;
-    final whole =
-        selected.isEmpty; // no selection ⇒ whole-folder (Sync) transfer
-    final options = await showTransferOptionsDialog(
+    final choice = await showBisyncBaselineConfirm(
       context,
-      fromLabel: whole
-          ? '${from.remote!.name}:${from.path}  (whole folder)'
-          : '${from.remote!.name}:${from.path}  (${selected.length} selected)',
-      toLabel: '${dstRemote.name}:$dstPath',
-      // Run dispatches immediately here, so the destructive-Sync confirm
-      // applies (task definition passes false and confirms nothing).
-      isRunNow: true,
+      path1Label: '${from.remote!.name}:${from.path}',
+      path2Label: '${dstRemote.name}:$dstPath',
     );
-    if (options == null) return;
-    final svc = ref.read(transferServiceProvider);
+    if (choice == null) return;
+    await svc.transferAdvanced(
+      srcRemote: from.remote!,
+      srcPath: from.path,
+      dstRemote: dstRemote,
+      dstPath: dstPath,
+      options: options.copyWith(dryRun: choice.dryRun || options.dryRun),
+    );
+    ref.read(paneProvider(index).notifier).clearSelection();
+    return;
+  }
 
-    // Two-way sync (bisync) is a folder-pair operation, never per-file, and an
-    // ad-hoc run has no saved baseline — so transferAdvancedRaw would auto-fire
-    // a DESTRUCTIVE --resync. Run it exactly once on the current-folder ↔
-    // destination-folder pair, behind a baseline confirm.
-    if (options.mode == TransferMode.bisync) {
-      if (!context.mounted) return;
-      final choice = await showBisyncBaselineConfirm(
-        context,
-        path1Label: '${from.remote!.name}:${from.path}',
-        path2Label: '${dstRemote.name}:$dstPath',
-      );
-      if (choice == null) return;
+  if (whole) {
+    await svc.transferAdvanced(
+      srcRemote: from.remote!,
+      srcPath: from.path,
+      dstRemote: dstRemote,
+      dstPath: dstPath,
+      options: options,
+    );
+  } else {
+    for (final f in selected) {
       await svc.transferAdvanced(
         srcRemote: from.remote!,
-        srcPath: from.path,
+        srcPath: joinPath(from.path, f.name),
         dstRemote: dstRemote,
-        dstPath: dstPath,
-        options: options.copyWith(dryRun: choice.dryRun || options.dryRun),
-      );
-      ref.read(paneProvider(index).notifier).clearSelection();
-      return;
-    }
-
-    if (whole) {
-      await svc.transferAdvanced(
-        srcRemote: from.remote!,
-        srcPath: from.path,
-        dstRemote: dstRemote,
-        dstPath: dstPath,
+        dstPath: joinPath(dstPath, f.name),
         options: options,
       );
-    } else {
-      for (final f in selected) {
-        await svc.transferAdvanced(
-          srcRemote: from.remote!,
-          srcPath: joinPath(from.path, f.name),
-          dstRemote: dstRemote,
-          dstPath: joinPath(dstPath, f.name),
-          options: options,
-        );
-      }
-      ref.read(paneProvider(index).notifier).clearSelection();
     }
+    ref.read(paneProvider(index).notifier).clearSelection();
   }
 }
 
