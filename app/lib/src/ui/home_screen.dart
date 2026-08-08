@@ -659,16 +659,26 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         child: Focus(
           autofocus: true,
           onKeyEvent: _onKey,
-          child: Column(
-            children: [
-              _TopBar(
-                jobsExpanded: _jobsExpanded,
-                onToggleJobs: () =>
-                    setState(() => _jobsExpanded = !_jobsExpanded),
-              ),
-              Expanded(child: _ExplorerArea(jobsExpanded: _jobsExpanded)),
-              const _StatusBar(),
-            ],
+          // This shell also runs on ANDROID TABLETS (anything ≥700px wide),
+          // where the system status bar and gesture pill overlay the window.
+          // Without this the top bar drew underneath them — the clock landed on
+          // the "Airclone" wordmark and the wifi/battery icons sat on top of the
+          // toolbar's own buttons. The phone shell has always had this (see
+          // mobile_home.dart); the desktop shell never did because desktop
+          // platforms have a real title bar. SafeArea is inert where the view
+          // padding is zero, so no platform gate is needed.
+          child: SafeArea(
+            child: Column(
+              children: [
+                _TopBar(
+                  jobsExpanded: _jobsExpanded,
+                  onToggleJobs: () =>
+                      setState(() => _jobsExpanded = !_jobsExpanded),
+                ),
+                Expanded(child: _ExplorerArea(jobsExpanded: _jobsExpanded)),
+                const _StatusBar(),
+              ],
+            ),
           ),
         ),
       ),
