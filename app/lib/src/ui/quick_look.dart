@@ -19,8 +19,11 @@ import 'theme/tokens.dart';
 ///
 /// Two shapes, chosen by platform:
 ///
-///  * **Desktop** — a centered card on a dimmed barrier, with chevrons and
-///    keyboard navigation (Left/Right to move, Space/Esc to close).
+///  * **Desktop** — fills the window on a dimmed barrier, with chevrons and
+///    keyboard navigation (Left/Right to move, Space/Esc to close). A thin
+///    margin keeps it reading as an overlay ON the app. It was previously a
+///    card capped at 1100px, which stayed the same small size however large the
+///    window or monitor got.
 ///  * **Touch (Android/iOS)** — EDGE-TO-EDGE fullscreen on opaque black, system
 ///    bars hidden, swipe between items, tap to hide the chrome. This is what a
 ///    phone photo/video viewer is expected to look like; the desktop card
@@ -60,9 +63,13 @@ Future<void> showQuickLook(
     context: context,
     barrierDismissible: !fullscreen,
     barrierLabel: 'Quick Look',
+    // Desktop is nearly opaque, not the old 0.82. Now that the overlay fills
+    // the window its header sits directly over the app's own toolbar, and at
+    // 0.82 those icons showed through and competed with the preview's controls.
+    // Still short of full black so it reads as an overlay ON the app.
     barrierColor: fullscreen
         ? Colors.black
-        : Colors.black.withValues(alpha: 0.82),
+        : Colors.black.withValues(alpha: 0.94),
     transitionDuration: const Duration(milliseconds: 180),
     pageBuilder: (ctx, anim, _) => _QuickLook(
       remote: remote,
@@ -314,7 +321,7 @@ class _QuickLookState extends ConsumerState<_QuickLook> {
     );
   }
 
-  // ── pointer: centered card ─────────────────────────────────────────────────
+  // ── pointer: fills the window ───────────────────────────────────────────────
 
   Widget _buildWindowed(BuildContext context) {
     final c = AircloneTheme.of(context);
@@ -324,118 +331,114 @@ class _QuickLookState extends ConsumerState<_QuickLook> {
     return Focus(
       autofocus: true,
       onKeyEvent: _onKey,
-      child: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 1100),
-          child: Padding(
-            padding: const EdgeInsets.all(Space.x6),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
+      // Fills the window, like the phone's fullscreen shape. This used to be a
+      // card capped at 1100px wide, which meant the preview stayed the same
+      // small size no matter how big the window or monitor was — the bigger
+      // your screen, the more of it went to dimmed background. A thin margin is
+      // kept (rather than going truly edge-to-edge as on touch) so it still
+      // reads as an overlay ON the app rather than a separate screen, and so
+      // the rounded content area keeps its shape.
+      child: Padding(
+        padding: const EdgeInsets.all(Space.x4),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
               children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        file.name,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: Space.x3),
-                    Text(
-                      '${_i + 1} / ${widget.files.length}',
-                      style: const TextStyle(
-                        color: Colors.white70,
-                        fontSize: 12,
-                      ),
-                    ),
-                    if (canOpenExternally)
-                      IconButton(
-                        icon: const Icon(
-                          Icons.open_in_new,
-                          color: Colors.white,
-                        ),
-                        tooltip: 'Open in another app',
-                        onPressed: () => _openExternally(ExternalOpenMode.view),
-                      ),
-                    // Desktop only, images only: pop the current image into its
-                    // own resizable OS window (the in-app overlay stays open).
-                    if (isPopoutSupportedOn(Theme.of(context).platform) &&
-                        isImagePreview(file))
-                      IconButton(
-                        icon: const Icon(
-                          Icons.picture_in_picture_alt,
-                          color: Colors.white,
-                        ),
-                        tooltip: 'Pop out to a new window',
-                        onPressed: _popOut,
-                      ),
-                    IconButton(
-                      icon: const Icon(Icons.close, color: Colors.white),
-                      tooltip: 'Close',
-                      onPressed: () => Navigator.of(context).pop(),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: Space.x3),
                 Expanded(
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      color: c.surface,
-                      borderRadius: BorderRadius.circular(Radii.lg),
-                    ),
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(Radii.lg),
-                      child: Stack(
-                        children: [
-                          Positioned.fill(child: _pagerView()),
-                          if (many) ...[
-                            Positioned(
-                              left: Space.x3,
-                              top: 0,
-                              bottom: 0,
-                              child: Center(
-                                child: _NavButton(
-                                  icon: Icons.chevron_left,
-                                  onPressed: _i > 0 ? () => _go(-1) : null,
-                                ),
-                              ),
-                            ),
-                            Positioned(
-                              right: Space.x3,
-                              top: 0,
-                              bottom: 0,
-                              child: Center(
-                                child: _NavButton(
-                                  icon: Icons.chevron_right,
-                                  onPressed: _i < widget.files.length - 1
-                                      ? () => _go(1)
-                                      : null,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ],
-                      ),
+                  child: Text(
+                    file.name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
                     ),
                   ),
                 ),
-                const Padding(
-                  padding: EdgeInsets.only(top: Space.x2),
-                  child: Text(
-                    '< / >  ·  Space or Esc to close',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(color: Colors.white54, fontSize: 11),
+                const SizedBox(width: Space.x3),
+                Text(
+                  '${_i + 1} / ${widget.files.length}',
+                  style: const TextStyle(color: Colors.white70, fontSize: 12),
+                ),
+                if (canOpenExternally)
+                  IconButton(
+                    icon: const Icon(Icons.open_in_new, color: Colors.white),
+                    tooltip: 'Open in another app',
+                    onPressed: () => _openExternally(ExternalOpenMode.view),
                   ),
+                // Desktop only, images only: pop the current image into its
+                // own resizable OS window (the in-app overlay stays open).
+                if (isPopoutSupportedOn(Theme.of(context).platform) &&
+                    isImagePreview(file))
+                  IconButton(
+                    icon: const Icon(
+                      Icons.picture_in_picture_alt,
+                      color: Colors.white,
+                    ),
+                    tooltip: 'Pop out to a new window',
+                    onPressed: _popOut,
+                  ),
+                IconButton(
+                  icon: const Icon(Icons.close, color: Colors.white),
+                  tooltip: 'Close',
+                  onPressed: () => Navigator.of(context).pop(),
                 ),
               ],
             ),
-          ),
+            const SizedBox(height: Space.x3),
+            Expanded(
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: c.surface,
+                  borderRadius: BorderRadius.circular(Radii.lg),
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(Radii.lg),
+                  child: Stack(
+                    children: [
+                      Positioned.fill(child: _pagerView()),
+                      if (many) ...[
+                        Positioned(
+                          left: Space.x3,
+                          top: 0,
+                          bottom: 0,
+                          child: Center(
+                            child: _NavButton(
+                              icon: Icons.chevron_left,
+                              onPressed: _i > 0 ? () => _go(-1) : null,
+                            ),
+                          ),
+                        ),
+                        Positioned(
+                          right: Space.x3,
+                          top: 0,
+                          bottom: 0,
+                          child: Center(
+                            child: _NavButton(
+                              icon: Icons.chevron_right,
+                              onPressed: _i < widget.files.length - 1
+                                  ? () => _go(1)
+                                  : null,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            const Padding(
+              padding: EdgeInsets.only(top: Space.x2),
+              child: Text(
+                '< / >  ·  Space or Esc to close',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: Colors.white54, fontSize: 11),
+              ),
+            ),
+          ],
         ),
       ),
     );
