@@ -121,6 +121,27 @@ class MountController extends Notifier<List<MountInfo>> {
     } catch (_) {}
     await _poll();
   }
+
+  /// Unmount everything on the way out, WITHOUT the follow-up [_poll].
+  ///
+  /// rclone serves every OS mount from the `rcd` process, so stopping the
+  /// engine first strands the mount point — on Windows the drive letter lingers
+  /// in Explorer until something else tears it down. This must therefore run
+  /// BEFORE the engine is stopped (see `ui/app.dart`'s `onExitRequested`).
+  ///
+  /// The poll is deliberately skipped: refreshing a list the app is about to
+  /// throw away only delays the window close. Throws on failure so the caller
+  /// can bound it — a wedged unmount must never hang the exit.
+  /// Deliberately UNCONDITIONAL — it does not check [state] first. `state` is
+  /// only refreshed by the 2s poller, so a mount created seconds before the
+  /// user closes the window is not in it yet; skipping the call on an
+  /// empty-looking list would strand exactly the mount this exists to clean up.
+  /// `mount/unmountall` with nothing mounted is a cheap no-op.
+  Future<void> unmountAllForExit() async {
+    final client = ref.read(engineControllerProvider).client;
+    if (client == null) return;
+    await client.rpc('mount/unmountall');
+  }
 }
 
 final mountControllerProvider =
