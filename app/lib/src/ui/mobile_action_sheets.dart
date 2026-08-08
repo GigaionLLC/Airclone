@@ -10,7 +10,9 @@ import '../state/file_ops.dart';
 import '../state/pane_layout.dart';
 import '../state/remotes_provider.dart';
 import '../state/thumbnail_prefs.dart';
+import '../state/thumbnail_reload.dart';
 import 'add_remote_dialog.dart';
+import 'browser_pane.dart';
 import 'column_header.dart';
 import 'connection_test_dialog.dart';
 import 'encrypt_remote_dialog.dart';
@@ -302,6 +304,17 @@ Future<void> showMobileActionsSheet(
                   close();
                   confirmEmptyTrash(context, ref, index);
                 }),
+                // Everything the desktop View/Tools menus have that isn't an
+                // everyday action, folded behind one collapsed row so the sheet
+                // stays short until you go looking.
+                _AdvancedSection(
+                  colors: c,
+                  callerContext: context,
+                  callerRef: ref,
+                  index: index,
+                  thumbsOn: thumbsOn,
+                  onClose: close,
+                ),
               ],
             ],
           ),
@@ -310,6 +323,142 @@ Future<void> showMobileActionsSheet(
     },
   ),
 );
+
+/// The "Advanced" group at the foot of the actions sheet: the desktop View menu's
+/// thumbnail-cache controls plus the Tools menu's cross-pane operations.
+///
+/// Collapsed by default — the whole point of the phone sheet is that the common
+/// actions are one tap away, and a dozen always-visible rows would bury them.
+/// Every row calls the SAME function the desktop menu does, against the caller's
+/// still-mounted context/ref (the sheet's own context dies with [onClose]).
+class _AdvancedSection extends StatefulWidget {
+  const _AdvancedSection({
+    required this.colors,
+    required this.callerContext,
+    required this.callerRef,
+    required this.index,
+    required this.thumbsOn,
+    required this.onClose,
+  });
+
+  final AircloneColors colors;
+  final BuildContext callerContext;
+  final WidgetRef callerRef;
+  final int index;
+
+  /// Thumbnail actions are pointless (and misleading) with thumbnails off, so
+  /// they're hidden rather than disabled — matching the desktop View menu.
+  final bool thumbsOn;
+
+  /// Pops the sheet. Called before every action so the dialog/snackbar the
+  /// action raises isn't stacked under it.
+  final VoidCallback onClose;
+
+  @override
+  State<_AdvancedSection> createState() => _AdvancedSectionState();
+}
+
+class _AdvancedSectionState extends State<_AdvancedSection> {
+  bool _open = false;
+
+  void _run(VoidCallback action) {
+    widget.onClose();
+    action();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final c = widget.colors;
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        InkWell(
+          onTap: () => setState(() => _open = !_open),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(
+              Space.x4,
+              Space.x3,
+              Space.x4,
+              Space.x1,
+            ),
+            child: Row(
+              children: [
+                Text(
+                  'ADVANCED',
+                  style: TextStyle(
+                    color: c.textFaint,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 0.6,
+                  ),
+                ),
+                const Spacer(),
+                Icon(
+                  _open ? Icons.expand_less : Icons.expand_more,
+                  size: 20,
+                  color: c.textFaint,
+                ),
+              ],
+            ),
+          ),
+        ),
+        if (_open) ...[
+          if (widget.thumbsOn) ...[
+            _tile(
+              c,
+              Icons.refresh,
+              'Reload thumbnails',
+              () => _run(
+                widget.callerRef.read(thumbnailReloadProvider.notifier).reload,
+              ),
+            ),
+            _tile(
+              c,
+              Icons.download_for_offline_outlined,
+              'Load all in this folder',
+              () => _run(
+                () => prewarmFolderThumbnails(
+                  widget.callerContext,
+                  widget.callerRef,
+                  widget.index,
+                ),
+              ),
+            ),
+            _tile(
+              c,
+              Icons.cached,
+              'Rebuild thumbnails (clear cache)',
+              () => _run(
+                widget.callerRef.read(thumbnailReloadProvider.notifier).rebuild,
+              ),
+            ),
+          ],
+          _tile(
+            c,
+            Icons.sync,
+            'Copy / Move / Sync this folder…',
+            () => _run(
+              () => runAdvancedTransfer(
+                widget.callerContext,
+                widget.callerRef,
+                widget.index,
+              ),
+            ),
+          ),
+          _tile(
+            c,
+            Icons.compare_arrows,
+            'Compare with other pane',
+            () => _run(
+              () => showCompareDialog(widget.callerContext, widget.callerRef),
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+}
 
 // ── Cloud + : add / encrypt / import a remote ────────────────────────────────
 

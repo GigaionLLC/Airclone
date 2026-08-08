@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 
+import '../state/open_external.dart';
 import 'theme/tokens.dart';
 
 /// Actions offered when right-clicking a file or folder row.
@@ -9,6 +10,7 @@ enum FileMenuAction {
   select,
   open,
   preview,
+  openExternal,
   openWith,
   revealInFolder,
   copyPath,
@@ -80,8 +82,20 @@ Future<FileMenuAction?> showFileContextMenu(
     ],
     if (isDir)
       _item(FileMenuAction.open, Icons.folder_open_outlined, 'Open')
-    else
+    else ...[
       _item(FileMenuAction.preview, Icons.visibility_outlined, 'Preview'),
+      // Hand the file to another app (a video player, a photo viewer, an editor)
+      // when the in-app preview isn't the right tool. Cloud objects are staged
+      // to the app cache first — see open_external.dart. Skipped for a LOCAL
+      // file on desktop, which already gets the sharper "Open with default app"
+      // below; on Android that row is absent, so this is the phone's only route.
+      if (canOpenExternally && !(isLocal && !Platform.isAndroid))
+        _item(
+          FileMenuAction.openExternal,
+          Icons.open_in_new,
+          'Open in another app…',
+        ),
+    ],
     // Local files/folders interop with the OS via official, verifiable actions.
     // Desktop only: Android has no "open a path with the default app" /
     // file-explorer reveal (those spawn OS processes).
