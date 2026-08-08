@@ -74,8 +74,30 @@ class ThumbnailService {
 
   static const int _maxConcurrent = 4;
 
+  /// Video keyframes are FAR heavier than image decodes: each one spins up a
+  /// whole libmpv [Player] that streams and decodes real media. On a phone,
+  /// several of those at once starve the player the user is actually watching
+  /// (the reason cloud video previews felt unreliable on Android), so mobile
+  /// captures them strictly one at a time. Desktop can afford two.
+  static final int _maxConcurrentVideo = _isMobile ? 1 : 2;
+
+  /// First-frame budget for a keyframe capture. Mobile gets far longer: the
+  /// bytes come from a cloud backend over a phone connection, and a capture
+  /// that times out costs the same work again on the next scroll.
+  static final Duration _videoFirstFrameTimeout = _isMobile
+      ? const Duration(seconds: 30)
+      : const Duration(seconds: 12);
+
+  static final bool _isMobile = Platform.isAndroid || Platform.isIOS;
+
   int _active = 0;
   final _waiters = <Completer<void>>[];
+
+  /// Second gate, held only by video captures and always taken BEFORE the
+  /// general one — images never take it, so the ordering can't deadlock.
+  int _activeVideo = 0;
+  final _videoWaiters = <Completer<void>>[];
+
   final _inFlight = <String, Future<Uint8List?>>{};
 
   /// Cache keys whose bytes downloaded fine but could NOT be decoded (e.g. HEIC
@@ -135,6 +157,8 @@ class ThumbnailService {
     ThumbRequest req,
     bool memoryOnly,
   ) async {
+    // Videos hold BOTH gates for the whole capture; images only the general one.
+    if (req.isVideo) await _acquireVideo();
     await _acquire();
     Uint8List? png;
     try {
@@ -143,6 +167,7 @@ class ThumbnailService {
           : await _fetchAndDecodeImage(req);
     } finally {
       _release();
+      if (req.isVideo) _releaseVideo();
     }
     if (png == null) return null;
 
@@ -191,7 +216,7 @@ class ThumbnailService {
       await player.setVolume(0);
       await player.open(Media(req.url, httpHeaders: req.headers), play: true);
       await controller.waitUntilFirstFrameRendered.timeout(
-        const Duration(seconds: 12),
+        _videoFirstFrameTimeout,
       );
       await player.pause();
       final raw = await player
@@ -248,6 +273,25 @@ class ThumbnailService {
     _waiters.add(c);
     await c.future;
     _active++;
+  }
+
+  Future<void> _acquireVideo() async {
+    if (_activeVideo < _maxConcurrentVideo) {
+      _activeVideo++;
+      return;
+    }
+    final c = Completer<void>();
+    _videoWaiters.add(c);
+    await c.future;
+    _activeVideo++;
+  }
+
+  void _releaseVideo() {
+    _activeVideo--;
+    if (_videoWaiters.isNotEmpty) {
+      final c = _videoWaiters.removeAt(0);
+      if (!c.isCompleted) c.complete();
+    }
   }
 
   void _release() {
