@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:archive/archive.dart';
 import 'package:crypto/crypto.dart';
 import 'package:ffi/ffi.dart';
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
@@ -168,11 +169,30 @@ class RcloneEngine {
     return downloadLatest(onStatus: onStatus);
   }
 
+  /// Downloads + verifies the latest rclone and installs it as the managed
+  /// engine in one step. Safe only when no engine is running from that path —
+  /// use it for the FIRST install ([ensureInstalled]). To update a running
+  /// engine, stage first, stop it, then [installStaged]; see
+  /// `EngineController.updateEngine`.
+  static Future<String> downloadLatest({
+    void Function(String)? onStatus,
+  }) async {
+    final staged = await downloadLatestToStaging(onStatus: onStatus);
+    final path = await installStaged(staged, onStatus: onStatus);
+    onStatus?.call('Engine ready.');
+    return path;
+  }
+
   /// Downloads the latest official rclone, verifies its SHA-256 (fail-closed —
   /// throws a [StateError] if the checksum can't be fetched, parsed, or matched
-  /// rather than installing an unverified engine), and extracts the binary into
-  /// the app-managed engine dir (overwriting any existing one). Returns its path.
-  static Future<String> downloadLatest({
+  /// rather than installing an unverified engine), and extracts the binary to a
+  /// STAGING path beside the managed engine. Returns that staging path.
+  ///
+  /// Deliberately does not touch the managed binary: on Windows the running
+  /// engine holds its own executable open, so writing it in place fails with
+  /// "used by another process" — which is exactly what made the in-app engine
+  /// update always fail once an engine had been downloaded.
+  static Future<String> downloadLatestToStaging({
     void Function(String)? onStatus,
   }) async {
     if (Platform.isAndroid) {
@@ -241,14 +261,137 @@ class RcloneEngine {
 
     final destDir = Directory(await _engineDir());
     await destDir.create(recursive: true);
-    final destPath = await _managedBinaryPath();
-    final out = File(destPath);
+    // Written to a STAGING file, never straight to the managed binary: on
+    // Windows a running executable is locked, so overwriting the engine while
+    // it is serving would fail with "used by another process". The caller stops
+    // the engine and then calls [installStaged].
+    final stagedPath = await _stagedBinaryPath();
+    final out = File(stagedPath);
     await out.writeAsBytes(entry.content as List<int>, flush: true);
     if (!Platform.isWindows) {
-      await Process.run('chmod', ['+x', destPath]);
+      await Process.run('chmod', ['+x', stagedPath]);
     }
-    onStatus?.call('Engine ready (rclone $version).');
-    return destPath;
+    onStatus?.call('Downloaded rclone $version.');
+    return stagedPath;
+  }
+
+  /// Swaps a [downloadLatestToStaging] result into place as the managed engine.
+  ///
+  /// MUST be called with the engine stopped — Windows will not let a running
+  /// executable be replaced. The previous binary is kept as `.old` so
+  /// [rollbackEngine] can put it back if the new one fails to start; call
+  /// [discardPreviousEngine] once the new engine is up.
+  ///
+  /// Returns the managed binary path.
+  static Future<String> installStaged(
+    String stagedPath, {
+    void Function(String)? onStatus,
+  }) async {
+    onStatus?.call('Installing engine…');
+    final managed = await _managedBinaryPath();
+    await swapEngineBinary(staged: stagedPath, managed: managed);
+    if (!Platform.isWindows) {
+      await Process.run('chmod', ['+x', managed]);
+    }
+    return managed;
+  }
+
+  /// Restores the binary saved by [installStaged]. Used when the freshly
+  /// installed engine fails to start. No-op when there is no backup.
+  static Future<void> rollbackEngine() async =>
+      restoreEngineBackup(await _managedBinaryPath());
+
+  /// Deletes the [installStaged] backup after the new engine has started.
+  static Future<void> discardPreviousEngine() async =>
+      discardEngineBackup(await _managedBinaryPath());
+
+  // ── the binary swap, parameterised so it is testable ──────────────────────
+  //
+  // Split out from the three methods above because those need path_provider to
+  // resolve the managed path, which a plain unit test has no plugin for. These
+  // take both paths explicitly and so run against real temp files — which
+  // matters most for the rollback path, which otherwise only ever executes
+  // when a release of rclone is broken.
+
+  /// Moves [staged] into place as [managed], keeping the previous binary as
+  /// `<managed>.old` so [restoreEngineBackup] can undo it. If the move fails
+  /// the previous binary is put straight back, so a failed swap never leaves
+  /// the app with no engine at all.
+  @visibleForTesting
+  static Future<void> swapEngineBinary({
+    required String staged,
+    required String managed,
+  }) async {
+    final backup = File('$managed.old');
+    final current = File(managed);
+
+    if (await backup.exists()) await _quietDelete(backup);
+    if (await current.exists()) {
+      // Rename rather than delete: recoverable if the new engine won't run.
+      await _renameWithRetry(current, '$managed.old');
+    }
+    try {
+      await _renameWithRetry(File(staged), managed);
+    } catch (_) {
+      if (await backup.exists()) {
+        try {
+          await backup.rename(managed);
+        } catch (_) {
+          /* nothing more we can do */
+        }
+      }
+      rethrow;
+    }
+  }
+
+  /// Puts `<managed>.old` back as [managed]. No-op without a backup.
+  @visibleForTesting
+  static Future<void> restoreEngineBackup(String managed) async {
+    final backup = File('$managed.old');
+    if (!await backup.exists()) return;
+    await _quietDelete(File(managed));
+    try {
+      await _renameWithRetry(backup, managed);
+    } catch (_) {
+      // Leave the backup in place; better a stale .old on disk than throwing
+      // from a recovery path.
+    }
+  }
+
+  /// Drops `<managed>.old`.
+  @visibleForTesting
+  static Future<void> discardEngineBackup(String managed) async =>
+      _quietDelete(File('$managed.old'));
+
+  /// Windows can hold a handle on a just-exited process's image for a moment,
+  /// so a rename immediately after `quit()` can still fail. Retry briefly
+  /// rather than reporting a failure the user can only fix by waiting.
+  static Future<void> _renameWithRetry(File from, String to) async {
+    Object? last;
+    for (var attempt = 0; attempt < 10; attempt++) {
+      try {
+        await from.rename(to);
+        return;
+      } catch (e) {
+        last = e;
+        await Future<void>.delayed(const Duration(milliseconds: 200));
+      }
+    }
+    throw StateError('could not replace the engine binary: $last');
+  }
+
+  static Future<void> _quietDelete(File f) async {
+    try {
+      if (await f.exists()) await f.delete();
+    } catch (_) {
+      // Locked or already gone — callers treat this as best-effort.
+    }
+  }
+
+  static Future<String> _stagedBinaryPath() async {
+    final dir = await _engineDir();
+    final name = Platform.isWindows ? 'rclone.exe.new' : 'rclone.new';
+    return '$dir${Platform.pathSeparator}$name';
   }
 
   // ── internals ──────────────────────────────────────────────────────────────

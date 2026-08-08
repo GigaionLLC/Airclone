@@ -315,22 +315,49 @@ class EngineController extends Notifier<EngineUi> {
   /// but may still update it here.
   Future<void> updateEngine() async {
     final password = ref.read(cachePassphraseProvider);
-    final path = await RcloneEngine.downloadLatest();
+
+    // 1. Download + verify BEFORE stopping anything, into a staging file. The
+    //    running engine holds its own binary open, and on Windows you cannot
+    //    replace a running executable — writing the managed path here is what
+    //    made this always fail with "Update failed" once an engine had been
+    //    downloaded. Staging first also means a failed download costs nothing:
+    //    the working engine is still up and untouched.
+    final staged = await RcloneEngine.downloadLatestToStaging();
+
+    // 2. Now stop the engine, releasing the lock on the old binary.
+    await state.client?.quit();
+
+    // 3. Swap. The previous binary is kept so a bad engine can be undone.
+    final String path;
+    try {
+      path = await RcloneEngine.installStaged(staged);
+    } catch (_) {
+      // Swap failed — the old binary is still in place, so bring it back up
+      // rather than leaving the user with a stopped engine.
+      await _startWith(password: password);
+      rethrow;
+    }
+
     _rclonePath = path;
     // "Update engine" downloads + runs a binary — force binary mode for the
     // restart (the in-process library ships with the app and isn't updated here).
     _resolvedMode = EngineMode.binary;
-    await state.client?.quit();
     await _startWith(password: password);
+
     // _startWith never throws — it parks failures in the error/needsPassword
     // phase for the engine gate. Surface a failed post-update start to the
     // caller explicitly, or Settings would report "Engine updated." while the
     // engine is actually down.
     if (!state.isReady) {
-      throw StateError(
-        state.message ?? 'the engine did not start after the update',
-      );
+      // 4. The new engine will not run: put the old one back and restart it, so
+      //    a bad rclone release cannot leave Airclone permanently broken.
+      final failure =
+          state.message ?? 'the engine did not start after the update';
+      await RcloneEngine.rollbackEngine();
+      await _startWith(password: password);
+      throw StateError(failure);
     }
+    await RcloneEngine.discardPreviousEngine();
   }
 
   /// Provided by the password gate when the config is encrypted.
