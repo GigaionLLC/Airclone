@@ -12,7 +12,7 @@
 param(
     # Flutter's Android release ABIs. x86 (32-bit) is intentionally absent.
     [string[]]$Abis = @('arm64-v8a', 'armeabi-v7a', 'x86_64'),
-    [string]$RcloneVersion = 'v1.74.4',
+    [string]$RcloneVersion = 'v1.75.0',
     [string]$NdkRoot = "$env:USERPROFILE\android-sdk\ndk\28.2.13676358",
     # Must be <= the app's minSdk (flutter.minSdkVersion; 24 as of Flutter 3.44).
     [int]$ApiLevel = 24

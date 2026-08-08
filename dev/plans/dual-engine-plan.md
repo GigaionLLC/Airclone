@@ -1,6 +1,6 @@
 # Dual-engine plan: in-process `librclone` alongside spawned `rcd`
 
-**Status:** in progress (Phase 0 spike). **Pinned rclone:** `v1.74.4`.
+**Status:** in progress (Phase 0 spike). **Pinned rclone:** `v1.75.0`.
 **Owner interface:** [`RcloneClient`](../../app/lib/src/rclone/rclone_client.dart) — the ONE seam.
 
 ## Why
