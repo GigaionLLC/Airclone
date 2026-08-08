@@ -1,6 +1,6 @@
 # Command Console plan: a first-class in-GUI rclone command surface
 
-**Status:** proposed (design). **Pinned rclone:** `v1.74.4`.
+**Status:** proposed (design). **Pinned rclone:** `v1.75.0`.
 **Owner interface:** [`RcloneClient`](../../app/lib/src/rclone/rclone_client.dart) — the ONE seam.
 **Reuses:** [`JobsController`](../../app/lib/src/state/jobs_controller.dart) queue · [`PaneSplit`/`PaneTabStrip`](../../app/lib/src/ui) · [`parseEngineFlags`](../../app/lib/src/rclone/engine_flags.dart) · [`advanced_mode.dart`](../../app/lib/src/state/advanced_mode.dart)
 

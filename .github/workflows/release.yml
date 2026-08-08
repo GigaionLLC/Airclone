@@ -27,9 +27,17 @@ env:
   # Store MSIX (windows job), built into librclone, and built as the Android
   # jniLib (android job). Keep in sync with dev/android/build-rclone.ps1 +
   # dev/desktop/build-librclone.sh — ci.yml greps this line and enforces it.
-  # v1.74.4 (2026-07-08) is a security patch: CVEs in serve s3 / serve webdav /
-  # local-backend symlink escape — all surfaces Airclone ships.
-  RCLONE_VERSION: v1.74.4
+  # v1.75.0 (2026-07-31). Carries forward the v1.74.4 security patch (CVEs in
+  # serve s3 / serve webdav / local-backend symlink escape — all surfaces
+  # Airclone ships). No breaking changes in the 1.74 -> 1.75 changelog; the two
+  # rc entries that touch our surface ("allow setting rc config and filter
+  # options as flat parameters", "serve rc accepts nested as well as flat
+  # options") are ADDITIVE. Verified against a real v1.75.0 binary before
+  # bumping: `--rc-serve` still answers Range with 206 + Content-Range (the
+  # preview/thumbnail path), and `config/create` still requires the
+  # `parameters` key on every call including continue steps (the regression
+  # that cost a Store certification cycle — see AddRemoteController.answer).
+  RCLONE_VERSION: v1.75.0
 
 defaults:
   run:
