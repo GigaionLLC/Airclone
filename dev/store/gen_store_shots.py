@@ -315,7 +315,12 @@ def write_manifest(rows: list[tuple[str, str, str, str]]) -> None:
         f"| {slot} | `{slot_dir(slot)}/{name}` | {dims} | {caption} |"
         for slot, name, dims, caption in rows
     ]
-    with open(os.path.join(OUT, "MANIFEST.md"), "w", encoding="utf-8") as fh:
+    # newline="\n": Python's default text mode writes CRLF on Windows, which
+    # git normalises to LF on commit — so every re-run would leave the file
+    # "modified" against a clean tree for no reason.
+    with open(
+        os.path.join(OUT, "MANIFEST.md"), "w", encoding="utf-8", newline="\n"
+    ) as fh:
         fh.write(MANIFEST_HEAD + "\n".join(lines) + MANIFEST_TAIL)
 
 
