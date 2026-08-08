@@ -47,8 +47,8 @@ WHAT YOU CAN DO
   remote, cached and encrypted on your device.
 • Stay in control. Nothing is overwritten silently — every file collision asks first:
   skip, replace, or keep both.
-• Open remotes in other apps. Turn on "Show in Files" and your clouds appear in your
-  phone's own file manager, ready for any other app to use.
+• Open anything in another app. Hand any file straight to the app you'd rather use —
+  a video player, a photo viewer, an editor — or send it on with the share sheet.
 
 PRIVATE BY DESIGN
 Airclone runs entirely on your device. There are no accounts, no tracking, and no
@@ -73,12 +73,16 @@ OS-keychain secret storage, and local audit logging — all without phoning home
 
 ## Screenshot checklist (the actual blocker for the rejection)
 
-- [x] `tablet-*/03-thumbnails.png` is INTENTIONALLY OMITTED from the upload set (see
-      `store-ready/MANIFEST.md`) — its gradient swatches (IMG_0100–0105.jpg) read as placeholder
-      images and were dropped. Re-capture with REAL photos to re-enable; NOT an open TODO.
-- [ ] Frame + caption the tablet screenshots like the phone ones (background, frame,
-      caption banner). Crop tight so UI fills the frame.
-- [ ] Use realistic demo data — avoid every remote reading "webdav"; use believable
-      file names and a few real image thumbnails.
-- [ ] Keep the phone screenshots (they already look like real marketing assets).
+- [x] Thumbnail/gallery screenshots are BACK. The gradient swatches that read as placeholder
+      images are gone — `IMG_0100–0105.jpg` are now real CC0 photographs (provenance in
+      `../DEMO-MEDIA-PROVENANCE.md`), so the gallery shot ships on phone and both tablet sizes.
+- [x] Tablet screenshots are framed + captioned exactly like the phone ones — same generator
+      (`dev/store/gen_store_shots.py`), same gradient, same caption band.
+- [x] The set grew from 2 phone / 3 per tablet to **8 phone / 6 per tablet**.
+- [ ] **STILL OPEN — demo remotes all read "webdav".** A remote NAMED "Google-Drive" whose
+      subtitle says `webdav` looks fabricated, which is the same credibility smell as the
+      placeholder images. The backing HAS to be webdav (the emulator reaches a host
+      `rclone serve webdav`), so the fix is to rename the demo remotes to something the type
+      is plausible for — "Home NAS", "Studio Drive", "Backups" — rather than borrowing real
+      provider names. Requires a full re-shoot of all 14 screenshots.
 - [ ] Resubmit via "Update default store listing" → replace assets → Save.
