@@ -79,10 +79,9 @@ OS-keychain secret storage, and local audit logging — all without phoning home
 - [x] Tablet screenshots are framed + captioned exactly like the phone ones — same generator
       (`dev/store/gen_store_shots.py`), same gradient, same caption band.
 - [x] The set grew from 2 phone / 3 per tablet to **8 phone / 6 per tablet**.
-- [ ] **STILL OPEN — demo remotes all read "webdav".** A remote NAMED "Google-Drive" whose
-      subtitle says `webdav` looks fabricated, which is the same credibility smell as the
-      placeholder images. The backing HAS to be webdav (the emulator reaches a host
-      `rclone serve webdav`), so the fix is to rename the demo remotes to something the type
-      is plausible for — "Home NAS", "Studio Drive", "Backups" — rather than borrowing real
-      provider names. Requires a full re-shoot of all 14 screenshots.
+- [x] **Demo remotes no longer look fabricated.** They were named after real providers while
+      their subtitle read `webdav` — "Google-Drive · webdav" — the same credibility smell as the
+      placeholder images. The backing has to be webdav (the emulator reaches a host
+      `rclone serve webdav`), so the remotes are now named for something that type is plausible
+      for: **Home-NAS**, **Studio-Drive**, **Archive-Backups**. All 14 screenshots re-shot.
 - [ ] Resubmit via "Update default store listing" → replace assets → Save.
