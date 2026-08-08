@@ -1,19 +1,39 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 
 import 'theme/tokens.dart';
 
+/// How long a media file may sit without ever reaching "playing" before we stop
+/// showing a spinner and offer a way out. Cloud objects come through the local
+/// engine and can genuinely take a while to start, so this is deliberately
+/// generous — it exists to kill the *infinite* black screen, not to be strict.
+const Duration _startTimeout = Duration(seconds: 45);
+
 /// Embeddable video / audio player powered by media_kit.
 ///
-/// Designed to live inside the fixed-size preview dialog (~720x600). It owns a
-/// single [Player] for its lifetime and tears it down in [dispose]. For video
-/// it renders a [Video] surface on a black backdrop; for [audioOnly] it shows a
-/// themed audio card with transport controls.
+/// Designed to live inside the preview surface (the dialog, or Quick Look's
+/// fullscreen page). It owns a single [Player] for its lifetime and tears it
+/// down in [dispose]. For video it renders a [Video] surface on a black
+/// backdrop; for [audioOnly] it shows a themed audio card with transport
+/// controls.
 ///
-/// Robustness: opening the media is guarded; if anything goes wrong (or the
-/// player surface fails to attach) a centered "Couldn't play this media"
-/// message is shown instead. [build] never throws.
+/// FAILURE HANDLING is the point of most of this class. libmpv reports almost
+/// nothing by throwing: [Player.open] resolves a Future that rejects
+/// asynchronously, and decode/transport problems arrive later on
+/// [PlayerStream.error]. Anything not observed shows up to the user as a black
+/// rectangle that never plays, which is indistinguishable from a hang. So we
+///
+///  * await [Player.open] and catch its async rejection,
+///  * subscribe to [PlayerStream.error],
+///  * track [PlayerStream.buffering] so a slow start looks like loading, and
+///  * arm a [_startTimeout] watchdog for the case where libmpv reports nothing
+///    at all.
+///
+/// Every one of those paths lands on the same error card, which offers Retry
+/// and — when the host supplies [onOpenExternally] — a hand-off to another app.
 ///
 /// NOTE: `MediaKit.ensureInitialized()` is expected to be called once in
 /// `main()` by the integrator — this widget does not initialize the library.
@@ -23,6 +43,7 @@ class MediaPreviewBody extends StatefulWidget {
     required this.url,
     this.headers = const {},
     this.audioOnly = false,
+    this.onOpenExternally,
   });
 
   /// Direct/streamable URL of the media to play.
@@ -34,66 +55,215 @@ class MediaPreviewBody extends StatefulWidget {
   /// When true, render the compact audio card instead of a video surface.
   final bool audioOnly;
 
+  /// Hands this file to another app. When non-null the error card offers it as
+  /// a fallback — the codec libmpv can't handle is often one the phone's own
+  /// video player can.
+  final VoidCallback? onOpenExternally;
+
   @override
   State<MediaPreviewBody> createState() => _MediaPreviewBodyState();
 }
 
 class _MediaPreviewBodyState extends State<MediaPreviewBody> {
-  late final Player _player;
+  Player? _player;
   VideoController? _controller;
 
-  /// Set if construction/open failed; drives the error fallback in [build].
-  bool _failed = false;
+  StreamSubscription<String>? _errorSub;
+  StreamSubscription<bool>? _bufferingSub;
+  StreamSubscription<bool>? _playingSub;
+  Timer? _watchdog;
+
+  /// Non-null once anything has gone wrong; drives the error card.
+  String? _error;
+
+  /// True from open until the first frame actually plays.
+  bool _loading = true;
+
+  /// Set once playback has genuinely started. After that we STOP treating
+  /// [PlayerStream.error] as fatal: libmpv also reports non-fatal problems
+  /// there, and tearing a playing video down for one of those would be a worse
+  /// bug than the black screen this class exists to fix.
+  bool _started = false;
+
+  /// Bumped by [_teardown] so a callback from a REPLACED player (a
+  /// `waitUntilFirstFrameRendered` future that resolves after Retry swapped the
+  /// player out) can't clear the new attempt's loading/watchdog state.
+  int _generation = 0;
 
   @override
   void initState() {
     super.initState();
-    try {
-      _player = Player();
-      if (!widget.audioOnly) {
-        _controller = VideoController(_player);
-      }
-      _player.open(Media(widget.url, httpHeaders: widget.headers), play: true);
-    } catch (_) {
-      _failed = true;
-    }
+    _start();
   }
 
   @override
   void dispose() {
-    // Player is created unless construction itself threw; guard regardless.
-    try {
-      _player.dispose();
-    } catch (_) {
-      // Already disposed or never constructed — nothing to do.
-    }
+    _teardown();
     super.dispose();
+  }
+
+  /// Builds a fresh player and starts playback. Safe to call again after
+  /// [_teardown] (that is exactly what Retry does).
+  Future<void> _start() async {
+    final generation = _generation;
+    final Player player;
+    VideoController? controller;
+    try {
+      player = Player();
+      _player = player;
+      if (!widget.audioOnly) {
+        controller = VideoController(player);
+        _controller = controller;
+      }
+    } catch (e) {
+      if (mounted) setState(() => _fail('$e'));
+      return;
+    }
+
+    // libmpv surfaces decode/transport failures here, NOT by throwing.
+    _errorSub = player.stream.error.listen((message) {
+      if (_started) return; // see [_started] — non-fatal once it's playing
+      if (mounted) setState(() => _fail(message));
+    });
+    _bufferingSub = player.stream.buffering.listen((buffering) {
+      // `|| !_started` matters: libmpv stops "buffering" as soon as it has
+      // demuxed enough, which for a video is well BEFORE (and sometimes
+      // instead of) a frame reaching the screen. Clearing the spinner then
+      // would leave a bare black rectangle with no sign anything is happening.
+      if (mounted && _error == null) {
+        setState(() => _loading = buffering || !_started);
+      }
+    });
+    if (controller != null) {
+      // VIDEO: the success signal is a rendered FRAME, not `playing`. libmpv
+      // happily reports playing while its video output never comes up (the
+      // Android emulator does exactly this — `eglCreateContext` fails with
+      // EGL_BAD_ATTRIBUTE and every frame is dropped), and trusting `playing`
+      // there would cancel the watchdog and hand the user the very black
+      // rectangle this class exists to eliminate.
+      controller.waitUntilFirstFrameRendered
+          .then((_) => _markStarted(generation))
+          // Swallowed on purpose: if the first frame never arrives, the
+          // watchdog is what surfaces it, with Retry + the app hand-off.
+          .catchError((_) {});
+    } else {
+      // AUDIO: there is no frame to wait for, so `playing` IS the signal.
+      _playingSub = player.stream.playing.listen((playing) {
+        if (playing) _markStarted(generation);
+      });
+    }
+    _watchdog = Timer(_startTimeout, () {
+      if (mounted && _error == null && !_started) {
+        setState(
+          () => _fail(
+            "This media didn't start playing. It may use a format Airclone "
+            "can't decode, or the connection may be too slow to stream it.",
+          ),
+        );
+      }
+    });
+
+    try {
+      // Awaited: open() rejects ASYNCHRONOUSLY, so a bare call would leave the
+      // failure unobserved and the user staring at black forever.
+      await player.open(
+        Media(widget.url, httpHeaders: widget.headers),
+        play: true,
+      );
+    } catch (e) {
+      if (mounted) setState(() => _fail('$e'));
+    }
+  }
+
+  /// Playback is genuinely up: disarm the watchdog, drop the spinner, and stop
+  /// treating [PlayerStream.error] as fatal. Ignored if [generation] is stale.
+  void _markStarted(int generation) {
+    if (generation != _generation) return;
+    _started = true;
+    _watchdog?.cancel();
+    if (mounted && _loading) setState(() => _loading = false);
+  }
+
+  /// Records a failure. Call inside setState — it only mutates fields.
+  void _fail(String message) {
+    _watchdog?.cancel();
+    _error = message.trim().isEmpty ? 'Playback failed.' : message.trim();
+    _loading = false;
+  }
+
+  /// Cancels every subscription and disposes the player. Awaited by [_retry] so
+  /// a second libmpv instance never overlaps the first.
+  Future<void> _teardown() async {
+    // Invalidate any in-flight first-frame callback from the player we're
+    // about to drop.
+    _generation++;
+    _watchdog?.cancel();
+    _watchdog = null;
+    await _errorSub?.cancel();
+    await _bufferingSub?.cancel();
+    await _playingSub?.cancel();
+    _errorSub = null;
+    _bufferingSub = null;
+    _playingSub = null;
+    final player = _player;
+    _player = null;
+    _controller = null;
+    try {
+      await player?.dispose();
+    } catch (_) {
+      // Already disposed, or never fully constructed.
+    }
+  }
+
+  Future<void> _retry() async {
+    setState(() {
+      _error = null;
+      _loading = true;
+      _started = false;
+    });
+    await _teardown();
+    if (!mounted) return;
+    await _start();
   }
 
   @override
   Widget build(BuildContext context) {
     final colors = AircloneTheme.of(context);
-    if (_failed) return _error(colors);
+    if (_error != null) return _errorCard(colors, _error!);
     try {
       return widget.audioOnly ? _audio(colors) : _video(colors);
-    } catch (_) {
-      return _error(colors);
+    } catch (e) {
+      // Defensive: a render-time failure must not take the preview down.
+      return _errorCard(colors, '$e');
     }
   }
 
-  /// Black-backed video surface filling the available space.
+  /// Black-backed video surface filling the available space, with a loading
+  /// overlay until playback actually starts.
   Widget _video(AircloneColors colors) {
     final controller = _controller;
-    if (controller == null) return _error(colors);
     return Container(
       color: const Color(0xFF000000),
       alignment: Alignment.center,
-      child: Video(controller: controller, controls: AdaptiveVideoControls),
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          if (controller != null)
+            Positioned.fill(
+              child: Video(
+                controller: controller,
+                controls: AdaptiveVideoControls,
+              ),
+            ),
+          if (_loading) const _Spinner(),
+        ],
+      ),
     );
   }
 
   /// Centered audio card: art, play/pause, and a seek slider.
   Widget _audio(AircloneColors colors) {
+    final player = _player;
     return Container(
       color: colors.surfaceSunken,
       alignment: Alignment.center,
@@ -125,9 +295,13 @@ class _MediaPreviewBodyState extends State<MediaPreviewBody> {
                   ),
                 ),
                 const SizedBox(height: Space.x5),
-                _PlayPauseButton(player: _player, colors: colors),
-                const SizedBox(height: Space.x4),
-                _SeekBar(player: _player, colors: colors),
+                if (player == null)
+                  const _Spinner()
+                else ...[
+                  _PlayPauseButton(player: player, colors: colors),
+                  const SizedBox(height: Space.x4),
+                  _SeekBar(player: player, colors: colors),
+                ],
               ],
             ),
           ),
@@ -136,26 +310,80 @@ class _MediaPreviewBodyState extends State<MediaPreviewBody> {
     );
   }
 
-  /// Shared fallback when playback can't be set up or rendered.
-  Widget _error(AircloneColors colors) {
+  /// Shared fallback when playback can't be set up, rendered, or sustained.
+  /// Always actionable: Retry, plus the hand-off when the host offers one.
+  Widget _errorCard(AircloneColors colors, String message) {
     return Container(
       color: colors.surfaceSunken,
       alignment: Alignment.center,
       padding: const EdgeInsets.all(Space.x6),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(Icons.error_outline_rounded, size: 40, color: colors.textFaint),
-          const SizedBox(height: Space.x3),
-          Text(
-            "Couldn't play this media",
-            textAlign: TextAlign.center,
-            style: TextStyle(color: colors.textMuted, fontSize: 15),
-          ),
-        ],
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.error_outline_rounded,
+              size: 40,
+              color: colors.textFaint,
+            ),
+            const SizedBox(height: Space.x3),
+            Text(
+              "Couldn't play this media",
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: colors.text,
+                fontSize: 15,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: Space.x2),
+            Text(
+              message,
+              textAlign: TextAlign.center,
+              maxLines: 4,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: colors.textMuted,
+                fontSize: 12,
+                height: 1.4,
+              ),
+            ),
+            const SizedBox(height: Space.x4),
+            Wrap(
+              spacing: Space.x2,
+              runSpacing: Space.x2,
+              alignment: WrapAlignment.center,
+              children: [
+                OutlinedButton.icon(
+                  onPressed: _retry,
+                  icon: const Icon(Icons.refresh, size: 18),
+                  label: const Text('Try again'),
+                ),
+                if (widget.onOpenExternally != null)
+                  FilledButton.icon(
+                    onPressed: widget.onOpenExternally,
+                    icon: const Icon(Icons.open_in_new, size: 18),
+                    label: const Text('Open in another app'),
+                  ),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }
+}
+
+/// Loading indicator sized to read clearly on the black video backdrop.
+class _Spinner extends StatelessWidget {
+  const _Spinner();
+
+  @override
+  Widget build(BuildContext context) => const SizedBox(
+    width: 36,
+    height: 36,
+    child: CircularProgressIndicator(strokeWidth: 3),
+  );
 }
 
 /// Round play/pause control bound to [Player.stream.playing].
