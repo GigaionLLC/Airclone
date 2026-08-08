@@ -39,7 +39,13 @@ void main() {
         final st = await client.status();
         expect(st.state, EngineState.running);
         expect(st.version, isNotNull);
-        expect(st.version, contains('1.74'));
+        // Shape, not a pinned version. This test's job is to prove the FFI
+        // round-trip works against whatever librclone was built; ci.yml's
+        // rclone-pin job is what enforces the pin itself. Asserting a
+        // hardcoded minor here just breaks on every bump — it did exactly
+        // that on v1.74 -> v1.75, failing all three OS legs of
+        // librclone.yml while the build and every other check passed.
+        expect(st.version, matches(RegExp(r'^v?\d+\.\d+\.\d+')));
       },
     );
 
