@@ -58,6 +58,13 @@ Store shapes, contexts, and data models.
 > under **`reference/`**, which is **gitignored** and must never be committed. Read it for ideas, but
 > keep external-project names out of committed files — cite our own docs in committed code.
 
+> **🔐 Real account values:** store publisher identity, signing profiles, release hosting and other
+> per-developer identifiers live in **[`dev/secrets/dev-profile.env`](dev/secrets/README.md)**, which
+> is **gitignored**. Read it when you genuinely need a real value, but **never copy a PRIVATE or
+> SECRET value into a committed file, commit message, doc or store listing** — refer to it by key
+> name (`MSIX_PUBLISHER`), never by value. That file belongs to one builder; if you cloned this repo
+> it will not exist, and that is expected — copy `dev-profile.example.env` and fill in your own.
+
 ---
 
 ## ⚡ Core Development Rules

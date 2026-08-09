@@ -70,3 +70,19 @@ yarn-error.log*
 .env
 .env.*
 !.env.example
+
+# ─── Local developer profile (PII + account identifiers — NEVER commit) ────
+# dev/secrets/ holds ONE builder's real account values (publisher GUIDs, seller
+# and tenant ids, D-U-N-S, contact address, signing credentials) so tooling and
+# AI assistants have them locally without them ever entering this PUBLIC repo.
+# NOTE the rules above do NOT cover these: `.env`/`.env.*` only match a dotfile
+# basename, so `dev-profile.env` would have been committed.
+# Deny the whole directory, then re-allow only the committed template + docs.
+dev/secrets/*
+!dev/secrets/README.md
+!dev/secrets/dev-profile.example.env
+# Belt-and-braces: these names are never committable from anywhere in the tree.
+*.secret.env
+dev-profile.env
+*.env.enc
+.passphrase

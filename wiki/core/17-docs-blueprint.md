@@ -173,6 +173,9 @@ This repository is **public**.
   Store package identity, which CI injects from repository variables (`MSIX_IDENTITY_NAME`,
   `MSIX_PUBLISHER`, `MSIX_DISPLAY_NAME`) rather than from any committed file. See the reminder in
   [`docs/store/README.md`](../../docs/store/README.md) and [Security](15-security.md).
+  **Where the real values actually live:** [`dev/secrets/`](../../dev/secrets/README.md) — a
+  gitignored, per-developer profile that tooling and agents may read but must never quote from.
+  Refer to a value by its KEY NAME in anything committed, never by its value.
 - **No `reference/` material** — the gitignored research names third-party projects; keep those names
   out of committed files.
 - **No unverified behaviour stated as fact.** If you did not read the code or run the command, either
