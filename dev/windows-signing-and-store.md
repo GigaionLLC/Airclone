@@ -198,17 +198,25 @@ download reputation (days–weeks); an **EV** profile is trusted instantly.
 
 ## 2. Microsoft Store — company account + per-release submission
 
-> **PATH DECISION (2026-07-23): we ship as an UNPACKAGED Win32 EXE app, NOT MSIX.**
-> The "Airclone" app in Partner Center is the **EXE/MSI** product type — you host your
-> own **signed** installer at a **direct (non-redirecting) URL** and the Store points at
-> it. This reuses the `airclone-setup-x64.exe` we already build + sign and needs no MSIX
-> identity plumbing. The `--store` MSIX is still built by CI (a possible future pivot /
-> winget) but is NOT what we submit. §2a (account) still applies; **§§2b–2g are the
-> ORIGINAL, now-SUPERSEDED MSIX plan**, kept only for reference.
+> **PATH DECISION (2026-08-08): we ship as an MSIX again.** This REVERSES the
+> 2026-07-23 EXE/MSI decision quoted below. Reason: only a *packaged* product has
+> Store commerce, so the Store collects the listing fee and **no payment code ever
+> enters this open-source app**. The EXE/MSI product type shows only "Download" and
+> its pricing dropdown is inert metadata. Submissions now go to the packaged
+> reservation **"Airclone: Cloud File Manager"** (`GigaionLLC.AircloneCloudFileManager`).
+> §§2b–2g below are LIVE again; see §2c for the identity plumbing, which is now real.
 >
-> **Keep `STORE_PUBLISH_ENABLED` UNSET / false permanently** — the CI "Submit MSIX to Microsoft Store"
-> step (`msstore publish`) targets the superseded MSIX and does NOT fit the EXE product type now used
-> in Partner Center; turning it on would publish the wrong package.
+> `STORE_PUBLISH_ENABLED` may be turned on once a manual submission has succeeded
+> end-to-end — the `msstore publish` step targets the MSIX, which is again correct.
+>
+> <details><summary>Superseded 2026-07-23 decision (EXE/MSI), kept for context</summary>
+>
+> We ship as an UNPACKAGED Win32 EXE app, NOT MSIX. The "Airclone" app in Partner
+> Center is the EXE/MSI product type — you host your own signed installer at a direct
+> (non-redirecting) URL and the Store points at it. This reuses the
+> `airclone-setup-x64.exe` we already build + sign and needs no MSIX identity plumbing.
+> Keep `STORE_PUBLISH_ENABLED` unset; `msstore publish` would publish the wrong package.
+> </details>
 
 ### Per-release submission runbook (EXE path) — do this for every Store update
 
@@ -326,6 +334,43 @@ transfer commands, for example:
 NO OTHER SOFTWARE IS REQUIRED
 The installer contains the full rclone engine and the Microsoft Visual C++ runtime
 files. Nothing is downloaded on first run.
+```
+
+**D3. Restricted capability justification (MSIX only)** — Submission Options → *Restricted
+capabilities* asks why the package declares `runFullTrust`. This is a REQUIRED free-text
+field on every packaged submission, not an error: `msix` emits
+`<rescap:Capability Name="runFullTrust"/>` for any Flutter/Win32 app because the entry
+point is `Windows.FullTrustApplication`. Do NOT try to remove it — the app cannot run
+without it. Paste verbatim:
+
+```
+Airclone is a Win32 desktop application (Flutter + C++) packaged for the Store with the
+Desktop Bridge. Its application entry point is Windows.FullTrustApplication, which
+requires runFullTrust. The capability is not used to reach anything beyond what the
+app's own features need, and the app collects no user data.
+
+1. GENERAL-PURPOSE FILE MANAGEMENT
+Airclone is a file manager. It browses, copies, moves, renames and deletes files the
+user chooses across their local disks, network locations and connected cloud storage,
+including whole-folder transfers between two locations. This needs broad file-system
+access; the brokered file-picker model cannot express "list every drive and folder,
+then copy this tree to another location".
+
+2. THE BUNDLED RCLONE ENGINE RUNS AS A CHILD PROCESS
+Airclone is a graphical front end for the open-source tool rclone. The package ships
+its own copy of the engine (rclone.exe, plus librclone.dll for in-process use) and
+starts it as a local child process, communicating with it over an HTTP RPC endpoint
+bound to 127.0.0.1 only. Creating a child process and loading these native libraries
+requires full trust. No executable code is downloaded at runtime - the engine is
+bundled in the package and version-pinned.
+
+3. NATIVE MEDIA AND DOCUMENT COMPONENTS
+File preview loads native libraries in-process: libmpv for video and audio, PDFium for
+PDF, and the Windows shell integration used for drag-and-drop and "open in another app".
+
+Airclone has no accounts, no telemetry and no servers of ours. All processing happens
+on the user's device, and cloud credentials stay in the user's own rclone configuration
+file on that machine.
 ```
 
 **E. Properties / Age ratings / Availability** — Category *Utilities & tools › Backup &
@@ -446,14 +491,47 @@ then open the app → **Product management → Product identity** and copy:
 - **Publisher display name** (e.g. `Gigaion, LLC`)
 - the **Store ID** (the product id)
 
-### 2c. Put the real identity in the package
-Edit `app/pubspec.yaml` → `msix_config` (today placeholders
-`identity_name: GigaionLLC.Airclone` / `publisher: CN=GigaionLLC`):
-- `identity_name`          = the reserved **Package/Identity Name**
-- `publisher`              = the assigned **Publisher** (`CN=<GUID>`)
-- `publisher_display_name` = must match the Store **publisher display name**
+### 2c. Put the real identity in the package  (via REPO VARIABLES, not pubspec)
+`Package/Identity/Publisher` is a Partner-Center-assigned GUID and this repo is
+public, so the real identity is injected by `release.yml` from repo variables and
+`app/pubspec.yaml` keeps inert `PLACEHOLDER.*` values. Set all three:
 
-A `--store` package only uploads once its identity matches the reserved app.
+```powershell
+gh variable set MSIX_IDENTITY_NAME --repo GigaionLLC/Airclone --body "<Package/Identity/Name>"
+gh variable set MSIX_PUBLISHER     --repo GigaionLLC/Airclone --body "CN=<GUID>"
+gh variable set MSIX_DISPLAY_NAME  --repo GigaionLLC/Airclone --body "<a RESERVED app name>"
+```
+
+Copy the values verbatim from **Product management → Product identity**. If any
+variable is unset the build still runs but emits a `::warning::` and produces a
+package Partner Center WILL reject — that silence is exactly how v0.6.0 shipped
+with placeholder identity. `publisher_display_name` stays in pubspec (`Gigaion, LLC`):
+it is the company name, already public throughout this repo, and is not a GUID.
+
+Four fields are validated on upload, and **the first failure masks the rest** — fix
+them as a set, not one round-trip each:
+
+| Manifest | Source |
+|---|---|
+| `Package/Identity/Name` | reserved package name |
+| `Package/Identity/Publisher` | assigned Publisher ID (`CN=<GUID>`) |
+| `Package/Properties/DisplayName` | must be a **reserved app name** |
+| `Package/Properties/PublisherDisplayName` | Store publisher display name |
+
+The **package family name** is not a field — it is derived as
+`<Identity/Name>_<base32(SHA-256(Publisher as UTF-16LE)[0..7])>` using the alphabet
+`0123456789abcdefghjkmnpqrstvwxyz`. Computing it locally is a fast way to prove a
+publisher string is byte-exact before uploading 95 MB.
+
+Gotcha: `msix` drives BOTH `Package/Properties/DisplayName` and the Start-menu tile
+(`uap:VisualElements/@DisplayName`) from one `display_name`, so `MSIX_DISPLAY_NAME`
+is also what users see on the tile. Reserving a short name (Product management →
+**Manage app names**) is the only way to get a short tile.
+
+A `--store` package only uploads once its identity matches the reserved app. Because
+`--store` packages are UNSIGNED, a wrong identity can be corrected without rebuilding:
+`makeappx unpack` → edit `AppxManifest.xml` → delete `AppxBlockMap.xml` →
+`makeappx pack` (it regenerates the block map).
 
 ### 2d. API credentials for automated submission
 1. Create (or reuse the §1 signing) **Entra app registration**; note tenant id, client
@@ -501,10 +579,19 @@ complete); turn it on later for tag-triggered updates.
 | Publisher display name | **Gigaion, LLC** (must match `msix_config.publisher_display_name`) |
 | Public Store-contact address | a **PO Box** (the registered legal address failed with `PremisesPartial`) |
 | Company website / support | `https://gigaion.com` |
-| Package/Identity Name | _tbd — after verification + app reservation_ |
-| Publisher (`CN=<GUID>`) | _tbd_ |
+| Reserved product | **Airclone: Cloud File Manager** (packaged/MSIX reservation, 2026-08-08) |
+| Package/Identity Name | `GigaionLLC.AircloneCloudFileManager` |
+| Publisher (`CN=<GUID>`) | in repo variable `MSIX_PUBLISHER` — **never commit the GUID** |
+| Reserved app names | only the full title so far; "Airclone" alone is NOT reserved, so the Start-menu tile carries the full title unless it is reserved too |
 | Store ID | _tbd_ |
 | Seller ID | _tbd_ |
+
+**v0.6.0 upload (2026-08-08) — rejected 4×, all identity, all from never replacing the
+2026-07-12 placeholders.** Partner Center reported only the `PublisherDisplayName`
+mismatch first; fixing it revealed the other three. The shipped `airclone.msix` asset on
+the v0.6.0 release still carries the placeholder identity — the submitted package was
+hand-corrected with `makeappx` (§2c). CI now injects identity from repo variables, so
+this cannot recur silently.
 
 ---
 
