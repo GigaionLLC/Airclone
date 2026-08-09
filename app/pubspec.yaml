@@ -16,7 +16,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-version: 0.6.0+109
+version: 0.6.1+110
 
 environment:
   sdk: ^3.12.0
@@ -177,19 +177,31 @@ flutter:
 # --store for a Partner-Center-uploadable, Store-signed package). The version is
 # overridden per-release by CI (--version <x.y.z>.0).
 #
-# BEFORE submitting to the Store, replace the two identity placeholders with the
-# real values from Partner Center → your app → Product management → Product
-# identity:
-#   * identity_name       = the reserved Package/Identity Name (e.g. 1234GigaionLLC.Airclone)
-#   * publisher           = the assigned Publisher ID (CN=<GUID>)
-#   * publisher_display_name = must match the Store publisher display name
-# Until then this still builds a structurally valid (but not-yet-submittable) package.
+# Store identity is validated on UPLOAD, before certification even starts, and a
+# mismatch is a hard "Package acceptance validation error". None of it comes from a
+# signing certificate — `--store` packages are unsigned and Microsoft signs them;
+# the values must match Partner Center → Product management → Product identity.
+#
+# `identity_name`, `publisher` and `display_name` below are deliberately INERT
+# PLACEHOLDERS. The real ones are injected by release.yml from the repo variables
+# MSIX_IDENTITY_NAME / MSIX_PUBLISHER / MSIX_DISPLAY_NAME, because
+# Package/Identity/Publisher is a Partner-Center-assigned GUID and this repo is
+# public. A local `dart run msix:create` therefore produces a package that INSTALLS
+# fine for testing but is NOT submittable — that is intended.
+#
+# `publisher_display_name` is the real value: it is the company name, already public
+# throughout this repo (installer AppPublisher, code-signing subject), and is not a
+# GUID. It was rejected as the placeholder "GigaionLLC" on the first v0.6.0 upload.
+#
+# Gotcha: msix drives BOTH Package/Properties/DisplayName and the Start-menu tile
+# (uap:VisualElements/@DisplayName) from `display_name`, so MSIX_DISPLAY_NAME must be
+# a RESERVED app name and is also what users see on the tile.
 msix_config:
   display_name: Airclone
-  publisher_display_name: GigaionLLC
-  identity_name: GigaionLLC.Airclone
-  publisher: CN=GigaionLLC
-  msix_version: 0.5.0.0
+  publisher_display_name: "Gigaion, LLC"
+  identity_name: PLACEHOLDER.SetMsixIdentityNameVar
+  publisher: CN=PLACEHOLDER-SET-MSIX-PUBLISHER-VAR
+  msix_version: 0.6.1.0
   logo_path: ../docs/brand/airclone-icon-1024.png
   capabilities: internetClient
   # `dart run msix:create --store` (used in CI) produces an unsigned,
