@@ -287,13 +287,26 @@ jobs:
           gh release upload "$GITHUB_REF_NAME" airclone-windows-x64.zip --clobber --repo "$GITHUB_REPOSITORY"
           gh release upload "$GITHUB_REF_NAME" windows/installer/airclone-setup-x64.exe --clobber --repo "$GITHUB_REPOSITORY"
       # MSIX for the Microsoft Store. --store => unsigned, Partner-Center-ready
-      # (the Store signs it), so no certificate and no interactive prompt. Identity
-      # comes from pubspec's msix_config (placeholders until the app is registered
-      # in Partner Center). Non-fatal: a Store package is optional and must never
-      # break the release.
+      # (the Store signs it), so no certificate and no interactive prompt.
+      #
+      # IDENTITY comes from repo variables, NOT pubspec — Package/Identity/Publisher
+      # is a Partner-Center-assigned GUID and this repo is public. pubspec keeps
+      # inert placeholders so local builds still work; these three override them:
+      #   MSIX_IDENTITY_NAME  -> Package/Identity/Name       (reserved package name)
+      #   MSIX_PUBLISHER      -> Package/Identity/Publisher  (CN=<GUID>)
+      #   MSIX_DISPLAY_NAME   -> Package/Properties/DisplayName (must be a RESERVED
+      #                          app name; also becomes the Start-menu tile, since
+      #                          msix drives both from one displayName)
+      # All must match Partner Center → Product management → Product identity
+      # EXACTLY, or the upload is rejected before certification starts.
+      # Non-fatal: a Store package is optional and must never break the release.
       - name: Build MSIX (Microsoft Store package)
         continue-on-error: true
         shell: pwsh
+        env:
+          MSIX_IDENTITY_NAME: ${{ vars.MSIX_IDENTITY_NAME }}
+          MSIX_PUBLISHER: ${{ vars.MSIX_PUBLISHER }}
+          MSIX_DISPLAY_NAME: ${{ vars.MSIX_DISPLAY_NAME }}
         run: |
           # Refuse to build an engine-less Store package. The "Bundle rclone" step above
           # is now FATAL (v0.5.3 fix), so rclone.exe is guaranteed present by the time we
@@ -305,7 +318,36 @@ jobs:
             throw "rclone.exe was not bundled into $rel (bundle step failed) — refusing to build an engine-less Store MSIX."
           }
           $ver = ((Select-String -Path pubspec.yaml -Pattern '^version:' | Select-Object -First 1).Line -split ':')[1].Trim().Split('+')[0]
-          dart run msix:create --store --version "$ver.0" --build-windows false --output-path . --output-name airclone
+          # Override the pubspec placeholders with the real Partner Center identity.
+          # A missing variable is loud: the package still builds (useful for testing
+          # the payload) but is NOT submittable, and silence here is exactly how the
+          # v0.6.0 package shipped with placeholder identity in the first place.
+          $identity = @()
+          $missing = @()
+          foreach ($v in @(
+            @{ env = 'MSIX_IDENTITY_NAME'; flag = '--identity-name' },
+            @{ env = 'MSIX_PUBLISHER';     flag = '--publisher' },
+            @{ env = 'MSIX_DISPLAY_NAME';  flag = '--display-name' })) {
+            $val = [Environment]::GetEnvironmentVariable($v.env)
+            if ([string]::IsNullOrWhiteSpace($val)) { $missing += $v.env }
+            else { $identity += @($v.flag, $val) }
+          }
+          if ($missing.Count -gt 0) {
+            Write-Output "::warning::MSIX identity variable(s) not set: $($missing -join ', '). The package will carry pubspec PLACEHOLDER identity and Partner Center will reject it. Set them under Settings → Secrets and variables → Actions → Variables."
+          } else {
+            Write-Output "MSIX identity supplied from repo variables (name + publisher + display name)."
+          }
+          dart run msix:create --store --version "$ver.0" --build-windows false --output-path . --output-name airclone @identity
+      # Also publish the MSIX as a run artifact, so a workflow_dispatch run can
+      # produce a corrected Store package (e.g. after an identity fix) WITHOUT
+      # minting a new tag/release. The release upload below is tag-only.
+      - name: Upload MSIX artifact
+        if: hashFiles('app/airclone.msix') != ''
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: airclone-msix
+          path: app/airclone.msix
       - name: Upload MSIX to release
         if: startsWith(github.ref, 'refs/tags/')
         continue-on-error: true
