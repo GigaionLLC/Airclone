@@ -12,6 +12,11 @@ Airclone holds cloud credentials and moves data, so security is a first-class de
 solo user *and* the enterprise. The guiding stance: **local-first, no phone-home, encrypted by
 default, and honest about what we can and cannot guarantee.**
 
+**When to read this:** before you write code that stores, prompts for, logs or forwards a credential —
+RC auth flags, config-encryption handling, `SecretStore`/keystore work, a new `serve` or mount
+listener, an update/verification path. Also read it when a review flags a plaintext secret on disk, an
+unauthenticated local port, or a fail-open verification step.
+
 ## 1. Threat Model (what we defend against)
 
 | Threat | Defense |
@@ -90,5 +95,18 @@ policy-forbidden thing refused at the seam.
 
 ---
 
-**Related:** [Core Architecture](08-core-architecture.md) · [Enterprise Readiness](19-enterprise-readiness.md) ·
-[Persistence Index](../database/database-index.md)
+## 🔗 Related
+
+- [08-core-architecture.md](08-core-architecture.md) — the `RcloneClient` seam these controls are
+  enforced at, the librclone constraints in §2, and out-of-band encryption detection.
+- [07-state-context.md](07-state-context.md) — where the config password, credential vault and cached
+  crypto actually live in state, and what is persisted.
+- [11-validation-standards.md](11-validation-standards.md) — how a refused or failed action is gated
+  and surfaced, so a policy denial reads as a real error rather than a silent no-op.
+- [19-enterprise-readiness.md](19-enterprise-readiness.md) — the managed-config Policy Engine (§2) and
+  FIPS scope (§6) that §4 and §5 defer to.
+- [10-external-integrations.md](10-external-integrations.md) — the RC, serve and mount surfaces whose
+  exposure this doc constrains.
+- [../database/database-index.md](../database/database-index.md) — what Airclone persists locally, and
+  what is deliberately left to the engine.
+- [00-system-index.md](00-system-index.md) — master router.

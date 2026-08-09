@@ -8,7 +8,16 @@ description: "Physical repo layout, where things live, and how to build/dev/rele
 
 # 📁 Directory Structure & Build
 
+**When to read this:** you are about to create a file and need to know which folder owns it, you are
+hunting for an existing file and only know what it does, or you are about to run the local Docker
+checks, cut a `v*` tag, or install a local test build.
+
 ## Repo layout
+
+> The Flutter package itself has its own short readme at
+> [`app/README.md`](../../app/README.md) (run/build commands for the app in isolation). This page is
+> the repo-wide map; for the operational side of the tree — `dev/`, `docs/`, `.github/workflows/` —
+> see the [operational hub](../../dev/README.md).
 
 ```
 Airclone/
@@ -92,4 +101,19 @@ A future in-app auto-updater (checks GitHub Releases, downloads + swaps) is on t
 
 ---
 
-**Related:** [Core Architecture](08-core-architecture.md) · [System Index](00-system-index.md)
+## 🔗 Related
+
+- [08-core-architecture.md](08-core-architecture.md) — why the tree splits into a platform-agnostic
+  core and per-platform engine transports.
+- [05-app-structure.md](05-app-structure.md) — what the code under `lib/src/ui/` actually renders:
+  shell, panes, navigation.
+- [07-state-context.md](07-state-context.md) — which controller under `lib/src/state/` owns which
+  piece of state, so you can find the file by behaviour.
+- [10-external-integrations.md](10-external-integrations.md) — the bundled native code and OS seams
+  that live in the generated `android/`, `windows/`, `macos/` runners.
+- [17-docs-blueprint.md](17-docs-blueprint.md) — the placement test for a new document, and which
+  tree (`wiki/`, `dev/`, `docs/`) it belongs in.
+- [dev/README.md](../../dev/README.md) — the operational half of the tree: release checklist,
+  signing, store submission, build scripts.
+- [AGENT.md](../../AGENT.md) — mandatory reading order and the Task Lookup table.
+- [00-system-index.md](00-system-index.md) — the master router.

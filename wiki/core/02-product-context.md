@@ -8,6 +8,13 @@ description: "Personas, domain workflows, competitive landscape, and product roa
 
 # 🧭 Product Context
 
+Who Airclone is for, the workflows those people run, the alternatives they arrive from, and where the
+prioritized roadmap lives.
+
+**When to read this:** you are scoping a feature and need to name the persona it serves and the
+domain workflow it slots into — or you are deciding whether an idea belongs in Airclone at all,
+before you open the backlog to queue it.
+
 ## 👤 Personas
 
 | Persona | Who | Core need | Where Airclone wins |
@@ -52,5 +59,13 @@ spike → desktop MVP → mobile → advanced) is the
 
 ---
 
-**Related:** [Vision & North Star](01-vision-north-star.md) · [User Journey](03-user-journey.md) ·
-[Core Architecture](08-core-architecture.md)
+## 🔗 Related
+
+- [01-vision-north-star.md](01-vision-north-star.md) — the pillars and north star these personas exist to serve.
+- [03-user-journey.md](03-user-journey.md) — how each persona's workflow actually looks on their platform.
+- [20-explorer-design.md](20-explorer-design.md) — the explorer direction most Switcher and Power-User workflows land in.
+- [../features/features-index.md](../features/features-index.md) — the specced feature set, to check a proposal against before writing a new spec.
+- [../../dev/backlog/backlog-index.md](../../dev/backlog/backlog-index.md) — the queue and roadmap where scoped work is recorded.
+- [19-enterprise-readiness.md](19-enterprise-readiness.md) — the Enterprise Admin persona in full: policy, identity, audit, no phone-home.
+- [08-core-architecture.md](08-core-architecture.md) — what the engine can and cannot do, before a workflow is promised.
+- [00-system-index.md](00-system-index.md) — master router.

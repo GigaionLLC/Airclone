@@ -19,3 +19,7 @@ Airclone is largely **stateless about file data** — the source of truth for re
 | Schedules | `db-schedules.md` | local file / preferences | Saved sync jobs + cron/trigger definitions. |
 | Secrets | `db-secrets.md` | OS keychain / secure storage | Config password, RC credentials — never plain text. See [Security](../core/15-security.md). |
 | VFS / preview cache | `db-cache.md` | temp dir | Transient; safe to clear. |
+
+> **Which provider owns each store, and what it actually persists**, is mapped per-provider in
+> [State & Context](../core/07-state-context.md). Config read/write goes through the engine's
+> `config/*` RC methods — catalogued in [External Integrations](../core/10-external-integrations.md).

@@ -12,6 +12,10 @@ The single source of truth for visual design. **Components reference only semant
 hex.** All semantic tokens have light and dark values. Token naming follows the convention
 `--color-*`, `--text-*`, `--space-*`, `--radius-*`, `--elevation-*`.
 
+**When to read this:** before you write or change any UI — a screen, dialog, row, button, chip or
+status indicator — and any time you are about to pick a colour, size, spacing, radius or focus
+treatment. [`AGENT.md`](../../AGENT.md) §3 sends you here first: take the token, never a raw value.
+
 ## 🧭 Design Principles
 
 1. **Every cloud feels local** — one surface for all backends; no "cloud mode."
@@ -134,3 +138,19 @@ single-pane browser + bottom nav, no dual pane/mount, full-screen dialog sheets.
 > The same domain/RC client and component primitives back both form factors — only the layout shell
 > and navigation model differ. See [05-app-structure.md](05-app-structure.md) for the layouts and
 > wireframes.
+
+## 🔗 Related
+
+- [../components/components-index.md](../components/components-index.md) — the catalog of primitives
+  built from these tokens; check it before writing a new widget.
+- [DESIGN.md](../../DESIGN.md) — the brand and visual reference that accompanies this doc.
+- [05-app-structure.md](05-app-structure.md) — where those components sit in the desktop and mobile
+  shells, with wireframes.
+- [20-explorer-design.md](20-explorer-design.md) — how the tokens apply to the explorer: view modes,
+  inspector, thumbnails, native feel.
+- [03-user-journey.md](03-user-journey.md) — the per-platform tour these visuals must hold up across.
+- [12-utility-standards.md](12-utility-standards.md) — the shared formatters behind the size, date
+  and speed strings rendered in `--text-meta`.
+- [11-validation-standards.md](11-validation-standards.md) — how errors and destructive-action
+  confirmations are worded and surfaced.
+- [00-system-index.md](00-system-index.md) — the master router.

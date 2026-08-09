@@ -13,6 +13,10 @@ Airclone is a modern, intuitive, **cross-platform** GUI for [rclone](https://rcl
 70+ cloud backends, copy/move/sync, mount, encryption, public links — into a point-and-click
 experience, and makes a cloud remote feel like a folder on your own device.
 
+**When to read this:** before you propose, scope, or reject a feature — when you need to test an idea
+against what Airclone is actually for, or a review asks why the in-app explorer (not the OS mount) is
+the fast path and you need the pillars and positioning to answer with.
+
 ## 👁️ Vision Statement
 
 > **Make every cloud feel like a local folder — on every device.**
@@ -93,5 +97,13 @@ they can simply *use*.
 
 ---
 
-**Related:** [Product Context](02-product-context.md) · [Core Architecture](08-core-architecture.md) ·
-[Design System](06-design-system.md) · [Feature Backlog](../../dev/backlog/feature-backlog.md)
+## 🔗 Related
+
+- [02-product-context.md](02-product-context.md) — the personas, workflows and alternatives this vision is aimed at.
+- [03-user-journey.md](03-user-journey.md) — what the vision looks like per platform, with the capability matrix.
+- [20-explorer-design.md](20-explorer-design.md) — the "rebuilt explorer, not a mount" pillar worked out in design detail.
+- [../features/features-index.md](../features/features-index.md) — the specced feature set, to check a "new" idea against what exists.
+- [../../dev/backlog/feature-backlog.md](../../dev/backlog/feature-backlog.md) — the MoSCoW roadmap where an accepted idea gets queued.
+- [08-core-architecture.md](08-core-architecture.md) — the engine seam that makes "one UI for every backend" buildable.
+- [06-design-system.md](06-design-system.md) — the tokens and components a proposal has to be expressible in.
+- [00-system-index.md](00-system-index.md) — master router.

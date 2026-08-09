@@ -17,6 +17,11 @@ across five operating systems. Two decisions make that tractable:
 
 > Read this before writing anything that talks to rclone or branches on platform.
 
+**When to read this:** before you add or change a call into rclone, branch on platform (`dart:ffi`
+vs spawned `rcd`, Android/iOS vs desktop), touch engine start/quit/restart, or wire a new OS
+integration surface (mount, `DocumentsProvider`, File Provider). Also read it when a review asks
+*why* a seam is shaped this way rather than what the code does.
+
 ---
 
 ## 1. Framework Decision
@@ -189,8 +194,8 @@ handling:
 6. **No RC self-update** ⇒ Airclone does its own download + SHA256-verify + swap (desktop) / ships a
    new build (mobile).
 
-See [10-external-integrations.md](10-external-integrations.md) for the full RC surface map, and
-[`wiki/logic/util-rclone-client.md`](../logic/logic-index.md) for the transport implementations.
+See [10-external-integrations.md](10-external-integrations.md) for the full RC surface map, and the
+[Logic Index](../logic/logic-index.md) for the transport-implementation docs.
 
 ---
 
@@ -273,6 +278,19 @@ and first-class engine restart + out-of-band encryption detection.
 
 ---
 
-**Related:** [Vision & North Star](01-vision-north-star.md) · [State & Context](07-state-context.md) ·
-[External Integrations](10-external-integrations.md) · [Security](15-security.md) ·
-[Cross-Platform Plan](../../dev/plans/cross-platform-architecture-plan.md)
+## 🔗 Related
+
+- [07-state-context.md](07-state-context.md) — the providers and controllers that sit directly on top
+  of the `RcloneClient` seam and own listings, jobs and engine lifecycle.
+- [10-external-integrations.md](10-external-integrations.md) — the concrete RC method catalogue,
+  platform channels and native bridges this doc only names.
+- [14-performance-standards.md](14-performance-standards.md) — the concurrency budgets, single-poller
+  rule and lifecycle invariants that keep this architecture from regressing.
+- [15-security.md](15-security.md) — RC auth, config encryption and the secrets rules §5 summarises.
+- [01-vision-north-star.md](01-vision-north-star.md) — the product goals the two architecture
+  decisions serve.
+- [dev/README.md](../../dev/README.md) — how the engines in §3 are actually built, bundled, signed and
+  shipped per platform.
+- [cross-platform-architecture-plan.md](../../dev/plans/cross-platform-architecture-plan.md) — the
+  phased build plan and risk register §6 points at.
+- [00-system-index.md](00-system-index.md) — master router.

@@ -45,7 +45,13 @@ Store shapes, contexts, and data models.
 | Cross-platform / mobile concerns | [Core Architecture](wiki/core/08-core-architecture.md) | [Cross-Platform Plan](dev/plans/) |
 | Editing overall layout or app shell | [App Structure](wiki/core/05-app-structure.md) | Core layout component docs |
 | Understanding state shapes / context | [State & Context](wiki/core/07-state-context.md) | State management docs |
-| Extending a utility or helper | [Logic Index](wiki/logic/logic-index.md) | Specific utility doc |
+| Extending a utility or helper | [Utility Standards](wiki/core/12-utility-standards.md) | [Logic Index](wiki/logic/logic-index.md) |
+| Adding an input field, a console/CLI surface, or a destructive action | [Validation Standards](wiki/core/11-validation-standards.md) | [Security](wiki/core/15-security.md) |
+| Anything that reads file **content**, spawns a process, or polls | [Performance & Reliability Standards](wiki/core/14-performance-standards.md) | [External Integrations](wiki/core/10-external-integrations.md) |
+| Native / platform build work (Android jniLibs, librclone, FUSE, channels) | [External Integrations](wiki/core/10-external-integrations.md) | [dev hub](dev/README.md) → `dev/android/`, `dev/desktop/` |
+| Cutting a release | [dev hub](dev/README.md) (Release checklist) | [`dev/releases/`](dev/releases/) — notes must exist **before** the tag |
+| Submitting to a store (Microsoft / Play / Apple) | [Store submissions index](docs/store/README.md) | [Windows](dev/windows-signing-and-store.md) · [Play](dev/google-play-store.md) · [Apple/macOS](dev/apple-appstore-and-macos.md) |
+| Writing, moving, or removing a doc | [Docs Blueprint](wiki/core/17-docs-blueprint.md) | [Knowledge Capture](wiki/core/18-knowledge-capture.md) |
 | Checking roadmap / parked items | [Backlog Index](dev/backlog/backlog-index.md) | [Feature Backlog](dev/backlog/feature-backlog.md) |
 
 > **🔒 Reference material:** Deep competitive research and notes that name third-party projects live

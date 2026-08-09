@@ -24,3 +24,7 @@ All components consume the tokens in [`wiki/core/06-design-system.md`](../core/0
 | Mount manager | `ui-mount-manager.md` | Mount/unmount controls and mount status (desktop). |
 | Provider form | `ui-provider-form.md` | Dynamic remote-config form generated from `/config/providers`. |
 | Bottom nav | `ui-bottom-nav.md` | Mobile primary navigation. |
+
+> **Before adding a component:** find the provider it should watch in
+> [State & Context](../core/07-state-context.md), and reuse the existing formatters listed in
+> [Utility Standards](../core/12-utility-standards.md) rather than writing a new one.

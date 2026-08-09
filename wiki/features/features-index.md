@@ -29,3 +29,12 @@ Entry point for all Airclone feature documentation. Each feature is specified fo
 | Settings & themes | `feat-settings.md` | all | Preferences, light/dark themes, i18n. |
 | Tray & windows | `feat-tray-windows.md` | desktop | System tray, auto-launch, window management. |
 | Onboarding | `feat-onboarding.md` | all | First-run experience expressing the product vision. |
+
+## 🔗 Cross-cutting rules every feature must honour
+
+| Before you… | Read |
+| :--- | :--- |
+| Wire a feature to state | [State & Context](../core/07-state-context.md) |
+| Call an rclone RC method or native channel | [External Integrations](../core/10-external-integrations.md) |
+| Read file **content**, spawn a process, or change browser-pane listing state | [Performance & Reliability Standards](../core/14-performance-standards.md) |
+| Add a field, or an action that can delete/overwrite data | [Validation Standards](../core/11-validation-standards.md) |

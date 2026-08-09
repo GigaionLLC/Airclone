@@ -12,6 +12,11 @@ Airclone's hero is the [in-app file explorer](../features/feat-file-browser.md).
 bar from *functional* to *premium* — an explorer that feels as intuitive and native as a best-in-class
 desktop file manager, while everything it shows lives on rclone remotes.
 
+**When to read this:** you are about to change the browsing surface — a view mode, the top bar or
+path bar, selection, thumbnails, Quick Look, the inspector, mobile navigation — or you picked up a
+phase from the explorer redesign plan and need the principles, layout contract and deliberate
+non-goals your change has to land inside.
+
 > Airclone has one structural advantage to lean into: **Flutter renders real platform widgets and
 > adaptive chrome.** We don't have to *simulate* native with CSS — we can *be* native (Cupertino on
 > iOS, Material on Android, real window chrome + menus on desktop) per OS.
@@ -177,5 +182,13 @@ Full detail in [dev/plans/explorer-redesign-plan.md](../../dev/plans/explorer-re
 
 ---
 
-**Related:** [App Structure](05-app-structure.md) · [Design System](06-design-system.md) ·
-[File Browser](../features/feat-file-browser.md) · [Core Architecture](08-core-architecture.md)
+## 🔗 Related
+
+- [../features/features-index.md](../features/features-index.md) — every per-screen feature spec this direction has to land inside.
+- [../features/feat-file-browser.md](../features/feat-file-browser.md) — the file browser as it exists today: panes, listing, actions.
+- [07-state-context.md](07-state-context.md) — the providers that own pane state, listings, thumbnails and view prefs.
+- [14-performance-standards.md](14-performance-standards.md) — the concurrency budgets and content-read guards any listing or thumbnail change must respect.
+- [06-design-system.md](06-design-system.md) — the semantic tokens P3 requires; never raw hex.
+- [05-app-structure.md](05-app-structure.md) — the shell, navigation and layouts the explorer sits inside.
+- [08-core-architecture.md](08-core-architecture.md) — the `RcloneClient` seam behind every listing, thumbnail and ranged read.
+- [00-system-index.md](00-system-index.md) — master router.

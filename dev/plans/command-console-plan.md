@@ -2,7 +2,7 @@
 
 **Status:** proposed (design). **Pinned rclone:** `v1.75.0`.
 **Owner interface:** [`RcloneClient`](../../app/lib/src/rclone/rclone_client.dart) — the ONE seam.
-**Reuses:** [`JobsController`](../../app/lib/src/state/jobs_controller.dart) queue · [`PaneSplit`/`PaneTabStrip`](../../app/lib/src/ui) · [`parseEngineFlags`](../../app/lib/src/rclone/engine_flags.dart) · [`advanced_mode.dart`](../../app/lib/src/state/advanced_mode.dart)
+**Reuses:** [`JobsController`](../../app/lib/src/state/jobs_controller.dart) queue · [`PaneSplit`/`PaneTabStrip`](../../app/lib/src/ui) · [`parseEngineFlags`](../../app/lib/src/state/engine_flags.dart) · [`advanced_mode.dart`](../../app/lib/src/state/advanced_mode.dart)
 
 ---
 
@@ -37,7 +37,7 @@ Both are modeled as the same **`JobType.command`** job and share one code path a
 
 ### 2.2 Job-queue integration
 
-A console run is a `Job` like any transfer. Add to [`job.dart`](../../app/lib/src/state/job.dart):
+A console run is a `Job` like any transfer. Add to [`jobs_controller.dart`](../../app/lib/src/state/jobs_controller.dart):
 
 ```dart
 enum JobType { copy, move, sync, /* … */ command }

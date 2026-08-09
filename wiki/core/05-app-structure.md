@@ -12,6 +12,10 @@ Airclone is **one product in two form factors**. The same domain models, `Rclone
 component primitives back both; only the layout shell and navigation model differ. Mobile is **not** a
 shrunken desktop — it drops the dual pane and adds system-storage integration.
 
+**When to read this:** you are adding or moving a surface in the app shell — a toolbar verb, a
+sidebar entry, a pane or tab, the job panel, a bottom-nav tab or the FAB — and need to know where it
+belongs on desktop versus mobile, and which form factor the change must not break.
+
 ---
 
 ## 🖥️ Desktop — Dual-Pane File Commander
@@ -181,5 +185,20 @@ runs (WorkManager / BGTaskScheduler) are best-effort. Live, user-initiated trans
 
 ---
 
-**Related:** [Design System](06-design-system.md) · [User Journey](03-user-journey.md) ·
-[Core Architecture](08-core-architecture.md)
+## 🔗 Related
+
+- [06-design-system.md](06-design-system.md) — the tokens, components and breakpoints every surface
+  described here is built from; read it before touching UI.
+- [20-explorer-design.md](20-explorer-design.md) — the explorer direction behind the dual pane: view
+  modes, inspector, thumbnails, Quick Look, native feel.
+- [03-user-journey.md](03-user-journey.md) — this shell walked per platform
+  (Windows/macOS/Linux/Android/iOS) with the feature matrix.
+- [07-state-context.md](07-state-context.md) — which Riverpod provider owns pane, tab, job and mount
+  state behind these layouts.
+- [08-core-architecture.md](08-core-architecture.md) — why in-app explorer actions bypass the VFS and
+  mount is the secondary convenience.
+- [../components/components-index.md](../components/components-index.md) — the reusable primitives
+  (remote card, file row, transfer row) these layouts compose.
+- [../features/features-index.md](../features/features-index.md) — the per-screen specs for the
+  browser, sync, mount and preview surfaces named above.
+- [00-system-index.md](00-system-index.md) — the master router.

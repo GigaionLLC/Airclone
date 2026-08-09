@@ -9,6 +9,11 @@ description: "Canonical dictionary of rclone and Airclone domain terms."
 
 Canonical definitions. Use these terms consistently across code, UI copy, and docs.
 
+**When to read this:** you hit a term you cannot define while reading code, a plan, or another core
+doc — *remote* vs *backend*, RC vs librclone, VFS, bisync, DocumentsProvider, MDM — and you need the
+canonical meaning before you build on it. Also read it before naming a new type, provider, or UI
+string, so the vocabulary stays consistent everywhere.
+
 | Term | Definition |
 | :--- | :--- |
 | **rclone** | The open-source command-line program Airclone wraps. Syncs/copies files across 70+ storage systems. |
@@ -58,3 +63,16 @@ Canonical definitions. Use these terms consistently across code, UI copy, and do
 | **FIPS 140** | US crypto-module validation standard some regulated enterprises require. |
 | **LTS** | Long-Term Support — a stable release channel with extended maintenance. |
 | **Open-core** | A model where the core is free/OSS and some enterprise features ship in a paid edition. |
+
+---
+
+## 🔗 Related
+
+- [08-core-architecture.md](08-core-architecture.md) — where `RcloneClient`, `rcd` and librclone are defined in full rather than in one line.
+- [10-external-integrations.md](10-external-integrations.md) — the RC method catalogue and the OS surfaces (DocumentsProvider, File Provider) these entries name.
+- [07-state-context.md](07-state-context.md) — which provider owns the remote, job and stats objects behind the vocabulary.
+- [15-security.md](15-security.md) — config encryption, RC auth and secret handling behind the `rclone.conf` and Crypt entries.
+- [19-enterprise-readiness.md](19-enterprise-readiness.md) — the source doc for the enterprise half of this table: policy engine, control plane, DLP, SBOM.
+- [20-explorer-design.md](20-explorer-design.md) — the main browsing surface, where remote/thumbnail/Quick Look vocabulary is put to work.
+- [17-docs-blueprint.md](17-docs-blueprint.md) — the one-owner-per-topic rule: define a term here and link it, never restate it.
+- [00-system-index.md](00-system-index.md) — master router.

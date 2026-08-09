@@ -26,6 +26,11 @@ The out-of-box experience for an individual stays fully offline — no login, no
 encrypted config — and **must never regress.** Enterprise features *activate on top of it*; they never
 *replace* it.
 
+**When to read this:** you are about to build or change anything that touches policy, secrets, audit,
+outbound network calls, or the free-vs-paid line — or a review asks "does this phone home?", "should
+this be behind the paywall?", or "how would an admin lock this down?" — and you need the settled
+posture before you design it.
+
 ## 🧭 Principles
 
 - **Local-first is the immovable default.** No login, no control plane, no telemetry out of the box.
@@ -245,6 +250,13 @@ top ones:
 
 ---
 
-**Related:** [Security](15-security.md) · [Core Architecture](08-core-architecture.md) ·
-[Product Context](02-product-context.md) · [Feature Backlog](../../dev/backlog/feature-backlog.md) ·
-[Cross-Platform Plan](../../dev/plans/cross-platform-architecture-plan.md)
+## 🔗 Related
+
+- [15-security.md](15-security.md) — the threat model, RC auth and config encryption this posture rests on.
+- [08-core-architecture.md](08-core-architecture.md) — the `RcloneClient` seam where policy is *enforced*, not merely hidden.
+- [02-product-context.md](02-product-context.md) — the personas and competitive landscape behind the tiering.
+- [01-vision-north-star.md](01-vision-north-star.md) — the strategic vision and value proposition the paid line must not undercut.
+- [16-glossary-of-terms.md](16-glossary-of-terms.md) — MDM, ADMX, SCIM, RBAC, SBOM, SLSA and the rest of the enterprise vocabulary.
+- [../../dev/backlog/feature-backlog.md](../../dev/backlog/feature-backlog.md) — where enterprise items get queued against everything else.
+- [../../dev/plans/cross-platform-architecture-plan.md](../../dev/plans/cross-platform-architecture-plan.md) — the full risk register and phase detail this doc summarises.
+- [00-system-index.md](00-system-index.md) — master router.

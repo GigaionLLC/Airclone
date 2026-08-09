@@ -13,6 +13,10 @@ domain models, the `RcloneClient` seam, the in-app explorer) is identical everyw
 **layout shell, navigation model, and OS-integration surface** differ. Wireframes below are sketches,
 not final pixels.
 
+**When to read this:** you are about to design or scope UI work and need what the target platform's
+shell, OS-integration surface and capability level actually are — or a proposal assumes a capability
+(tray, dual-pane, drag-out, background sync, FUSE mount) that one of the five platforms does not have.
+
 > Form-factor split: **desktop** (Win/macOS/Linux) = dual-pane commander; **mobile** (Android/iOS) =
 > single-pane touch browser + system-Files integration; **tablet/iPad** = adaptive (single-pane
 > portrait, optional dual-pane landscape).
@@ -230,5 +234,13 @@ nothing phones home. Full design: [19-enterprise-readiness](19-enterprise-readin
 
 ---
 
-**Related:** [App Structure & Layouts](05-app-structure.md) · [File Browser](../features/feat-file-browser.md) ·
-[Design System](06-design-system.md) · [Enterprise Readiness](19-enterprise-readiness.md)
+## 🔗 Related
+
+- [05-app-structure.md](05-app-structure.md) — the shell, navigation and layout anatomy these wireframes sketch.
+- [20-explorer-design.md](20-explorer-design.md) — the explorer that is the hero of every platform tour above.
+- [../features/feat-file-browser.md](../features/feat-file-browser.md) — the browser spec behind the shared explorer behaviour.
+- [../features/features-index.md](../features/features-index.md) — per-capability specs, to check what a matrix cell is actually backed by.
+- [06-design-system.md](06-design-system.md) — the tokens, typography and components the per-platform chrome is built from.
+- [02-product-context.md](02-product-context.md) — which persona each platform tour is written for.
+- [19-enterprise-readiness.md](19-enterprise-readiness.md) — the managed-device overlay in §5, in full.
+- [00-system-index.md](00-system-index.md) — master router.
