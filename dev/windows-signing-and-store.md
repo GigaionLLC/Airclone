@@ -332,8 +332,10 @@ transfer commands, for example:
     size mydisk:
 
 NO OTHER SOFTWARE IS REQUIRED
-The installer contains the full rclone engine and the Microsoft Visual C++ runtime
-files. Nothing is downloaded on first run.
+The app package contains the full rclone engine (rclone.exe and librclone.dll) and the
+Microsoft Visual C++ runtime files (msvcp140.dll, vcruntime140.dll, vcruntime140_1.dll).
+Nothing is downloaded on first run, and the app makes no network connection of its own -
+it only talks to whatever cloud storage the tester configures.
 ```
 
 **D3. Restricted capability justification (MSIX only)** — Submission Options → *Restricted
