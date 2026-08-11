@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../state/name_conflict.dart';
+import 'dialog_body.dart';
 import 'theme/tokens.dart';
 
 /// Asks how to handle [collisions] of [total] pasted items that already exist
@@ -18,7 +19,7 @@ Future<ConflictChoice> showCopyConflictDialog(
     builder: (_) => AlertDialog(
       backgroundColor: c.surfaceRaised,
       title: Text('$n of $total already exist here'),
-      content: SizedBox(
+      content: DialogBody(
         width: 420,
         child: Column(
           mainAxisSize: MainAxisSize.min,

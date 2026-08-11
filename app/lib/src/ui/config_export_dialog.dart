@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../state/cache_crypto.dart';
 import '../state/config_io.dart';
 import '../state/config_transfer_controller.dart';
+import 'dialog_body.dart';
 import 'theme/tokens.dart';
 
 /// Opens the config Export wizard (plan §4): scope (all/checklist, with the
@@ -231,7 +232,7 @@ class _ConfigExportDialogState extends ConsumerState<_ConfigExportDialog> {
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(Radii.lg),
       ),
-      child: SizedBox(
+      child: DialogBody(
         width: 540,
         child: Padding(
           padding: const EdgeInsets.all(Space.x5),

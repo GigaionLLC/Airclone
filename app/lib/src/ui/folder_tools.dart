@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../state/browser_controller.dart';
 import '../state/file_ops.dart';
+import 'dialog_body.dart';
 import 'format.dart';
 import 'theme/tokens.dart';
 
@@ -87,7 +88,7 @@ class _CompareDialogState extends ConsumerState<_CompareDialog> {
     return AlertDialog(
       backgroundColor: c.surfaceRaised,
       title: const Text('Compare'),
-      content: SizedBox(
+      content: DialogBody(
         width: 460,
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -249,7 +250,7 @@ Future<void> showCopyUrlDialog(
       return AlertDialog(
         backgroundColor: c.surfaceRaised,
         title: const Text('Upload from URL'),
-        content: SizedBox(
+        content: DialogBody(
           width: 420,
           child: TextField(
             controller: controller,

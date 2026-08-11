@@ -5,6 +5,7 @@ import '../rclone/models/rclone_file.dart';
 import '../rclone/models/remote.dart';
 import '../state/engine_controller.dart';
 import '../state/remotes_provider.dart';
+import 'dialog_body.dart';
 import 'theme/tokens.dart';
 
 /// Opens a modal dialog that lets the user pick a destination folder for a
@@ -157,7 +158,7 @@ class _DestinationPickerDialogState
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(Radii.lg),
       ),
-      child: SizedBox(
+      child: DialogBody(
         width: 520,
         height: 560,
         child: Padding(

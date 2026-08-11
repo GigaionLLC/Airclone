@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../state/archive_command.dart';
 import '../state/archive_service.dart';
+import 'dialog_body.dart';
 import 'theme/tokens.dart';
 
 /// The result of the Compress dialog: which format, where to save it, and whether
@@ -99,7 +100,7 @@ class _CompressDialogState extends State<_CompressDialog> {
           fontWeight: FontWeight.w600,
         ),
       ),
-      content: SizedBox(
+      content: DialogBody(
         width: 460,
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -242,7 +243,7 @@ class _ExtractToDialogState extends State<_ExtractToDialog> {
           fontWeight: FontWeight.w600,
         ),
       ),
-      content: SizedBox(
+      content: DialogBody(
         width: 460,
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -345,7 +346,7 @@ class _ArchiveContentsDialogState
           fontWeight: FontWeight.w600,
         ),
       ),
-      content: SizedBox(
+      content: DialogBody(
         width: 520,
         height: 360,
         child: _error != null

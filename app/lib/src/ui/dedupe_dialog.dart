@@ -4,6 +4,7 @@ import '../rclone/models/remote.dart';
 import '../rclone/rclone_client.dart';
 import '../state/cloud_placeholder.dart';
 import '../state/dedupe.dart';
+import 'dialog_body.dart';
 import 'format.dart';
 import 'theme/tokens.dart';
 
@@ -274,7 +275,7 @@ class _DedupeDialogState extends State<_DedupeDialog> {
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(Radii.lg),
         ),
-        child: SizedBox(
+        child: DialogBody(
           width: 640,
           height: 560,
           child: Padding(

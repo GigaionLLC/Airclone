@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'dialog_body.dart';
 import 'theme/tokens.dart';
 
 /// One-time two-way-sync (bisync) baseline confirm for an ad-hoc run started
@@ -29,7 +30,7 @@ Future<({bool dryRun})?> showBisyncBaselineConfirm(
           fontWeight: FontWeight.w600,
         ),
       ),
-      content: SizedBox(
+      content: DialogBody(
         width: 440,
         child: Column(
           mainAxisSize: MainAxisSize.min,

@@ -9,6 +9,7 @@ import '../state/config_io.dart';
 import '../state/config_transfer_controller.dart';
 import '../state/offline_qr.dart';
 import '../state/remote_summary.dart';
+import 'dialog_body.dart';
 import 'theme/tokens.dart';
 
 /// Opens the phone-side "Import QR Config" flow (reworked 2026-07):
@@ -51,7 +52,7 @@ Future<void> showQrCameraUnavailableDialog(BuildContext context) {
           ),
         ],
       ),
-      content: SizedBox(
+      content: DialogBody(
         width: 420,
         child: Text(
           'Scanning a QR uses a camera, which this computer can\'t do. To move a '

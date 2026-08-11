@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../state/encrypt_remote_controller.dart';
 import '../state/remotes_provider.dart';
+import 'dialog_body.dart';
 import 'theme/tokens.dart';
 
 /// Opens the "Encrypt a remote" wizard. [baseRemoteName] pre-selects the remote
@@ -97,7 +98,7 @@ class _EncryptRemoteDialogState extends ConsumerState<_EncryptRemoteDialog> {
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(Radii.lg),
       ),
-      child: SizedBox(
+      child: DialogBody(
         width: 520,
         child: Padding(
           padding: const EdgeInsets.all(Space.x5),

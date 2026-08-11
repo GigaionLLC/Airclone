@@ -12,7 +12,10 @@
 ///    handler.
 ///
 /// A LOCAL remote needs none of this; callers pass its real OS path straight to
-/// [handOffToOs] and skip staging entirely.
+/// [handOffToOs] and skip staging entirely. On Android that path must still fall
+/// inside a FileProvider root (file_paths.xml lists the staging dir and primary
+/// shared storage) — a file on an SD card or USB volume does not, so
+/// [handOffToOs] catches the platform side's `not_shareable` and stages a copy.
 library;
 
 import 'dart:async';
@@ -146,10 +149,18 @@ Future<void> handOffToOs(
   ExternalOpenMode mode = ExternalOpenMode.view,
 }) async {
   if (Platform.isAndroid) {
-    await const MethodChannel('airclone/native').invokeMethod<bool>(
-      'openExternal',
-      {'path': path, 'mime': mime, 'share': mode == ExternalOpenMode.share},
-    );
+    try {
+      await _androidOpen(path, mime, mode);
+    } on PlatformException catch (e) {
+      // The file lives outside every FileProvider root (file_paths.xml): an SD
+      // card or USB volume. Copy it into the staging dir — which IS a root — and
+      // hand over that copy. Only removable volumes reach here; primary shared
+      // storage and the staging dir both resolve directly, so the common case
+      // still costs no copy even for a 40 GB video.
+      if (e.code != 'not_shareable') rethrow;
+      final copy = await _stageLocalCopy(path);
+      await _androidOpen(copy, mime, mode);
+    }
     return;
   }
   if (Platform.isWindows || Platform.isMacOS || Platform.isLinux) {
@@ -159,6 +170,39 @@ Future<void> handOffToOs(
     return;
   }
   throw Exception('Opening in another app is not supported on this platform.');
+}
+
+Future<void> _androidOpen(String path, String mime, ExternalOpenMode mode) =>
+    const MethodChannel('airclone/native').invokeMethod<bool>('openExternal', {
+      'path': path,
+      'mime': mime,
+      'share': mode == ExternalOpenMode.share,
+    });
+
+/// Writes [text] into the staging dir under [name] and returns its path, ready
+/// to hand to [handOffToOs] (the staging dir is a FileProvider root, so Android
+/// can mint a share URI for it). Used by the diagnostics report's mobile "Share"
+/// action, where there is no save dialog worth offering.
+Future<String> writeSharableTextFile(String name, String text) async {
+  final dir = await _stageDir();
+  final leaf = _safeLeaf(name);
+  await _pruneStage(dir, keep: leaf);
+  final target = File('${dir.path}/$leaf');
+  await target.writeAsString(text, flush: true);
+  return target.path;
+}
+
+/// Copies a real local file into the staging dir so FileProvider can mint a URI
+/// for it, returning the copy's path. Used only for the removable-volume case
+/// above; the copy ages out of the stage like any other ([_stageTtl]).
+Future<String> _stageLocalCopy(String path) async {
+  final dir = await _stageDir();
+  final leaf = _safeLeaf(path.split(RegExp(r'[/\\]')).last);
+  await _pruneStage(dir, keep: leaf);
+  final target = File('${dir.path}/$leaf');
+  await _quietDelete(target);
+  await File(path).copy(target.path);
+  return target.path;
 }
 
 /// Best-effort MIME type for [name], preferring rclone's own [fallback]

@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../state/browser_controller.dart';
 import '../state/file_ops.dart';
+import 'dialog_body.dart';
 import 'format.dart';
 import 'theme/tokens.dart';
 
@@ -81,7 +82,7 @@ class _StorageBreakdownDialogState
     return AlertDialog(
       backgroundColor: c.surfaceRaised,
       title: const Text('Storage breakdown'),
-      content: SizedBox(
+      content: DialogBody(
         width: 460,
         height: 420,
         child: _error != null

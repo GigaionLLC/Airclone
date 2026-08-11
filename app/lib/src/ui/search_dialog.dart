@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../rclone/models/rclone_file.dart';
 import '../rclone/rclone_client.dart';
+import 'dialog_body.dart';
 import 'file_icon.dart';
 import 'format.dart';
 import 'theme/tokens.dart';
@@ -126,7 +127,7 @@ class _SearchDialogState extends State<_SearchDialog> {
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(Radii.lg),
       ),
-      child: SizedBox(
+      child: DialogBody(
         width: 600,
         height: 520,
         child: Padding(

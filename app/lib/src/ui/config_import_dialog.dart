@@ -5,7 +5,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../state/cache_crypto.dart';
 import '../state/config_io.dart';
 import '../state/config_transfer_controller.dart';
+import '../state/diagnostics.dart';
 import '../state/remote_summary.dart';
+import 'dialog_body.dart';
 import 'theme/tokens.dart';
 
 /// Opens the config Import wizard (plan §3): pick a file → (decrypt if needed) →
@@ -77,6 +79,8 @@ class _ConfigImportDialogState extends ConsumerState<_ConfigImportDialog> {
   ConfigTransferController get _ctrl =>
       ref.read(configTransferControllerProvider);
 
+  DiagnosticsLog get _log => ref.read(diagnosticsProvider.notifier);
+
   @override
   void dispose() {
     _passphrase.dispose();
@@ -99,17 +103,38 @@ class _ConfigImportDialogState extends ConsumerState<_ConfigImportDialog> {
       _busy = true;
       _errorMessage = null;
     });
-    final file = await openFile(confirmButtonText: 'Import');
-    if (file == null) {
-      if (mounted) setState(() => _busy = false);
+    final List<int> bytes;
+    final String name;
+    // The pick and the read are the two steps that can fail for reasons OUTSIDE
+    // the config format — a cancelled/denied picker, or a URI the platform hands
+    // back that we can't read (Android returns a `content://` document, not a
+    // path). Without this guard those threw out of the button callback: the
+    // dialog kept its spinner forever and told the user nothing.
+    try {
+      final file = await openFile(confirmButtonText: 'Import');
+      if (file == null) {
+        if (mounted) setState(() => _busy = false);
+        return;
+      }
+      bytes = await file.readAsBytes();
+      name = file.name;
+    } catch (e) {
+      _log.error('config-import', 'Could not read the picked file', detail: e);
+      if (!mounted) return;
+      setState(() {
+        _busy = false;
+        _step = _ImportStep.error;
+        _errorMessage =
+            "Couldn't read that file ($e). If you picked it from a cloud or "
+            'download provider, copy it to this device first and try again.';
+      });
       return;
     }
-    final bytes = await file.readAsBytes();
     if (!mounted) return;
     final format = detectConfigFormat(bytes);
     setState(() {
       _bytes = bytes;
-      _sourceName = file.name;
+      _sourceName = name;
       _format = format;
       _busy = false;
     });
@@ -169,6 +194,7 @@ class _ConfigImportDialogState extends ConsumerState<_ConfigImportDialog> {
         _errorMessage = "This isn't a valid Airclone export (${e.message}).";
       });
     } catch (e) {
+      _log.error('config-import', 'Could not decode the config', detail: e);
       setState(() {
         _busy = false;
         _step = _ImportStep.error;
@@ -273,6 +299,13 @@ class _ConfigImportDialogState extends ConsumerState<_ConfigImportDialog> {
     });
     try {
       final report = await _ctrl.applyMerge(_incoming!, edited);
+      for (final f in report.failed) {
+        _log.error(
+          'config-import',
+          'Remote "${f.name}" did not import',
+          detail: f.error,
+        );
+      }
       if (!mounted) return;
       setState(() {
         _report = report;
@@ -280,6 +313,7 @@ class _ConfigImportDialogState extends ConsumerState<_ConfigImportDialog> {
         _step = _ImportStep.report;
       });
     } catch (e) {
+      _log.error('config-import', 'Merge failed', detail: e);
       if (!mounted) return;
       setState(() {
         _busy = false;
@@ -304,6 +338,7 @@ class _ConfigImportDialogState extends ConsumerState<_ConfigImportDialog> {
         _step = _ImportStep.report;
       });
     } catch (e) {
+      _log.error('config-import', 'Replace failed', detail: e);
       if (!mounted) return;
       setState(() {
         _busy = false;
@@ -323,7 +358,7 @@ class _ConfigImportDialogState extends ConsumerState<_ConfigImportDialog> {
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(Radii.lg),
       ),
-      child: SizedBox(
+      child: DialogBody(
         width: 540,
         child: Padding(
           padding: const EdgeInsets.all(Space.x5),
@@ -496,13 +531,20 @@ class _ConfigImportDialogState extends ConsumerState<_ConfigImportDialog> {
           Text(_previewError!, style: TextStyle(color: c.error, fontSize: 12)),
         ],
         const SizedBox(height: Space.x4),
-        Row(
+        // A Wrap, not a Row: Cancel + "Replace instead…" + Merge are together
+        // wider than a phone-sized dialog, so a Row clipped **Merge** off the
+        // right edge — the flow completed fine, but on a phone there was no
+        // button to press. Wrapping puts Merge on its own line instead; on a
+        // desktop-width dialog all three still sit on one.
+        Wrap(
+          alignment: WrapAlignment.end,
+          spacing: Space.x2,
+          runSpacing: Space.x2,
           children: [
             TextButton(
               onPressed: () => Navigator.of(context).pop(),
               child: Text('Cancel', style: TextStyle(color: c.textMuted)),
             ),
-            const Spacer(),
             if (plan.isNotEmpty)
               TextButton(
                 onPressed: () =>
@@ -512,7 +554,6 @@ class _ConfigImportDialogState extends ConsumerState<_ConfigImportDialog> {
                   style: TextStyle(color: c.error),
                 ),
               ),
-            const SizedBox(width: Space.x2),
             FilledButton.icon(
               onPressed: plan.isEmpty ? null : _applyMerge,
               icon: const Icon(Icons.merge_type, size: 16),
@@ -669,14 +710,17 @@ class _ConfigImportDialogState extends ConsumerState<_ConfigImportDialog> {
           ),
         ],
         const SizedBox(height: Space.x4),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.end,
+        // Wrap for the same reason as the preview step's actions: this is the
+        // destructive confirm, so its button must never be off-screen.
+        Wrap(
+          alignment: WrapAlignment.end,
+          spacing: Space.x2,
+          runSpacing: Space.x2,
           children: [
             TextButton(
               onPressed: () => setState(() => _step = _ImportStep.preview),
               child: Text('Back', style: TextStyle(color: c.textMuted)),
             ),
-            const SizedBox(width: Space.x2),
             FilledButton(
               style: FilledButton.styleFrom(
                 backgroundColor: c.error,
@@ -793,9 +837,15 @@ class _ConfigImportDialogState extends ConsumerState<_ConfigImportDialog> {
     children: [
       _title(c, Icons.error_outline, "Couldn't import"),
       const SizedBox(height: Space.x3),
-      Text(
+      SelectableText(
         _errorMessage ?? 'Unknown error',
         style: TextStyle(color: c.textMuted, fontSize: 12),
+      ),
+      const SizedBox(height: Space.x2),
+      Text(
+        'This was recorded in Settings → Diagnostics, where you can copy a '
+        'redacted report to attach to a bug report.',
+        style: TextStyle(color: c.textFaint, fontSize: 11),
       ),
       const SizedBox(height: Space.x4),
       Row(

@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import '../rclone/models/remote.dart';
 import '../rclone/rclone_client.dart';
 import '../state/cloud_placeholder.dart';
+import 'dialog_body.dart';
 import 'theme/tokens.dart';
 
 /// Hash types requested for LOCAL files. Cloud backends store hashes as
@@ -138,7 +139,7 @@ class _ChecksumDialogState extends State<_ChecksumDialog> {
     return AlertDialog(
       backgroundColor: c.surfaceRaised,
       title: Text('Checksums · ${widget.name}'),
-      content: SizedBox(width: 520, child: _body(c)),
+      content: DialogBody(width: 520, child: _body(c)),
       actions: [
         FilledButton(
           onPressed: () => Navigator.of(context).pop(),

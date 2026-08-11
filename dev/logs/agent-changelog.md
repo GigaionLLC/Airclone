@@ -4,6 +4,31 @@ All changes made by AI agents are tracked chronologically below (most recent fir
 
 ---
 
+## [2026-08-11] - Store-compliant updates, Android hand-off + import fixes, local diagnostics
+
+**Agent:** Claude Opus 5 — `main`
+**Files Modified:** `app/lib/src/state/{install_source,diagnostics,app_info,open_external}.dart`,
+`app/lib/src/ui/{dialog_body,settings_screen,config_import_dialog,open_external_action,app}.dart`
+(+ 20 dialogs re-wrapped), `app/android/.../MainActivity.kt`, `res/xml/file_paths.xml`,
+`app/test/{install_source,diagnostics}_test.dart`, `wiki/core/{10-external-integrations,15-security}.md`
+**Database/API Changes:** New `airclone/native` method `installerPackage`; new `openExternal` error
+code `not_shareable`.
+**Summary:** Fixes the **Microsoft Store v0.6.0 certification failure (policy 10.2.5)** — the update
+check now detects its install channel (MSIX / Play / Amazon / F-Droid / Galaxy / App Store / Flathub
+/ Snap / direct) and a store-managed build makes **no GitHub request at all**, offering only the
+store's own page; `UpdateStatus` is sealed so no build can fall through to a download link. Also
+fixes "Open in another app" on Android local files (`file_paths.xml` had only the cache staging dir,
+so a `/storage/emulated/0/DCIM/…` path threw *"Failed to find configured root"*; shared storage is
+now a root, with a staged-copy fallback for SD/USB volumes), and the Android config-import failure
+(every dialog was a fixed desktop pixel width, so the preview's action Row clipped **Merge** off the
+right edge — `DialogBody` clamps width app-wide and the action rows now wrap). Adds a no-telemetry
+**diagnostics log** (redaction at ingest, copy/share a report) wired to the import, hand-off and
+uncaught-error paths. Verified on an Android 15 emulator that the config does **not** survive
+uninstall/reinstall (by design — `allowBackup=false`); the Config section now says so before the
+user finds out. 642 tests pass, `flutter analyze` clean.
+
+---
+
 ## [2026-07-15 20:12] - Reliability and product hardening audit handoff
 
 **Agent:** Codex (GPT-5)

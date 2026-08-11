@@ -6,6 +6,7 @@ import '../rclone/rclone_client.dart';
 import '../state/mount_controller.dart';
 import '../state/mount_policy.dart';
 import '../state/remotes_provider.dart';
+import 'dialog_body.dart';
 import 'theme/tokens.dart';
 
 /// Opens the Mount manager (mount remotes as drives + list/unmount running ones).
@@ -68,7 +69,7 @@ class _MountDialogState extends ConsumerState<_MountDialog> {
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(Radii.lg),
       ),
-      child: SizedBox(
+      child: DialogBody(
         width: 540,
         height: 560,
         child: Column(

@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -14,11 +15,14 @@ import '../state/biometric_unlock.dart';
 import '../state/cache_crypto.dart';
 import '../state/config_password_vault.dart';
 import '../state/config_transfer_controller.dart';
+import '../state/diagnostics.dart';
 import '../state/download_settings.dart';
 import '../state/engine_controller.dart';
 import '../state/engine_flags.dart';
 import '../state/engine_mode.dart';
+import '../state/install_source.dart';
 import '../state/jobs_controller.dart';
+import '../state/open_external.dart';
 import '../state/os_integration.dart';
 import '../state/remotes_provider.dart';
 import '../state/settings_controller.dart';
@@ -27,6 +31,7 @@ import '../state/window_backdrop.dart';
 import 'config_encryption_dialog.dart';
 import 'config_export_dialog.dart';
 import 'config_import_dialog.dart';
+import 'dialog_body.dart';
 import 'offline_qr_dialog.dart';
 import 'scan_from_desktop_sheet.dart';
 import 'theme/tokens.dart';
@@ -140,6 +145,12 @@ class SettingsContent extends ConsumerWidget {
         _CacheSection(),
         const SizedBox(height: Space.x4),
         _UpdatesSection(),
+        // Diagnostics last: it exists to be found AFTER something has gone
+        // wrong, and it is the only supported way to get evidence out of the
+        // app (Airclone sends no telemetry — see state/diagnostics.dart).
+        const SizedBox(height: Space.x5),
+        const _GroupHeader('Diagnostics'),
+        const _DiagnosticsSection(),
       ],
     );
   }
@@ -678,6 +689,37 @@ class _ConfigSectionState extends ConsumerState<_ConfigSection> {
           const SizedBox(height: Space.x2),
           Text(_error!, style: TextStyle(color: c.error, fontSize: 12)),
         ],
+        // Phones only. The config lives in the app's private sandbox
+        // (`/data/user/0/<pkg>/files` on Android, the app container on iOS),
+        // which the OS DELETES on uninstall — verified on an Android 15 device:
+        // uninstall + reinstall leaves no `files/` directory at all. Airclone
+        // also sets `allowBackup=false` on purpose, so the config never rides
+        // along in an ADB or cloud backup where it could be read off-device; the
+        // cost of that choice is that no automatic backup restores it either.
+        // Desktop is unaffected — its config sits outside the app in rclone's
+        // own directory and survives reinstalling.
+        //
+        // So the export is not a nicety here, it is the only way back. Say so
+        // before the user finds out the hard way.
+        if (!desktop) ...[
+          const SizedBox(height: Space.x2),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(Icons.info_outline, size: 14, color: c.textFaint),
+              const SizedBox(width: Space.x2),
+              Expanded(
+                child: Text(
+                  'Uninstalling Airclone deletes this file — the app keeps it '
+                  'in private storage that no backup can reach, so your '
+                  'credentials never leave the device. Export your config below '
+                  'before you uninstall or switch phones.',
+                  style: TextStyle(color: c.textFaint, fontSize: 12),
+                ),
+              ),
+            ],
+          ),
+        ],
         if (desktop) ...[
           const SizedBox(height: Space.x3),
           Row(
@@ -790,7 +832,7 @@ class _ConfigToolsHookState extends ConsumerState<_ConfigToolsHook> {
             fontWeight: FontWeight.w600,
           ),
         ),
-        content: SizedBox(
+        content: DialogBody(
           width: 420,
           child: Text(
             'This overwrites your active rclone config with '
@@ -1826,6 +1868,223 @@ class _EngineFlagsSectionState extends ConsumerState<_EngineFlagsSection> {
   }
 }
 
+/// Settings → Diagnostics: the local error log, and the two ways to get it OUT
+/// of the app — clipboard, or a saved/shared `.txt`.
+///
+/// Airclone sends no telemetry, so this is the ONLY channel by which a failure
+/// reaches a maintainer, and it is entirely user-driven: nothing leaves the
+/// device until the user copies or saves it, and everything in it was redacted
+/// as it was recorded (state/diagnostics.dart).
+class _DiagnosticsSection extends ConsumerStatefulWidget {
+  const _DiagnosticsSection();
+
+  @override
+  ConsumerState<_DiagnosticsSection> createState() =>
+      _DiagnosticsSectionState();
+}
+
+class _DiagnosticsSectionState extends ConsumerState<_DiagnosticsSection> {
+  bool _expanded = false;
+  String? _status; // transient confirmation ("Copied", "Saved to …")
+
+  /// How many entries the inline list shows before it stops. The full set still
+  /// goes into a copied/saved report; this only keeps Settings scrollable.
+  static const int _visibleLimit = 40;
+
+  Future<String> _report() async {
+    final version = await ref.read(appVersionProvider.future);
+    final source = await ref.read(installSourceProvider.future);
+    final engine = ref.read(engineControllerProvider);
+    return buildDiagnosticsReport(
+      describeEnvironment(
+        appVersion: version,
+        installChannel: source.channel.name,
+        engineVersion: engine.version,
+        engineMode: ref.read(settingsControllerProvider).engineMode.name,
+      ),
+      ref.read(diagnosticsProvider),
+    );
+  }
+
+  Future<void> _copy() async {
+    final text = await _report();
+    await Clipboard.setData(ClipboardData(text: text));
+    if (mounted) setState(() => _status = 'Copied to the clipboard.');
+  }
+
+  /// Desktop writes wherever the user chooses. Mobile has no save dialog worth
+  /// the name, so the report is written into the same cache staging dir
+  /// "Open in another app" uses and handed to the share sheet — the phone-native
+  /// way to get a file into an email or an issue tracker.
+  Future<void> _saveOrShare() async {
+    try {
+      final text = await _report();
+      if (Platform.isAndroid || Platform.isIOS) {
+        final path = await writeSharableTextFile(
+          'airclone-diagnostics.txt',
+          text,
+        );
+        await handOffToOs(
+          path,
+          mime: 'text/plain',
+          mode: ExternalOpenMode.share,
+        );
+        if (mounted) setState(() => _status = 'Shared.');
+        return;
+      }
+      final location = await getSaveLocation(
+        suggestedName: 'airclone-diagnostics.txt',
+      );
+      if (location == null) return;
+      await File(location.path).writeAsString(text);
+      if (mounted) setState(() => _status = 'Saved.');
+    } catch (e) {
+      if (mounted) setState(() => _status = "Couldn't save the report: $e");
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final c = AircloneTheme.of(context);
+    final entries = ref.watch(diagnosticsProvider);
+    final errors = entries.where((e) => e.level == DiagLevel.error).length;
+    final visible = entries.reversed.take(_visibleLimit).toList();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const _SectionLabel(
+          'Problem report',
+          help:
+              'Airclone never sends error reports anywhere. Problems are '
+              'recorded on this device only, with secrets and personal details '
+              'removed, so you can choose to attach them to a bug report.',
+        ),
+        Row(
+          children: [
+            Icon(
+              errors > 0
+                  ? Icons.report_problem_outlined
+                  : Icons.check_circle_outline,
+              size: 16,
+              color: errors > 0 ? c.warning : c.success,
+            ),
+            const SizedBox(width: Space.x2),
+            Expanded(
+              child: Text(
+                entries.isEmpty
+                    ? 'Nothing recorded this session.'
+                    : '${entries.length} event${entries.length == 1 ? '' : 's'} '
+                          'recorded'
+                          '${errors > 0 ? ', $errors error${errors == 1 ? '' : 's'}' : ''}.',
+                style: TextStyle(color: c.textMuted, fontSize: 13),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: Space.x2),
+        Wrap(
+          spacing: Space.x2,
+          runSpacing: Space.x2,
+          children: [
+            OutlinedButton.icon(
+              onPressed: _copy,
+              icon: const Icon(Icons.copy_all_outlined, size: 16),
+              label: const Text('Copy report'),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: c.text,
+                side: BorderSide(color: c.borderStrong),
+                visualDensity: VisualDensity.compact,
+              ),
+            ),
+            OutlinedButton.icon(
+              onPressed: _saveOrShare,
+              icon: Icon(
+                Platform.isAndroid || Platform.isIOS
+                    ? Icons.ios_share
+                    : Icons.save_alt,
+                size: 16,
+              ),
+              label: Text(
+                Platform.isAndroid || Platform.isIOS
+                    ? 'Share report'
+                    : 'Save report…',
+              ),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: c.text,
+                side: BorderSide(color: c.borderStrong),
+                visualDensity: VisualDensity.compact,
+              ),
+            ),
+            if (entries.isNotEmpty)
+              TextButton(
+                onPressed: () {
+                  ref.read(diagnosticsProvider.notifier).clear();
+                  setState(() => _status = null);
+                },
+                child: Text('Clear', style: TextStyle(color: c.textMuted)),
+              ),
+          ],
+        ),
+        if (_status != null) ...[
+          const SizedBox(height: Space.x1),
+          Text(_status!, style: TextStyle(color: c.textMuted, fontSize: 12)),
+        ],
+        if (entries.isNotEmpty) ...[
+          const SizedBox(height: Space.x2),
+          InkWell(
+            onTap: () => setState(() => _expanded = !_expanded),
+            borderRadius: BorderRadius.circular(Radii.sm),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: Space.x1),
+              child: Row(
+                children: [
+                  Icon(
+                    _expanded ? Icons.expand_less : Icons.expand_more,
+                    size: 18,
+                    color: c.textMuted,
+                  ),
+                  const SizedBox(width: Space.x1),
+                  Text(
+                    _expanded ? 'Hide details' : 'Show recent events',
+                    style: TextStyle(color: c.textMuted, fontSize: 12),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          if (_expanded)
+            Container(
+              constraints: const BoxConstraints(maxHeight: 260),
+              decoration: BoxDecoration(
+                color: c.surface,
+                borderRadius: BorderRadius.circular(Radii.md),
+                border: Border.all(color: c.border),
+              ),
+              padding: const EdgeInsets.all(Space.x2),
+              child: ListView.builder(
+                shrinkWrap: true,
+                itemCount: visible.length,
+                itemBuilder: (_, i) => Padding(
+                  padding: const EdgeInsets.only(bottom: 4),
+                  child: SelectableText(
+                    visible[i].format(),
+                    style: TextStyle(
+                      color: visible[i].level == DiagLevel.error
+                          ? c.error
+                          : c.textMuted,
+                      fontSize: 11,
+                      fontFamily: 'monospace',
+                    ),
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ],
+    );
+  }
+}
+
 class _UpdatesSection extends ConsumerStatefulWidget {
   @override
   ConsumerState<_UpdatesSection> createState() => _UpdatesSectionState();
@@ -1884,53 +2143,90 @@ class _UpdateResult extends ConsumerWidget {
         "Couldn't check for updates.",
         style: TextStyle(color: c.error, fontSize: 13),
       ),
-      data: (info) => info.hasUpdate
-          ? Container(
-              padding: const EdgeInsets.symmetric(
-                horizontal: Space.x3,
-                vertical: Space.x2,
-              ),
-              decoration: BoxDecoration(
-                // The palette has no dedicated `infoBg`; derive a soft tint.
-                color: c.info.withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(Radii.md),
-                border: Border.all(color: c.border),
-              ),
-              child: Row(
-                children: [
-                  Icon(Icons.upgrade, size: 16, color: c.info),
-                  const SizedBox(width: Space.x2),
-                  Expanded(
-                    child: Text(
-                      '${info.latestTag} available',
-                      style: TextStyle(
-                        color: c.text,
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                  if (info.url.isNotEmpty)
-                    FilledButton(
-                      onPressed: () => launchUrl(
-                        Uri.parse(info.url),
-                        mode: LaunchMode.externalApplication,
-                      ),
-                      child: const Text('Open release'),
-                    ),
-                ],
-              ),
-            )
-          : Row(
-              children: [
-                Icon(Icons.check_circle_outline, size: 16, color: c.success),
-                const SizedBox(width: Space.x2),
-                Text(
-                  "You're up to date",
-                  style: TextStyle(color: c.success, fontSize: 13),
-                ),
-              ],
-            ),
+      // Sealed switch: the store-managed arm is not optional, so no build can
+      // ever fall through to an out-of-store download link (Store policy
+      // 10.2.5 — the finding that failed v0.6.0 certification).
+      data: (status) => switch (status) {
+        StoreManagedUpdates(:final source) => _storeManagedRow(c, source),
+        ReleaseUpdateInfo(hasUpdate: false) => _upToDateRow(c),
+        ReleaseUpdateInfo(:final latestTag, :final url) => _releaseRow(
+          c,
+          latestTag,
+          url,
+        ),
+      },
     );
   }
+
+  /// Store build: say where updates come from, and offer only the store itself.
+  Widget _storeManagedRow(AircloneColors c, InstallSource source) {
+    final url = source.storeUrl;
+    return Row(
+      children: [
+        Icon(Icons.storefront_outlined, size: 16, color: c.textMuted),
+        const SizedBox(width: Space.x2),
+        Expanded(
+          child: Text(
+            'Airclone updates through ${source.storeName}.',
+            style: TextStyle(color: c.textMuted, fontSize: 13),
+          ),
+        ),
+        if (url != null)
+          TextButton(
+            onPressed: () =>
+                launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication),
+            child: Text('Open ${source.storeName}'),
+          ),
+      ],
+    );
+  }
+
+  Widget _upToDateRow(AircloneColors c) => Row(
+    children: [
+      Icon(Icons.check_circle_outline, size: 16, color: c.success),
+      const SizedBox(width: Space.x2),
+      Text(
+        "You're up to date",
+        style: TextStyle(color: c.success, fontSize: 13),
+      ),
+    ],
+  );
+
+  Widget _releaseRow(AircloneColors c, String latestTag, String url) =>
+      Container(
+        padding: const EdgeInsets.symmetric(
+          horizontal: Space.x3,
+          vertical: Space.x2,
+        ),
+        decoration: BoxDecoration(
+          // The palette has no dedicated `infoBg`; derive a soft tint.
+          color: c.info.withValues(alpha: 0.12),
+          borderRadius: BorderRadius.circular(Radii.md),
+          border: Border.all(color: c.border),
+        ),
+        child: Row(
+          children: [
+            Icon(Icons.upgrade, size: 16, color: c.info),
+            const SizedBox(width: Space.x2),
+            Expanded(
+              child: Text(
+                '$latestTag available',
+                style: TextStyle(
+                  color: c.text,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+            if (url.isNotEmpty)
+              FilledButton(
+                onPressed: () => launchUrl(
+                  Uri.parse(url),
+                  mode: LaunchMode.externalApplication,
+                ),
+                child: const Text('Open release'),
+              ),
+          ],
+        ),
+      );
 }

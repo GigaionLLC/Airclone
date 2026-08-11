@@ -1,10 +1,25 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Which directories the FileProvider declared in AndroidManifest.xml may mint
-     content:// URIs for. Deliberately ONE path: the staging dir that
-     open_external.dart streams a cloud object into before handing it to another
-     app. Nothing else in the app's storage (rclone.conf above all) is exposed. -->
+     content:// URIs for. Deliberately NARROW: nothing in the app's own private
+     storage (rclone.conf above all) is exposed, only
+
+       1. the staging dir a cloud object is streamed into, and
+       2. shared storage, which is where a LOCAL remote's files live.
+
+     A file outside both (an SD card or USB volume, whose mount point is neither)
+     makes getUriForFile throw IllegalArgumentException; MainActivity reports that
+     as `not_shareable` and open_external.dart stages a copy into (1) instead. -->
 <paths>
     <!-- Matches getApplicationCacheDirectory()/airclone_open — path_provider
          returns Context.getCacheDir() on Android, which is <cache-path>. -->
     <cache-path name="airclone_open" path="airclone_open/" />
+    <!-- Environment.getExternalStorageDirectory(), i.e. /storage/emulated/0 —
+         DCIM, Download, Documents and everything else a local remote browses.
+         Without this, "Open in another app" on a local file failed with
+         "Failed to find configured root that contains …/DCIM/Camera/…".
+         This exposes NOTHING by itself: the provider is exported=false, so only
+         a URI we explicitly mint — for the one file the user picked, with a
+         one-shot read grant — is ever readable by another app. The app's own
+         private dir is not under this root. -->
+    <external-path name="shared_storage" path="." />
 </paths>

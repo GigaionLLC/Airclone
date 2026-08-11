@@ -243,7 +243,8 @@ Every Dart caller is `Platform`-guarded; there is no iOS, Windows, macOS or Linu
 | `externalStorageDir` | `Environment.getExternalStorageDirectory()` — the shared-storage root shown in the browser | [`android_native.dart#L18`](../../app/lib/src/state/android_native.dart#L18) |
 | `hasAllFilesAccess` | R+: `Environment.isExternalStorageManager()`; pre-R: the legacy READ permission | [`android_native.dart#L32`](../../app/lib/src/state/android_native.dart#L32) |
 | `requestAllFilesAccess` | Opens the per-app All-Files-Access settings screen, falling back to the list screen (both launches guarded — some OEM builds ship neither) | [`android_native.dart#L44`](../../app/lib/src/state/android_native.dart#L44) |
-| `openExternal` | Wraps a staged file in a `FileProvider` `content://` URI and fires an `ACTION_VIEW` or `ACTION_SEND` chooser with `FLAG_GRANT_READ_URI_PERMISSION` on **both** the intent and the chooser | [`open_external.dart#L149`](../../app/lib/src/state/open_external.dart#L149) |
+| `openExternal` | Wraps a staged file in a `FileProvider` `content://` URI and fires an `ACTION_VIEW` or `ACTION_SEND` chooser with `FLAG_GRANT_READ_URI_PERMISSION` on **both** the intent and the chooser. Returns error code `not_shareable` when the path is outside every `file_paths.xml` root | [`open_external.dart#L149`](../../app/lib/src/state/open_external.dart#L149) |
+| `installerPackage` | The package that installed us (`com.android.vending` for Play, null for a sideload), via `getInstallSourceInfo` on R+ | [`install_source.dart`](../../app/lib/src/state/install_source.dart) |
 | `startTransferService` | Starts **or updates** the `dataSync` foreground service notification (same call does both) | [`android_transfer_service.dart#L55`](../../app/lib/src/state/android_transfer_service.dart#L55) |
 | `stopTransferService` | Stops it | [`android_transfer_service.dart#L36`](../../app/lib/src/state/android_transfer_service.dart#L36) |
 | `requestNotificationPermission` | Tiramisu+ `POST_NOTIFICATIONS` request | [`android_transfer_service.dart#L50`](../../app/lib/src/state/android_transfer_service.dart#L50) |
@@ -252,10 +253,20 @@ Native-side notes worth knowing before you touch this file:
 
 - A raw `file://` URI would throw `FileUriExposedException` — `openExternal` **must** go through
   `FileProvider`, authority `${applicationId}.fileprovider`.
-- The provider's whitelist is deliberately **one** directory:
-  [`res/xml/file_paths.xml`](../../app/android/app/src/main/res/xml/file_paths.xml) exposes only
-  `<cache-path name="airclone_open" path="airclone_open/" />`. Nothing else in app storage —
-  `rclone.conf` above all — is reachable.
+- The provider's whitelist is deliberately narrow:
+  [`res/xml/file_paths.xml`](../../app/android/app/src/main/res/xml/file_paths.xml) exposes the
+  staging dir (`<cache-path name="airclone_open" path="airclone_open/" />`) **and** primary shared
+  storage (`<external-path name="shared_storage" path="." />`, where a LOCAL remote's files live).
+  Nothing in the app's own private storage — `rclone.conf` above all — is reachable, and because the
+  provider is `exported=false` only a URI we explicitly mint, for the one file the user picked, is
+  ever readable.
+  - Shared storage was added in v0.6.2. Without it, "Open in another app" on a local file failed
+    with `Failed to find configured root that contains /storage/emulated/0/DCIM/Camera/…` — the
+    local-remote path skips staging by design (it must, for a 40 GB video), so the real OS path
+    reached `getUriForFile` and matched no root.
+  - A path outside **both** roots (an SD card or USB volume) still cannot be minted. Kotlin catches
+    that `IllegalArgumentException` and returns `not_shareable`; `handOffToOs` then copies the file
+    into the staging dir and retries, so removable volumes work at the cost of one local copy.
 - `startForegroundService` is wrapped in a `try/catch`: Android 12+ forbids starting a foreground
   service from the background, so a transfer kicked off while backgrounded runs without the
   keep-alive instead of crashing.
@@ -307,6 +318,28 @@ Release/packaging mechanics — signing, notarization, Store submission — belo
 | **Android foreground service** | `dataSync` service declared in the manifest, driven by the channel, holding the app **and its engine child** alive while transfers run. | [`TransferService.kt`](../../app/android/app/src/main/kotlin/app/airclone/airclone/TransferService.kt) |
 | **Camera** | `mobile_scanner`, for scanning an Offline-QR config. Permission requested in-flow on first open, never at launch; `uses-feature` declared optional so camera-less devices can still install. | [`AndroidManifest.xml`](../../app/android/app/src/main/AndroidManifest.xml) |
 | **Extra desktop windows** | `desktop_multi_window` — pop-out image viewers, each its own `FlutterEngine` in the same process. Desktop only; every call is `Platform`-guarded. | [`popout_image_app.dart`](../../app/lib/src/ui/popout_image_app.dart) |
+| **Update channel** | Detects how this copy was installed and routes "Check for updates" to the owning store — MSIX via `GetCurrentPackageFullName`/`…FamilyName`, Android via `installerPackage`, macOS via a `_MASReceipt` in the bundle, Linux via `FLATPAK_ID`/`SNAP`. See §5.1. | [`install_source.dart`](../../app/lib/src/state/install_source.dart) |
+
+### 5.1 Update channel — a store install must never see a download link
+
+Airclone ships the *same binary* through several channels, so nothing at compile time tells a Store
+MSIX from the Inno installer, or a Play install from a sideloaded APK.
+[`install_source.dart`](../../app/lib/src/state/install_source.dart) resolves it at runtime, and
+[`app_info.dart`](../../app/lib/src/state/app_info.dart) branches on the answer:
+
+- **store-managed** → `StoreManagedUpdates`. **No GitHub request is made at all**, and the only
+  affordance offered is the store's own page.
+- **direct download** → `ReleaseUpdateInfo`. The GitHub release check runs exactly as before, which
+  is what an installer/zip/dmg/tarball/sideload user installed the app for.
+
+`UpdateStatus` is a **sealed** class so the settings switch is exhaustive: a build cannot silently
+fall through to rendering "Open release".
+
+> ⚠️ This is a certification requirement, not a preference. **Microsoft Store policy 10.2.5**
+> ("Installing and Updating Store Apps") failed Airclone **v0.6.0** on 2026-08-10 for exactly this:
+> "Check for updates" offered an **Open release** button that led to the GitHub releases page.
+> Google Play and the App Store enforce the same rule. Never add an out-of-store download link
+> behind a code path a store build can reach.
 
 ### Three features have no RC method and run as real subprocesses
 

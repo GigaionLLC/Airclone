@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../state/cache_crypto.dart';
 import '../state/config_encryption.dart';
 import '../state/config_transfer_controller.dart';
+import 'dialog_body.dart';
 import 'theme/tokens.dart';
 
 /// The Settings → Config controls for rclone's OWN config-file encryption
@@ -185,7 +186,7 @@ class _PassphraseDialogState extends ConsumerState<_PassphraseDialog> {
             fontWeight: FontWeight.w600,
           ),
         ),
-        content: SizedBox(
+        content: DialogBody(
           width: 420,
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -302,7 +303,7 @@ class _DecryptDialogState extends ConsumerState<_DecryptDialog> {
             fontWeight: FontWeight.w600,
           ),
         ),
-        content: SizedBox(
+        content: DialogBody(
           width: 420,
           child: Column(
             mainAxisSize: MainAxisSize.min,

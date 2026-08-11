@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'dialog_body.dart';
 import 'theme/tokens.dart';
 
 const _groups = <(String, List<(String, String)>)>[
@@ -61,7 +62,7 @@ class _ShortcutsDialog extends StatelessWidget {
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(Radii.lg),
       ),
-      child: SizedBox(
+      child: DialogBody(
         width: 520,
         child: Padding(
           padding: const EdgeInsets.all(Space.x5),

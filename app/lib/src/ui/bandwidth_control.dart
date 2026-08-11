@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../state/bandwidth_controller.dart';
 import '../state/bw_schedule.dart';
 import '../state/bw_schedule_controller.dart';
+import 'dialog_body.dart';
 import 'theme/tokens.dart';
 
 const _presets = ['off', '256k', '512k', '1M', '5M', '10M', '50M', '100M'];
@@ -109,7 +110,7 @@ class _BwScheduleDialog extends ConsumerWidget {
     return AlertDialog(
       backgroundColor: c.surfaceRaised,
       title: const Text('Bandwidth schedule'),
-      content: SizedBox(
+      content: DialogBody(
         width: 420,
         child: Column(
           mainAxisSize: MainAxisSize.min,

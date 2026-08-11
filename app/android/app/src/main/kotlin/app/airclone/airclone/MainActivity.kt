@@ -37,6 +37,11 @@ class MainActivity : FlutterActivity() {
                                     android.Manifest.permission.READ_EXTERNAL_STORAGE
                                 ) == PackageManager.PERMISSION_GRANTED
                         )
+                    // Which app installed us — Play Store, Amazon, F-Droid, or
+                    // null/the package installer for a sideloaded APK. Dart maps
+                    // this to an update channel so a store install is never shown
+                    // an out-of-store download link (see install_source.dart).
+                    "installerPackage" -> result.success(installerPackageName())
                     // ── Hand a staged file to another app (see open_external.dart) ──
                     // Dart has already streamed the object into our cache dir;
                     // all that's left is a content:// URI another app may read.
@@ -50,11 +55,23 @@ class MainActivity : FlutterActivity() {
                             result.error("bad_args", "path is required", null)
                         } else {
                             try {
-                                val uri = FileProvider.getUriForFile(
-                                    this,
-                                    "$packageName.fileprovider",
-                                    File(path),
-                                )
+                                val uri = try {
+                                    FileProvider.getUriForFile(
+                                        this,
+                                        "$packageName.fileprovider",
+                                        File(path),
+                                    )
+                                } catch (e: IllegalArgumentException) {
+                                    // The file is outside every root in
+                                    // file_paths.xml — an SD card or USB volume,
+                                    // whose mount point is neither the cache dir
+                                    // nor primary shared storage. Report it as its
+                                    // own code so Dart can stage a copy into the
+                                    // cache dir and retry, instead of showing the
+                                    // user a raw "Failed to find configured root".
+                                    result.error("not_shareable", e.message, null)
+                                    return@setMethodCallHandler
+                                }
                                 val intent = if (share) {
                                     Intent(Intent.ACTION_SEND)
                                         .setType(mime)
@@ -150,5 +167,22 @@ class MainActivity : FlutterActivity() {
                     else -> result.notImplemented()
                 }
             }
+    }
+
+    /// The package that installed this app, or null when nothing claims it (an
+    /// `adb install`, or a build sideloaded by a file manager that doesn't set
+    /// itself as the installer). `getInstallerPackageName` was deprecated in
+    /// API 30 in favour of `getInstallSourceInfo`, so both are used by level.
+    private fun installerPackageName(): String? = try {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            packageManager.getInstallSourceInfo(packageName).installingPackageName
+        } else {
+            @Suppress("DEPRECATION")
+            packageManager.getInstallerPackageName(packageName)
+        }
+    } catch (e: Exception) {
+        // NameNotFoundException can't happen for our own package, but a defensive
+        // null keeps the update UI on the conservative (non-store) path.
+        null
     }
 }

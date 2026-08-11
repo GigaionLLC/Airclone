@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../rclone/models/rclone_file.dart';
 import '../rclone/models/remote.dart';
 import '../rclone/rclone_client.dart';
+import '../state/diagnostics.dart';
 import '../state/engine_controller.dart';
 import '../state/open_external.dart';
 import 'format.dart';
@@ -75,17 +76,30 @@ Future<void> _handOff(
   try {
     await handOffToOs(path, mime: mime, mode: mode);
   } catch (e) {
+    logDiagnostic(
+      DiagLevel.error,
+      'open-external',
+      'Hand-off to another app failed (mime $mime)',
+      detail: e,
+    );
     if (context.mounted) _toast(context, _handOffMessage(e));
   }
 }
 
 /// Turns the platform failure into something a user can act on. The Android
-/// side reports "no app can open this" as a distinct code so we don't blame the
-/// download for a missing viewer.
+/// side reports "no app can open this" and "outside every shareable root" as
+/// distinct codes so we don't blame the download for a missing viewer, or show
+/// the user a raw FileProvider message they cannot act on.
 String _handOffMessage(Object e) {
   final text = e.toString();
   if (text.contains('no_handler')) {
     return 'No app on this device can open this kind of file.';
+  }
+  if (text.contains('not_shareable')) {
+    // handOffToOs already retried via a staged copy; reaching here means the
+    // copy itself failed (no space, or the volume went away mid-copy).
+    return "Couldn't prepare this file to hand to another app — check there is "
+        'free space on this device.';
   }
   return 'Could not open the file in another app: $e';
 }

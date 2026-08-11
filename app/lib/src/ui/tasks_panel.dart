@@ -16,6 +16,7 @@ import '../state/tasks_controller.dart';
 import '../state/transfer_options.dart';
 import '../state/transfer_service.dart';
 import '../state/windows_task_scheduler.dart';
+import 'dialog_body.dart';
 import 'theme/tokens.dart';
 import 'transfer_options_dialog.dart';
 
@@ -38,7 +39,7 @@ class _TasksDialog extends ConsumerWidget {
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(Radii.lg),
       ),
-      child: SizedBox(
+      child: DialogBody(
         width: 560,
         height: 480,
         child: Column(
@@ -593,7 +594,7 @@ Future<({String resyncMode, bool dryRun})?> showBaselineDialog(
         builder: (dctx, setState) => AlertDialog(
           backgroundColor: c.surfaceRaised,
           title: const Text('Establish two-way baseline'),
-          content: SizedBox(
+          content: DialogBody(
             width: 440,
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -946,7 +947,7 @@ class _ScheduleDialogState extends ConsumerState<_ScheduleDialog> {
     return AlertDialog(
       backgroundColor: c.surfaceRaised,
       title: Text('Schedule "${widget.task.name}"'),
-      content: SizedBox(
+      content: DialogBody(
         width: 400,
         child: Column(
           mainAxisSize: MainAxisSize.min,

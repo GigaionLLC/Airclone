@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../rclone/rclone_client.dart';
+import 'dialog_body.dart';
 import 'theme/tokens.dart';
 
 const _expiryPresets = <(String, String)>[
@@ -114,7 +115,7 @@ class _PublicLinkDialogState extends State<_PublicLinkDialog> {
     return AlertDialog(
       backgroundColor: c.surfaceRaised,
       title: const Text('Public link'),
-      content: SizedBox(
+      content: DialogBody(
         width: 420,
         child: Column(
           mainAxisSize: MainAxisSize.min,

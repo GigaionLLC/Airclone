@@ -10,6 +10,7 @@ import '../rclone/rclone_client.dart';
 import '../state/remotes_provider.dart';
 import '../state/serve_controller.dart';
 import '../state/serve_policy.dart';
+import 'dialog_body.dart';
 import 'theme/tokens.dart';
 
 const _defaultPorts = {
@@ -102,7 +103,7 @@ class _ServeDialogState extends ConsumerState<_ServeDialog> {
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(Radii.lg),
       ),
-      child: SizedBox(
+      child: DialogBody(
         width: 560,
         height: 620,
         child: Column(

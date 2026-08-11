@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../rclone/models/mount_info.dart';
+import '../state/diagnostics.dart';
 import '../state/engine_controller.dart';
 import '../state/mount_controller.dart';
 import '../state/settings_controller.dart';
@@ -33,6 +34,7 @@ class _AircloneAppState extends ConsumerState<AircloneApp> {
   @override
   void initState() {
     super.initState();
+    _installErrorHooks();
     // Desktop: shut the rclone engine down BEFORE the process goes away.
     // `EngineController`'s `ref.onDispose(quit)` never runs on a window close —
     // the ProviderScope is not disposed, the process simply ends — and on Windows
@@ -54,6 +56,36 @@ class _AircloneAppState extends ConsumerState<AircloneApp> {
   void dispose() {
     _lifecycle?.dispose();
     super.dispose();
+  }
+
+  /// Routes framework and uncaught-async errors into the local diagnostics log
+  /// (state/diagnostics.dart) so a user hitting a crash has something concrete
+  /// to attach to a bug report. Purely local — nothing is transmitted — and the
+  /// default handlers still run, so console output in debug is unchanged.
+  void _installErrorHooks() {
+    attachGlobalDiagnostics(ref.read(diagnosticsProvider.notifier));
+    final priorFlutterError = FlutterError.onError;
+    FlutterError.onError = (details) {
+      logDiagnostic(
+        DiagLevel.error,
+        'ui',
+        details.exceptionAsString(),
+        // A full stack is noise in a report; the top frames are the signal.
+        detail: details.stack?.toString().split('\n').take(8).join('\n'),
+      );
+      priorFlutterError?.call(details);
+    };
+    final dispatcher = WidgetsBinding.instance.platformDispatcher;
+    final priorPlatformError = dispatcher.onError;
+    dispatcher.onError = (error, stack) {
+      logDiagnostic(
+        DiagLevel.error,
+        'async',
+        error.toString(),
+        detail: stack.toString().split('\n').take(8).join('\n'),
+      );
+      return priorPlatformError?.call(error, stack) ?? false;
+    };
   }
 
   /// Always answers [AppExitResponse.exit] — the close is never cancelled, we

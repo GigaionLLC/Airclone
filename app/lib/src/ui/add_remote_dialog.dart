@@ -5,6 +5,7 @@ import '../rclone/models/provider.dart';
 import '../rclone/models/remote.dart';
 import '../state/add_remote_controller.dart';
 import '../state/providers_provider.dart';
+import 'dialog_body.dart';
 import 'theme/tokens.dart';
 
 Future<void> showAddRemoteDialog(BuildContext context) =>
@@ -57,7 +58,7 @@ class _AddRemoteDialogState extends ConsumerState<AddRemoteDialog> {
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(Radii.lg),
       ),
-      child: SizedBox(
+      child: DialogBody(
         width: 520,
         height: 560,
         child: Padding(

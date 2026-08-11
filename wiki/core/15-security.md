@@ -53,6 +53,26 @@ A single **`SecretStore`** seam abstracts credential storage with backends per e
 - The **config password** lives in the keystore; on mobile, decryption is gated behind biometric /
   device unlock. The password is **never persisted by Airclone** in plaintext and never sent anywhere.
 
+### 3.1 Mobile config lifetime — uninstall is destructive, by design
+
+On phones `rclone.conf` lives in the app's private sandbox (`/data/user/0/<pkg>/files` on Android,
+the app container on iOS), and Android's manifest sets **`allowBackup="false"`** so the file can
+never ride along in an ADB or cloud backup where it could be read off-device.
+
+The cost of that choice is unavoidable and worth stating plainly: **uninstalling the app destroys
+the config, and no automatic backup restores it.** Verified on Android 15 (2026-08-11) —
+uninstall + reinstall leaves no `files/` directory at all. Desktop is unaffected; its config lives
+outside the app in rclone's own directory and survives reinstalling.
+
+The supported way across an uninstall or a new phone is therefore an explicit export — Settings →
+Import & export (encrypted file export, or the Offline QR handoff). The Config section says so
+in-app on mobile, above the export buttons, rather than leaving the user to find out afterwards.
+
+Do **not** "fix" this by enabling `allowBackup` or by writing the config to shared storage: both put
+unencrypted cloud credentials somewhere other apps or a device backup can reach them. If an
+automatic escape hatch is ever wanted, it has to be an opt-in, passphrase-encrypted export written
+outside the sandbox — a design decision, not a default.
+
 ## 4. Encryption
 
 - **Config encryption** on by default (rclone's encrypted config).
@@ -73,6 +93,28 @@ A single **`SecretStore`** seam abstracts credential storage with backends per e
   refused at the call boundary, so it can't be bypassed by editing the UI or scripting around it. The
   Policy Engine reads OS-native managed config; see
   [19-enterprise-readiness.md §2](19-enterprise-readiness.md).
+
+### 5.1 Diagnostics — evidence without telemetry
+
+Airclone sends **no** crash reports, analytics, or error telemetry. That leaves a real gap: a bug
+report with no evidence is a bug that never gets fixed. The answer is a local, user-driven log
+([`diagnostics.dart`](../../app/lib/src/state/diagnostics.dart)), surfaced at
+**Settings → Diagnostics → Problem report**:
+
+- A **bounded in-memory ring** (`kDiagnosticsCapacity = 300`). Nothing is written to disk unless the
+  user saves or shares a report; nothing is ever transmitted.
+- **Redaction runs at INGEST, not at export.** `redactSensitive` is applied inside
+  `DiagnosticsLog.record`, so a secret rclone echoed into an error never enters the ring — an export
+  path that forgot to sanitise therefore cannot leak. It strips secret-named config keys
+  (`secret_access_key`, `client_secret`, `…_pass`), OAuth token blobs, `Bearer`/`Basic` headers,
+  URL-embedded credentials, email addresses, and home-directory names (keeping the rest of the path,
+  which is what makes a report useful).
+- The report **header carries versions, platform and install channel only** — never a remote name,
+  account, or hostname.
+- Uncaught framework and async errors are routed in from the app root, so a crash leaves a trace.
+
+When adding a new failure path, log it here rather than only showing a SnackBar: the SnackBar is
+gone in three seconds, and this is the only channel by which a user can hand a maintainer the detail.
 
 ## 6. Honest Guardrail Boundary
 
