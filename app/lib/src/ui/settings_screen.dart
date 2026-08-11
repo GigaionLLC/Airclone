@@ -10,6 +10,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../rclone/librclone_ffi.dart' show defaultLibrclonePath;
 import '../rclone/rclone_engine.dart';
 import '../state/advanced_mode.dart';
+import '../state/android_native.dart';
 import '../state/app_info.dart';
 import '../state/biometric_unlock.dart';
 import '../state/cache_crypto.dart';
@@ -20,8 +21,10 @@ import '../state/download_settings.dart';
 import '../state/engine_controller.dart';
 import '../state/engine_flags.dart';
 import '../state/engine_mode.dart';
+import '../state/external_config_backup.dart';
 import '../state/install_source.dart';
 import '../state/jobs_controller.dart';
+import '../state/local_locations.dart';
 import '../state/open_external.dart';
 import '../state/os_integration.dart';
 import '../state/remotes_provider.dart';
@@ -32,6 +35,7 @@ import 'config_encryption_dialog.dart';
 import 'config_export_dialog.dart';
 import 'config_import_dialog.dart';
 import 'dialog_body.dart';
+import 'external_backup_dialogs.dart';
 import 'offline_qr_dialog.dart';
 import 'scan_from_desktop_sheet.dart';
 import 'theme/tokens.dart';
@@ -694,32 +698,13 @@ class _ConfigSectionState extends ConsumerState<_ConfigSection> {
         // which the OS DELETES on uninstall — verified on an Android 15 device:
         // uninstall + reinstall leaves no `files/` directory at all. Airclone
         // also sets `allowBackup=false` on purpose, so the config never rides
-        // along in an ADB or cloud backup where it could be read off-device; the
-        // cost of that choice is that no automatic backup restores it either.
+        // along in an ADB or cloud backup where it could be read off-device.
         // Desktop is unaffected — its config sits outside the app in rclone's
         // own directory and survives reinstalling.
         //
-        // So the export is not a nicety here, it is the only way back. Say so
-        // before the user finds out the hard way.
-        if (!desktop) ...[
-          const SizedBox(height: Space.x2),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Icon(Icons.info_outline, size: 14, color: c.textFaint),
-              const SizedBox(width: Space.x2),
-              Expanded(
-                child: Text(
-                  'Uninstalling Airclone deletes this file — the app keeps it '
-                  'in private storage that no backup can reach, so your '
-                  'credentials never leave the device. Export your config below '
-                  'before you uninstall or switch phones.',
-                  style: TextStyle(color: c.textFaint, fontSize: 12),
-                ),
-              ),
-            ],
-          ),
-        ],
+        // [_ExternalBackupSection] is the opt-in way out of that, and owns the
+        // copy for BOTH states so the two can never contradict each other.
+        if (!desktop) const _ExternalBackupSection(),
         if (desktop) ...[
           const SizedBox(height: Space.x3),
           Row(
@@ -1865,6 +1850,277 @@ class _EngineFlagsSectionState extends ConsumerState<_EngineFlagsSection> {
         ),
       ],
     );
+  }
+}
+
+/// Settings → Config → "Survive uninstall": the opt-in copy of the config kept
+/// outside the app sandbox (state/external_config_backup.dart).
+///
+/// Owns the copy for BOTH states. When off it states plainly that uninstalling
+/// loses everything — the default is safe, not silent. When on it shows what
+/// exists, where, and how it is protected, because a backup the user has
+/// forgotten the nature of is worse than none.
+class _ExternalBackupSection extends ConsumerStatefulWidget {
+  const _ExternalBackupSection();
+
+  @override
+  ConsumerState<_ExternalBackupSection> createState() =>
+      _ExternalBackupSectionState();
+}
+
+class _ExternalBackupSectionState
+    extends ConsumerState<_ExternalBackupSection> {
+  String? _notice;
+
+  Future<void> _toggle(bool on) async {
+    setState(() => _notice = null);
+    if (on) {
+      final enabled = await showExternalBackupSetupDialog(context);
+      if (enabled && mounted) {
+        setState(() => _notice = 'Backup created.');
+      }
+      return;
+    }
+    // Turning it off DELETES the external file — say so before doing it, since
+    // the user may be relying on it to survive the uninstall they are planning.
+    final confirmed = await _confirmDisable();
+    if (!confirmed || !mounted) return;
+    try {
+      await ref.read(externalBackupProvider.notifier).disable();
+      if (mounted) setState(() => _notice = 'Backup removed from this device.');
+    } catch (e) {
+      if (mounted) {
+        setState(() => _notice = e is ExternalBackupError ? e.message : '$e');
+      }
+    }
+  }
+
+  Future<bool> _confirmDisable() async {
+    final c = AircloneTheme.of(context);
+    return await showDialog<bool>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            backgroundColor: c.surfaceRaised,
+            title: const Text('Turn off and delete the backup?'),
+            content: DialogBody(
+              width: 400,
+              child: Text(
+                'The backup file will be deleted from this device. If you '
+                'uninstall Airclone after this, your remotes are gone.',
+                style: TextStyle(color: c.textMuted, fontSize: 13),
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(ctx).pop(false),
+                child: Text('Keep it', style: TextStyle(color: c.textMuted)),
+              ),
+              FilledButton(
+                style: FilledButton.styleFrom(
+                  backgroundColor: c.error,
+                  foregroundColor: c.onPrimary,
+                ),
+                onPressed: () => Navigator.of(ctx).pop(true),
+                child: const Text('Turn off'),
+              ),
+            ],
+          ),
+        ) ??
+        false;
+  }
+
+  Future<void> _backupNow() async {
+    setState(() => _notice = null);
+    try {
+      await ref.read(externalBackupProvider.notifier).backupNow();
+      if (mounted) setState(() => _notice = 'Backed up.');
+    } catch (e) {
+      if (mounted) {
+        setState(() => _notice = e is ExternalBackupError ? e.message : '$e');
+      }
+    }
+  }
+
+  /// Offers whatever backup is already on the device — the manual counterpart to
+  /// the automatic offer at startup, for when the user dismissed that or wants
+  /// to pull the remotes in again later.
+  Future<void> _restore() async {
+    setState(() => _notice = null);
+    final found = await findExternalBackup();
+    if (!mounted) return;
+    if (found == null) {
+      setState(() => _notice = 'No backup found on this device.');
+      return;
+    }
+    await showRestoreBackupOffer(context, found);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final c = AircloneTheme.of(context);
+    final backup = ref.watch(externalBackupProvider);
+    final storageOk = ref.watch(allFilesAccessProvider).valueOrNull ?? true;
+    final encrypted = backup.mode == ExternalBackupMode.encrypted;
+    // A backup file present while the feature is off (see below).
+    final stale = ref.watch(externalBackupFileProvider).valueOrNull;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const SizedBox(height: Space.x4),
+        const _SectionLabel(
+          'Survive uninstall',
+          help:
+              'Your remotes live in private app storage that no backup can '
+              'reach — safe, but uninstalling deletes them. Turn this on to '
+              'keep an encrypted copy in a folder outside the app.',
+        ),
+        Row(
+          children: [
+            Icon(
+              backup.enabled
+                  ? (encrypted ? Icons.lock_outline : Icons.lock_open)
+                  : Icons.delete_forever_outlined,
+              size: 16,
+              color: backup.enabled
+                  ? (encrypted ? c.success : c.error)
+                  : c.textMuted,
+            ),
+            const SizedBox(width: Space.x2),
+            Expanded(
+              child: Text(
+                switch (backup.mode) {
+                  ExternalBackupMode.off =>
+                    'Off — uninstalling Airclone loses your remotes.',
+                  ExternalBackupMode.encrypted =>
+                    'On, encrypted with your passphrase.',
+                  ExternalBackupMode.plaintext =>
+                    'On, NOT encrypted — anything on this phone can read it.',
+                },
+                style: TextStyle(
+                  color: backup.mode == ExternalBackupMode.plaintext
+                      ? c.error
+                      : c.textMuted,
+                  fontSize: 13,
+                ),
+              ),
+            ),
+            if (backup.busy)
+              const SizedBox(
+                height: 16,
+                width: 16,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            else
+              Switch(value: backup.enabled, onChanged: (v) => _toggle(v)),
+          ],
+        ),
+        if (backup.enabled) ...[
+          const SizedBox(height: 4),
+          Text(
+            '${externalBackupDir(androidStorageRoot)}/'
+            '${encrypted ? kEncryptedBackupName : kPlaintextBackupName}'
+            '${backup.lastWrittenAt != null ? '  ·  updated ${_relative(backup.lastWrittenAt!)}' : ''}',
+            style: TextStyle(color: c.textFaint, fontSize: 11),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Kept up to date automatically whenever your remotes change.',
+            style: TextStyle(color: c.textFaint, fontSize: 11),
+          ),
+        ],
+        // The mode lives in SharedPreferences (wiped by uninstall) but the file
+        // does not, so straight after a reinstall the switch reads off beside a
+        // real backup. Say that out loud — a user who just restored from it
+        // would otherwise assume they are still covered.
+        if (!backup.enabled && stale != null) ...[
+          const SizedBox(height: Space.x2),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(Icons.history_toggle_off, size: 14, color: c.warning),
+              const SizedBox(width: Space.x2),
+              Expanded(
+                child: Text(
+                  'A backup from a previous install is still on this device, '
+                  'but it is no longer being kept up to date. Turn this on to '
+                  'resume.',
+                  style: TextStyle(color: c.textMuted, fontSize: 12),
+                ),
+              ),
+            ],
+          ),
+        ],
+        if (!storageOk) ...[
+          const SizedBox(height: Space.x2),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(Icons.folder_off_outlined, size: 14, color: c.warning),
+              const SizedBox(width: Space.x2),
+              Expanded(
+                child: Text(
+                  'Airclone needs access to all files to write outside its own '
+                  'storage.',
+                  style: TextStyle(color: c.textMuted, fontSize: 12),
+                ),
+              ),
+              TextButton(
+                onPressed: () async {
+                  await requestAllFilesAccess();
+                  ref.invalidate(allFilesAccessProvider);
+                },
+                child: const Text('Grant'),
+              ),
+            ],
+          ),
+        ],
+        if (backup.error != null) ...[
+          const SizedBox(height: Space.x2),
+          Text(backup.error!, style: TextStyle(color: c.error, fontSize: 12)),
+        ],
+        if (_notice != null) ...[
+          const SizedBox(height: Space.x2),
+          Text(_notice!, style: TextStyle(color: c.textMuted, fontSize: 12)),
+        ],
+        const SizedBox(height: Space.x2),
+        Wrap(
+          spacing: Space.x2,
+          runSpacing: Space.x2,
+          children: [
+            if (backup.enabled)
+              OutlinedButton.icon(
+                onPressed: backup.busy ? null : _backupNow,
+                icon: const Icon(Icons.backup_outlined, size: 16),
+                label: const Text('Back up now'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: c.text,
+                  side: BorderSide(color: c.borderStrong),
+                  visualDensity: VisualDensity.compact,
+                ),
+              ),
+            OutlinedButton.icon(
+              onPressed: backup.busy ? null : _restore,
+              icon: const Icon(Icons.restore, size: 16),
+              label: const Text('Restore from backup…'),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: c.text,
+                side: BorderSide(color: c.borderStrong),
+                visualDensity: VisualDensity.compact,
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  /// "2 minutes ago"-style, coarse on purpose — the exact second is noise.
+  static String _relative(DateTime at) {
+    final d = DateTime.now().difference(at);
+    if (d.inSeconds < 60) return 'just now';
+    if (d.inMinutes < 60) return '${d.inMinutes}m ago';
+    if (d.inHours < 24) return '${d.inHours}h ago';
+    return '${d.inDays}d ago';
   }
 }
 

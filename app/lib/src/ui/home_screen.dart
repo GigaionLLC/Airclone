@@ -19,6 +19,7 @@ import '../state/browser_controller.dart';
 import '../state/bw_schedule_controller.dart';
 import '../state/clipboard_controller.dart';
 import '../state/engine_controller.dart';
+import '../state/external_config_backup.dart';
 import '../state/file_ops.dart';
 import '../state/jobs_controller.dart';
 import '../state/local_locations.dart';
@@ -37,6 +38,7 @@ import 'connection_test_dialog.dart';
 import 'dedupe_dialog.dart';
 import 'encrypt_remote_dialog.dart';
 import 'engine_gate.dart';
+import 'external_backup_dialogs.dart';
 import 'file_op_dialogs.dart';
 import 'format.dart';
 import 'home_view.dart';
@@ -98,8 +100,22 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       ref.read(bookmarksProvider);
       // Android: foreground service keeps transfers alive when backgrounded.
       ref.read(transferForegroundServiceProvider);
+      // Android: arm the outside-the-sandbox backup so it tracks config changes.
+      // The restore OFFER is driven reactively from build(), not from here.
+      ref.read(externalBackupProvider.notifier).ensureLoaded();
     });
   }
+
+  /// Offers a restore when this looks like a fresh install after an uninstall:
+  /// no cloud remotes configured, and a backup sitting in shared storage.
+  /// Shown at most once per run.
+  Future<void> _offerBackupRestore(FoundBackup found) async {
+    if (_offeredRestore || !mounted) return;
+    _offeredRestore = true;
+    await showRestoreBackupOffer(context, found);
+  }
+
+  bool _offeredRestore = false;
 
   @override
   void dispose() {
@@ -601,6 +617,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         ref.read(browserAProvider.notifier).refresh();
         ref.read(browserBProvider.notifier).refresh();
       }
+    });
+    // Android: a backup left by a previous install. Listened for (rather than
+    // probed once at startup) because a FRESH install has no storage permission
+    // yet — the probe only succeeds after the user grants All Files Access,
+    // which may be minutes into the session. That is precisely the user this
+    // offer exists for, so it must still reach them.
+    ref.listen(restorableBackupProvider, (_, next) {
+      final found = next.valueOrNull;
+      if (found != null) unawaited(_offerBackupRestore(found));
     });
     // Phone-sized windows get the touch-first shell (bottom tabs, one pane).
     // The listeners above stay active for both shells.

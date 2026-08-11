@@ -4,6 +4,30 @@ All changes made by AI agents are tracked chronologically below (most recent fir
 
 ---
 
+## [2026-08-11] - "Survive uninstall": an opt-in, encrypted config backup outside the sandbox
+
+**Agent:** Claude Opus 5 — `main`
+**Files Modified:** `app/lib/src/state/external_config_backup.dart` (new),
+`app/lib/src/ui/external_backup_dialogs.dart` (new), `settings_screen.dart`, `home_screen.dart`,
+`config_import_dialog.dart`, `app/test/external_config_backup_test.dart` (new),
+`wiki/core/15-security.md`
+**Database/API Changes:** None.
+**Summary:** Closes the "a reinstall loses every remote" gap left by `allowBackup=false`, without
+weakening it. Settings → Config → **Survive uninstall** mirrors the config to
+`<shared storage>/Airclone/`, which uninstall does not delete. Turning it on **asks for a
+passphrase** and seals an ACFG2 envelope (AES-256-GCM over Argon2id, in `compute()` so the automatic
+refresh never janks the UI); continuing without one is possible but only behind a danger screen
+listing what it means plus a checkbox acknowledgement. Off by default. The backup refreshes itself
+whenever remotes change (SHA-256 digest guard), only one file may ever exist (a failed delete of a
+*plaintext* file is raised, not swallowed), turning it off deletes the file, and writes are
+`.part`-then-rename. Restore reuses the normal import wizard via a new `initialBytes` parameter, so
+it gets the same passphrase prompt, mandatory preview and collision handling; the offer fires
+reactively because a fresh install has no storage permission when it launches. Verified end-to-end
+on Android 15: enable → uninstall (file survives, no plaintext secrets) → reinstall (app data gone)
+→ automatic offer → passphrase → merge → remotes back. 649 tests pass, analyze clean.
+
+---
+
 ## [2026-08-11] - Store-compliant updates, Android hand-off + import fixes, local diagnostics
 
 **Agent:** Claude Opus 5 — `main`

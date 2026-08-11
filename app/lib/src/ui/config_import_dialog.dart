@@ -14,9 +14,21 @@ import 'theme/tokens.dart';
 /// preview the incoming remotes with collision renames → merge, or replace. This
 /// is "Import File Config" — opening a file. QR import is a separate, phone-camera
 /// flow (see scan_from_desktop_sheet.dart), never a file pick.
-Future<void> showConfigImportDialog(BuildContext context) => showDialog<void>(
+///
+/// [initialBytes] skips the file picker and starts from content the caller
+/// already holds — the restore path for the outside-the-sandbox backup
+/// (external_config_backup.dart). Everything after that step is identical, which
+/// is the point: a restore gets the same passphrase prompt, the same mandatory
+/// preview with endpoint summaries, and the same collision handling as any other
+/// import, rather than a second, less-reviewed code path.
+Future<void> showConfigImportDialog(
+  BuildContext context, {
+  List<int>? initialBytes,
+  String initialName = '',
+}) => showDialog<void>(
   context: context,
-  builder: (_) => const _ConfigImportDialog(),
+  builder: (_) =>
+      _ConfigImportDialog(initialBytes: initialBytes, initialName: initialName),
 );
 
 /// Wizard steps. [pick] chooses a file; [passphrase]/[rclonePassword] unlock the
@@ -36,7 +48,12 @@ enum _ImportStep {
 }
 
 class _ConfigImportDialog extends ConsumerStatefulWidget {
-  const _ConfigImportDialog();
+  const _ConfigImportDialog({this.initialBytes, this.initialName = ''});
+
+  /// Content to import instead of showing the file picker (see
+  /// [showConfigImportDialog]).
+  final List<int>? initialBytes;
+  final String initialName;
 
   @override
   ConsumerState<_ConfigImportDialog> createState() =>
@@ -80,6 +97,18 @@ class _ConfigImportDialogState extends ConsumerState<_ConfigImportDialog> {
       ref.read(configTransferControllerProvider);
 
   DiagnosticsLog get _log => ref.read(diagnosticsProvider.notifier);
+
+  @override
+  void initState() {
+    super.initState();
+    final bytes = widget.initialBytes;
+    if (bytes == null) return;
+    // Caller-supplied content: jump straight past the pick step. Deferred to
+    // after the first frame so the sniff/decode can call setState safely.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _acceptBytes(bytes, widget.initialName);
+    });
+  }
 
   @override
   void dispose() {
@@ -131,6 +160,14 @@ class _ConfigImportDialogState extends ConsumerState<_ConfigImportDialog> {
       return;
     }
     if (!mounted) return;
+    await _acceptBytes(bytes, name);
+  }
+
+  /// Sniffs [bytes] and routes to the next step: straight to the preview for a
+  /// plaintext config, or to the matching unlock step for an encrypted one.
+  /// Shared by the file picker and the caller-supplied ([widget.initialBytes])
+  /// entry points so both land in the same mandatory review.
+  Future<void> _acceptBytes(List<int> bytes, String name) async {
     final format = detectConfigFormat(bytes);
     setState(() {
       _bytes = bytes;

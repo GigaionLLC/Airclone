@@ -68,10 +68,56 @@ The supported way across an uninstall or a new phone is therefore an explicit ex
 Import & export (encrypted file export, or the Offline QR handoff). The Config section says so
 in-app on mobile, above the export buttons, rather than leaving the user to find out afterwards.
 
-Do **not** "fix" this by enabling `allowBackup` or by writing the config to shared storage: both put
-unencrypted cloud credentials somewhere other apps or a device backup can reach them. If an
-automatic escape hatch is ever wanted, it has to be an opt-in, passphrase-encrypted export written
-outside the sandbox — a design decision, not a default.
+Do **not** "fix" this by enabling `allowBackup` or by writing a *plaintext* config to shared storage
+by default: both put unencrypted cloud credentials somewhere other apps or a device backup can reach
+them. The supported escape hatch is §3.2, which is opt-in and encrypted.
+
+### 3.2 "Survive uninstall" — the opt-in copy outside the sandbox
+
+[`external_config_backup.dart`](../../app/lib/src/state/external_config_backup.dart) mirrors the
+config to `<shared storage>/Airclone/`, which the OS does **not** delete with the app (unlike
+`Android/data/<pkg>/`). Settings → Config → **Survive uninstall**. Android-only: desktop needs none
+of it, and iOS has no equivalent shared location.
+
+The shape of the feature *is* the security design:
+
+| Mode | File | Protection |
+| :--- | :--- | :--- |
+| `off` (**default**) | none | nothing exists outside the sandbox |
+| `encrypted` | `airclone-config.acfg` | ACFG2 envelope — AES-256-GCM over Argon2id, the same format as the encrypted export |
+| `plaintext` | `rclone.conf` | **none** — reachable only behind a danger confirmation |
+
+Rules this code must keep:
+
+- **The passphrase prompt is the enable flow.** There is no path to an unencrypted copy that does
+  not pass an explicit second screen listing what it means (any app with file access can read it;
+  device backups and phone-to-phone transfers copy it; anyone holding the unlocked phone can open
+  it) plus a checkbox acknowledgement. Users who genuinely want a plain `rclone.conf` may have one —
+  never by accident.
+- **Only one file may exist.** Switching modes deletes the other, and a failure to delete a
+  *plaintext* file is raised, not swallowed — leaving readable credentials behind while the UI says
+  otherwise is the worst outcome available.
+- **Turning it off deletes the file.** Opting out must not leave the credentials on disk.
+- **Writes are atomic** (`.part` then rename). After an uninstall this is the user's only copy.
+- **The seal runs in `compute()`.** Argon2id at 64 MiB is pure Dart; this path also runs
+  automatically when remotes change, so it must not jank the UI isolate.
+- **The passphrase lives in the OS vault** so the backup can refresh unattended. The vault dies with
+  the app on uninstall, which is correct — a restore should require typing it.
+
+Restore is deliberately **not** a second code path: the bytes are handed to the normal import wizard
+(`showConfigImportDialog(initialBytes:)`), so a restore gets the same passphrase prompt, the same
+mandatory preview with endpoint summaries, and the same collision handling as any other import.
+`restorableBackupProvider` watches All Files Access as well as the remotes list — a fresh install has
+no storage permission yet, so the offer must re-fire when the grant lands rather than only at launch.
+
+One state to keep in mind: the *mode* lives in SharedPreferences (wiped by uninstall) while the
+*file* does not, so straight after a reinstall the switch reads off beside a real backup. Settings
+says so explicitly and offers to resume; a user who has just restored must not believe they are
+still covered.
+
+Verified end-to-end on Android 15 (2026-08-11): enable → uninstall (file survives, `ACFG2` header,
+no plaintext secrets) → reinstall (app data gone) → automatic offer → passphrase → review → merge →
+remotes back; deleting a remote rewrites the backup unprompted; turning it off removes the file.
 
 ## 4. Encryption
 
