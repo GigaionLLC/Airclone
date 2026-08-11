@@ -23,8 +23,8 @@ cached server value — or when you need to find "which provider owns X" without
 | :--- | :--- |
 | **Framework** | Riverpod 2 (`flutter_riverpod`) with the modern `Notifier` / `NotifierProvider` API **only**. |
 | **Not used** | No `riverpod_generator` / code-gen, no `StateNotifierProvider`, no `ChangeNotifierProvider`, no `AsyncNotifierProvider`. Do not introduce them. |
-| **Naming** | Every top-level provider is named `<thing>Provider`. 74 public providers + 1 private (`_transferInFlightProvider` in [ui/paste_action.dart](../../app/lib/src/ui/paste_action.dart)). |
-| **Location** | 69 live in [app/lib/src/state/](../../app/lib/src/state/); 5 UI-local ones live beside their widget in `app/lib/src/ui/`. New state belongs in `state/` unless it is purely one widget's chrome. |
+| **Naming** | Every top-level provider is named `<thing>Provider`. 80 public providers + 1 private (`_transferInFlightProvider` in [ui/paste_action.dart](../../app/lib/src/ui/paste_action.dart)). |
+| **Location** | 75 live in [app/lib/src/state/](../../app/lib/src/state/); 5 UI-local ones live beside their widget in `app/lib/src/ui/`. New state belongs in `state/` unless it is purely one widget's chrome. |
 | **Root** | The graph is rooted at `engineControllerProvider`. Every server-state provider starts with `ref.read/watch(engineControllerProvider).client` and returns an **empty value when it is null** — never throws, never blocks. |
 | **Persisted scalar idiom** | A `Notifier<T>` whose `build()` fires an unawaited `_load()` and returns the default **synchronously**, plus `Future<void> set(T)` that assigns `state` then writes SharedPreferences inside a swallowing `try/catch`. Canonical example: [state/advanced_mode.dart](../../app/lib/src/state/advanced_mode.dart). |
 | **`ensureLoaded()`** | Providers whose value is read at *startup decision time* also expose an idempotent `Future<void> ensureLoaded()` caching a single `_loading` future — see [settings_controller.dart](../../app/lib/src/state/settings_controller.dart), [config_password_vault.dart](../../app/lib/src/state/config_password_vault.dart), [biometric_unlock.dart](../../app/lib/src/state/biometric_unlock.dart). Callers making a boot-time branch **must await it** (see Traps). |
@@ -49,8 +49,13 @@ Paths are relative to `app/lib/src/`. Line numbers are the declaration site at t
 | `engineFlagsProvider` | [state/engine_flags.dart:36](../../app/lib/src/state/engine_flags.dart) | `NotifierProvider<EngineFlags, String>` | Raw extra argv appended to the spawned `rclone rcd`. `set(String)`. |
 | `configTransferControllerProvider` | [state/config_transfer_controller.dart:972](../../app/lib/src/state/config_transfer_controller.dart) | `Provider<ConfigTransferController>` | Config import / export / merge / replace / encryption applied **to the config file itself** (the one sanctioned out-of-band writer — see Traps). |
 | `configBackupsProvider` | [state/config_backups.dart:167](../../app/lib/src/state/config_backups.dart) | `FutureProvider<ConfigBackups>` | Rolling config backups under `<appSupport>/config-backups`. Fully injectable (dir + clock) for tests. |
-| `appVersionProvider` | [state/app_info.dart:8](../../app/lib/src/state/app_info.dart) | `FutureProvider<String>` | Package version string. |
-| `updateCheckProvider` | [state/app_info.dart:40](../../app/lib/src/state/app_info.dart) | `FutureProvider<UpdateInfo>` | App update availability. |
+| `appVersionProvider` | [state/app_info.dart:11](../../app/lib/src/state/app_info.dart) | `FutureProvider<String>` | Package version string. |
+| `updateCheckProvider` | [state/app_info.dart:76](../../app/lib/src/state/app_info.dart) | `FutureProvider<UpdateStatus>` | App update availability. **Sealed** result: `StoreManagedUpdates` (no network call at all) or `ReleaseUpdateInfo` (the GitHub check). Branches on `installSourceProvider` — see [10-external-integrations.md §5.1](10-external-integrations.md). |
+| `installSourceProvider` | [state/install_source.dart:295](../../app/lib/src/state/install_source.dart) | `FutureProvider<InstallSource>` | How this copy was installed (MSIX / Play / Amazon / F-Droid / Galaxy / App Store / Flathub / Snap / direct). A store-managed install must never be shown an out-of-store download link. |
+| `externalBackupProvider` | [state/external_config_backup.dart:488](../../app/lib/src/state/external_config_backup.dart) | `NotifierProvider<ExternalConfigBackup, ExternalBackupState>` | "Survive uninstall" (Android): the opt-in encrypted copy of the config in shared storage. `enableEncrypted`, `enablePlaintext`, `disable`, `backupNow`, `refreshIfStale`. Self-refreshes off a `ref.listen(remotesProvider)`. |
+| `externalBackupVaultProvider` | [state/external_config_backup.dart:193](../../app/lib/src/state/external_config_backup.dart) | `Provider<ExternalBackupPassphraseVault>` | OS-vault slot for the backup passphrase, so the refresh runs unattended. Overridden in tests. |
+| `restorableBackupProvider` | [state/external_config_backup.dart:564](../../app/lib/src/state/external_config_backup.dart) | `FutureProvider<FoundBackup?>` | A backup **and** an empty config ⇒ a fresh install after an uninstall; drives the startup restore offer. Watches `allFilesAccessProvider` too — a fresh install has no storage permission at launch. |
+| `externalBackupFileProvider` | [state/external_config_backup.dart:543](../../app/lib/src/state/external_config_backup.dart) | `FutureProvider<FoundBackup?>` | Whether a backup FILE exists, regardless of the mode. The two come apart after a reinstall (prefs are wiped, the file is not), and Settings must say so. |
 
 ### Browser panes & navigation
 
@@ -178,6 +183,7 @@ the cloud-hydration guard in [state/cloud_placeholder.dart](../../app/lib/src/st
 | `osIntegrationProvider` | [state/os_integration.dart:136](../../app/lib/src/state/os_integration.dart) | `Provider<OsIntegration>` | Reveal-in-file-manager, open-with-default-app (`url_launcher`), copy path. |
 | `downloadDirProvider` | [state/download_settings.dart:39](../../app/lib/src/state/download_settings.dart) | `NotifierProvider<DownloadDir, String?>` | Remembered download folder; clearing removes the key. |
 | `downloadAlwaysPromptProvider` | [state/download_settings.dart:73](../../app/lib/src/state/download_settings.dart) | `NotifierProvider<DownloadAlwaysPrompt, bool>` | |
+| `diagnosticsProvider` | [state/diagnostics.dart:189](../../app/lib/src/state/diagnostics.dart) | `NotifierProvider<DiagnosticsLog, List<DiagEntry>>` | The local, no-telemetry problem log (Settings → Diagnostics). Bounded ring; **redaction runs at ingest** inside `record()`. `logDiagnostic()` is the `Ref`-free sink for the error hooks in [ui/app.dart](../../app/lib/src/ui/app.dart). See [15-security.md §5.1](15-security.md). |
 
 ### Pure modules in `state/` (no provider)
 
@@ -189,7 +195,10 @@ over inside a `Notifier` — the test suite reaches these directly:
 [config_encryption.dart](../../app/lib/src/state/config_encryption.dart) ·
 [config_io.dart](../../app/lib/src/state/config_io.dart) ·
 [dedupe.dart](../../app/lib/src/state/dedupe.dart) ·
+[diagnostics.dart](../../app/lib/src/state/diagnostics.dart) (redaction + report rendering) ·
 [engine_mode.dart](../../app/lib/src/state/engine_mode.dart) ·
+[external_config_backup.dart](../../app/lib/src/state/external_config_backup.dart) (paths + mode mapping) ·
+[install_source.dart](../../app/lib/src/state/install_source.dart) (installer-id → channel + store links) ·
 [name_conflict.dart](../../app/lib/src/state/name_conflict.dart) ·
 [offline_qr.dart](../../app/lib/src/state/offline_qr.dart) ·
 [open_external.dart](../../app/lib/src/state/open_external.dart) ·
@@ -232,7 +241,7 @@ Explorer-level design intent for these panes lives in [20-explorer-design.md](20
 
 Three backing stores, plus rclone's own config which this layer does **not** own.
 
-### SharedPreferences (25 keys)
+### SharedPreferences (27 keys)
 
 | Key | Provider | Encoding |
 | :--- | :--- | :--- |
@@ -248,6 +257,8 @@ Three backing stores, plus rclone's own config which this layer does **not** own
 | `download_always_prompt` | `downloadAlwaysPromptProvider` | bool |
 | `engineMode` | `settingsControllerProvider` | enum name |
 | `engine_flags` | `engineFlagsProvider` | string |
+| `external_backup_mode` | `externalBackupProvider` | enum name (`off`/`encrypted`/`plaintext`) |
+| `external_backup_digest` | `externalBackupProvider` | string — SHA-256 of the last config written, so an unchanged config is not re-sealed |
 | `pane_split_ratio` | `paneSplitRatioProvider` | double |
 | `pane_split_orientation` | `paneSplitOrientationProvider` | enum name |
 | `rclonePath` | `settingsControllerProvider` | string |
@@ -267,9 +278,12 @@ default, it never surfaces as an error. Enum values persist by `.name` and resol
 
 ### Secure storage
 
-One secret only: `flutter_secure_storage` key `airclone.configPassword`, owned by
-`ConfigPasswordVault`. Written only on an interactive unlock (or an encryption change) **and** only
-when `rememberConfigPasswordProvider` is on; cleared otherwise.
+Two `flutter_secure_storage` keys, both opt-in and both cleared when their feature is turned off:
+
+| Key | Owner | Written when |
+| :--- | :--- | :--- |
+| `airclone.configPassword` | `ConfigPasswordVault` | An interactive unlock (or an encryption change) **and** `rememberConfigPasswordProvider` is on. |
+| `airclone.externalBackupPassphrase` | `ExternalBackupPassphraseVault` | "Survive uninstall" is enabled with a passphrase, so the backup can refresh unattended. Destroyed with the app on uninstall — a restore then requires typing it, which is the intended behaviour. |
 
 ### Encrypted disk caches
 

@@ -94,6 +94,7 @@ manual submission has succeeded end to end.
 | " | **10.1.2.10** "Unusable Feature: Create a local remote" | **Self-inflicted:** our own tester notes told the reviewer to run `config create local local` in the command console, which the console **blocks by design** | v0.5.5: rewrote the notes to the real two-click UI path, and [`blockedMessage()`](../../app/lib/src/state/console/rclone_commands.dart#L205) now names the in-app alternative for every blocked verb |
 | " | **10.2.7** Product Removal — files left in `C:\Program Files\Airclone` | An orphaned `rcd` held a handle on the copy inside the install dir; and anything running from `{app}` at uninstall locks its own file | v0.5.5: quit the engine on window close + kill-on-close Job Object. v0.5.7: `InitializeUninstall` terminates processes under `{app}` — filtered `-notlike 'unins*'`, or the uninstaller returns -1 |
 | **2026-08-08 (v0.6.0 MSIX) — rejected 4×** | Every rejection was package identity | The 2026-07-12 placeholders were never replaced; Partner Center reported only the `PublisherDisplayName` mismatch first, masking the other three | v0.6.1: identity injected by CI from repo variables + a loud warning when unset (see [`dev/releases/v0.6.1.md`](../../dev/releases/v0.6.1.md)) |
+| **2026-08-10 (v0.6.0/v0.6.1) — certification FAILED** | **10.2.5** Installing and Updating Store Apps — "The product updates outside the Store." Cited **Settings → Check for updates → "Open release"**, which opened the GitHub releases page | One binary ships through every channel, so nothing at compile time told the MSIX apart from the Inno installer; the update check was unconditional | v0.6.2: [`install_source.dart`](../../app/lib/src/state/install_source.dart) resolves the channel at runtime and a store build makes **no GitHub request at all**, offering only the Store. `UpdateStatus` is **sealed** so no build can fall through to a download link (see [`10-external-integrations.md §5.1`](../../wiki/core/10-external-integrations.md)) |
 
 Two process rules that came out of the 2026-07-29 report and belong in every future round:
 
@@ -188,6 +189,13 @@ console command the app deliberately blocks (certification failure, policy 10.1.
       the build still bundles it; and install → run → uninstall on a **clean VM with no VC++
       Redistributable** leaves nothing in `C:\Program Files\Airclone` (policy 10.2.7) with
       uninstaller exit code **0**.
+- [ ] **Every store —** the build offers **no route to a download outside that store**. Install the
+      real store artifact (or fake the attribution: `adb install -r -i com.android.vending <apk>`),
+      open **Settings → Check for updates**, and confirm it names the store and links only to it.
+      A GitHub "Open release" button here is what failed Microsoft certification on 2026-08-10
+      (policy 10.2.5); Google Play and the App Store enforce the same rule. Anything new that links
+      outward — a "download the desktop app" nudge, a changelog link, an engine updater — has to be
+      gated on `installSourceProvider` the same way.
 - [ ] On a **failed** certification, expand **every** collapsed row and download the **Supporting
       files ZIP** before starting work — the collapsed summary has no detail.
 

@@ -1,6 +1,6 @@
 # Airclone — Privacy Policy
 
-_Last updated: 2026-07-23_
+_Last updated: 2026-08-11_
 
 Airclone is a desktop and mobile graphical interface for
 [rclone](https://rclone.org), published by **Gigaion, LLC**. This policy
@@ -28,6 +28,40 @@ operated by Gigaion, LLC.
   configuration is **end-to-end encrypted on your device** before it is placed
   on a remote, file, or QR code that you control. We never hold the key.
 
+## Error reports stay on your device too
+
+Airclone has **no crash reporting and no error telemetry**. Instead, problems
+are recorded in a log that lives only in memory on your device, which you can
+read under **Settings → Diagnostics → Problem report**.
+
+- Nothing is written to a file unless you save or share a report, and nothing
+  is ever transmitted anywhere — not to us, not to anyone.
+- Passwords, tokens, keys, email addresses, and the name of your home folder
+  are removed **as each entry is recorded**, so they are never in the log to
+  begin with. The report header contains version and platform information only.
+- If you choose to send a report to us in a bug report, that is a deliberate
+  act you take, with the contents visible to you first. We ask you to skim it
+  before sharing it.
+
+## "Survive uninstall" — an optional backup you control
+
+On Android, Airclone can keep a copy of your rclone configuration in a folder
+outside the app (`Airclone/` in your shared storage), so that reinstalling the
+app or setting up a new phone does not lose your remotes. **This is off by
+default.**
+
+- When you turn it on, Airclone asks you for a passphrase and **encrypts the
+  backup with it** (AES-256-GCM with an Argon2id-derived key). We never hold
+  that passphrase, and without it the file cannot be opened by anyone.
+- You may choose to turn it on **without** a passphrase, which writes a plain
+  `rclone.conf`. Airclone warns you clearly, and requires you to confirm that
+  you understand, before doing this: an unencrypted file in shared storage can
+  be read by other apps on the phone and is copied by device backups and
+  phone-to-phone transfers.
+- Turning the setting off deletes the file from your device.
+
+Either way the file stays on your device. It is not uploaded anywhere.
+
 ## Network connections Airclone makes
 
 Airclone only makes network connections that you initiate or that keep the
@@ -40,8 +74,12 @@ software current:
    `downloads.rclone.org` (to obtain or update the bundled rclone engine) and
    the GitHub releases API (to check whether a newer version of Airclone is
    available). These requests download software and version information only;
-   they do not send personal data about you. _(The Microsoft Store build ships
-   with the rclone engine included and is updated through the Store.)_
+   they do not send personal data about you.
+
+   _Builds installed from an app store make neither request._ A Microsoft
+   Store, Google Play, or App Store copy ships with the rclone engine included
+   and is updated by that store; "Check for updates" simply points you at the
+   store and contacts nothing.
 
 Airclone does **not** contact any Gigaion, LLC server, because none exists for
 this app.
