@@ -107,8 +107,8 @@ Budgets live in [thumbnail_service.dart](../../app/lib/src/state/thumbnail_servi
 | Budget | Value | Applies to |
 | :--- | :--- | :--- |
 | `_maxConcurrent` | 4 | General gate — images **and** videos |
-| `_maxConcurrentVideo` | mobile 1 / desktop 2 | Video keyframe captures only |
-| `_videoFirstFrameTimeout` | mobile 30 s / desktop 12 s | `waitUntilFirstFrameRendered` |
+| `_maxConcurrentVideo` | iOS 1 / Android 2 / desktop 2 | Video keyframe captures only |
+| `_videoFirstFrameTimeout` | mobile 30 s / desktop 12 s | `waitUntilFirstFrameRendered` (libmpv) — and the whole native call on Android |
 | `screenshot()` timeout | 6 s | Keyframe grab after the first frame |
 | Image HTTP GET timeout | 20 s | `_fetchAndDecodeImage` |
 | Pre-warm batch | 16 | [thumbnail_reload.dart](../../app/lib/src/state/thumbnail_reload.dart) `_batch` |
@@ -138,8 +138,44 @@ Budgets live in [thumbnail_service.dart](../../app/lib/src/state/thumbnail_servi
 - **Why:** on a phone the bytes come from a cloud backend over a phone connection, and a capture that
   times out costs the same work again on the next scroll — so mobile gets a *longer* budget and
   *fewer* parallel captures, not the same numbers as desktop.
+- **Exception, and why it is one:** Android allows 2 concurrent captures because it does not use
+  libmpv for them (see §2.2.1) — the starvation the mobile cap exists to prevent is a libmpv
+  `Player` competing with the player the user is watching, and there is no such `Player` here.
 - **Check:** a single hardcoded constant for either value is a regression, regardless of which value
   it is.
+
+### 2.2.1 Android captures keyframes natively, not with libmpv
+
+**RULE — On Android, a video thumbnail comes from the `videoThumbnail` platform channel (`MediaMetadataRetriever`); libmpv is used everywhere else.**
+
+- **Why:** libmpv on Android decodes into a Surface, so its `screenshot` command has no CPU-readable
+  frame to hand back — captures returned nothing (or, on the emulator, a black frame that got cached
+  and looked permanently broken). The platform grabber decodes straight to a Bitmap, applies the
+  track's rotation, and costs ~0.2–2 s per file instead of spinning a whole player.
+- **Also required:** the engine's object URL is cleartext loopback, which Android's media stack
+  refuses without `network_security_config.xml` — see
+  [external integrations §3](10-external-integrations.md#3--platform-channels). Without that
+  exemption the capture fails silently, no exception reaches Dart, and the tile just stays empty.
+- **Enforced in:** `_captureVideoFrame` in
+  [thumbnail_service.dart](../../app/lib/src/state/thumbnail_service.dart) dispatches on
+  `Platform.isAndroid`.
+- **Check:** verifying this on the **emulator** is only meaningful for the native path. The emulator
+  cannot render video through libmpv at all (`eglCreateContext` → `EGL_BAD_ATTRIBUTE`), so a libmpv
+  capture there proves nothing.
+
+### 2.2.2 A frame with no picture in it is not a thumbnail
+
+**RULE — A capture whose pixels are all one shade (`isFlatRgba`) is treated as a failure: never returned, never cached.**
+
+- **Why:** a black rectangle in the grid is indistinguishable from a broken app, and once written to
+  the encrypted disk cache it stays that way until a forced rebuild. Videos legitimately open on
+  black (fade-in, slate, camera warm-up), and a failed decode produces a flat frame too.
+- **Enforced in:** `isFlatRgba` (pure, unit-tested in
+  [video_thumbnail_blank_test.dart](../../app/test/video_thumbnail_blank_test.dart)); the libmpv path
+  seeks ~10% in and grabs once more before giving up, and the Android side picks between candidate
+  timestamps with the same threshold in `MainActivity.kt`.
+- **Check:** the test is *uniformity*, not darkness — a night shot with detail must survive. Keep the
+  Kotlin and Dart thresholds (`kBlankLumaRange` / `BLANK_LUMA_RANGE`, 12) in step.
 
 ### 2.3 A fetch that decodes to nothing is permanent
 
@@ -148,11 +184,13 @@ Budgets live in [thumbnail_service.dart](../../app/lib/src/state/thumbnail_servi
 - **Why:** without it the 4-attempt retry loop and every scroll re-mount re-download a multi-MB
   original that will never render (e.g. HEIC/SVG that pass `isThumbnailable` but Flutter's image
   codec rejects). This is a permanent failure, not a transient one.
-- **Enforced in:** `_fetchAndDecodeImage` sets it when `_downscale` returns null; `load()` checks it
-  first and `force: true` removes it.
-- **Check:** the mark is applied to image decode failures only — a video capture failure stays
-  retryable. Keep it session-scoped (an in-memory `Set`); persisting it would strand files a codec
-  update later fixes.
+- **Enforced in:** `_fetchAndDecodeImage` sets it when `_downscale` returns null; `_captureVideoFrame`
+  sets it when the captured frame has no picture in it (§2.2.2); `load()` checks it first and
+  `force: true` removes it.
+- **Check:** the mark means "we got the bytes and there is nothing to show". A video capture that
+  *fails* — a timeout, a dead engine, a slow remote — must stay retryable and must not be marked.
+  Keep it session-scoped (an in-memory `Set`); persisting it would strand files a codec update later
+  fixes.
 
 ### 2.4 Dedup in flight; key the cache on identity + size
 
@@ -283,6 +321,19 @@ that never plays — indistinguishable from a hang. Nearly all of
   two libmpv instances never overlap.
 - **Check:** the first-frame `.catchError((_) {})` is swallowed on purpose — the watchdog is what
   surfaces a frame that never arrives. Do not "fix" it into an error path.
+
+**RULE — Repeat is libmpv's playlist mode (`PlaylistMode.single`), applied AFTER `open()` and re-applied when the preference changes mid-playback.**
+
+- **Why:** the preview opens exactly one `Media`, so `single` (loop the current file) is the mode that
+  matches the button; `loop` would mean the same thing today and something different the moment a
+  playlist exists. Applying it after `open()` keeps it off the path that decides whether playback
+  starts — a failure to set repeat must never be able to fail a file.
+- **Enforced in:** `_applyRepeat` in
+  [media_preview.dart](../../app/lib/src/ui/media_preview.dart), called once after `open()` and again
+  from a `ref.listen` on [`repeatPlaybackProvider`](../../app/lib/src/state/media_prefs.dart).
+- **Check:** the call is unawaited-with-`catchError` on purpose. Toggling must affect the *playing*
+  file, not just the next one — verify by watching `stream.position` wrap instead of
+  `stream.completed` firing.
 
 Off-screen thumbnail players obey the same reasoning from the other direction — see §2.1.
 

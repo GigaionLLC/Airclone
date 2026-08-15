@@ -245,6 +245,7 @@ Every Dart caller is `Platform`-guarded; there is no iOS, Windows, macOS or Linu
 | `requestAllFilesAccess` | Opens the per-app All-Files-Access settings screen, falling back to the list screen (both launches guarded — some OEM builds ship neither) | [`android_native.dart#L44`](../../app/lib/src/state/android_native.dart#L44) |
 | `openExternal` | Wraps a staged file in a `FileProvider` `content://` URI and fires an `ACTION_VIEW` or `ACTION_SEND` chooser with `FLAG_GRANT_READ_URI_PERMISSION` on **both** the intent and the chooser. Returns error code `not_shareable` when the path is outside every `file_paths.xml` root | [`open_external.dart#L149`](../../app/lib/src/state/open_external.dart#L149) |
 | `installerPackage` | The package that installed us (`com.android.vending` for Play, null for a sideload), via `getInstallSourceInfo` on R+ | [`install_source.dart`](../../app/lib/src/state/install_source.dart) |
+| `videoThumbnail` | PNG bytes of a keyframe, via `MediaMetadataRetriever` on a single background thread (never the platform thread — decoding blocks). Tries ~10% in, then 1 s, then 0, and prefers the first frame that isn't one flat shade | [`android_native.dart`](../../app/lib/src/state/android_native.dart) → [`thumbnail_service.dart`](../../app/lib/src/state/thumbnail_service.dart) |
 | `startTransferService` | Starts **or updates** the `dataSync` foreground service notification (same call does both) | [`android_transfer_service.dart#L55`](../../app/lib/src/state/android_transfer_service.dart#L55) |
 | `stopTransferService` | Stops it | [`android_transfer_service.dart#L36`](../../app/lib/src/state/android_transfer_service.dart#L36) |
 | `requestNotificationPermission` | Tiramisu+ `POST_NOTIFICATIONS` request | [`android_transfer_service.dart#L50`](../../app/lib/src/state/android_transfer_service.dart#L50) |
@@ -253,6 +254,14 @@ Native-side notes worth knowing before you touch this file:
 
 - A raw `file://` URI would throw `FileUriExposedException` — `openExternal` **must** go through
   `FileProvider`, authority `${applicationId}.fileprovider`.
+- **Android's media stack enforces the cleartext policy — even on loopback.** The engine serves
+  object bytes over plain `http://127.0.0.1:<port>`, and `MediaHTTPConnection` (behind
+  `MediaMetadataRetriever`) simply refuses to fetch that without an explicit exemption: the
+  extractor then fails with `Unable to instantiate an extractor` and every video tile stays empty.
+  [`res/xml/network_security_config.xml`](../../app/android/app/src/main/res/xml/network_security_config.xml)
+  permits cleartext for `127.0.0.1` and `localhost` **only**; everything else keeps the platform
+  default. Dart's own sockets are not subject to this policy, which is why the browser, previews and
+  transfers all worked while thumbnails did not.
 - The provider's whitelist is deliberately narrow:
   [`res/xml/file_paths.xml`](../../app/android/app/src/main/res/xml/file_paths.xml) exposes the
   staging dir (`<cache-path name="airclone_open" path="airclone_open/" />`) **and** primary shared
@@ -285,7 +294,7 @@ Everything else that crosses into native code does so through a **pub plugin's o
 | **`rclone` / `rclone.exe`** (desktop, beside the app exe) | The engine `HttpRcloneClient` spawns. Bundling it means first run never downloads. | CI downloads + SHA256-verifies the pinned release and copies it into the Release dir before packaging, so the signing step signs it too ([`release.yml`](../../.github/workflows/release.yml)) |
 | **`librclone.dll` / `.so` / `.dylib`** | The in-process engine for `FfiRcloneClient`. Windows/Linux: beside the executable. macOS: `Contents/Frameworks/` — where signed dylibs belong, so the codesign pass covers it and notarization passes. | [`dev/desktop/build-librclone.ps1`](../../dev/desktop/build-librclone.ps1) / [`.sh`](../../dev/desktop/build-librclone.sh), run in an isolated CI job and handed to each platform build as an artifact |
 | **rclone-as-jniLib** (Android) | The rclone **executable**, shipped as a per-ABI native library named `librclone.so`. The installer extracts it to `nativeLibraryDir` — the one location Android still permits `exec()` from under W^X (targetSdk 29+). | [`dev/android/build-rclone.ps1`](../../dev/android/build-rclone.ps1) |
-| **libmpv** (via `media_kit` + `media_kit_libs_video`) | Video/audio preview and video thumbnail keyframes. Linux tarballs expect a system `libmpv`. | pub package |
+| **libmpv** (via `media_kit` + `media_kit_libs_video`) | Video/audio preview everywhere; video thumbnail keyframes on every platform **except Android**, where it decodes into a Surface and its `screenshot` has no CPU-readable frame to return (Android uses `MediaMetadataRetriever` instead — see §3). Linux tarballs expect a system `libmpv`. | pub package |
 | **PDFium** (via `pdfrx`) | In-app PDF preview. | pub package |
 | **A Rust crate** (via cargokit, for `super_drag_and_drop` / `super_native_extensions`) | Real OS drag payloads in and out. Desktop **and** Android builds therefore need a Rust toolchain on `PATH`. | pub package, compiled at build time |
 | **MSVC runtime** (`msvcp140.dll`, `vcruntime140.dll`, `vcruntime140_1.dll`) | App-local so the build is self-contained. Microsoft Store certification failed on 2026-07-29 under policy 10.2.4.1 for the undisclosed dependency, and a clean device cannot start the app without them. CI **hard-gates** on their presence in the artifact. | `windows/CMakeLists.txt` via `InstallRequiredSystemLibraries`, verified in [`release.yml`](../../.github/workflows/release.yml) |
