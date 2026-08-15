@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The rclone engine runs ON this device and serves file bytes over plain HTTP
+  on loopback (see engine_controller.dart) — there is no transport to secure,
+  the packets never leave the phone, and the engine has no certificate to
+  present. Dart's own socket layer isn't subject to this policy, but Android's
+  media stack is: MediaHTTPConnection refuses cleartext outright, which is why
+  MediaMetadataRetriever could not read a single frame from an engine URL (the
+  video-thumbnail bug).
+
+  Only loopback is exempted. Every other host keeps the platform default, so a
+  cloud backend can still never be talked to in the clear.
+-->
+<network-security-config>
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">127.0.0.1</domain>
+        <domain includeSubdomains="false">localhost</domain>
+    </domain-config>
+</network-security-config>

@@ -12,6 +12,7 @@ import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 import 'package:path_provider/path_provider.dart';
 
+import 'android_native.dart';
 import 'cache_crypto.dart';
 
 /// Immutable request describing one thumbnail to fetch/decode.
@@ -49,6 +50,33 @@ class ThumbRequest {
   int get hashCode => Object.hash(cacheKey, size);
 }
 
+/// How much luma may vary across a captured frame before it counts as a real
+/// picture. Kept in step with the same check in MainActivity.kt, which uses it
+/// to choose between candidate frames.
+const int kBlankLumaRange = 12;
+
+/// True when [rgba] (packed RGBA, 4 bytes per pixel) is one flat shade — the
+/// black leader a video opens on, or a frame that never actually decoded.
+/// Caching one of those looks to the user like a permanently broken thumbnail,
+/// so the capture path treats it as a failure instead.
+///
+/// Pure so the threshold is unit-tested without a codec. Empty input is not
+/// "flat": there is nothing to judge.
+bool isFlatRgba(Uint8List rgba, {int range = kBlankLumaRange}) {
+  if (rgba.length < 4) return false;
+  var min = 255;
+  var max = 0;
+  for (var i = 0; i + 3 < rgba.length; i += 4) {
+    // Integer luma (BT.601 weights ×256) — this runs over every pixel of a
+    // thumbnail, so it stays in ints.
+    final luma = (rgba[i] * 77 + rgba[i + 1] * 150 + rgba[i + 2] * 29) >> 8;
+    if (luma < min) min = luma;
+    if (luma > max) max = luma;
+    if (max - min > range) return false;
+  }
+  return true;
+}
+
 /// Stable cache key: sha1 hex of `fs|path|modTime|size|px` (modTime ISO, or
 /// empty when unknown). A change to any component invalidates the cached thumb.
 String thumbCacheKey(
@@ -79,7 +107,13 @@ class ThumbnailService {
   /// several of those at once starve the player the user is actually watching
   /// (the reason cloud video previews felt unreliable on Android), so mobile
   /// captures them strictly one at a time. Desktop can afford two.
-  static final int _maxConcurrentVideo = _isMobile ? 1 : 2;
+  ///
+  /// Android is the exception now that it uses the platform frame grabber
+  /// instead of libmpv: nothing there competes with playback, so a folder of
+  /// videos doesn't have to fill in single file.
+  static final int _maxConcurrentVideo = Platform.isAndroid
+      ? 2
+      : (_isMobile ? 1 : 2);
 
   /// First-frame budget for a keyframe capture. Mobile gets far longer: the
   /// bytes come from a cloud backend over a phone connection, and a capture
@@ -100,11 +134,12 @@ class ThumbnailService {
 
   final _inFlight = <String, Future<Uint8List?>>{};
 
-  /// Cache keys whose bytes downloaded fine but could NOT be decoded (e.g. HEIC
-  /// / SVG that pass `isThumbnailable` yet Flutter's image codec rejects). This
-  /// is a PERMANENT failure, not a transient one — recorded so the retry loop
-  /// and every scroll re-mount don't re-download a multi-MB original that will
-  /// never render. Session-scoped; a forced rebuild clears + re-attempts.
+  /// Cache keys whose bytes downloaded fine but could NOT be turned into a
+  /// picture — a HEIC/SVG that passes `isThumbnailable` yet Flutter's image
+  /// codec rejects, or a video whose frames are blank. This is a PERMANENT
+  /// failure, not a transient one — recorded so the retry loop and every scroll
+  /// re-mount don't re-download a multi-MB original that will never render.
+  /// Session-scoped; a forced rebuild clears + re-attempts.
   final _undecodable = <String>{};
 
   Directory? _cacheDir;
@@ -203,11 +238,50 @@ class ThumbnailService {
     }
   }
 
-  /// Capture a video keyframe via libmpv. A [VideoController] must be attached
-  /// (and a frame actually rendered) for `screenshot` to return pixels, so we
-  /// create one, play muted until the first frame renders, then grab it. Falls
-  /// back to null (→ kind icon) on any failure/timeout.
+  /// Capture a video keyframe, downscaled to [ThumbRequest.size]. Null on any
+  /// failure (→ kind icon), and null too for a frame with no picture in it:
+  /// caching a black rectangle would look like a broken thumbnail forever.
   Future<Uint8List?> _captureVideoFrame(ThumbRequest req) async {
+    final png = Platform.isAndroid
+        ? await _captureVideoFrameAndroid(req)
+        : await _captureVideoFrameMpv(req);
+    if (png == null) return null;
+    if (await _looksBlank(png)) {
+      // Decoded fine, but there's no picture in it. That's a property of the
+      // file, not a transient miss, so record it like an undecodable image —
+      // otherwise every scroll re-runs the whole capture for nothing.
+      _undecodable.add(req.cacheKey);
+      return null;
+    }
+    return png;
+  }
+
+  /// Android capture: hand the URL to the platform's own frame grabber.
+  /// libmpv can't do it here — see [androidVideoThumbnail].
+  Future<Uint8List?> _captureVideoFrameAndroid(ThumbRequest req) async {
+    try {
+      final raw = await androidVideoThumbnail(
+        req.url,
+        req.headers,
+        req.size,
+      ).timeout(_videoFirstFrameTimeout);
+      if (raw == null) return null;
+      return _downscale(raw, req.size);
+    } catch (_) {
+      // Includes the timeout: a remote too slow to yield a frame in budget.
+      return null;
+    }
+  }
+
+  /// Desktop/iOS capture via libmpv. A [VideoController] must be attached (and
+  /// a frame actually rendered) for `screenshot` to return pixels, so we create
+  /// one, play muted until the first frame renders, then grab it.
+  ///
+  /// If that frame turns out to be blank — a fade-in, a slate, a camera warming
+  /// up — we seek a little way in and grab once more, rather than handing back
+  /// a black tile. Whatever comes out still faces [_captureVideoFrame]'s guard;
+  /// the check here only decides whether the seek is worth doing.
+  Future<Uint8List?> _captureVideoFrameMpv(ThumbRequest req) async {
     Player? player;
     try {
       player = Player();
@@ -219,11 +293,26 @@ class ThumbnailService {
         _videoFirstFrameTimeout,
       );
       await player.pause();
-      final raw = await player
-          .screenshot(format: 'image/png')
-          .timeout(const Duration(seconds: 6));
-      if (raw == null) return null;
-      return _downscale(raw, req.size);
+      final first = await _screenshot(player, req.size);
+      if (first != null && !await _looksBlank(first)) return first;
+
+      // Nothing in that frame: try one further in (10% of the run, capped, so
+      // a two-hour film doesn't land on an ad break's worth of black).
+      final duration = player.state.duration;
+      if (duration > Duration.zero) {
+        final at = Duration(
+          milliseconds: (duration.inMilliseconds ~/ 10).clamp(500, 10000),
+        );
+        if (at < duration) {
+          await player.seek(at);
+          // The seeked frame has to reach the video output before it can be
+          // grabbed; there is no "frame ready" signal to await after a seek.
+          await Future<void>.delayed(const Duration(milliseconds: 400));
+          final second = await _screenshot(player, req.size);
+          if (second != null) return second;
+        }
+      }
+      return first;
     } catch (_) {
       return null;
     } finally {
@@ -232,6 +321,37 @@ class ThumbnailService {
       } catch (_) {
         // already disposed / never constructed
       }
+    }
+  }
+
+  /// One `screenshot` grab, downscaled. Null if libmpv has no frame to give.
+  Future<Uint8List?> _screenshot(Player player, int size) async {
+    final raw = await player
+        .screenshot(format: 'image/png')
+        .timeout(const Duration(seconds: 6));
+    if (raw == null) return null;
+    return _downscale(raw, size);
+  }
+
+  /// True when [png] holds no picture — a black leader, or a frame that never
+  /// decoded. Cheap: the bytes are already downscaled to thumbnail size by the
+  /// time we look. Undecodable input counts as "not blank" so a frame we
+  /// simply can't inspect is never thrown away.
+  Future<bool> _looksBlank(Uint8List png) async {
+    ui.Codec? codec;
+    try {
+      codec = await ui.instantiateImageCodec(png);
+      final frame = await codec.getNextFrame();
+      final data = await frame.image.toByteData(
+        format: ui.ImageByteFormat.rawRgba,
+      );
+      frame.image.dispose();
+      if (data == null) return false;
+      return isFlatRgba(data.buffer.asUint8List());
+    } catch (_) {
+      return false;
+    } finally {
+      codec?.dispose();
     }
   }
 

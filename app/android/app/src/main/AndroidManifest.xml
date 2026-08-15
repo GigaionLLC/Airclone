@@ -25,11 +25,16 @@
     <!-- allowBackup=false: the app dir holds rclone.conf (cloud credentials,
          obscured not encrypted) — it must never ride along in ADB/cloud
          backups or device-to-device transfers. -->
+    <!-- networkSecurityConfig: cleartext stays denied everywhere except
+         loopback, where the on-device rclone engine serves file bytes. Android's
+         media stack (MediaMetadataRetriever, used for video thumbnails) enforces
+         this policy even for 127.0.0.1 and silently reads nothing without it. -->
     <application
         android:label="airclone"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
         android:allowBackup="false"
+        android:networkSecurityConfig="@xml/network_security_config"
         android:requestLegacyExternalStorage="true">
         <activity
             android:name=".MainActivity"

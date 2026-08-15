@@ -35,6 +35,33 @@ final allFilesAccessProvider = FutureProvider<bool>((ref) async {
   }
 });
 
+/// PNG bytes of a representative frame from the video at [url] (fetched with
+/// [headers], scaled into a [size]-px box), or null when Android can't decode
+/// one — or off Android entirely.
+///
+/// This exists because libmpv, which captures keyframes on every other
+/// platform, decodes into a Surface on Android: its `screenshot` command has
+/// no CPU-readable frame to return, so video tiles never got one. Android's
+/// own MediaMetadataRetriever does (see MainActivity.kt).
+Future<Uint8List?> androidVideoThumbnail(
+  String url,
+  Map<String, String> headers,
+  int size,
+) async {
+  if (!Platform.isAndroid) return null;
+  try {
+    return await _channel.invokeMethod<Uint8List>('videoThumbnail', {
+      'url': url,
+      'headers': headers,
+      'size': size,
+    });
+  } catch (_) {
+    // Undecodable media, a dead engine, an old build without the method —
+    // all mean the same thing here: no thumbnail.
+    return null;
+  }
+}
+
 /// Opens Android's All Files Access settings screen for this app. The user
 /// grants it there and returns; call `ref.invalidate(allFilesAccessProvider)`
 /// on resume/next build to pick up the new state.
