@@ -1,9 +1,11 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 
+import '../state/media_prefs.dart';
 import 'theme/tokens.dart';
 
 /// How long a media file may sit without ever reaching "playing" before we stop
@@ -35,9 +37,14 @@ const Duration _startTimeout = Duration(seconds: 45);
 /// Every one of those paths lands on the same error card, which offers Retry
 /// and — when the host supplies [onOpenExternally] — a hand-off to another app.
 ///
+/// REPEAT: the player honours [repeatPlaybackProvider] — a persisted toggle,
+/// exposed as a button in the video controls and on the audio card — by setting
+/// libmpv's playlist mode to [PlaylistMode.single]. Toggling it takes effect on
+/// the playing file immediately, not just the next one.
+///
 /// NOTE: `MediaKit.ensureInitialized()` is expected to be called once in
 /// `main()` by the integrator — this widget does not initialize the library.
-class MediaPreviewBody extends StatefulWidget {
+class MediaPreviewBody extends ConsumerStatefulWidget {
   const MediaPreviewBody({
     super.key,
     required this.url,
@@ -61,10 +68,10 @@ class MediaPreviewBody extends StatefulWidget {
   final VoidCallback? onOpenExternally;
 
   @override
-  State<MediaPreviewBody> createState() => _MediaPreviewBodyState();
+  ConsumerState<MediaPreviewBody> createState() => _MediaPreviewBodyState();
 }
 
-class _MediaPreviewBodyState extends State<MediaPreviewBody> {
+class _MediaPreviewBodyState extends ConsumerState<MediaPreviewBody> {
   Player? _player;
   VideoController? _controller;
 
@@ -172,7 +179,22 @@ class _MediaPreviewBodyState extends State<MediaPreviewBody> {
       );
     } catch (e) {
       if (mounted) setState(() => _fail('$e'));
+      return;
     }
+    // After open, so the playlist exists to apply the mode to. Never fatal:
+    // failing to set repeat is not a reason to kill a playing file.
+    if (mounted) _applyRepeat(player, ref.read(repeatPlaybackProvider));
+  }
+
+  /// Push the repeat preference into [player]. [PlaylistMode.single] loops the
+  /// current file, which is the whole playlist here — the preview opens exactly
+  /// one [Media].
+  void _applyRepeat(Player player, bool repeat) {
+    unawaited(
+      player
+          .setPlaylistMode(repeat ? PlaylistMode.single : PlaylistMode.none)
+          .catchError((_) {}),
+    );
   }
 
   /// Playback is genuinely up: disarm the watchdog, drop the spinner, and stop
@@ -228,6 +250,11 @@ class _MediaPreviewBodyState extends State<MediaPreviewBody> {
 
   @override
   Widget build(BuildContext context) {
+    // Toggling repeat mid-playback must take effect now, not on the next file.
+    ref.listen<bool>(repeatPlaybackProvider, (_, repeat) {
+      final player = _player;
+      if (player != null) _applyRepeat(player, repeat);
+    });
     final colors = AircloneTheme.of(context);
     if (_error != null) return _errorCard(colors, _error!);
     try {
@@ -240,6 +267,10 @@ class _MediaPreviewBodyState extends State<MediaPreviewBody> {
 
   /// Black-backed video surface filling the available space, with a loading
   /// overlay until playback actually starts.
+  ///
+  /// The control bars are media_kit's own (they adapt to touch vs desktop);
+  /// they are re-declared here only to append the repeat button, which is why
+  /// each list starts from the package default rather than being written out.
   Widget _video(AircloneColors colors) {
     final controller = _controller;
     return Container(
@@ -248,17 +279,75 @@ class _MediaPreviewBodyState extends State<MediaPreviewBody> {
       child: Stack(
         alignment: Alignment.center,
         children: [
-          if (controller != null)
-            Positioned.fill(
-              child: Video(
-                controller: controller,
-                controls: AdaptiveVideoControls,
-              ),
-            ),
+          if (controller != null) Positioned.fill(child: _surface(controller)),
           if (_loading) const _Spinner(),
         ],
       ),
     );
+  }
+
+  /// media_kit's [Video] with the repeat button added to whichever control set
+  /// it picks (touch or desktop). Both bars start from the package defaults —
+  /// only the extra button is ours.
+  Widget _surface(VideoController controller) {
+    final repeat = ref.watch(repeatPlaybackProvider);
+    void toggle() => ref.read(repeatPlaybackProvider.notifier).toggle();
+    final touch = _MaterialRepeatButton(repeat: repeat, onPressed: toggle);
+
+    // Touch bar is [position, Spacer, fullscreen], so appending puts the button
+    // to the right of fullscreen; the desktop bar gets it just before the
+    // trailing fullscreen button instead (see [_withDesktopRepeat]).
+    return MaterialDesktopVideoControlsTheme(
+      normal: kDefaultMaterialDesktopVideoControlsThemeData.copyWith(
+        bottomButtonBar: _withDesktopRepeat(
+          kDefaultMaterialDesktopVideoControlsThemeData.bottomButtonBar,
+          repeat,
+          toggle,
+        ),
+      ),
+      fullscreen: kDefaultMaterialDesktopVideoControlsThemeDataFullscreen
+          .copyWith(
+            bottomButtonBar: _withDesktopRepeat(
+              kDefaultMaterialDesktopVideoControlsThemeDataFullscreen
+                  .bottomButtonBar,
+              repeat,
+              toggle,
+            ),
+          ),
+      child: MaterialVideoControlsTheme(
+        normal: kDefaultMaterialVideoControlsThemeData.copyWith(
+          bottomButtonBar: [
+            ...kDefaultMaterialVideoControlsThemeData.bottomButtonBar,
+            touch,
+          ],
+        ),
+        fullscreen: kDefaultMaterialVideoControlsThemeDataFullscreen.copyWith(
+          bottomButtonBar: [
+            ...kDefaultMaterialVideoControlsThemeDataFullscreen.bottomButtonBar,
+            touch,
+          ],
+        ),
+        child: Video(controller: controller, controls: AdaptiveVideoControls),
+      ),
+    );
+  }
+
+  /// The desktop bottom bar with a repeat button added before the trailing
+  /// fullscreen button (identified by the [Spacer] that pushes it right). Falls
+  /// back to appending, so a package update that drops the Spacer still gets a
+  /// usable button instead of a crash.
+  List<Widget> _withDesktopRepeat(
+    List<Widget> bar,
+    bool repeat,
+    VoidCallback onPressed,
+  ) {
+    final button = _MaterialDesktopRepeatButton(
+      repeat: repeat,
+      onPressed: onPressed,
+    );
+    final spacer = bar.indexWhere((w) => w is Spacer);
+    if (spacer < 0) return [...bar, button];
+    return [...bar.take(spacer), button, ...bar.skip(spacer)];
   }
 
   /// Centered audio card: art, play/pause, and a seek slider.
@@ -298,7 +387,20 @@ class _MediaPreviewBodyState extends State<MediaPreviewBody> {
                 if (player == null)
                   const _Spinner()
                 else ...[
-                  _PlayPauseButton(player: player, colors: colors),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      _PlayPauseButton(player: player, colors: colors),
+                      const SizedBox(width: Space.x3),
+                      _RepeatToggle(
+                        repeat: ref.watch(repeatPlaybackProvider),
+                        color: colors.textMuted,
+                        activeColor: colors.primary,
+                        onPressed: () =>
+                            ref.read(repeatPlaybackProvider.notifier).toggle(),
+                      ),
+                    ],
+                  ),
                   const SizedBox(height: Space.x4),
                   _SeekBar(player: player, colors: colors),
                 ],
@@ -372,6 +474,85 @@ class _MediaPreviewBodyState extends State<MediaPreviewBody> {
       ),
     );
   }
+}
+
+/// The icon + wording shared by every repeat control, so the three surfaces
+/// (touch controls, desktop controls, audio card) can never drift apart.
+IconData _repeatIcon(bool repeat) =>
+    repeat ? Icons.repeat_one_rounded : Icons.repeat_rounded;
+String _repeatTooltip(bool repeat) =>
+    repeat ? 'Repeat is on — playing on a loop' : 'Repeat';
+
+/// Repeat toggle for media_kit's TOUCH control bar. White like its siblings,
+/// dimmed when off so the on-state reads at a glance on a video frame.
+class _MaterialRepeatButton extends StatelessWidget {
+  const _MaterialRepeatButton({required this.repeat, required this.onPressed});
+
+  final bool repeat;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) => MaterialCustomButton(
+    onPressed: onPressed,
+    icon: Tooltip(
+      message: _repeatTooltip(repeat),
+      child: Icon(
+        _repeatIcon(repeat),
+        color: repeat
+            ? const Color(0xFFFFFFFF)
+            : const Color(0xFFFFFFFF).withValues(alpha: 0.60),
+      ),
+    ),
+  );
+}
+
+/// Repeat toggle for media_kit's DESKTOP control bar.
+class _MaterialDesktopRepeatButton extends StatelessWidget {
+  const _MaterialDesktopRepeatButton({
+    required this.repeat,
+    required this.onPressed,
+  });
+
+  final bool repeat;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) => MaterialDesktopCustomButton(
+    onPressed: onPressed,
+    icon: Tooltip(
+      message: _repeatTooltip(repeat),
+      child: Icon(
+        _repeatIcon(repeat),
+        color: repeat
+            ? const Color(0xFFFFFFFF)
+            : const Color(0xFFFFFFFF).withValues(alpha: 0.60),
+      ),
+    ),
+  );
+}
+
+/// Repeat toggle for the themed audio card (no video frame behind it, so it
+/// uses the app's own muted/primary colours rather than white).
+class _RepeatToggle extends StatelessWidget {
+  const _RepeatToggle({
+    required this.repeat,
+    required this.color,
+    required this.activeColor,
+    required this.onPressed,
+  });
+
+  final bool repeat;
+  final Color color;
+  final Color activeColor;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) => IconButton(
+    onPressed: onPressed,
+    tooltip: _repeatTooltip(repeat),
+    color: repeat ? activeColor : color,
+    icon: Icon(_repeatIcon(repeat)),
+  );
 }
 
 /// Loading indicator sized to read clearly on the black video backdrop.
