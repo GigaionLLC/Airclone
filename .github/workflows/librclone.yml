@@ -47,7 +47,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - uses: subosito/flutter-action@v2
-        with: { channel: stable, cache: true }
+        with: { channel: stable, flutter-version: 3.44.4, cache: true }
       - uses: actions/setup-go@v6
         # cache:false — there is no committed go.sum (the build script synthesizes
         # the pinning module in /tmp), so the default cache lookup would warn on

@@ -22,7 +22,10 @@
 
 services:
   flutter:
-    image: ghcr.io/cirruslabs/flutter:stable
+    # Pinned to the same version CI uses (see the note in release.yml): a
+    # floating `stable` gives local checks a different formatter and analyzer
+    # from the one that gates the build.
+    image: ghcr.io/cirruslabs/flutter:3.44.4
     working_dir: /work/app
     volumes:
       - ./:/work
