@@ -24,6 +24,7 @@ import '../state/file_ops.dart';
 import '../state/jobs_controller.dart';
 import '../state/local_locations.dart';
 import '../state/mount_policy.dart';
+import '../state/pane_layout.dart';
 import '../state/recent_locations.dart';
 import '../state/remote_about.dart';
 import '../state/remotes_provider.dart';
@@ -773,39 +774,55 @@ class _WorkArea extends ConsumerWidget {
     final inspectorOpen = ref.watch(inspectorVisibleProvider);
     final singlePane = ref.watch(singlePaneProvider);
     final active = ref.watch(activePaneProvider);
-    return Column(
+    final panes = Row(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Expanded(
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              if (singlePane)
-                Expanded(
-                  child: BrowserPane(index: active, showToolbar: !hoistToolbar),
-                )
-              else
-                // Resizable dual-pane: a draggable divider (persisted split
-                // ratio, clamped so neither pane collapses) replaces the old
-                // fixed 50/50. Desktop is always side-by-side.
-                const Expanded(
-                  child: PaneSplit(
-                    axis: Axis.horizontal,
-                    first: BrowserPane(index: 0),
-                    second: BrowserPane(index: 1),
-                  ),
-                ),
-              if (inspectorOpen) ...[
-                VerticalDivider(width: 1, color: c.border),
-                const SizedBox(width: 300, child: InspectorPanel()),
-              ],
-            ],
+        if (singlePane)
+          Expanded(
+            child: BrowserPane(index: active, showToolbar: !hoistToolbar),
+          )
+        else
+          // Resizable dual-pane: a draggable divider (persisted split
+          // ratio, clamped so neither pane collapses) replaces the old
+          // fixed 50/50. Desktop is always side-by-side.
+          const Expanded(
+            child: PaneSplit(
+              axis: Axis.horizontal,
+              first: BrowserPane(index: 0),
+              second: BrowserPane(index: 1),
+            ),
           ),
-        ),
-        if (jobsExpanded) ...[
-          Divider(height: 1, color: c.border),
-          const SizedBox(height: 240, child: _JobsDock()),
+        if (inspectorOpen) ...[
+          VerticalDivider(width: 1, color: c.border),
+          const SizedBox(width: 300, child: InspectorPanel()),
         ],
       ],
+    );
+    if (!jobsExpanded) return panes;
+    // The dock is user-resizable (drag its top edge): a long transfer list or
+    // the Recent-activity history is unreadable in a fixed 240px strip. The
+    // height is persisted, and re-clamped against the live work-area height so
+    // a dock sized on a big monitor can't swallow a smaller window.
+    return LayoutBuilder(
+      builder: (context, cons) {
+        final height = clampJobsDockHeight(
+          ref.watch(jobsDockHeightProvider),
+          cons.maxHeight,
+        );
+        return Column(
+          children: [
+            Expanded(child: panes),
+            ResizeHandle(
+              axis: Axis.vertical,
+              // Dragging UP (negative dy) makes the dock taller.
+              onDelta: (dy) => ref
+                  .read(jobsDockHeightProvider.notifier)
+                  .set(clampJobsDockHeight(height - dy, cons.maxHeight)),
+            ),
+            SizedBox(height: height, child: const _JobsDock()),
+          ],
+        );
+      },
     );
   }
 }

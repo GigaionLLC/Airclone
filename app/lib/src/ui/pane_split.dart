@@ -70,15 +70,34 @@ class PaneResizeHandle extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    return ResizeHandle(
+      axis: axis,
+      onDelta: (dPx) {
+        if (extent <= 0) return;
+        final current = ref.read(paneSplitRatioProvider);
+        // set() clamps to [kMinSplitRatio, kMaxSplitRatio] and persists.
+        ref.read(paneSplitRatioProvider.notifier).set(current + dPx / extent);
+      },
+    );
+  }
+}
+
+/// The bare draggable divider: a resize cursor over an ~8px grab band with a
+/// 1px centred line, reporting each drag as a pixel delta along [axis].
+/// [PaneResizeHandle] turns that delta into a split ratio; the bottom dock
+/// turns it into a height — the visuals and the hit-target stay identical.
+class ResizeHandle extends StatelessWidget {
+  const ResizeHandle({super.key, required this.axis, required this.onDelta});
+
+  final Axis axis;
+
+  /// Pixel movement along [axis] (positive = right / down).
+  final ValueChanged<double> onDelta;
+
+  @override
+  Widget build(BuildContext context) {
     final c = AircloneTheme.of(context);
     final horizontal = axis == Axis.horizontal;
-
-    void applyDelta(double dPx) {
-      if (extent <= 0) return;
-      final current = ref.read(paneSplitRatioProvider);
-      // set() clamps to [kMinSplitRatio, kMaxSplitRatio] and persists.
-      ref.read(paneSplitRatioProvider.notifier).set(current + dPx / extent);
-    }
 
     // A ~8px grab band (comfortable for touch) with a 1px centred divider line.
     final line = horizontal
@@ -97,10 +116,8 @@ class PaneResizeHandle extends ConsumerWidget {
           : SystemMouseCursors.resizeUpDown,
       child: GestureDetector(
         behavior: HitTestBehavior.translucent,
-        onHorizontalDragUpdate: horizontal
-            ? (d) => applyDelta(d.delta.dx)
-            : null,
-        onVerticalDragUpdate: horizontal ? null : (d) => applyDelta(d.delta.dy),
+        onHorizontalDragUpdate: horizontal ? (d) => onDelta(d.delta.dx) : null,
+        onVerticalDragUpdate: horizontal ? null : (d) => onDelta(d.delta.dy),
         child: line,
       ),
     );

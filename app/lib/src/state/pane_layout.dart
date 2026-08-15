@@ -13,6 +13,29 @@ import 'package:shared_preferences/shared_preferences.dart';
 const double kMinSplitRatio = 0.2;
 const double kMaxSplitRatio = 0.8;
 
+/// The bottom Transfers / Recent-activity dock can never be dragged shorter
+/// than this (its tab strip plus a couple of rows stay readable) nor taller
+/// than [kMaxJobsDockFraction] of the work area (the file panes must survive).
+const double kMinJobsDockHeight = 90;
+const double kMaxJobsDockFraction = 0.8;
+
+/// Default dock height — what the dock was fixed at before it became
+/// resizable, so an existing install opens looking exactly the same.
+const double kDefaultJobsDockHeight = 240;
+
+/// Clamp a dock height against the [available] work-area height. [available]
+/// <= 0 (a first layout pass) leaves the height alone bar the floor. Pure —
+/// unit-tested.
+double clampJobsDockHeight(double height, double available) {
+  final max = available > 0
+      ? (available * kMaxJobsDockFraction)
+      : double.infinity;
+  // A viewport too short for even the minimum keeps the dock at that minimum
+  // rather than inverting the range (max < min would throw in clamp()).
+  if (max <= kMinJobsDockHeight) return kMinJobsDockHeight;
+  return height.clamp(kMinJobsDockHeight, max).toDouble();
+}
+
 /// Below this main-axis width (dp) an *adaptive* split stacks the panes
 /// (Column) instead of placing them side-by-side (Row) — a phone in portrait
 /// gets a top/bottom split, a wide tablet/desktop gets left/right.
@@ -99,6 +122,50 @@ class PaneSplitRatio extends Notifier<double> {
 /// The split fraction of the first pane (0.2..0.8), persisted across launches.
 final paneSplitRatioProvider = NotifierProvider<PaneSplitRatio, double>(
   PaneSplitRatio.new,
+);
+
+/// Persisted height (dp) of the bottom Transfers / Recent-activity dock. Stored
+/// unclamped-by-viewport (the work area's height isn't known here) — the widget
+/// clamps against the live layout via [clampJobsDockHeight] on every build, so
+/// a dock dragged tall on a big monitor doesn't swallow a small one.
+class JobsDockHeight extends Notifier<double> {
+  static const _key = 'jobs_dock_height';
+
+  @override
+  double build() {
+    _load();
+    return kDefaultJobsDockHeight;
+  }
+
+  Future<void> _load() async {
+    try {
+      final p = await SharedPreferences.getInstance();
+      final v = p.getDouble(_key);
+      if (v != null && v.isFinite) {
+        state = v < kMinJobsDockHeight ? kMinJobsDockHeight : v;
+      }
+    } catch (_) {
+      // keep default
+    }
+  }
+
+  /// Set the height (floored at [kMinJobsDockHeight]), then persist.
+  Future<void> set(double v) async {
+    final next = v.isFinite && v > kMinJobsDockHeight ? v : kMinJobsDockHeight;
+    if (next == state) return; // no change — skip the write/notify
+    state = next;
+    try {
+      final p = await SharedPreferences.getInstance();
+      await p.setDouble(_key, next);
+    } catch (_) {
+      // best-effort
+    }
+  }
+}
+
+/// The bottom dock's height in dp, persisted across launches.
+final jobsDockHeightProvider = NotifierProvider<JobsDockHeight, double>(
+  JobsDockHeight.new,
 );
 
 /// Persisted orientation choice for the dual-pane split (default [adaptive]).

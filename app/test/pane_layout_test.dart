@@ -180,4 +180,64 @@ void main() {
     addTearDown(c.dispose);
     expect(c.read(mobileSplitProvider), false);
   });
+
+  group('clampJobsDockHeight', () {
+    test('keeps an in-range height unchanged', () {
+      expect(clampJobsDockHeight(240, 900), 240);
+      expect(clampJobsDockHeight(kMinJobsDockHeight, 900), kMinJobsDockHeight);
+    });
+
+    test('floors a too-short dock so its tabs stay usable', () {
+      expect(clampJobsDockHeight(0, 900), kMinJobsDockHeight);
+      expect(clampJobsDockHeight(-50, 900), kMinJobsDockHeight);
+    });
+
+    test('caps a tall dock so the file panes survive', () {
+      expect(clampJobsDockHeight(5000, 1000), 1000 * kMaxJobsDockFraction);
+    });
+
+    test('a dock sized on a big monitor shrinks in a small window', () {
+      // 700px dock, then the window is resized down to 400px of work area.
+      expect(clampJobsDockHeight(700, 400), 400 * kMaxJobsDockFraction);
+    });
+
+    test('a viewport too short for the minimum returns the minimum', () {
+      // max (0.8 * 100 = 80) < min (90) — must not invert the clamp range.
+      expect(clampJobsDockHeight(240, 100), kMinJobsDockHeight);
+    });
+
+    test('an unknown viewport (first layout pass) only applies the floor', () {
+      expect(clampJobsDockHeight(240, 0), 240);
+      expect(clampJobsDockHeight(10, 0), kMinJobsDockHeight);
+    });
+  });
+
+  group('jobsDockHeightProvider', () {
+    test('defaults to the pre-resize fixed height', () {
+      final c = ProviderContainer();
+      addTearDown(c.dispose);
+      expect(c.read(jobsDockHeightProvider), kDefaultJobsDockHeight);
+    });
+
+    test('persists a set height and floors a silly one', () async {
+      final c = ProviderContainer();
+      addTearDown(c.dispose);
+      await c.read(jobsDockHeightProvider.notifier).set(420);
+      expect(c.read(jobsDockHeightProvider), 420);
+      await c.read(jobsDockHeightProvider.notifier).set(5);
+      expect(c.read(jobsDockHeightProvider), kMinJobsDockHeight);
+
+      final p = await SharedPreferences.getInstance();
+      expect(p.getDouble('jobs_dock_height'), kMinJobsDockHeight);
+    });
+
+    test('restores a persisted height', () async {
+      SharedPreferences.setMockInitialValues({'jobs_dock_height': 333.0});
+      final c = ProviderContainer();
+      addTearDown(c.dispose);
+      c.read(jobsDockHeightProvider);
+      await pumpEventQueue();
+      expect(c.read(jobsDockHeightProvider), 333.0);
+    });
+  });
 }
