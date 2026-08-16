@@ -230,6 +230,24 @@ Three behaviours worth keeping: widening a rollout does **not** trip the guard (
 narrowing or repeating it changes nothing but stays green with a warning, and only a genuine
 downgrade fails the run.
 
+### Second run — v0.6.6, proving the pipeline changes themselves ✅
+
+The Play steps only execute on a tag, so `tracks:` (plural), the new verification step, and the
+Node-24 action bumps all shipped **unproven** by v0.6.5. v0.6.6 was cut with no app changes purely
+to exercise them, and all three held:
+
+```
+Validating tracks: 'beta'                     ← the plural input is honoured
+Successfully committed
+expecting version code 115 in open testing
+beta        [115] completed at 100%  v0.6.6
+all expectations met                          ← Play confirms it landed
+```
+
+Then dry run → promote at 100% → `committed — production now serving 115 at 100%`, with no Node-20
+warnings anywhere. **Cutting a throwaway patch release to prove a change to the release machinery is
+cheaper than discovering months later that publishing quietly stopped.**
+
 **Deprecation caught in this run:** the upload action warned that `track:` (singular) "is deprecated
 and will be removed in a future release". Migrated to `tracks:` immediately, because the failure mode
 is a lane that silently stops publishing on some future action bump.

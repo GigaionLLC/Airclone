@@ -4,6 +4,35 @@ All changes made by AI agents are tracked chronologically below (most recent fir
 
 ---
 
+## [2026-08-16] - Android video thumbnails, repeat playback, Flutter 3.47, and automated Play publishing
+
+**Agent:** Claude Opus 5 — `main`
+**Files Modified:** `app/lib/src/state/thumbnail_service.dart`, `android_native.dart`,
+`media_prefs.dart` (new), `pane_layout.dart`, `app/lib/src/ui/media_preview.dart`, `home_screen.dart`,
+`pane_split.dart`, `paste_action.dart`, `MainActivity.kt`, `res/xml/network_security_config.xml` (new),
+`AndroidManifest.xml`, `app/pubspec.yaml`, `settings.gradle.kts`, `gradle-wrapper.properties`,
+5 new test files, `.github/workflows/release.yml`, `promote-play.yml` (new), `ci.yml`,
+`tool/play_promote.py` + `play_tracks.py` (new), `dev/play-ci-setup.md` (new),
+`dev/plans/transfer-coordinator-plan.md` (new), `AGENT.md`, `README.md`, wiki + store docs
+**Database/API Changes:** New `airclone/native` channel method `videoThumbnail`. Google Play
+Developer API now used from CI (service account, org-level GCP project, no billing attached).
+**Summary:** Video tiles were empty on Android for two independent reasons: libmpv decodes into a
+Surface so its `screenshot` has no CPU-readable frame, and Android's media stack refuses cleartext
+even to `127.0.0.1`, so `MediaMetadataRetriever` could not read the engine's own object URL
+(symptom: `Unable to instantiate an extractor`, no exception reaching Dart). Fixed with a native
+frame grabber plus a loopback-only cleartext exemption, and a blank-frame guard (`isFlatRgba`) so a
+flat capture is never cached as a thumbnail. Added repeat playback (`PlaylistMode.single`, persisted,
+applied after `open()` and re-applied on toggle) and a resizable Transfers dock. Moved the toolchain
+to Flutter 3.47 (pdfrx 2.x, Gradle 8.14.3, AGP 8.11.1, Kotlin 2.2.20) after floating `channel:
+stable` broke every platform job mid-release — CI is now version-pinned. Truth pass on the README
+removed three claims the code does not support. Google Play publishing is automated end-to-end: every
+tag uploads to open testing, production ships from a `workflow_dispatch` button that promotes the
+existing version code, with guards that refuse to narrow a live rollout or downgrade users, and a
+verification step that asks Play what it actually holds rather than trusting a green check. Releases
+v0.6.3 → v0.6.6 shipped; 678 tests pass, analyze + doc linter clean.
+
+---
+
 ## [2026-08-11] - "Survive uninstall": an opt-in, encrypted config backup outside the sandbox
 
 **Agent:** Claude Opus 5 — `main`
