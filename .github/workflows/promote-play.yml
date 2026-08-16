@@ -1,0 +1,85 @@
+name: Promote on Google Play
+
+# Ships the build that is already in OPEN TESTING to production — from the
+# Actions tab, with no Play Console login.
+#
+# Why a separate, manual workflow: every tag auto-uploads to open testing
+# (release.yml), because testers should always be current. Production is a
+# decision, not a consequence of tagging, so it stays a button someone presses.
+#
+# It does NOT re-upload the AAB. Play rejects a version code it has already
+# seen, so promotion is a metadata edit on the existing version code — see
+# tool/play_promote.py.
+#
+# Re-run it with a larger percentage to widen a staged rollout (10 → 50 → 100);
+# each run just updates the production track's user fraction for that build.
+
+on:
+  workflow_dispatch:
+    inputs:
+      rollout:
+        description: 'Percent of users (100 = full release)'
+        required: true
+        default: '10'
+        type: choice
+        options: ['1', '5', '10', '25', '50', '100']
+      version_code:
+        description: 'Version code to promote (blank = whatever is in open testing)'
+        required: false
+        type: string
+      dry_run:
+        description: 'Print the plan without changing anything'
+        required: true
+        default: true
+        type: boolean
+
+permissions:
+  contents: read
+
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install --quiet google-auth requests
+
+      - name: Refuse without credentials
+        env:
+          HAS_PLAY_CREDS: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON != '' }}
+        run: |
+          if [ "$HAS_PLAY_CREDS" != "true" ]; then
+            echo "::error::PLAY_SERVICE_ACCOUNT_JSON is not set — see dev/play-ci-setup.md."
+            exit 1
+          fi
+
+      - name: Write the service-account key
+        env:
+          PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+        run: |
+          # $RUNNER_TEMP is outside the workspace, so it can never be picked up
+          # by a later step that archives or uploads the checkout.
+          printf '%s' "$PLAY_SERVICE_ACCOUNT_JSON" > "$RUNNER_TEMP/play-key.json"
+
+      - name: Promote
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/play-key.json
+        run: |
+          set -euo pipefail
+          args=(--package com.gigaionllc.airclone
+                --from-track beta
+                --to-track production
+                --rollout '${{ inputs.rollout }}')
+          if [ -n '${{ inputs.version_code }}' ]; then
+            args+=(--version-code '${{ inputs.version_code }}')
+          fi
+          if [ '${{ inputs.dry_run }}' != 'true' ]; then
+            args+=(--commit)
+          fi
+          python tool/play_promote.py "${args[@]}"
+
+      - name: Shred the key
+        if: always()
+        run: rm -f "$RUNNER_TEMP/play-key.json"

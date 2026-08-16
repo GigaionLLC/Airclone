@@ -119,7 +119,8 @@ it is not, so every upload today is manual. CI never touches production.
 | "What's new" copy (≤500 chars/locale) | [`play/whats-new-v0.6.0.md`](play/whats-new-v0.6.0.md) — still accurate for v0.6.1, which changed only the Store package identity |
 | Upload-ready assets + slot map | [`play/store-ready/MANIFEST.md`](play/store-ready/MANIFEST.md) |
 | Demo-media licences | [`play/DEMO-MEDIA-PROVENANCE.md`](play/DEMO-MEDIA-PROVENANCE.md) |
-| One-time service-account setup | [`dev/plans/store-automation-plan.md`](../../dev/plans/store-automation-plan.md) § Google Play |
+| One-time service-account setup | **[`dev/play-ci-setup.md`](../../dev/play-ci-setup.md)** — the as-built runbook (every command, every gotcha), for a new Google account or a rotated key. Original research: [`dev/plans/store-automation-plan.md`](../../dev/plans/store-automation-plan.md) § Google Play |
+| Promote a build to production | Actions → **Promote on Google Play** → Run workflow ([`promote-play.yml`](../../.github/workflows/promote-play.yml), [`tool/play_promote.py`](../../tool/play_promote.py)) — no Console login |
 
 ### Rejection & review history — Google Play
 

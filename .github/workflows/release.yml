@@ -764,7 +764,7 @@ jobs:
         with:
           name: airclone-playstore-aab
           path: app/build/app/outputs/bundle/release/app-release.aab
-      # ── Google Play submission (internal track) ──────────────────────────
+      # ── Google Play submission (open testing) ────────────────────────────
       # Runs only on a tagged release when PLAY_SERVICE_ACCOUNT_JSON exists.
       # The FIRST app listing had to be uploaded manually in the Play Console;
       # every automated push after it must carry a HIGHER versionCode than
@@ -786,7 +786,7 @@ jobs:
             printf 'Airclone %s — see the GitHub release for full notes.' \
               "$GITHUB_REF_NAME" > distribution/whatsnew/whatsnew-en-US
           fi
-      - name: Upload AAB to Google Play (internal track)
+      - name: Upload AAB to Google Play (open testing)
         if: startsWith(github.ref, 'refs/tags/') && env.HAS_PLAY_CREDS == 'true'
         uses: r0adkll/upload-google-play@v1
         with:
@@ -795,15 +795,22 @@ jobs:
           # Paths here are repo-root-relative — this action does not honor
           # defaults.run.working-directory.
           releaseFiles: app/build/app/outputs/bundle/release/app-release.aab
-          track: internal
+          # `beta` IS "Open testing" — the Console's track names and the API's
+          # differ: internal=Internal testing, alpha=Closed testing,
+          # beta=Open testing, production=Production.
+          track: beta
           status: completed
           releaseName: ${{ github.ref_name }}
           whatsNewDirectory: distribution/whatsnew
           # changesNotSentForReview: true  # ONLY if the first automated run
           # fails with "changes cannot be sent for review automatically";
           # remove again once a reviewed release exists (it then errors the
-          # other way). Production promotion is a follow-up lane — never
-          # auto-push pre-release tags past the internal track.
+          # other way).
+      # Production is deliberately NOT automatic. Every tag lands in open
+      # testing; promoting the build users get is a human decision, made by
+      # running .github/workflows/promote-play.yml from the Actions tab. That
+      # workflow promotes the EXISTING version code rather than uploading
+      # again — Play rejects a version code it has already seen.
       - name: Upload to release
         if: startsWith(github.ref, 'refs/tags/')
         env:
