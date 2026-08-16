@@ -356,7 +356,7 @@ jobs:
       - name: Upload MSIX artifact
         if: hashFiles('app/airclone.msix') != ''
         continue-on-error: true
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: airclone-msix
           path: app/airclone.msix
@@ -674,7 +674,7 @@ jobs:
         run: |
           echo "::error::Tagged release but AIRCLONE_KEYSTORE_BASE64 secret is missing — refusing to publish a debug-signed APK."
           exit 1
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v5
         with: { distribution: temurin, java-version: '17' }
       - uses: subosito/flutter-action@v2
         with: { channel: stable, flutter-version: 3.47.0, cache: true }
@@ -811,6 +811,29 @@ jobs:
           # fails with "changes cannot be sent for review automatically";
           # remove again once a reviewed release exists (it then errors the
           # other way).
+      # VERIFY BY ARTIFACT, NOT BY GREEN CHECK. An upload step can report
+      # success while nothing lands — a deprecated input quietly ignored, an
+      # edit committed against a different track. (This repo has been burned by
+      # exactly that shape before: `continue-on-error` hid a missing bundled
+      # rclone across three Windows releases.) So ask Play what it actually
+      # holds, and fail the release if the version code we just built is not
+      # in open testing.
+      - name: Verify the build really landed in open testing
+        if: startsWith(github.ref, 'refs/tags/') && env.HAS_PLAY_CREDS == 'true'
+        working-directory: .
+        env:
+          PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+        run: |
+          set -euo pipefail
+          python3 -m pip install --quiet google-auth requests
+          printf '%s' "$PLAY_SERVICE_ACCOUNT_JSON" > "$RUNNER_TEMP/play-key.json"
+          # versionCode is the pubspec build number: `version: 1.2.3+456`.
+          code="$(sed -n 's/^version:.*+//p' app/pubspec.yaml | tr -d '[:space:]')"
+          echo "expecting version code $code in open testing"
+          GOOGLE_APPLICATION_CREDENTIALS="$RUNNER_TEMP/play-key.json" \
+            python3 tool/play_tracks.py --package com.gigaionllc.airclone --expect "beta=$code"
+          rm -f "$RUNNER_TEMP/play-key.json"
+
       # Production is deliberately NOT automatic. Every tag lands in open
       # testing; promoting the build users get is a human decision, made by
       # running .github/workflows/promote-play.yml from the Actions tab. That

@@ -82,6 +82,26 @@ Store shapes, contexts, and data models.
    [Template Plan](dev/plans/template-plan.md).
 7. **Cross-platform first.** Every feature is specified for desktop **and** mobile (or explicitly
    marked desktop-only / mobile-only with rationale).
+8. **CI warnings are work, not noise.** A GitHub Actions run that is green but warning is a
+   scheduled outage. Two kinds recur here and both must be fixed in the same change that surfaces
+   them, never "later":
+   - **Node runtime deprecations** — *"The following actions target Node.js 20 but are being forced
+     to run on Node.js 24"*. Fix by bumping the action's MAJOR version (`actions/setup-python@v6`,
+     `actions/setup-java@v5`, `actions/upload-artifact@v6`, `actions/checkout@v5`,
+     `actions/download-artifact@v7`, `actions/setup-go@v6`). When adding ANY first-party action,
+     check its current major first — the newest major is the one on the supported runtime.
+   - **Input deprecations** — e.g. `r0adkll/upload-google-play`'s `track:` → `tracks:`. These break
+     *silently* on a later action release, and for a publishing lane that means shipping quietly
+     stops.
+
+   Grep the whole tree, not just the file you touched:
+   `grep -rn "uses:" .github/workflows/ .github/actions/ | sed 's/.*uses: *//' | sort | uniq -c`
+9. **Verify by artifact, not by green check.** A step reporting success is not evidence the thing
+   happened. This repo has shipped three Windows releases with no bundled rclone because
+   `continue-on-error` hid the failure, and a Play upload can commit an edit that lands nothing.
+   Where an external system holds the result, ask it: [`tool/play_tracks.py`](tool/play_tracks.py)
+   asserts Play actually serves the version code CI just built, and the release job fails if it does
+   not.
 
 ## ✅ Mandatory Wrap-Up Protocol
 Whenever a task or feature is complete — including when the user says "wrap up", "we're done", "ship
