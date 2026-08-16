@@ -207,6 +207,47 @@ build appears in the Console's open testing track, and run the promote workflow 
 
 ---
 
+## Billing posture — why there is nothing to alert on
+
+Verified 2026-08-16. **Three independent reasons this setup cannot be charged**, and they are
+stronger than any budget alert:
+
+| Layer | State | Why it matters |
+| :--- | :--- | :--- |
+| Billing account on the project | none (`billingEnabled: false`) | GCP **refuses** to create billable resources without one. A refusal, not a notification. |
+| The account's only billing account | closed (`OPEN: False`) | not a live payment instrument even if attached |
+| The CI service account's GCP roles | **none** | it cannot create a resource in the project at all; its only authority is the Play Console grant |
+
+The Google Play Developer API is free, and the repo is public so Actions minutes are free too.
+
+**Do not "add a $1 budget alert" here — it is not possible and not useful:**
+
+- Budgets attach to **billing accounts**, not projects. With no billing account there is nothing to
+  attach one to.
+- **A GCP budget is an alert, not a cap.** It emails after spend happens; it does not stop it. The
+  only true hard stop is budget → Pub/Sub → a Cloud Function that disables billing — which needs
+  billing enabled and a running function, so it costs more than it protects at this scale.
+
+```powershell
+# The checks that establish the above — safe to re-run any time.
+gcloud billing projects describe <project-id>        # expect billingEnabled: false
+gcloud billing accounts list                         # expect no OPEN account, or none at all
+gcloud projects get-iam-policy <project-id>          # expect only your own user, no SA binding
+```
+
+**If billing is ever attached** (someone reopens the account, or reuses this project for something
+paid), then a budget becomes both possible and worth having:
+
+```powershell
+gcloud billing budgets create --billing-account=<billing-account-id> `
+  --display-name="Airclone Play CI" --budget-amount=1USD `
+  --threshold-rule=percent=0.5 --threshold-rule=percent=1.0
+```
+
+Treat that as an alarm on an unexpected state, not as protection.
+
+---
+
 ## Gotchas collected while doing this
 
 - `gcloud auth login` needs a human at the browser **on this machine** while it runs; it fails with
