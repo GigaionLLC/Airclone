@@ -1,4 +1,6 @@
-import 'package:flutter/widgets.dart';
+// material (not widgets) for the ScaffoldMessenger the fail-closed path uses to
+// tell the user why nothing was copied.
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../rclone/models/job.dart';
@@ -111,7 +113,20 @@ Future<bool> transferNamesIntoFolder(
             ((it as Map)['Name'] ?? '').toString(),
         };
       } catch (_) {
-        destNames = const {}; // can't list → proceed as if no collisions
+        // FAIL CLOSED. An unreadable destination used to become an empty name
+        // set, which reads as "no collisions" and dispatches a plain overwrite
+        // — the one path in this function that could destroy a file without
+        // ever asking. If we cannot see what is there, we do not write over it.
+        if (!context.mounted) return false;
+        ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+          const SnackBar(
+            content: Text(
+              "Couldn't check the destination folder, so nothing was "
+              'copied — check the connection and try again.',
+            ),
+          ),
+        );
+        return false;
       }
     }
 

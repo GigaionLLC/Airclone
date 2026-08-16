@@ -13,7 +13,13 @@ import 'package:flutter_test/flutter_test.dart' hide EnginePhase;
 
 /// Returns a canned recursive-free listing for the destination folder and
 /// records any transfer RPCs (so we can assert none run on cancel).
+///
+/// Set [listThrows] to simulate a destination we cannot read — an offline
+/// backend, an expired token, a folder we lack permission on.
 class _FakeClient implements RcloneClient {
+  _FakeClient({this.listThrows = false});
+
+  final bool listThrows;
   final transfers = <String>[];
 
   @override
@@ -22,6 +28,7 @@ class _FakeClient implements RcloneClient {
     Map<String, dynamic>? params,
   ]) async {
     if (method == 'operations/list') {
+      if (listThrows) throw StateError('destination unreadable');
       return {
         'list': [
           {'Name': 'dup.txt', 'Path': 'sub/dup.txt', 'IsDir': false, 'Size': 1},
@@ -213,5 +220,101 @@ void main() {
     // Nothing moved → the cut selection must survive (not be cleared).
     expect(find.text('clip:1'), findsOneWidget);
     expect(client.transfers, isEmpty);
+  });
+
+  testWidgets('an unreadable destination FAILS CLOSED — no silent overwrite', (
+    tester,
+  ) async {
+    // The destination listing throws, so we cannot know what is in there. This
+    // used to collapse to an empty name set, which reads as "no collisions"
+    // and dispatched a plain overwrite: the one path here that could destroy a
+    // file without asking. Nothing may be transferred, and the user must be
+    // told why.
+    final client = _FakeClient(listThrows: true);
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          engineControllerProvider.overrideWith(() => _FakeEngine(client)),
+        ],
+        child: MaterialApp(
+          theme: AppTheme.light(),
+          home: Consumer(
+            builder: (ctx, ref, _) => Scaffold(
+              body: Center(
+                child: ElevatedButton(
+                  onPressed: () => transferNamesIntoFolder(
+                    ctx,
+                    ref,
+                    srcRemote: _remote,
+                    srcParentPath: 'from',
+                    names: const ['dup.txt'],
+                    destRemote: _remote,
+                    destPath: 'sub',
+                    type: JobType.copy,
+                    // No knownNames → the probe runs, and it throws.
+                    knownNames: null,
+                  ),
+                  child: const Text('drop'),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('drop'));
+    await tester.pumpAndSettle();
+
+    expect(client.transfers, isEmpty);
+    expect(
+      find.textContaining("Couldn't check the destination"),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('a readable destination with no collision still transfers', (
+    tester,
+  ) async {
+    // The guard above must not turn every paste into a refusal: a destination
+    // that lists cleanly and holds no matching name proceeds without a prompt.
+    final client = _FakeClient();
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          engineControllerProvider.overrideWith(() => _FakeEngine(client)),
+        ],
+        child: MaterialApp(
+          theme: AppTheme.light(),
+          home: Consumer(
+            builder: (ctx, ref, _) => Scaffold(
+              body: Center(
+                child: ElevatedButton(
+                  onPressed: () => transferNamesIntoFolder(
+                    ctx,
+                    ref,
+                    srcRemote: _remote,
+                    srcParentPath: 'from',
+                    // The canned listing holds only dup.txt.
+                    names: const ['fresh.txt'],
+                    destRemote: _remote,
+                    destPath: 'sub',
+                    type: JobType.copy,
+                    knownNames: null,
+                  ),
+                  child: const Text('drop'),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('drop'));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining("Couldn't check"), findsNothing);
+    expect(client.transfers, hasLength(1));
   });
 }
