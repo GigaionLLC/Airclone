@@ -119,17 +119,27 @@ def main() -> int:
     where = "100% (full release)" if full else f"{args.rollout}% staged rollout"
 
     # ── Look before you leap ────────────────────────────────────────────────
-    # `tracks.update` overwrites the target track's releases, so the two ways
-    # to hurt users here are both silent: narrowing a rollout that is already
-    # wider (a live 100% release pinned back to 10%), and promoting a build
-    # OLDER than the one users already have. Neither is ever a typo worth
-    # honouring, so both stop the run unless --force says otherwise.
+    # `tracks.update` overwrites the target track's releases, so two silent
+    # regressions are reachable by ordinary use. They are NOT the same severity,
+    # and conflating them is how an operator learns to ignore a red run:
+    #
+    #   nothing to do   target is already at or beyond what was asked for.
+    #                   Production is fine; the request simply achieves nothing.
+    #                   -> warn, change nothing, EXIT 0 (a green run with a note)
+    #   backwards       target serves a NEWER build than the one being promoted.
+    #                   Committing would downgrade users.
+    #                   -> error, EXIT 1 (a red run means something is wrong)
+    #
+    # Reserving red for the genuinely wrong case is the whole point: a failed
+    # run in the Actions tab must mean "look at me", not "the guard worked".
     target = check(
         http.get(f"{app}/edits/{edit_id}/tracks/{args.to_track}"),
         f"tracks.get({args.to_track})",
     )
     promoting = version_codes[0]
-    blocked: list[str] = []
+    requested = 1.0 if full else args.rollout / 100.0
+    fatal: list[str] = []
+    noop: list[str] = []
     for r in target.get("releases") or []:
         codes = [int(v) for v in (r.get("versionCodes") or [])]
         if not codes:
@@ -139,24 +149,37 @@ def main() -> int:
         fraction = 1.0 if r.get("status") == "completed" else float(r.get("userFraction") or 0)
         if live == promoting:
             print(f"{args.to_track} already serves {live} at {fraction:.0%}")
-            if fraction >= (1.0 if full else args.rollout / 100.0):
-                blocked.append(
-                    f"{args.to_track} already serves {live} at {fraction:.0%}, which is not "
-                    f"narrower than the requested {where}. Promoting would reduce it."
+            if fraction >= requested:
+                same = abs(fraction - requested) < 1e-9
+                noop.append(
+                    f"{args.to_track} already serves {live} at {fraction:.0%}"
+                    + (
+                        " — exactly what was requested, so there is nothing to do."
+                        if same
+                        else f", which is wider than the requested {where}. "
+                        "Applying it would REDUCE how many users get this build."
+                    )
                 )
         elif live > promoting:
-            blocked.append(
+            fatal.append(
                 f"{args.to_track} already serves {live}, which is NEWER than {promoting}. "
                 "Promoting would move users backwards."
             )
 
-    if blocked and not args.force:
-        for b in blocked:
-            print(f"error: {b}", file=sys.stderr)
+    if fatal and not args.force:
+        for f in fatal:
+            print(f"error: {f}", file=sys.stderr)
         print("refusing — pass --force if this is genuinely intended.", file=sys.stderr)
         http.delete(f"{app}/edits/{edit_id}")
         return 1
-    if blocked:
+    if noop and not args.force:
+        for n in noop:
+            # ::warning:: surfaces on the GitHub run summary without failing it.
+            print(f"::warning::{n} Nothing was changed.")
+        print(f"\nno change made — {args.to_track} was left exactly as it was.")
+        http.delete(f"{app}/edits/{edit_id}")
+        return 0
+    if fatal or noop:
         print("--force given; proceeding despite the checks above.")
 
     print(f"→ {args.to_track}: version {version_codes[0]} at {where}")

@@ -163,13 +163,20 @@ production (`edits.insert` → `tracks.get` → `tracks.update` → `edits.commi
 larger percentage to widen a staged rollout (10 → 50 → 100); it defaults to a **dry run**, because
 the failure mode is shipping to everyone at once.
 
-**Two ways promotion can hurt users, both silent — so the script refuses them** (`--force`
-overrides, and both were verified against the live account):
+**Promotion can hurt users in two silent ways, so the script checks first** (`--force` overrides).
+The two are NOT the same severity, and the exit codes say so — because an operator who sees red for
+a working guard learns to ignore red:
 
-| Situation | Why it is bad |
-| :--- | :--- |
-| Target already serves this version at a **wider** fraction | `tracks.update` replaces the track's releases, so promoting 113 at 10% when production already serves 113 at 100% *narrows a live release* |
-| Target already serves a **newer** version code | promoting an older build moves users backwards |
+| Situation | Result | Exit |
+| :--- | :--- | :--- |
+| Target is already at or beyond what was asked (same version, same-or-wider fraction) | `::warning::` on the run, **nothing changed** — production is fine, the request just achieves nothing | **0** (green) |
+| Target already serves a **newer** version code | refuses: promoting an older build downgrades users | **1** (red) |
+
+A red *Promote on Google Play* run therefore always means something is actually wrong. This was
+learned the hard way: the first version failed the run for every refusal, and the Actions tab filled
+with red X's that were the guard doing its job — indistinguishable, at a glance, from a broken
+pipeline. It also mislabelled the equal case ("would reduce it") when asking for the state that
+already exists reduces nothing.
 
 ## 8. Verification ✅ (2026-08-16)
 
@@ -215,10 +222,13 @@ Every component exercised against the live account, in this order:
 | Promote — dry run | `gh workflow run promote-play.yml -f rollout=10 -f dry_run=true` | `found version code 114 in 'beta'` → planned 10%, changed nothing |
 | Promote — staged | `... -f rollout=10 -f dry_run=false` | `committed — production now serving 114 at 10.0% staged rollout` |
 | Promote — widen | `... -f rollout=100 -f dry_run=false` | `production already serves 114 at 10%` → `now serving 114 at 100%` |
-| Guard — narrowing | `... -f rollout=10 -f dry_run=true` (after 100%) | **refused**, exit 1: *"already serves 114 at 100%, which is not narrower… Promoting would reduce it"* |
+| Guard — narrowing | `... -f rollout=10 -f dry_run=true` (after 100%) | refused, nothing changed |
+| Guard — no-op | `... -f rollout=100` (when already at 100%) | warning, nothing changed, **exit 0** |
+| Guard — backwards | `--version-code 100` while 114 is live | **exit 1** — the only red case |
 
-Two behaviours worth keeping: widening a rollout does **not** trip the guard (10 → 100 proceeds),
-and narrowing it does — which is exactly the split that makes the button safe to hand to a human.
+Three behaviours worth keeping: widening a rollout does **not** trip the guard (10 → 100 proceeds),
+narrowing or repeating it changes nothing but stays green with a warning, and only a genuine
+downgrade fails the run.
 
 **Deprecation caught in this run:** the upload action warned that `track:` (singular) "is deprecated
 and will be removed in a future release". Migrated to `tracks:` immediately, because the failure mode
