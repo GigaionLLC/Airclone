@@ -798,7 +798,12 @@ jobs:
           # `beta` IS "Open testing" — the Console's track names and the API's
           # differ: internal=Internal testing, alpha=Closed testing,
           # beta=Open testing, production=Production.
-          track: beta
+          #
+          # `tracks` (plural), not `track`: the v0.6.5 run warned that the
+          # singular form "is deprecated and will be removed in a future
+          # release". Left alone that becomes a silent lane break on some later
+          # action bump.
+          tracks: beta
           status: completed
           releaseName: ${{ github.ref_name }}
           whatsNewDirectory: distribution/whatsnew

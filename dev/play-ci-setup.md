@@ -205,6 +205,25 @@ Then the real end-to-end: push a tag, confirm the android job's upload step succ
 build appears in the Console's open testing track, and run the promote workflow with
 **Dry run = true** before ever running it for real.
 
+### First full run through the pipeline — v0.6.5, 2026-08-16 ✅
+
+Every component exercised against the live account, in this order:
+
+| Step | Command / trigger | Observed |
+| :--- | :--- | :--- |
+| Tag → build + upload | `git push origin v0.6.5` | 8/8 jobs green; upload step logged `Validating tracks: 'beta'` → `Successfully committed` |
+| Promote — dry run | `gh workflow run promote-play.yml -f rollout=10 -f dry_run=true` | `found version code 114 in 'beta'` → planned 10%, changed nothing |
+| Promote — staged | `... -f rollout=10 -f dry_run=false` | `committed — production now serving 114 at 10.0% staged rollout` |
+| Promote — widen | `... -f rollout=100 -f dry_run=false` | `production already serves 114 at 10%` → `now serving 114 at 100%` |
+| Guard — narrowing | `... -f rollout=10 -f dry_run=true` (after 100%) | **refused**, exit 1: *"already serves 114 at 100%, which is not narrower… Promoting would reduce it"* |
+
+Two behaviours worth keeping: widening a rollout does **not** trip the guard (10 → 100 proceeds),
+and narrowing it does — which is exactly the split that makes the button safe to hand to a human.
+
+**Deprecation caught in this run:** the upload action warned that `track:` (singular) "is deprecated
+and will be removed in a future release". Migrated to `tracks:` immediately, because the failure mode
+is a lane that silently stops publishing on some future action bump.
+
 ---
 
 ## Billing posture — why there is nothing to alert on
