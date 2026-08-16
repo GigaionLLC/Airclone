@@ -372,24 +372,13 @@ jobs:
           else
             echo "no airclone.msix produced — skipping (non-fatal)"
           fi
-      # Microsoft Store submission — PRE-WIRED, OFF until you set repo var
-      # STORE_PUBLISH_ENABLED=true + the STORE_* secrets and STORE_APP_ID, AND fill
-      # the real Partner Center identity in pubspec's msix_config. Runs only on a
-      # tag and is non-fatal. See dev/windows-signing-and-store.md (verify the exact
-      # `msstore publish` flags against `msstore --help` at activation time).
-      - name: Submit MSIX to Microsoft Store
-        if: ${{ vars.STORE_PUBLISH_ENABLED == 'true' && startsWith(github.ref, 'refs/tags/') }}
-        continue-on-error: true
-        shell: pwsh
-        env:
-          MSSTORE_TENANT: ${{ secrets.STORE_TENANT_ID }}
-          MSSTORE_CLIENT: ${{ secrets.STORE_CLIENT_ID }}
-          MSSTORE_SECRET: ${{ secrets.STORE_CLIENT_SECRET }}
-          MSSTORE_SELLER: ${{ secrets.STORE_SELLER_ID }}
-        run: |
-          dotnet tool install --global MSStore.CLI | Out-Null
-          msstore reconfigure --tenantId $env:MSSTORE_TENANT --sellerId $env:MSSTORE_SELLER --clientId $env:MSSTORE_CLIENT --clientSecret $env:MSSTORE_SECRET
-          msstore publish airclone.msix --appId ${{ vars.STORE_APP_ID }}
+      # Microsoft Store submission is NOT automatic — it is a button, exactly like
+      # promoting on Google Play: .github/workflows/submit-msstore.yml, run from
+      # the Actions tab against a tag. Certification takes DAYS and a bad
+      # submission burns a review cycle (this app has already lost cycles to
+      # identity rejections and policy 10.2.5), so tagging stages the package and
+      # a human decides when it goes for review. The MSIX asset uploaded above is
+      # what that workflow submits.
 
   linux:
     runs-on: ubuntu-latest

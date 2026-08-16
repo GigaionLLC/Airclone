@@ -1,0 +1,91 @@
+name: Submit to Microsoft Store
+
+# Sends an already-built MSIX to the Microsoft Store for certification — from the
+# Actions tab, with no Partner Center clicking.
+#
+# Why manual, like promote-play.yml: Microsoft certification takes DAYS, and this
+# app has already lost review cycles to package-identity rejections and a policy
+# 10.2.5 rejection. Tagging builds and publishes the MSIX as a release asset;
+# deciding it is worth a review cycle is a human call.
+#
+# It does NOT rebuild. It downloads the exact `airclone.msix` that was signed and
+# attached to the chosen release, so what gets certified is what was tested.
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag whose airclone.msix to submit (e.g. v0.6.7)'
+        required: true
+        type: string
+      dry_run:
+        description: 'Check credentials and the package, submit nothing'
+        required: true
+        default: true
+        type: boolean
+
+permissions:
+  contents: read
+
+jobs:
+  submit:
+    # windows-latest because MSStore.CLI targets the Windows packaging stack.
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Refuse without credentials
+        shell: bash
+        env:
+          HAS_STORE_CREDS: ${{ secrets.STORE_CLIENT_SECRET != '' && vars.STORE_APP_ID != '' }}
+        run: |
+          if [ "$HAS_STORE_CREDS" != "true" ]; then
+            echo "::error::Store credentials are not configured — see dev/msstore-ci-setup.md."
+            exit 1
+          fi
+
+      - name: Download the MSIX from the release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          gh release download "${{ inputs.tag }}" --repo "$GITHUB_REPOSITORY" \
+            --pattern 'airclone.msix' --dir .
+          ls -l airclone.msix
+          # A zero-byte or missing package would otherwise reach Partner Center and
+          # burn a review cycle on something we could have caught here.
+          test -s airclone.msix
+
+      - name: Install the Store CLI
+        shell: pwsh
+        run: |
+          dotnet tool install --global MSStore.CLI
+          # The CLI evolves and the wiring predates this setup — print the real
+          # surface into the log so a flag change is visible at the point it
+          # breaks, not guessed at later.
+          msstore --version
+          msstore publish --help
+
+      - name: Configure credentials
+        shell: pwsh
+        env:
+          MSSTORE_TENANT: ${{ secrets.STORE_TENANT_ID }}
+          MSSTORE_CLIENT: ${{ secrets.STORE_CLIENT_ID }}
+          MSSTORE_SECRET: ${{ secrets.STORE_CLIENT_SECRET }}
+          MSSTORE_SELLER: ${{ secrets.STORE_SELLER_ID }}
+        run: |
+          msstore reconfigure --tenantId $env:MSSTORE_TENANT --sellerId $env:MSSTORE_SELLER `
+            --clientId $env:MSSTORE_CLIENT --clientSecret $env:MSSTORE_SECRET
+
+      - name: Submit
+        if: ${{ inputs.dry_run != true }}
+        shell: pwsh
+        run: msstore publish airclone.msix --appId ${{ vars.STORE_APP_ID }}
+
+      - name: Dry run — what would have happened
+        if: ${{ inputs.dry_run == true }}
+        shell: pwsh
+        run: |
+          Write-Output "DRY RUN. Credentials configured and airclone.msix from ${{ inputs.tag }} is present."
+          Write-Output "Re-run with 'Dry run' unchecked to submit it for certification."

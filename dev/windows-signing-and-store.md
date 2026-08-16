@@ -206,8 +206,12 @@ download reputation (days–weeks); an **EV** profile is trusted instantly.
 > reservation **"Airclone: Cloud File Manager"** (`GigaionLLC.AircloneCloudFileManager`).
 > §§2b–2g below are LIVE again; see §2c for the identity plumbing, which is now real.
 >
-> `STORE_PUBLISH_ENABLED` may be turned on once a manual submission has succeeded
-> end-to-end — the `msstore publish` step targets the MSIX, which is again correct.
+> **Superseded 2026-08-16:** `STORE_PUBLISH_ENABLED` is **retired**, and submission is no longer
+> attached to tagging at all. It is now a manual workflow —
+> [`submit-msstore.yml`](../.github/workflows/submit-msstore.yml), run from the Actions tab against
+> a tag — mirroring the Google Play promote button. Certification takes days and a bad submission
+> costs a review cycle, so a human decides when a build is worth one. Setup:
+> [`dev/msstore-ci-setup.md`](msstore-ci-setup.md).
 >
 > <details><summary>Superseded 2026-07-23 decision (EXE/MSI), kept for context</summary>
 >

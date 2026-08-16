@@ -72,7 +72,8 @@ it alone. The `android` job distils the same file to `distribution/whatsnew/what
 
 **Gating — variables** (repo/org Actions *variables*): `WINDOWS_SIGNING_ENABLED`,
 `AZURE_SIGNING_ENDPOINT`, `AZURE_SIGNING_ACCOUNT`, `AZURE_SIGNING_PROFILE`, `MSIX_IDENTITY_NAME`,
-`MSIX_PUBLISHER`, `MSIX_DISPLAY_NAME`, `STORE_PUBLISH_ENABLED`, `STORE_APP_ID`.
+`MSIX_PUBLISHER`, `MSIX_DISPLAY_NAME`, `STORE_APP_ID`. (`STORE_PUBLISH_ENABLED` is retired —
+Store submission is the manual `submit-msstore.yml` workflow, not a tag side-effect.)
 
 **Gating — secrets:** `AZURE_TENANT_ID`, `AZURE_CLIENT_ID`, `AZURE_CLIENT_SECRET`; `STORE_TENANT_ID`,
 `STORE_CLIENT_ID`, `STORE_CLIENT_SECRET`, `STORE_SELLER_ID`;
