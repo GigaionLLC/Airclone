@@ -104,7 +104,7 @@ gcloud iam service-accounts keys create <path-outside-the-repo>.json `
 Play Console grant in step 5. The JSON key is the only credential; treat it like a password, write it
 somewhere outside the repo, and delete it once it is in the GitHub secret.
 
-## 5. Grant the SA access — Play Console (browser, no API exists)
+## 5. Grant the SA access — Play Console (browser, no API exists) ✅
 
 Play Console → **Users and permissions → Invite new user**:
 
@@ -163,7 +163,31 @@ production (`edits.insert` → `tracks.get` → `tracks.update` → `edits.commi
 larger percentage to widen a staged rollout (10 → 50 → 100); it defaults to a **dry run**, because
 the failure mode is shipping to everyone at once.
 
-## 8. Verification
+**Two ways promotion can hurt users, both silent — so the script refuses them** (`--force`
+overrides, and both were verified against the live account):
+
+| Situation | Why it is bad |
+| :--- | :--- |
+| Target already serves this version at a **wider** fraction | `tracks.update` replaces the track's releases, so promoting 113 at 10% when production already serves 113 at 100% *narrows a live release* |
+| Target already serves a **newer** version code | promoting an older build moves users backwards |
+
+## 8. Verification ✅ (2026-08-16)
+
+The grant propagated **immediately** — the 403 became a working call on the next run, so "wait
+hours" is a worst case, not the norm.
+
+Reading every track at once is the fastest way to know where you stand (and the check the promote
+script now does for you):
+
+```
+internal     codes=['100'] status=completed          name=100 (0.4.0)
+beta         codes=['113'] status=completed          name=113 (0.6.4)
+production   codes=['113'] status=completed          name=113 (0.6.4)
+```
+
+**This is exactly the state that makes a naive promote harmful**, and finding it is why the safety
+checks below exist: production was already serving 113 at 100%, so a `--rollout 10` promote would
+have taken a fully-live release and pinned it back to a 10% staged rollout.
 
 Local dry run with the key (no changes, opens and discards an edit):
 

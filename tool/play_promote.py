@@ -47,6 +47,11 @@ def main() -> int:
         help="promote this exact version code instead of what is in --from-track",
     )
     ap.add_argument("--commit", action="store_true", help="actually commit (default: dry run)")
+    ap.add_argument(
+        "--force",
+        action="store_true",
+        help="override the safety checks (narrowing a live rollout, or going backwards)",
+    )
     args = ap.parse_args()
 
     if not 0 < args.rollout <= 100:
@@ -112,6 +117,48 @@ def main() -> int:
                 break
 
     where = "100% (full release)" if full else f"{args.rollout}% staged rollout"
+
+    # ── Look before you leap ────────────────────────────────────────────────
+    # `tracks.update` overwrites the target track's releases, so the two ways
+    # to hurt users here are both silent: narrowing a rollout that is already
+    # wider (a live 100% release pinned back to 10%), and promoting a build
+    # OLDER than the one users already have. Neither is ever a typo worth
+    # honouring, so both stop the run unless --force says otherwise.
+    target = check(
+        http.get(f"{app}/edits/{edit_id}/tracks/{args.to_track}"),
+        f"tracks.get({args.to_track})",
+    )
+    promoting = version_codes[0]
+    blocked: list[str] = []
+    for r in target.get("releases") or []:
+        codes = [int(v) for v in (r.get("versionCodes") or [])]
+        if not codes:
+            continue
+        live = max(codes)
+        # A completed release is at 100%; an inProgress one carries a fraction.
+        fraction = 1.0 if r.get("status") == "completed" else float(r.get("userFraction") or 0)
+        if live == promoting:
+            print(f"{args.to_track} already serves {live} at {fraction:.0%}")
+            if fraction >= (1.0 if full else args.rollout / 100.0):
+                blocked.append(
+                    f"{args.to_track} already serves {live} at {fraction:.0%}, which is not "
+                    f"narrower than the requested {where}. Promoting would reduce it."
+                )
+        elif live > promoting:
+            blocked.append(
+                f"{args.to_track} already serves {live}, which is NEWER than {promoting}. "
+                "Promoting would move users backwards."
+            )
+
+    if blocked and not args.force:
+        for b in blocked:
+            print(f"error: {b}", file=sys.stderr)
+        print("refusing — pass --force if this is genuinely intended.", file=sys.stderr)
+        http.delete(f"{app}/edits/{edit_id}")
+        return 1
+    if blocked:
+        print("--force given; proceeding despite the checks above.")
+
     print(f"→ {args.to_track}: version {version_codes[0]} at {where}")
 
     if not args.commit:
