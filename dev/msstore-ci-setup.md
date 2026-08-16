@@ -108,7 +108,41 @@ Center grant are unaffected.
 The symptom of a lapsed secret is an auth failure at submission time — annoying, but it cannot break
 a release: submission is a separate manual workflow, so builds and GitHub releases keep working.
 
-## 2. Grant it Store access — Partner Center (browser, no API exists)
+## 2. FIRST: associate an Entra tenant with the Partner Center account
+
+**Do this before anything else in Partner Center.** Azure AD applications can only be added under an
+*associated tenant*, so without one there is nothing to grant the CI identity.
+
+**Symptom when it is missing** (this is what we hit, and it reads like a broken login):
+
+> *Account settings → User management* says "You are currently signed in as `<you>`. To manage
+> users, sign in with your **associated** Microsoft Entra ID credentials", and the "Sign in with
+> Microsoft Entra ID" button loops — you authenticate successfully and land back on the same page,
+> forever.
+
+It is not a credential problem. **Check *Account settings → Tenants*: if "Current tenant
+associations" is an empty table, that loop can never resolve** — you are being asked to sign in
+against an association that does not exist.
+
+Likely root cause: the Partner Center account is signed in with a **Microsoft account (MSA)** while
+the Entra work account has the *same email address*. They look identical and are different
+identities.
+
+**Fix (free — associating an existing tenant costs nothing, and Entra ID Free needs no
+subscription):** *Account settings → Tenants* → the **`...`** overflow next to "Create Microsoft
+Entra ID" → **Associate Microsoft Entra ID**, then sign in as a **global admin of that tenant**.
+
+> **Do not click "Create Microsoft Entra ID"** — it sits immediately left of the overflow and makes a
+> NEW tenant instead of associating the one your app registration already lives in.
+
+> **Automation note:** these account pages render inside an **iframe**, so DOM queries from the top
+> document return nothing and the `...` overflow does not respond to synthetic clicks. This step is
+> hand-driven; budget a minute for it rather than scripting it.
+
+Associating a tenant grants its users access to the developer account, and removing it later strips
+those users and their permissions — so it is a deliberate, admin-level decision, not a formality.
+
+## 3. Grant it Store access — Partner Center (browser, no API exists)
 
 Partner Center → **Account settings → User management → Azure AD applications** → add the app from
 step 1 with the **Manager** role (that role is what grants Submission-API access).
@@ -118,7 +152,7 @@ Capture, while there — both are recorded as `_tbd_` in the as-built table and 
 - **Seller ID** — Account settings → Legal info / Developer
 - **Store ID** — the app's identity page (this becomes `STORE_APP_ID`)
 
-## 3. GitHub configuration
+## 4. GitHub configuration
 
 Org-level (`GigaionLLC`), visibility Selected → Airclone, matching the existing signing secrets:
 
@@ -135,7 +169,7 @@ gh variable set STORE_PUBLISH_ENABLED --org $ORG --visibility selected --repos A
 `STORE_PUBLISH_ENABLED` is the last thing to set — with it unset the step is skipped entirely and its
 secrets are never read, so everything above can be staged safely.
 
-## 4. What CI runs
+## 5. What CI runs
 
 Already wired in [`release.yml`](../.github/workflows/release.yml) (windows job, tag pushes only,
 `continue-on-error` so a Store hiccup never fails a release):
@@ -149,7 +183,7 @@ msstore publish airclone.msix --appId <STORE_APP_ID>
 **Verify the flags against `msstore --help` at activation** — the CLI evolves, and the wiring
 predates this setup.
 
-## 5. Verification
+## 6. Verification
 
 *(recorded after the first automated submission)*
 
