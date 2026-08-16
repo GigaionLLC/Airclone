@@ -292,16 +292,12 @@ void main() {
 
   // The REAL crypto path: the default offline-QR band (128 MiB, t=3). Slower, so
   // one test proves the actual derive works end-to-end and a realistic config fits.
-  test(
-    'production-params round-trip works and fits a scannable QR',
-    () async {
-      final payload = await buildOfflineQrPayload(_config, 'K7WX-234M');
-      expect(payload.length, lessThan(kOfflineQrMaxPayloadChars));
-      final out = await openOfflineQrPayload(payload, 'K7WX-234M');
-      expect(out, _config);
-    },
-    timeout: const Timeout(Duration(minutes: 2)),
-  );
+  test('production-params round-trip works and fits a scannable QR', () async {
+    final payload = await buildOfflineQrPayload(_config, 'K7WX-234M');
+    expect(payload.length, lessThan(kOfflineQrMaxPayloadChars));
+    final out = await openOfflineQrPayload(payload, 'K7WX-234M');
+    expect(out, _config);
+  }, timeout: const Timeout(Duration(minutes: 2)));
 
   // base45 + the unlock-code generator moved into offline_qr.dart when the LAN
   // pairing_protocol.dart was deleted; these keep their direct coverage.

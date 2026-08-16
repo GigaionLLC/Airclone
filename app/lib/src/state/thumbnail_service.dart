@@ -266,7 +266,8 @@ class ThumbnailService {
         req.size,
       ).timeout(_videoFirstFrameTimeout);
       if (raw == null) return null;
-      return _downscale(raw, req.size);
+      // Awaited, not returned bare: an unawaited return escapes this catch.
+      return await _downscale(raw, req.size);
     } catch (_) {
       // Includes the timeout: a remote too slow to yield a frame in budget.
       return null;

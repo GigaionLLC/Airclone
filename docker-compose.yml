@@ -22,10 +22,13 @@
 
 services:
   flutter:
-    # Pinned to the same version CI uses (see the note in release.yml): a
-    # floating `stable` gives local checks a different formatter and analyzer
-    # from the one that gates the build.
-    image: ghcr.io/cirruslabs/flutter:3.44.4
+    # NOTE: this image LAGS the version CI pins (see the note in release.yml —
+    # cirruslabs had no 3.47.0 tag when we moved to it). It is fine for a quick
+    # analyze/test, but do NOT run `dart format` from it unless
+    # `flutter --version` here matches the pin: an older formatter reformats
+    # files the gate then rejects, which is exactly how the v0.6.3 release
+    # broke. The native SDK on the dev machine is the one to keep in step.
+    image: ghcr.io/cirruslabs/flutter:stable
     working_dir: /work/app
     volumes:
       - ./:/work

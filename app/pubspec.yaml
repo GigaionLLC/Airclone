@@ -69,7 +69,10 @@ dependencies:
 
   # alpha.5: file previews (images/text use built-ins; these add markdown + PDF).
   flutter_markdown: ^0.7.4
-  pdfrx: ^1.0.0
+  # 2.x is required from Flutter 3.47 on: 1.3.5's `PdfFileCache?` handling is
+  # rejected outright by the newer analyzer (null-flow), so the desktop builds
+  # simply stop compiling. See dev/releases/v0.6.4.md.
+  pdfrx: ^2.4.7
 
   # alpha.6: video/audio preview (libmpv-backed, bundled libs for desktop).
   media_kit: ^1.1.10

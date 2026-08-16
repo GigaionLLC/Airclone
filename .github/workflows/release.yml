@@ -39,18 +39,18 @@ env:
   # that cost a Store certification cycle — see AddRemoteController.answer).
   RCLONE_VERSION: v1.75.0
 
-# ── Why the Flutter version is PINNED everywhere below ────────────────────────
-# `channel: stable` is a moving target, and on 2026-08-15 it moved to 3.47.0
-# (Dart 3.10) mid-release. Every platform job broke at once, none of it in our
-# code: `pdfrx` 1.3.5 no longer compiles under the stricter null-flow analysis,
-# the new Flutter Gradle plugin demands Gradle >= 8.14 (we pin 8.11.1, because
-# cargokit needs `Project.exec`), and `dart format` reformatted a test file the
-# release never touched.
+# ── The Flutter version is PINNED everywhere below. Bump it deliberately. ─────
+# `channel: stable` is a moving target. On 2026-08-15 it moved to 3.47.0 in the
+# middle of the v0.6.3 release and broke every platform job at once, none of it
+# in our code: `pdfrx` 1.3.5 stopped compiling under the newer analyzer, the new
+# Flutter Gradle plugin demanded Gradle >= 8.14 (we were on 8.11.1), and `dart
+# format` reformatted a test file the release never touched.
 #
-# So CI now builds on the SAME version the app is developed and verified on.
-# Upgrading is a deliberate piece of work — bump the Gradle wrapper, take a
-# pdfrx that supports Dart 3.10, reformat, then re-verify each platform — not
-# something a release should discover.
+# The 3.47.0 upgrade was then done as its own change — pdfrx 2.x, Gradle 8.14.3,
+# a reformat — and verified across all four platforms before landing. Treat the
+# next bump the same way: change this pin on a branch, run this workflow with
+# workflow_dispatch (builds artifacts, publishes nothing), and only then merge.
+# Keep docker-compose.yml on the same version, or local checks disagree with CI.
 defaults:
   run:
     working-directory: app
@@ -138,7 +138,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - uses: subosito/flutter-action@v2
-        with: { channel: stable, flutter-version: 3.44.4, cache: true }
+        with: { channel: stable, flutter-version: 3.47.0, cache: true }
       # super_native_extensions (drag-out) builds a Rust crate via cargokit.
       - uses: dtolnay/rust-toolchain@stable
       - run: flutter config --enable-windows-desktop
@@ -405,7 +405,7 @@ jobs:
         # "Unable to generate build files" without it.
         run: sudo apt-get update && sudo apt-get install -y ninja-build libgtk-3-dev libmpv-dev mpv libsecret-1-dev
       - uses: subosito/flutter-action@v2
-        with: { channel: stable, flutter-version: 3.44.4, cache: true }
+        with: { channel: stable, flutter-version: 3.47.0, cache: true }
       # super_native_extensions (drag-out) builds a Rust crate via cargokit.
       - uses: dtolnay/rust-toolchain@stable
       - run: flutter config --enable-linux-desktop
@@ -460,7 +460,7 @@ jobs:
           echo "::error::Tagged release but APPLE_DEVELOPER_ID_APPLICATION_P12_BASE64 is missing — refusing to publish an unsigned macOS build."
           exit 1
       - uses: subosito/flutter-action@v2
-        with: { channel: stable, flutter-version: 3.44.4, cache: true }
+        with: { channel: stable, flutter-version: 3.47.0, cache: true }
       # super_native_extensions (drag-out) builds a Rust crate via cargokit.
       - uses: dtolnay/rust-toolchain@stable
       - run: flutter config --enable-macos-desktop
@@ -677,7 +677,7 @@ jobs:
       - uses: actions/setup-java@v4
         with: { distribution: temurin, java-version: '17' }
       - uses: subosito/flutter-action@v2
-        with: { channel: stable, flutter-version: 3.44.4, cache: true }
+        with: { channel: stable, flutter-version: 3.47.0, cache: true }
       - uses: dtolnay/rust-toolchain@stable
       - uses: actions/setup-go@v6
         # cache:false — there is no committed go.sum (the pinning module is
