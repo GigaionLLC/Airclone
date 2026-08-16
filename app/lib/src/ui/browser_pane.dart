@@ -773,6 +773,14 @@ class BrowserPane extends ConsumerWidget {
     await ref.read(paneProvider(index).notifier).refresh();
   }
 
+  /// "Copy to…" / "Move to…" both go through [transferNamesIntoFolder] — the
+  /// same path paste and drag-drop use — so a name that already exists at the
+  /// destination prompts (Skip / Replace / Keep both) instead of being
+  /// overwritten without a word. It also inherits the fail-closed behaviour: a
+  /// destination we cannot list transfers nothing rather than assuming empty.
+  ///
+  /// `knownNames: null` on purpose — the picker can land anywhere, so the
+  /// destination listing has to be fetched rather than reused from a pane.
   Future<void> _copyToPicker(
     BuildContext context,
     WidgetRef ref,
@@ -780,16 +788,17 @@ class BrowserPane extends ConsumerWidget {
     RcloneFile f,
   ) async {
     final dst = await showDestinationPicker(context, title: 'Copy to…');
-    if (dst == null || state.remote == null) return;
-    await ref
-        .read(transferServiceProvider)
-        .transfer(
-          srcRemote: state.remote!,
-          srcPath: joinPath(state.path, f.name),
-          dstRemote: dst.remote,
-          dstPath: joinPath(dst.path, f.name),
-          type: JobType.copy,
-        );
+    if (dst == null || state.remote == null || !context.mounted) return;
+    await transferNamesIntoFolder(
+      context,
+      ref,
+      srcRemote: state.remote!,
+      srcParentPath: state.path,
+      names: [f.name],
+      destRemote: dst.remote,
+      destPath: dst.path,
+      type: JobType.copy,
+    );
   }
 
   Future<void> _moveToPicker(
@@ -799,17 +808,20 @@ class BrowserPane extends ConsumerWidget {
     RcloneFile f,
   ) async {
     final dst = await showDestinationPicker(context, title: 'Move to…');
-    if (dst == null || state.remote == null) return;
-    await ref
-        .read(transferServiceProvider)
-        .transfer(
-          srcRemote: state.remote!,
-          srcPath: joinPath(state.path, f.name),
-          dstRemote: dst.remote,
-          dstPath: joinPath(dst.path, f.name),
-          type: JobType.move,
-        );
-    await ref.read(paneProvider(index).notifier).refresh();
+    if (dst == null || state.remote == null || !context.mounted) return;
+    // refreshPaneIndex: the source pane loses the entry on a move, so it has to
+    // re-list — and only after the transfer is actually dispatched.
+    await transferNamesIntoFolder(
+      context,
+      ref,
+      srcRemote: state.remote!,
+      srcParentPath: state.path,
+      names: [f.name],
+      destRemote: dst.remote,
+      destPath: dst.path,
+      type: JobType.move,
+      refreshPaneIndex: index,
+    );
   }
 
   Future<void> _download(
