@@ -27,10 +27,10 @@ experience**, and brings it to the desktop *and* the phone:
 - 🗂️ **One UI for every backend** — S3, Google Drive, Dropbox, SFTP, WebDAV, local disks… all appear
   as peers in a single list, with the same rows, gestures, and context menu.
 - 🖐️ **Direct manipulation** — drag a folder from one cloud to another to copy it; the transfer runs
-  as a live job. Easy one-click sync, with dry-run previews before anything destructive.
+  as a live job. Easy one-click sync, and a dry-run mode that runs a job without writing anything.
 - ⏰ **Sync & schedule** — Mirror, Backup-new, or Two-way sync; save jobs and run them on a schedule.
-- 💽 **Make it local** — mount a remote as a drive on desktop, or flip **"Show in Files"** on mobile
-  so the remote appears in your phone's own file explorer and to other apps.
+- 💽 **Make it local** — mount a remote as a drive on desktop, or hand any file straight to another
+  app from your phone with **Open in another app** and the share sheet.
 - 🔒 **Free, open-source, and private** — local-only, no telemetry. All manual power stays free.
 - 🏢 **Enterprise-ready, without phoning home** — deployable & governable by IT (MDM/policy, enforced
   kill-switches, OS-keychain/Vault secrets, local audit + opt-in SIEM, signed/SBOM'd builds, optional
@@ -55,7 +55,7 @@ experience**, and brings it to the desktop *and* the phone:
     <td><img src="docs/screenshots/thumbnails-grid.png" alt="Grid view with image thumbnails over a cloud remote"><br><sub><b>Thumbnails everywhere</b> — image/video previews over any remote, cached encrypted (AES-256-GCM).</sub></td>
   </tr>
   <tr>
-    <td colspan="2" align="center"><img src="docs/screenshots/conflict-guard.png" alt="Conflict dialog offering Skip, Replace, Keep both" width="720"><br><sub><b>Nothing overwrites silently</b> — every collision prompts Skip / Replace / Keep both.</sub></td>
+    <td colspan="2" align="center"><img src="docs/screenshots/conflict-guard.png" alt="Conflict dialog offering Skip, Replace, Keep both" width="720"><br><sub><b>Paste never overwrites silently</b> — a name collision prompts Skip / Replace / Keep both.</sub></td>
   </tr>
 </table>
 
@@ -69,8 +69,8 @@ experience**, and brings it to the desktop *and* the phone:
 
 <p align="center">
   <sub>The full rclone engine ships <b>inside the APK</b> — browse every remote with a touch-first UI,
-  run transfers in the background with a live notification, and flip “Show in Files” to expose remotes
-  to your phone's own file manager.</sub>
+  run transfers in the background with a live notification, and hand any file to another app with
+  <b>Open in another app</b> or the share sheet.</sub>
 </p>
 
 ## 📚 Documentation
