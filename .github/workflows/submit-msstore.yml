@@ -78,6 +78,16 @@ jobs:
           msstore reconfigure --tenantId $env:MSSTORE_TENANT --sellerId $env:MSSTORE_SELLER `
             --clientId $env:MSSTORE_CLIENT --clientSecret $env:MSSTORE_SECRET
 
+      - name: Verify the credential actually reaches Partner Center
+        shell: pwsh
+        run: |
+          # `reconfigure` only writes the values to local config — it proves
+          # nothing about whether they work. This read-only call is what makes a
+          # dry run meaningful: it fails here if the Entra app is missing, the
+          # secret has lapsed, the tenant is not associated with the Partner
+          # Center account, or the app lacks the Manager role.
+          msstore apps list
+
       - name: Submit
         if: ${{ inputs.dry_run != true }}
         shell: pwsh
@@ -87,5 +97,5 @@ jobs:
         if: ${{ inputs.dry_run == true }}
         shell: pwsh
         run: |
-          Write-Output "DRY RUN. Credentials configured and airclone.msix from ${{ inputs.tag }} is present."
+          Write-Output "DRY RUN. The credential works, and airclone.msix from ${{ inputs.tag }} is present."
           Write-Output "Re-run with 'Dry run' unchecked to submit it for certification."
