@@ -64,18 +64,29 @@ Partner Center ever sees it.
 > | Attempt | Result |
 > | :--- | :--- |
 > | send `pricing` back exactly as received (`priceId: "Base"`) | `'Base' is not a valid PriceId for base price` |
-> | drop just `priceId` | accepted, and the price **silently became `Free`** |
+> | drop just `priceId` | accepted — and the field **read back as `Free`** where live reads `Base` |
 > | omit the whole `pricing` object | `Pricing data was not provided in the request` |
 >
 > The app is on the **advanced pricing model** (`isAdvancedPricingModel: true`), where the real price
 > lives outside the submission and `priceId` is the sentinel `"Base"`. The v1 API cannot express that
 > value on write, so there is no payload that both satisfies the API and preserves the price.
 >
-> **This was caught the expensive way.** The `Free` variant was submitted and reached certification on
-> 2026-08-17 before a pricing comparison against the live submission revealed it; certification was
-> cancelled, the draft deleted, and the live listing was never affected. The script now reads the
-> submission back and **refuses to commit** when pricing differs from live — that check must never be
-> removed, and it belongs *before* the commit, which is the whole lesson.
+> **This was caught the expensive way**, and it is worth being precise about what was and was not
+> established. The `priceId: Free` variant was submitted and reached certification on 2026-08-17,
+> then certification was cancelled and the draft deleted. The live listing was never affected —
+> confirmed afterwards from the public Store page, which still shows **$1.49 with a free trial**.
+>
+> **What is proven:** the submission we built read back `priceId = Free` where the live one reads
+> `Base`, with every other pricing field identical.
+> **What is NOT proven:** that publishing it would actually have made the app free. It was never
+> published, so nobody observed the outcome — and two details cut the other way: Partner Center
+> labelled that draft's pricing module *"Unchanged"*, and `isAdvancedPricingModel` stayed `true`, so
+> the advanced model might still have governed the real price.
+>
+> The right rule is the weaker one, and it is enough: **never publish an unexplained pricing
+> divergence on a paid product to find out empirically.** The script reads the submission back and
+> **refuses to commit** when pricing differs from live. That check must never be removed, and it
+> belongs *before* the commit — which is the actual lesson.
 >
 > **So Store submission stays manual for now.** The realistic options, in order of preference:
 >

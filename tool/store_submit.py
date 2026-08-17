@@ -206,9 +206,12 @@ def main() -> int:
     # The API hands back `priceId: "Base"` for a product on the advanced pricing
     # model and then refuses that same value on the way in ("'Base' is not a
     # valid PriceId for base price"). The obvious fix — drop just that key — was
-    # tried and is WRONG: the price silently became `Free`, which on a paid app
-    # means giving it away. Omit the whole pricing object instead, so the server
-    # keeps what it already had.
+    # tried and is wrong: the field then reads back as `Free` where the live
+    # submission reads `Base`. Whether publishing that would really have made a
+    # paid app free was never established (it was cancelled first), and that is
+    # exactly the point — an unexplained pricing divergence is not something to
+    # resolve by shipping it. Omit the whole pricing object instead, so the
+    # server keeps what it already had.
     #
     # And then verify, because the whole lesson here is that a plausible-looking
     # pricing edit is invisible until it publishes.
