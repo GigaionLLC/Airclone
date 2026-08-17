@@ -38,6 +38,29 @@ Partner Center ever sees it.
 > automatic-on-tag submission dormant; with submission behind a manual dispatch there is nothing to
 > gate — the workflow simply refuses to run without credentials.
 
+> ## ⛔ BLOCKER — `msstore publish` cannot update a paid product
+>
+> Proven on 2026-08-17 submitting v0.6.7. Authentication, identity and package upload all worked;
+> the CLI found the app, created a submission, retrieved it, and then stopped with:
+>
+> > **App updates are supported only for Free products.**
+>
+> Airclone is **not** free — it carries the small Store listing price that funds the signing certs.
+> So `msstore publish` is a dead end for this app, and no amount of credential work changes that.
+> Note the ordering trap: **the CLI creates a submission before it discovers it cannot finish one**,
+> so a failed run leaves a pending submission behind, and a pending submission blocks the next one.
+> Check Partner Center and delete the draft after any failed attempt.
+>
+> **The way forward is the older Store submission REST API**
+> (`https://manage.devcenter.microsoft.com/v1.0/my/applications/…`), which does handle paid products:
+> create submission → PUT the package to the returned SAS URL → commit → poll status. That is the
+> same shape as [`tool/play_promote.py`](../tool/play_promote.py) and would replace the `msstore`
+> steps while keeping every credential built here — the Entra app, the Developer grant, and all four
+> `STORE_*` secrets are exactly what that API wants too. None of this setup is wasted.
+>
+> The alternative — making the app free — is a **pricing decision, not an engineering one**, and it
+> would remove the funding for the signing certificates. It is not automation's call to make.
+
 **What automation does NOT do:**
 
 - **It cannot create the first submission.** The Store submission API updates an app that already has
