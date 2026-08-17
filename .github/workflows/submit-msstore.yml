@@ -57,10 +57,20 @@ jobs:
           # burn a review cycle on something we could have caught here.
           test -s airclone.msix
 
+      # Microsoft retired the `MSStore.CLI` dotnet tool from NuGet — `dotnet tool
+      # install` now dies with "msstore.cli is not found in NuGet feeds". The CLI
+      # itself is alive and shipping (microsoft/msstore-cli, release binaries);
+      # this is the vendor's own installer for it, and it runs on Node 24, so it
+      # does not reintroduce the deprecation warning of AGENT.md §8.
+      # The action was renamed from microsoft/setup-msstore-cli — that name still
+      # redirects, but pin the current one so a future redirect drop is not our
+      # publishing lane breaking.
       - name: Install the Store CLI
+        uses: microsoft/microsoft-store-apppublisher@v1.4
+
+      - name: Show the CLI surface
         shell: pwsh
         run: |
-          dotnet tool install --global MSStore.CLI
           # The CLI evolves and the wiring predates this setup — print the real
           # surface into the log so a flag change is visible at the point it
           # breaks, not guessed at later.
