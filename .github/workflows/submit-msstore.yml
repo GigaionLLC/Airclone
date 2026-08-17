@@ -68,15 +68,6 @@ jobs:
       - name: Install the Store CLI
         uses: microsoft/microsoft-store-apppublisher@v1.4
 
-      - name: Show the CLI surface
-        shell: pwsh
-        run: |
-          # The CLI evolves and the wiring predates this setup — print the real
-          # surface into the log so a flag change is visible at the point it
-          # breaks, not guessed at later.
-          msstore --version
-          msstore publish --help
-
       - name: Configure credentials
         shell: pwsh
         env:
@@ -91,6 +82,14 @@ jobs:
       - name: Verify the credential actually reaches Partner Center
         shell: pwsh
         run: |
+          # The CLI evolves and this wiring predates the setup — print the real
+          # surface into the log so a flag change is visible at the point it
+          # breaks, not guessed at later. This has to run AFTER reconfigure:
+          # even `--help` on a subcommand exits 1 with "SellerId is not set"
+          # when the CLI has no configuration.
+          msstore --version
+          msstore publish --help
+
           # `reconfigure` only writes the values to local config — it proves
           # nothing about whether they work. This read-only call is what makes a
           # dry run meaningful: it fails here if the Entra app is missing, the
