@@ -41,6 +41,17 @@ import zipfile
 
 import requests
 
+# GitHub's Windows runners give Python a cp1252 stdout, so a single character
+# outside that codepage kills the process mid-run — which it did, after the
+# submission had already been created, leaving a draft behind. Em dashes happen
+# to be in cp1252 and survive; an arrow is not and does not. Rather than police
+# every string, make the stream itself total.
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding="utf-8", errors="replace")
+    except (AttributeError, ValueError):  # pragma: no cover - older/odd streams
+        pass
+
 RESOURCE = "https://manage.devcenter.microsoft.com"
 API = f"{RESOURCE}/v1.0/my"
 
@@ -320,7 +331,7 @@ def main() -> int:
         print(
             f"note: priceId reads {now.get('priceId')} vs {live_pricing.get('priceId')} live. "
             "This is the legacy projection of advanced-model pricing and does not affect the "
-            "real price — confirm in Partner Center → Pricing and availability if in doubt."
+            "real price - confirm in Partner Center, Pricing and availability, if in doubt."
         )
 
     # ── 5. Upload ───────────────────────────────────────────────────────────
