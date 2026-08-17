@@ -151,17 +151,22 @@ def main() -> int:
         # Report the pricing of whatever submission is current. This script has
         # to touch the pricing block (see step 4), and pricing on a paid product
         # is money — so make it inspectable rather than assumed.
-        show = (pending or {}).get("id") or last
-        if show:
-            st = http.get(f"{API}/applications/{args.app_id}/submissions/{show}", timeout=60)
-            if st.ok:
-                pricing = st.json().get("pricing", {})
-                which = "pending" if pending else "last published"
-                print(f"\npricing on the {which} submission {show}:")
-                print(f"  priceId              = {pricing.get('priceId')}")
-                print(f"  isAdvancedPricingModel = {pricing.get('isAdvancedPricingModel')}")
-                print(f"  trialPeriod          = {pricing.get('trialPeriod')}")
-                print(f"  marketSpecificPricings = {len(pricing.get('marketSpecificPricings') or {})} entries")
+        # Print BOTH when both exist. A single reading is uninterpretable — the
+        # question is never "what does pricing say" but "does the submission we
+        # built still price the same as the one that is live".
+        for which, sid in (("last published", last), ("pending", (pending or {}).get("id"))):
+            if not sid:
+                continue
+            st = http.get(f"{API}/applications/{args.app_id}/submissions/{sid}", timeout=60)
+            if not st.ok:
+                continue
+            pricing = st.json().get("pricing", {})
+            markets = pricing.get("marketSpecificPricings") or {}
+            print(f"\npricing on the {which} submission {sid}:")
+            print(f"  priceId                = {pricing.get('priceId')}")
+            print(f"  isAdvancedPricingModel = {pricing.get('isAdvancedPricingModel')}")
+            print(f"  trialPeriod            = {pricing.get('trialPeriod')}")
+            print(f"  marketSpecificPricings = {markets}")
         print("\nDRY RUN — authenticated, app reachable, no submission created.")
         print("Re-run with --commit to submit for certification.")
         return 0
