@@ -49,6 +49,11 @@ API = f"{RESOURCE}/v1.0/my"
 # soon means it was rejected before a human ever looked at it.
 ACCEPTED = {"CommitStarted", "PreProcessing", "CertificationInProgress", "Release", "Published"}
 
+# States where Microsoft is actively working on the submission. Superseding one
+# of these is allowed — a newer build must not queue behind an older one — but it
+# discards review progress, so it is announced rather than done quietly.
+IN_FLIGHT = {"PreProcessing", "Certification", "CertificationInProgress", "Release"}
+
 
 def fail(msg: str) -> None:
     print(f"::error::{msg}", file=sys.stderr)
@@ -61,6 +66,36 @@ def check(resp: requests.Response, what: str) -> dict:
         # `message` that name the actual problem, and summarising loses it.
         fail(f"{what} failed [{resp.status_code}]\n{resp.text}")
     return resp.json() if resp.content else {}
+
+
+def clear_pending(http: requests.Session, app_id: str, pid: str, state: str) -> None:
+    """Remove a pending submission, cancelling certification first if needed.
+
+    A newer release must never be blocked by an older one still in review, so
+    "supersede what is in flight" has to be a supported move rather than a trip
+    to Partner Center. A draft deletes outright; a submission already in
+    certification generally will not, and has to be cancelled first — that is
+    what the Cancel certification button in Partner Center does.
+    """
+    r = http.delete(f"{API}/applications/{app_id}/submissions/{pid}", timeout=120)
+    if r.ok:
+        return
+
+    print(f"delete refused [{r.status_code}] for status {state}; trying to cancel it first")
+    c = http.post(f"{API}/applications/{app_id}/submissions/{pid}/cancel", timeout=120)
+    if c.ok:
+        r = http.delete(f"{API}/applications/{app_id}/submissions/{pid}", timeout=120)
+        if r.ok:
+            print("cancelled and deleted")
+            return
+
+    fail(
+        f"could not clear submission {pid} (status {state}).\n"
+        f"  delete: [{r.status_code}] {r.text}\n"
+        f"  cancel: [{c.status_code}] {c.text}\n"
+        "Cancel it by hand: Partner Center -> the product -> Certification status -> "
+        "'Cancel certification', then re-run."
+    )
 
 
 def get_token(tenant: str, client_id: str, secret: str) -> str:
@@ -139,25 +174,26 @@ def main() -> int:
         # attempt leaves a draft, and something has to be able to remove it
         # without also starting a new submission.
         if args.delete_pending and not (args.commit or args.stage):
-            print(f"deleting pending submission {pid} (status {state})")
-            r = http.delete(f"{API}/applications/{args.app_id}/submissions/{pid}", timeout=120)
-            if not r.ok:
-                fail(f"could not delete pending submission [{r.status_code}]\n{r.text}")
-            print("deleted. No new submission created.")
+            print(f"clearing pending submission {pid} (status {state})")
+            clear_pending(http, args.app_id, pid, state)
+            print("cleared. No new submission created.")
             return 0
         if args.commit or args.stage:
             if not args.delete_pending:
-                # Deleting an in-progress submission is not this script's call to
-                # make silently: it may be a listing edit made by hand, or — as
-                # happened here — a build already in certification.
+                # Clearing an in-progress submission is not this script's call to
+                # make silently: it may be a listing edit made by hand, or a
+                # build already in certification.
                 fail(
                     f"submission {pid} (status {state}) blocks a new one.\n"
-                    "Finish or delete it in Partner Center, or re-run with --delete-pending."
+                    "Re-run with --delete-pending to supersede it, or finish it in Partner Center."
                 )
-            print(f"deleting pending submission {pid} (status {state})")
-            r = http.delete(f"{API}/applications/{args.app_id}/submissions/{pid}", timeout=120)
-            if not r.ok:
-                fail(f"could not delete pending submission [{r.status_code}]\n{r.text}")
+            if state in IN_FLIGHT:
+                # Superseding a release under review is legitimate — a newer
+                # build should not wait behind an older one — but say plainly
+                # what is being thrown away.
+                print(f"::warning::superseding submission {pid}, which is in {state}.")
+            print(f"clearing pending submission {pid} (status {state})")
+            clear_pending(http, args.app_id, pid, state)
 
     last = app.get("lastPublishedApplicationSubmission", {}).get("id")
     print(f"last published submission: {last}")

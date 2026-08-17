@@ -340,8 +340,24 @@ The script walks the REST flow, each step depending on the last:
 | `POST /commit` | hands it to certification |
 | `GET /status`, bounded poll | catches an immediate rejection; certification itself takes **days**, so polling to completion is pointless |
 
-**A pending submission blocks a new one**, and the script refuses rather than deleting it, because a
-draft may be a listing edit somebody made by hand. `--delete-pending` overrides that deliberately.
+### Superseding a release that is still in review
+
+**A pending submission blocks a new one**, and the script refuses rather than clearing it, because it
+may be a listing edit somebody made by hand. `delete_pending: true` overrides that deliberately.
+
+Microsoft review takes days, so a newer build *will* sometimes be ready while an older one is still
+in certification. It must not have to wait: run the workflow with **`delete_pending: true`** and it
+supersedes whatever is in flight. The tool deletes the pending submission, and if the API refuses —
+which it does once certification has started — it cancels first and then deletes, the same thing the
+**Cancel certification** button does in Partner Center.
+
+Superseding a submission in `PreProcessing` / `Certification` / `Release` throws away its review
+progress and restarts the clock, so it is announced with a `::warning::` rather than done quietly.
+
+> The cancel-then-delete path is **untested against a live `Certification`-status submission** — the
+> only one available was the real v0.6.7 release, and cancelling it to prove the code was not worth
+> it. Delete-outright is proven for `PendingCommit` and `Canceled`. If the fallback misbehaves, the
+> Partner Center button always works, and the error message says so.
 
 **Identity is checked before any of it** (`AppxManifest.xml` vs the `MSIX_*` repo variables), because
 Partner Center validates the four identity fields in a fixed order and **the first failure masks the

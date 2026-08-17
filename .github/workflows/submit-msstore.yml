@@ -25,7 +25,7 @@ on:
         type: choice
         options: [dry-run, stage, submit]
       delete_pending:
-        description: 'Delete an existing pending submission first (it may be a hand-made listing edit — check Partner Center)'
+        description: 'Supersede whatever is pending — cancels an in-progress certification if needed. Discards its review progress.'
         required: false
         default: false
         type: boolean
