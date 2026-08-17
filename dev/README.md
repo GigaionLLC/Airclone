@@ -38,6 +38,8 @@ actually changed in a shipped version — and you need the exact file rather tha
 
 | Path | What lives there |
 | :--- | :--- |
+| [`microsoft-account-setup.md`](microsoft-account-setup.md) | **Start here for anything Microsoft-identity.** The map: MSA vs work account vs guest, which tenant holds what, Partner Center association and role grants, and the order it must all be created in. Rebuild-from-nothing runbook. |
+| [`msstore-ci-setup.md`](msstore-ci-setup.md) | The Store **submission** credential and the manual `submit-msstore.yml` workflow, including why it uses the REST API rather than `msstore publish` (paid products). |
 | [`windows-signing-and-store.md`](windows-signing-and-store.md) | Windows code signing (as-built + reproduce) **and** the Microsoft Store per-release runbook, MSIX identity plumbing, and certification post-mortems. The largest process doc; the freshest decision in `dev/`. |
 | [`google-play-store.md`](google-play-store.md) | Per-release Google Play runbook + a reusable facts table (package name, listing path, CI action, versionCode rule) + gotchas. |
 | [`apple-appstore-and-macos.md`](apple-appstore-and-macos.md) | Two lanes under one roof: macOS direct download (live, automated) and Mac App Store / iOS (future, blocked on dual-engine). |

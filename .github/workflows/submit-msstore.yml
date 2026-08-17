@@ -134,9 +134,3 @@ jobs:
             --app-id "${{ vars.STORE_APP_ID }}" \
             --package airclone.msix $COMMIT
 
-      - name: Dry run — what would have happened
-        if: ${{ inputs.dry_run == true }}
-        shell: pwsh
-        run: |
-          Write-Output "DRY RUN. The credential works, and airclone.msix from ${{ inputs.tag }} is present."
-          Write-Output "Re-run with 'Dry run' unchecked to submit it for certification."
