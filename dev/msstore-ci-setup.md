@@ -2,8 +2,8 @@
 
 **Purpose:** reproduce, from nothing, the credential that lets CI submit Airclone's MSIX to the
 Microsoft Store — for a new Partner Center account, a rotated secret, or a different app.
-**Status:** ✅ **WORKING** — verified end to end on 2026-08-17 (see §6). Submission is a manual
-workflow; the credential itself is proven.
+**Status:** credential ✅ **proven** end to end (§6). Automated *submission* is ⛔ **blocked** on this
+app's pricing model — see the blocker in §0 before building on this. Submitting by hand still works.
 **Related:** [`dev/windows-signing-and-store.md`](windows-signing-and-store.md) §2 (the manual
 submission runbook + as-built account facts) · [`docs/store/README.md`](../docs/store/README.md) (the
 store hub) · [`dev/play-ci-setup.md`](play-ci-setup.md) (the same job for Google Play — read it too,
@@ -55,10 +55,40 @@ Partner Center ever sees it.
 > and a pending submission blocks the next one. (In the v0.6.7 attempt nothing was actually left
 > behind — Partner Center still offered "Start update" — but do check.)
 >
-> The restriction is in the CLI, not the Store. [`tool/store_submit.py`](../tool/store_submit.py)
-> talks to the submission REST API directly, which handles paid products, and reuses every credential
-> below unchanged. `STORE_SELLER_ID` is no longer read by anything — the REST API does not take a
-> seller id — but it is kept set, since it costs nothing and Partner Center tooling asks for it.
+> ## ⛔ AND the REST API cannot round-trip this app's pricing either
+>
+> The obvious next move was the older submission REST API, since the CLI's restriction is a CLI
+> restriction. [`tool/store_submit.py`](../tool/store_submit.py) implements it, and everything works —
+> auth, package upload, commit, certification — **except pricing**, which is unsolvable as configured:
+>
+> | Attempt | Result |
+> | :--- | :--- |
+> | send `pricing` back exactly as received (`priceId: "Base"`) | `'Base' is not a valid PriceId for base price` |
+> | drop just `priceId` | accepted, and the price **silently became `Free`** |
+> | omit the whole `pricing` object | `Pricing data was not provided in the request` |
+>
+> The app is on the **advanced pricing model** (`isAdvancedPricingModel: true`), where the real price
+> lives outside the submission and `priceId` is the sentinel `"Base"`. The v1 API cannot express that
+> value on write, so there is no payload that both satisfies the API and preserves the price.
+>
+> **This was caught the expensive way.** The `Free` variant was submitted and reached certification on
+> 2026-08-17 before a pricing comparison against the live submission revealed it; certification was
+> cancelled, the draft deleted, and the live listing was never affected. The script now reads the
+> submission back and **refuses to commit** when pricing differs from live — that check must never be
+> removed, and it belongs *before* the commit, which is the whole lesson.
+>
+> **So Store submission stays manual for now.** The realistic options, in order of preference:
+>
+> 1. **Submit by hand** (~10 minutes per release, and Store review takes days regardless — so the tax
+>    is small at this cadence). Everything else built here still pays off: the identity check, the
+>    signed MSIX, and the dry run that proves the credential.
+> 2. **Move the product off the advanced pricing model** onto a classic price tier. `priceId` would
+>    then be a real tier that round-trips, and `store_submit.py` would work unchanged. This is a
+>    **pricing decision**, not an engineering one.
+> 3. **Make the app free** — then even `msstore publish` works. It also defunds the signing certs.
+>
+> `STORE_SELLER_ID` is not read by `store_submit.py` (the REST API takes no seller id) but is kept
+> set, since it costs nothing and Partner Center tooling asks for it.
 
 **What automation does NOT do:**
 
