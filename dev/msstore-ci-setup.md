@@ -70,6 +70,10 @@ az ad app credential reset --id <appId> --years 2   # prints the secret ONCE
 >
 > `--use-device-code` matters when the machine is locked or headless: it prints a short code to enter
 > at <https://login.microsoft.com/device> from **any** device, including a phone.
+>
+> **The code is short-lived** — it polls for roughly 15 minutes and then exits 1 with
+> `AADSTS70016: ... Authorization is pending`, which reads like a failure but only means nobody
+> entered it in time. Start the command when you are actually at a browser, not in advance.
 
 ### 1a. The secret expires — there is no "never"
 
