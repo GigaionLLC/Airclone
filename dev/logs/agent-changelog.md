@@ -4,6 +4,30 @@ All changes made by AI agents are tracked chronologically below (most recent fir
 
 ---
 
+## [2026-08-17] - Microsoft Store submission credential proven working
+
+**Agent:** Claude Opus 5 — `main`
+**Files Modified:** `.github/workflows/submit-msstore.yml`, `dev/msstore-ci-setup.md`,
+`dev/windows-signing-and-store.md`, `dev/README.md`
+**Database/API Changes:** Microsoft Store submission API now reachable from CI. Org secret
+`STORE_SELLER_ID` added; `STORE_CLIENT_SECRET` rotated (old secret destroyed by `credential reset`).
+The Entra app `GigaionLLC-StoreSubmit` granted the **Developer** role on the Partner Center account.
+**Summary:** The Store lane had been written but never executed, and running it surfaced four
+separate faults. Two were in the workflow: the `MSStore.CLI` dotnet tool no longer exists on nuget.org
+(replaced with Microsoft's own `microsoft-store-apppublisher` action, which runs on Node 24), and
+`msstore <cmd> --help` requires credentials so it cannot run before `reconfigure`. Two were in the
+credential: the Entra app had never been added in Partner Center at all, and the stored secret was
+unusable — most likely the CRLF a PowerShell stdin pipe appends, which fails identically to a wrong
+secret. Both produce the same opaque `Really failed to auth`, which is why this took several rounds.
+Verified by reading the log rather than trusting the green check: MSIX downloaded at 98,156,524 bytes
+and `msstore apps list` returned the real listing with ProductId matching `STORE_APP_ID`. Two earlier
+claims were corrected rather than left standing — the role is Developer (not Manager, which would
+give a CI secret control of users, roles and tenants), and the app registration was never destroyed
+by the tenant deletion. Also hardened the dry run so it proves the credential instead of merely
+reporting that values were configured.
+
+---
+
 ## [2026-08-16] - Android video thumbnails, repeat playback, Flutter 3.47, and automated Play publishing
 
 **Agent:** Claude Opus 5 — `main`
