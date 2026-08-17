@@ -57,6 +57,51 @@ jobs:
           # burn a review cycle on something we could have caught here.
           test -s airclone.msix
 
+      # Package-identity mismatches have cost this app four review cycles (v0.6.0),
+      # and Partner Center validates the four identity fields in a fixed order so
+      # the first failure MASKS the rest — you fix one, resubmit, wait days, and
+      # discover the next. The MSIX carries its identity in AppxManifest.xml, so
+      # check it against the repo variables that were supposed to produce it here,
+      # where being wrong costs seconds instead of days.
+      - name: Verify the package identity before spending a review cycle
+        shell: pwsh
+        env:
+          EXPECT_NAME: ${{ vars.MSIX_IDENTITY_NAME }}
+          EXPECT_PUBLISHER: ${{ vars.MSIX_PUBLISHER }}
+        run: |
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          $zip = [System.IO.Compression.ZipFile]::OpenRead((Resolve-Path airclone.msix))
+          try {
+            $entry = $zip.Entries | Where-Object { $_.FullName -eq 'AppxManifest.xml' }
+            if (-not $entry) { throw "AppxManifest.xml not found inside airclone.msix" }
+            $reader = New-Object System.IO.StreamReader($entry.Open())
+            $xml = [xml]$reader.ReadToEnd()
+            $reader.Dispose()
+          } finally { $zip.Dispose() }
+
+          $id = $xml.Package.Identity
+          Write-Output "Package identity:"
+          Write-Output "  Name      = $($id.Name)"
+          Write-Output "  Publisher = $($id.Publisher)"
+          Write-Output "  Version   = $($id.Version)"
+
+          $bad = $false
+          if ($env:EXPECT_NAME -and $id.Name -ne $env:EXPECT_NAME) {
+            Write-Output "::error::Identity Name is '$($id.Name)' but MSIX_IDENTITY_NAME is '$($env:EXPECT_NAME)'."
+            $bad = $true
+          }
+          if ($env:EXPECT_PUBLISHER -and $id.Publisher -ne $env:EXPECT_PUBLISHER) {
+            Write-Output "::error::Identity Publisher is '$($id.Publisher)' but MSIX_PUBLISHER is '$($env:EXPECT_PUBLISHER)'."
+            $bad = $true
+          }
+          # A build with the identity variables unset still produces a package —
+          # carrying pubspec placeholders — and that is what Partner Center rejected.
+          if ($id.Name -match 'placeholder' -or $id.Publisher -match 'placeholder') {
+            Write-Output "::error::This package carries pubspec PLACEHOLDER identity, not the reserved identity."
+            $bad = $true
+          }
+          if ($bad) { exit 1 }
+
       # Microsoft retired the `MSStore.CLI` dotnet tool from NuGet — `dotnet tool
       # install` now dies with "msstore.cli is not found in NuGet feeds". The CLI
       # itself is alive and shipping (microsoft/msstore-cli, release binaries);
