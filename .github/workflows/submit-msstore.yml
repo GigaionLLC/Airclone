@@ -18,11 +18,12 @@ on:
         description: 'Release tag whose airclone.msix to submit (e.g. v0.6.7)'
         required: true
         type: string
-      dry_run:
-        description: 'Check credentials and the package, submit nothing'
+      mode:
+        description: 'dry-run = look only · stage = upload but leave it a draft for a human to submit · submit = full automatic submission'
         required: true
-        default: true
-        type: boolean
+        default: 'dry-run'
+        type: choice
+        options: [dry-run, stage, submit]
       delete_pending:
         description: 'Delete an existing pending submission first (it may be a hand-made listing edit — check Partner Center)'
         required: false
@@ -134,7 +135,10 @@ jobs:
         run: |
           set -euo pipefail
           ARGS=""
-          if [ "${{ inputs.dry_run }}" != "true" ]; then ARGS="$ARGS --commit"; fi
+          case "${{ inputs.mode }}" in
+            submit) ARGS="$ARGS --commit" ;;
+            stage)  ARGS="$ARGS --stage" ;;
+          esac
           if [ "${{ inputs.delete_pending }}" = "true" ]; then ARGS="$ARGS --delete-pending"; fi
           python tool/store_submit.py \
             --app-id "${{ vars.STORE_APP_ID }}" \

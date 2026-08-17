@@ -91,6 +91,12 @@ def main() -> int:
     ap.add_argument("--package", required=True, help="path to the .msix")
     ap.add_argument("--commit", action="store_true", help="actually submit (default: dry run)")
     ap.add_argument(
+        "--stage",
+        action="store_true",
+        help="create the submission and upload the package, but stop before commit "
+        "so a human can check it in Partner Center and submit from there",
+    )
+    ap.add_argument(
         "--delete-pending",
         action="store_true",
         help="delete an existing pending submission instead of refusing",
@@ -132,14 +138,14 @@ def main() -> int:
         # --delete-pending on its own (no --commit) is the cleanup path: a failed
         # attempt leaves a draft, and something has to be able to remove it
         # without also starting a new submission.
-        if args.delete_pending and not args.commit:
+        if args.delete_pending and not (args.commit or args.stage):
             print(f"deleting pending submission {pid} (status {state})")
             r = http.delete(f"{API}/applications/{args.app_id}/submissions/{pid}", timeout=120)
             if not r.ok:
                 fail(f"could not delete pending submission [{r.status_code}]\n{r.text}")
             print("deleted. No new submission created.")
             return 0
-        if args.commit:
+        if args.commit or args.stage:
             if not args.delete_pending:
                 # Deleting an in-progress submission is not this script's call to
                 # make silently: it may be a listing edit made by hand, or — as
@@ -157,7 +163,7 @@ def main() -> int:
     print(f"last published submission: {last}")
     print(f"package: {args.package} ({size_mb:.1f} MB)")
 
-    if not args.commit:
+    if not (args.commit or args.stage):
         # Report the pricing of whatever submission is current. This script has
         # to touch the pricing block (see step 4), and pricing on a paid product
         # is money — so make it inspectable rather than assumed.
@@ -241,16 +247,24 @@ def main() -> int:
             tuple(sorted((p.get("marketSpecificPricings") or {}).items())),
         )
 
-    if live_pricing and price_shape(now) != price_shape(live_pricing):
-        # Refuse BEFORE commit. An uncommitted submission is a draft nobody sees;
-        # a committed one is a price change in front of customers.
-        fail(
-            "pricing on the new submission does not match what is live — refusing to commit.\n"
-            f"  live:    {live_pricing}\n"
-            f"  new:     {now}\n"
-            f"Delete draft {sub_id} in Partner Center and investigate."
+    mismatch = bool(live_pricing) and price_shape(now) != price_shape(live_pricing)
+    if mismatch:
+        detail = (
+            "pricing on the new submission does not match what is live:\n"
+            f"  live: {live_pricing}\n"
+            f"  new:  {now}"
         )
-    print(f"pricing preserved: priceId={now.get('priceId')} (matches the live submission)")
+        if args.stage:
+            # Staging exists precisely to look at this, so report and continue.
+            # The draft is editable in Partner Center — pricing can be corrected
+            # there before anyone submits it.
+            print(f"::warning::{detail}\nCheck Pricing and availability before submitting.")
+        else:
+            # Refuse BEFORE commit. An uncommitted submission is a draft nobody
+            # sees; a committed one is a price change in front of customers.
+            fail(f"{detail}\nRefusing to commit. Delete draft {sub_id} and investigate.")
+    else:
+        print(f"pricing preserved: priceId={now.get('priceId')} (matches the live submission)")
 
     # ── 5. Upload ───────────────────────────────────────────────────────────
     # The API takes a ZIP whose entry names match the fileName values above.
@@ -268,6 +282,12 @@ def main() -> int:
     if not r.ok:
         fail(f"package upload failed [{r.status_code}]\n{r.text}")
     print("uploaded")
+
+    if args.stage:
+        print(f"\nSTAGED. Submission {sub_id} holds the new package and is NOT submitted.")
+        print("Open it in Partner Center: check 'Pricing and availability', correct it there if")
+        print("needed (a draft is editable), then click 'Submit for certification'.")
+        return 0
 
     # ── 6. Commit ───────────────────────────────────────────────────────────
     check(
