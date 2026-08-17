@@ -100,6 +100,40 @@ Store submission is the manual `submit-msstore.yml` workflow, not a tag side-eff
 
 ---
 
+## 🚦 What a tag does by itself, and what needs a button
+
+Publishing is deliberately split: things that are cheap to redo happen automatically, things that
+cost days or reach every user need a human. Pushing `vX.Y.Z` does **everything in the first table**
+with no further action.
+
+| Automatic on a tag | Where |
+| :--- | :--- |
+| Build + code-sign Windows (signed installer, bundled rclone), macOS (Developer ID + notarized), Linux, Android (release-signed) | [`release.yml`](../.github/workflows/release.yml) |
+| Create the GitHub Release from `dev/releases/vX.Y.Z.md` and attach every artifact | `release` job |
+| Publish Android to Play **open testing**, then **ask Play whether that exact version code is really there** | `android` job |
+| Build the MSIX with injected Store identity and attach it to the release | `windows` job |
+
+| Needs a human to press it | How | Why not automatic |
+| :--- | :--- | :--- |
+| **Play → production** | Actions → *Promote on Google Play* (default 10% staged) | reaches every user; staged rollout is a judgement call |
+| **Microsoft Store submission** | Actions → *Submit to Microsoft Store* | certification takes **days** and a bad submission burns a cycle |
+
+**The Store workflow has three modes**, and `stage` is the one worth knowing:
+
+| Mode | Does |
+| :--- | :--- |
+| `dry-run` | authenticates, reports pricing and pending state, changes nothing |
+| `stage` | uploads the package and leaves an **editable draft** to check in Partner Center, then submit from there |
+| `submit` | full automatic submission |
+
+Set `delete_pending: true` to **supersede** a submission still in certification, so a newer build
+never queues behind an older one — it discards that submission's review progress and says so.
+
+Details: [`play-ci-setup.md`](play-ci-setup.md) · [`msstore-ci-setup.md`](msstore-ci-setup.md) ·
+[`microsoft-account-setup.md`](microsoft-account-setup.md).
+
+---
+
 ## ✅ Release checklist
 
 Distilled from the three store runbooks and the v0.5.x–v0.6.x release history.
@@ -114,10 +148,12 @@ Distilled from the three store runbooks and the v0.5.x–v0.6.x release history.
    `flutter analyze` (CI fails on **any** info-level lint), `flutter test`.
 4. **Tag `vX.Y.Z` and push.** An `alpha`/`beta`/`rc` in the tag marks the Release pre-release.
 5. **Verify the artifacts — see the rule below.** Do not move on because the run is green.
-6. **Store lanes**, if this release goes to a store: run the pre-submission truth audit in
-   [`../docs/store/README.md`](../docs/store/README.md), then the platform runbook
-   ([Microsoft](windows-signing-and-store.md) §2 · [Play](google-play-store.md) ·
-   [macOS/Apple](apple-appstore-and-macos.md)).
+6. **Store lanes.** Play open testing already happened (see the table above). For the rest: run the
+   pre-submission truth audit in [`../docs/store/README.md`](../docs/store/README.md), then
+   **Microsoft** — Actions → *Submit to Microsoft Store*, `mode: stage` first if you want to eyeball
+   it ([`msstore-ci-setup.md`](msstore-ci-setup.md)) — and **Play production** when you want it
+   ([`play-ci-setup.md`](play-ci-setup.md)). macOS is
+   [fully automated](apple-appstore-and-macos.md) §1.
 7. **Wrap up:** changelog entry in [`logs/agent-changelog.md`](logs/agent-changelog.md), sync any
    `wiki/` doc whose described behaviour changed, and move any finished plan to
    [`archive-plans/`](archive-plans/README.md).

@@ -74,9 +74,14 @@ Save. Listing edits do **not** require a new AAB and can ship independently of a
   confirm the build installs and the what's-new text appears.
 - For the API lane, the action log should report a release created on `internal`.
 
-**F. Promote to production (manual / future — only near/after v1.0.0)**
-- CI never promotes past `internal`. When ready: Play Console → **Production → Create new release**,
-  promote the reviewed internal build, set a **staged rollout** (e.g. 10%), submit for review.
+**F. Promote to production — a button, not a Console visit** *(since 2026-08-16)*
+- CI publishes a tag to **open testing** automatically and never goes further on its own.
+- Promote with **Actions → *Promote on Google Play* → Run workflow**: it promotes the version code
+  already sitting in the track (Play rejects a re-upload of a code it has seen), defaults to a **10%
+  staged rollout**, and widening later is the same workflow with `rollout=100`.
+- It refuses to go **backwards** (red run = something is genuinely wrong) and merely **warns** when
+  production already serves that build or more — so a red run always means look at me.
+- Full runbook, guard semantics and worked examples: [`play-ci-setup.md`](play-ci-setup.md).
 - Complete the account-level **Data safety** form and **content rating** questionnaire (required for
   production) if not already done.
 
