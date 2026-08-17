@@ -123,17 +123,25 @@ def main() -> int:
     pending = app.get("pendingApplicationSubmission")
     if pending:
         pid = pending.get("id")
-        if not args.delete_pending:
-            # Deleting someone else's in-progress draft is not this script's call
-            # to make silently — it could be a listing edit made by hand.
-            fail(
-                f"submission {pid} is already pending. A pending submission blocks a new one.\n"
-                "Finish or delete it in Partner Center, or re-run with --delete-pending."
-            )
-        print(f"deleting pending submission {pid}")
-        r = http.delete(f"{API}/applications/{args.app_id}/submissions/{pid}", timeout=120)
-        if not r.ok:
-            fail(f"could not delete pending submission [{r.status_code}]\n{r.text}")
+        # A pending submission only *blocks* a new one. On a dry run it is
+        # something to report, not a reason to fail — refusing there made it
+        # impossible to inspect the very submission you were asking about.
+        st = http.get(f"{API}/applications/{args.app_id}/submissions/{pid}/status", timeout=60)
+        state = st.json().get("status", "unknown") if st.ok else "unknown"
+        print(f"a submission is already pending: {pid} (status {state})")
+        if args.commit:
+            if not args.delete_pending:
+                # Deleting an in-progress submission is not this script's call to
+                # make silently: it may be a listing edit made by hand, or — as
+                # happened here — a build already in certification.
+                fail(
+                    f"submission {pid} (status {state}) blocks a new one.\n"
+                    "Finish or delete it in Partner Center, or re-run with --delete-pending."
+                )
+            print(f"deleting pending submission {pid} (status {state})")
+            r = http.delete(f"{API}/applications/{args.app_id}/submissions/{pid}", timeout=120)
+            if not r.ok:
+                fail(f"could not delete pending submission [{r.status_code}]\n{r.text}")
 
     last = app.get("lastPublishedApplicationSubmission", {}).get("id")
     print(f"last published submission: {last}")
