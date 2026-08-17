@@ -2,8 +2,9 @@
 
 **Purpose:** reproduce, from nothing, the credential that lets CI submit Airclone's MSIX to the
 Microsoft Store — for a new Partner Center account, a rotated secret, or a different app.
-**Status:** credential ✅ **proven** end to end (§6). Automated *submission* is ⛔ **blocked** on this
-app's pricing model — see the blocker in §0 before building on this. Submitting by hand still works.
+**Status:** ✅ **WORKING** — v0.6.7 submitted for certification on 2026-08-17 with the price intact.
+`msstore publish` cannot be used (paid product); [`tool/store_submit.py`](../tool/store_submit.py)
+talks to the REST API instead. Read the `priceId` warning in §0 before touching pricing.
 **Related:** [`dev/windows-signing-and-store.md`](windows-signing-and-store.md) §2 (the manual
 submission runbook + as-built account facts) · [`docs/store/README.md`](../docs/store/README.md) (the
 store hub) · [`dev/play-ci-setup.md`](play-ci-setup.md) (the same job for Google Play — read it too,
@@ -55,48 +56,39 @@ Partner Center ever sees it.
 > and a pending submission blocks the next one. (In the v0.6.7 attempt nothing was actually left
 > behind — Partner Center still offered "Start update" — but do check.)
 >
-> ## ⛔ AND the REST API cannot round-trip this app's pricing either
+> ## ⚠️ `priceId` in the REST API is a lie — do not act on it
 >
-> The obvious next move was the older submission REST API, since the CLI's restriction is a CLI
-> restriction. [`tool/store_submit.py`](../tool/store_submit.py) implements it, and everything works —
-> auth, package upload, commit, certification — **except pricing**, which is unsolvable as configured:
+> [`tool/store_submit.py`](../tool/store_submit.py) uses the older submission REST API, and everything
+> works: auth, package upload, commit, certification. Pricing needs one piece of knowledge, and
+> getting it wrong cost a review cycle on 2026-08-17.
+>
+> Only one payload is writable, and it mutates a field you cannot leave alone:
 >
 > | Attempt | Result |
 > | :--- | :--- |
-> | send `pricing` back exactly as received (`priceId: "Base"`) | `'Base' is not a valid PriceId for base price` |
-> | drop just `priceId` | accepted — and the field **read back as `Free`** where live reads `Base` |
+> | send `pricing` back as received (`priceId: "Base"`) | `'Base' is not a valid PriceId for base price` |
 > | omit the whole `pricing` object | `Pricing data was not provided in the request` |
+> | drop just `priceId` | **accepted** — and it reads back as `priceId: Free`, `isAdvancedPricingModel: false` |
 >
-> The app is on the **advanced pricing model** (`isAdvancedPricingModel: true`), where the real price
-> lives outside the submission and `priceId` is the sentinel `"Base"`. The v1 API cannot express that
-> value on write, so there is no payload that both satisfies the API and preserves the price.
+> **That readback is meaningless, and it is not a price change.** Verified in Partner Center: the
+> staged draft whose API JSON said `Free` showed **$1.49 across 240 markets with the free trial
+> intact** in *Pricing and availability*. The product is on the **advanced pricing model**, where the
+> real price lives outside the submission; `priceId` is a legacy projection the v1 API cannot express
+> and reports garbage for.
 >
-> **This was caught the expensive way**, and it is worth being precise about what was and was not
-> established. The `priceId: Free` variant was submitted and reached certification on 2026-08-17,
-> then certification was cancelled and the draft deleted. The live listing was never affected —
-> confirmed afterwards from the public Store page, which still shows **$1.49 with a free trial**.
+> **The expensive mistake was believing the field.** A correct submission was cancelled mid-
+> certification because `priceId` flipped to `Free` and that was read as "the app is about to go
+> free". It was not. Partner Center's *"Pricing and availability: Unchanged"* label was right; it was
+> dismissed because *Packages* also said "Unchanged" — but that label diffs **module configuration,
+> not uploaded binaries**.
 >
-> **What is proven:** the submission we built read back `priceId = Free` where the live one reads
-> `Base`, with every other pricing field identical.
-> **What is NOT proven:** that publishing it would actually have made the app free. It was never
-> published, so nobody observed the outcome — and two details cut the other way: Partner Center
-> labelled that draft's pricing module *"Unchanged"*, and `isAdvancedPricingModel` stayed `true`, so
-> the advanced model might still have governed the real price.
+> So the guard compares only the fields that round-trip honestly (`trialPeriod`,
+> `marketSpecificPricings`, `sales`) and **deliberately excludes `priceId` and
+> `isAdvancedPricingModel`**. Comparing those would false-alarm on every single release.
 >
-> The right rule is the weaker one, and it is enough: **never publish an unexplained pricing
-> divergence on a paid product to find out empirically.** The script reads the submission back and
-> **refuses to commit** when pricing differs from live. That check must never be removed, and it
-> belongs *before* the commit — which is the actual lesson.
->
-> **So Store submission stays manual for now.** The realistic options, in order of preference:
->
-> 1. **Submit by hand** (~10 minutes per release, and Store review takes days regardless — so the tax
->    is small at this cadence). Everything else built here still pays off: the identity check, the
->    signed MSIX, and the dry run that proves the credential.
-> 2. **Move the product off the advanced pricing model** onto a classic price tier. `priceId` would
->    then be a real tier that round-trips, and `store_submit.py` would work unchanged. This is a
->    **pricing decision**, not an engineering one.
-> 3. **Make the app free** — then even `msstore publish` works. It also defunds the signing certs.
+> **When pricing genuinely needs checking, the authority is Partner Center → Pricing and
+> availability**, never the API JSON. `mode: stage` exists for exactly that: it uploads the package
+> and leaves an editable draft so a human can look before submitting.
 >
 > `STORE_SELLER_ID` is not read by `store_submit.py` (the REST API takes no seller id) but is kept
 > set, since it costs nothing and Partner Center tooling asks for it.

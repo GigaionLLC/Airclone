@@ -242,11 +242,22 @@ def main() -> int:
     ).get("pricing", {})
 
     def price_shape(p: dict) -> tuple:
+        # Deliberately EXCLUDES priceId and isAdvancedPricingModel.
+        #
+        # For a product on the advanced pricing model those two fields are a
+        # legacy projection that does not describe the real price. Writing this
+        # submission always flips them to `Free` / `False`, and it means nothing:
+        # verified in Partner Center on 2026-08-17, where the staged draft still
+        # showed **$1.49 across 240 markets** with the free trial intact, while
+        # the API reported `priceId: Free`.
+        #
+        # Comparing them produced a false alarm that cost a review cycle, and as
+        # a guard it would block every future release. The fields below do
+        # round-trip honestly, so they are what gets compared.
         return (
-            p.get("priceId"),
-            p.get("isAdvancedPricingModel"),
             p.get("trialPeriod"),
             tuple(sorted((p.get("marketSpecificPricings") or {}).items())),
+            len(p.get("sales") or []),
         )
 
     mismatch = bool(live_pricing) and price_shape(now) != price_shape(live_pricing)
@@ -266,7 +277,15 @@ def main() -> int:
             # sees; a committed one is a price change in front of customers.
             fail(f"{detail}\nRefusing to commit. Delete draft {sub_id} and investigate.")
     else:
-        print(f"pricing preserved: priceId={now.get('priceId')} (matches the live submission)")
+        print("pricing preserved (markets, trial and sales match the live submission)")
+    if now.get("priceId") != live_pricing.get("priceId"):
+        # Expected and benign — say so, so nobody re-raises the alarm that this
+        # already caused once. The authority is Partner Center's pricing module.
+        print(
+            f"note: priceId reads {now.get('priceId')} vs {live_pricing.get('priceId')} live. "
+            "This is the legacy projection of advanced-model pricing and does not affect the "
+            "real price — confirm in Partner Center → Pricing and availability if in doubt."
+        )
 
     # ── 5. Upload ───────────────────────────────────────────────────────────
     # The API takes a ZIP whose entry names match the fileName values above.
