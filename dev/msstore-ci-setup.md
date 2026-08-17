@@ -2,9 +2,9 @@
 
 **Purpose:** reproduce, from nothing, the credential that lets CI submit Airclone's MSIX to the
 Microsoft Store — for a new Partner Center account, a rotated secret, or a different app.
-**Status:** ✅ **WORKING** — v0.6.7 submitted for certification on 2026-08-17 with the price intact.
-`msstore publish` cannot be used (paid product); [`tool/store_submit.py`](../tool/store_submit.py)
-talks to the REST API instead. Read the `priceId` warning in §0 before touching pricing.
+**Status:** ✅ working via **`mode: stage` + a human pressing Submit in Partner Center**. Automatic
+`commit` is **permanently disabled** for this product — it publishes the app free (§0, and AGENT.md
+rule 10). Read §0 in full before touching anything about pricing.
 **Related:** [`dev/windows-signing-and-store.md`](windows-signing-and-store.md) §2 (the manual
 submission runbook + as-built account facts) · [`docs/store/README.md`](../docs/store/README.md) (the
 store hub) · [`dev/play-ci-setup.md`](play-ci-setup.md) (the same job for Google Play — read it too,
@@ -56,11 +56,12 @@ Partner Center ever sees it.
 > and a pending submission blocks the next one. (In the v0.6.7 attempt nothing was actually left
 > behind — Partner Center still offered "Start update" — but do check.)
 >
-> ## ⚠️ `priceId` in the REST API is a lie — do not act on it
+> ## ⛔ NEVER `commit` a submission through the API — it publishes the app FREE
 >
-> [`tool/store_submit.py`](../tool/store_submit.py) uses the older submission REST API, and everything
-> works: auth, package upload, commit, certification. Pricing needs one piece of knowledge, and
-> getting it wrong cost a review cycle on 2026-08-17.
+> This is the most expensive lesson in this repo. On **2026-08-17** v0.6.8 was committed through the
+> REST API, passed certification, and **published at $0** against a live price of $1.49. Once a
+> submission reaches *Publishing* it cannot be cancelled by anyone; the listing stayed free for the
+> entire certification cycle of the correction.
 >
 > Only one payload is writable, and it mutates a field you cannot leave alone:
 >
@@ -68,27 +69,34 @@ Partner Center ever sees it.
 > | :--- | :--- |
 > | send `pricing` back as received (`priceId: "Base"`) | `'Base' is not a valid PriceId for base price` |
 > | omit the whole `pricing` object | `Pricing data was not provided in the request` |
-> | drop just `priceId` | **accepted** — and it reads back as `priceId: Free`, `isAdvancedPricingModel: false` |
+> | drop just `priceId` | **accepted** — reads back as `priceId: Free`, `isAdvancedPricingModel: false` |
 >
-> **That readback is meaningless, and it is not a price change.** Verified in Partner Center: the
-> staged draft whose API JSON said `Free` showed **$1.49 across 240 markets with the free trial
-> intact** in *Pricing and availability*. The product is on the **advanced pricing model**, where the
-> real price lives outside the submission; `priceId` is a legacy projection the v1 API cannot express
-> and reports garbage for.
+> **What that readback means depends entirely on what you do next**, and conflating the two cases is
+> what caused the incident:
 >
-> **The expensive mistake was believing the field.** A correct submission was cancelled mid-
-> certification because `priceId` flipped to `Free` and that was read as "the app is about to go
-> free". It was not. Partner Center's *"Pricing and availability: Unchanged"* label was right; it was
-> dismissed because *Packages* also said "Unchanged" — but that label diffs **module configuration,
-> not uploaded binaries**.
+> | | Effect |
+> | :--- | :--- |
+> | **PUT only** (a staged draft) | **harmless.** Partner Center still shows the real price — verified at **$1.49 across 240 markets**, free trial intact |
+> | **API `commit`** | **destroys the price.** The submission's pricing block is applied; base price becomes **0** |
 >
-> So the guard compares only the fields that round-trip honestly (`trialPeriod`,
-> `marketSpecificPricings`, `sales`) and **deliberately excludes `priceId` and
-> `isAdvancedPricingModel`**. Comparing those would false-alarm on every single release.
+> Submitting from **Partner Center** instead re-derives pricing from the pricing module, which is why
+> the v0.6.7 stage-then-submit path published correctly at its real price.
 >
-> **When pricing genuinely needs checking, the authority is Partner Center → Pricing and
-> availability**, never the API JSON. `mode: stage` exists for exactly that: it uploads the package
-> and leaves an editable draft so a human can look before submitting.
+> **So the only supported route for this product is:**
+>
+> 1. `mode: stage` — CI uploads the package and leaves an editable draft
+> 2. a human opens **Pricing and availability**, confirms the price, and presses **Submit for
+>    certification**
+>
+> [`tool/store_submit.py`](../tool/store_submit.py) refuses `--commit` outright when the live
+> submission has `isAdvancedPricingModel`, checked *before* creating anything so a refusal leaves no
+> draft behind. **Do not remove that guard to unblock a release.**
+>
+> **How the wrong conclusion was reached** (worth knowing, because it will look tempting again): the
+> staged draft showed $1.49 while the committed submission showed $0. Both readings were correct. The
+> difference was *stage vs commit* — but it was read as "the earlier alarm was a false positive", the
+> guard was loosened, and the app shipped free. A contradiction between two observations is evidence
+> of a missing variable, not proof that one of them was wrong.
 >
 > `STORE_SELLER_ID` is not read by `store_submit.py` (the REST API takes no seller id) but is kept
 > set, since it costs nothing and Partner Center tooling asks for it.
@@ -340,6 +348,31 @@ The script walks the REST flow, each step depending on the last:
 | `POST /commit` | hands it to certification |
 | `GET /status`, bounded poll | catches an immediate rejection; certification itself takes **days**, so polling to completion is pointless |
 
+### Driving Partner Center without losing your work
+
+Every one of these cost time on 2026-08-17:
+
+- **Use a viewport ≥ 1400px wide.** Below that Partner Center overlays its nav on top of the content:
+  clicks land on the nav instead of the button, modules render blank, and it all looks like the page
+  is broken. Two *Save draft* clicks were silently swallowed this way. Widening fixes it — the same
+  root cause hid the "Associate Microsoft Entra ID" button behind a dead `...` menu.
+- **Saving gives no confirmation.** After *Save draft* the app returns to the overview whether or not
+  anything was written. **Re-load the module and re-read the value** — that is the only proof.
+- **Module status labels track configuration, not binaries.** A submission with a freshly uploaded
+  MSIX still reads *Packages: Unchanged*. A real pricing edit does flip to *Pricing and availability:
+  **Updated***, so the label is meaningful for module edits and meaningless for uploads.
+- **The pricing module lives at `/submissions/<id>/availability`**, not `/pricing`. The obvious URL
+  silently redirects to the overview.
+- **An expired session renders blank panels rather than saying so.** If a module is empty, check for
+  the "Sign in required" dialog before concluding the page is broken.
+
+### Check discoverability, not just price
+
+Separately discovered while fixing the price: the product was set to **"available but not
+discoverable"** (direct link only), so it never appeared in Store search or browse. That is a
+listing-level setting living in the same module, unrelated to any release, and it silently caps
+discovery. Worth confirming whenever *Pricing and availability* is open.
+
 ### Superseding a release that is still in review
 
 **A pending submission blocks a new one**, and the script refuses rather than clearing it, because it
@@ -354,10 +387,11 @@ which it does once certification has started — it cancels first and then delet
 Superseding a submission in `PreProcessing` / `Certification` / `Release` throws away its review
 progress and restarts the clock, so it is announced with a `::warning::` rather than done quietly.
 
-> The cancel-then-delete path is **untested against a live `Certification`-status submission** — the
-> only one available was the real v0.6.7 release, and cancelling it to prove the code was not worth
-> it. Delete-outright is proven for `PendingCommit` and `Canceled`. If the fallback misbehaves, the
-> Partner Center button always works, and the error message says so.
+> **Now tested, and it does NOT work for a submission in `Certification`.** `DELETE` returns **409**
+> and the cancel endpoint does not rescue it. Delete-outright is proven only for `PendingCommit` and
+> `Canceled`. For anything further along, **Partner Center's "Cancel certification" button is the only
+> lever** — and it stops working the moment the submission reaches *Publishing*, after which nothing
+> can stop it. Budget for that: the window to undo a bad Store submission is finite and unattended.
 
 **Identity is checked before any of it** (`AppxManifest.xml` vs the `MSIX_*` repo variables), because
 Partner Center validates the four identity fields in a fixed order and **the first failure masks the

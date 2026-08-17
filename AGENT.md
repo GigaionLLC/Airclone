@@ -102,6 +102,36 @@ Store shapes, contexts, and data models.
    Where an external system holds the result, ask it: [`tool/play_tracks.py`](tool/play_tracks.py)
    asserts Play actually serves the version code CI just built, and the release job fails if it does
    not.
+10. **NEVER commit a Microsoft Store submission through the API.** Committing sets the price of this
+    product to **0** and publishes it free — it happened on 2026-08-17 with v0.6.8, and once a
+    submission reaches *Publishing* it cannot be stopped by anyone, by any means. The listing was
+    free for the whole certification cycle of the fix.
+    - The *only* supported route is **`mode: stage`**, then press **Submit for certification** in
+      Partner Center, which re-derives pricing from the pricing module.
+      [`tool/store_submit.py`](tool/store_submit.py) now refuses `--commit` for a product on the
+      advanced pricing model — **do not remove that guard** to "unblock" a release.
+    - The `pricing.priceId` the API returns (`Base`) is a legacy projection it will not accept back.
+      Every writable payload reads back as `Free`. That is expected on a *staged draft* and harmless;
+      it is only fatal at commit. Full account: [`dev/msstore-ci-setup.md`](dev/msstore-ci-setup.md).
+11. **Partner Center is the authority on pricing and availability — never the API JSON, never a
+    module's status label.** When touching a Store submission:
+    - **Re-load the page and re-read the value** after saving. *Save draft* gives no confirmation,
+      and a click that lands on the nav overlay silently does nothing — two saves were lost that way.
+    - **Use a viewport ≥ 1400px wide.** Below that, Partner Center overlays its nav on the content,
+      controls stop responding, and modules render blank. Every "this page is broken" moment in this
+      repo has been a too-narrow window.
+    - A module label of *Unchanged* tracks **module configuration**, not uploaded binaries — a new
+      MSIX shows "Packages: Unchanged". Do not read it as "nothing happened".
+12. **Never print non-ASCII from a `tool/` script.** GitHub's Windows runners give Python a **cp1252**
+    stdout; an em dash survives, an arrow (`→`) raises `UnicodeEncodeError` and kills the process —
+    in the v0.6.8 run, *after* it had already created a Store submission, leaving a draft behind.
+    Scripts reconfigure stdout to UTF-8 defensively, but keep printed strings ASCII anyway: a
+    cosmetic character must never be able to abort a job mid-side-effect.
+13. **When a later finding contradicts an earlier alarm, find the variable that differs before
+    deciding which was wrong.** On 2026-08-17 a staged draft showed $1.49 while a committed
+    submission showed $0; both observations were correct, and the difference was *stage vs commit*.
+    Concluding "the earlier alarm was a false positive" without isolating that variable is what
+    published the app for free. A contradiction is evidence of a missing variable, not of a mistake.
 
 ## ✅ Mandatory Wrap-Up Protocol
 Whenever a task or feature is complete — including when the user says "wrap up", "we're done", "ship

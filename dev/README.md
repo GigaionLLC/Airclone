@@ -118,16 +118,17 @@ with no further action.
 | **Play → production** | Actions → *Promote on Google Play* (default 10% staged) | reaches every user; staged rollout is a judgement call |
 | **Microsoft Store submission** | Actions → *Submit to Microsoft Store* | certification takes **days** and a bad submission burns a cycle |
 
-**The Store workflow has three modes**, and `stage` is the one worth knowing:
+**The Store workflow has three modes. Use `stage`.**
 
 | Mode | Does |
 | :--- | :--- |
 | `dry-run` | authenticates, reports pricing and pending state, changes nothing |
-| `stage` | uploads the package and leaves an **editable draft** to check in Partner Center, then submit from there |
-| `submit` | full automatic submission |
+| **`stage`** | **the supported route** — uploads the package and leaves an editable draft; a human then presses *Submit for certification* in Partner Center |
+| `submit` | ⛔ **refused for this product.** API commit publishes the app at **$0** — it did, on 2026-08-17. See AGENT.md rule 10 |
 
-Set `delete_pending: true` to **supersede** a submission still in certification, so a newer build
-never queues behind an older one — it discards that submission's review progress and says so.
+Set `delete_pending: true` to **supersede** a submission still in certification — but note that only
+works up to `PendingCommit`; once Microsoft has it in `Certification`, Partner Center's *Cancel
+certification* button is the only lever, and once it reaches *Publishing* nothing can stop it.
 
 Details: [`play-ci-setup.md`](play-ci-setup.md) · [`msstore-ci-setup.md`](msstore-ci-setup.md) ·
 [`microsoft-account-setup.md`](microsoft-account-setup.md).

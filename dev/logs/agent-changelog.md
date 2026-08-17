@@ -24,15 +24,30 @@ refuses to update a **paid** product, so `tool/store_submit.py` drives the submi
 directly (create → retire old packages → upload to the SAS URL → commit → bounded poll), with a
 package-identity check first because identity mismatches cost this app four review cycles.
 
-**The pricing detour, recorded because the lesson is the expensive part.** For a product on the
-advanced pricing model the v1 API cannot express the real price: it returns `priceId: "Base"`,
-refuses that value on write, refuses an omitted pricing object, and accepts only a payload that reads
-back as `Free`. That readback was mistaken for the app being about to go free, and a correct
-submission was cancelled mid-certification on the strength of it. It was wrong. Partner Center showed
-the staged draft at **$1.49 across 240 markets** with the free trial intact, and after submission the
-API's own `priceId` reconciled back to `Base`. `priceId` is a legacy projection and is now explicitly
-excluded from the pricing guard — comparing it would false-alarm on every release. When pricing needs
-checking, Partner Center is the authority, never the API JSON.
+**The pricing incident — the app was published FREE, and the lesson is the expensive part.** For a
+product on the advanced pricing model the v1 API cannot express the real price: it returns
+`priceId: "Base"`, refuses that value on write, refuses an omitted pricing object, and accepts only a
+payload that reads back as `Free`. A first submission was cancelled mid-certification on the strength
+of that readback. Then a staged draft was observed still showing $1.49 in Partner Center, the alarm
+was declared a false positive, the guard was loosened, and v0.6.8 was API-committed. It published at
+**$0**.
+
+Both observations had been correct; the variable nobody isolated was **stage vs commit**. The PUT is
+harmless — a staged draft keeps the real price. It is `commit` that applies the submission's pricing
+block, and the only block the API accepts says Free. Submitting from Partner Center instead
+re-derives pricing from the pricing module, which is why the v0.6.7 stage-then-submit path published
+correctly. Once a submission reaches *Publishing* nothing can stop it, and the API cannot even clear
+a submission in `Certification` (409). Recovery was a fresh submission restoring $1.49, during whose
+certification the app remained free.
+
+`store_submit.py` now refuses `--commit` for an advanced-pricing product, checked before creating
+anything. AGENT.md gains rules 10-13 covering this, Partner Center's silent-save and viewport traps,
+the cp1252 stdout crash that killed a run mid-submission, and the meta-rule: a contradiction between
+two observations is evidence of a missing variable, not proof one was wrong.
+
+**Also fixed while in the pricing module:** the product was set to *available but not discoverable*
+(direct link only), so it never appeared in Store search or browse — unrelated to any release, and
+silently capping discovery since launch.
 
 Also added: `mode: stage`, which uploads the package and leaves an editable draft for a human to
 check and submit (the practical middle ground); superseding a submission still in certification so a
