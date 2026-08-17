@@ -129,6 +129,16 @@ def main() -> int:
         st = http.get(f"{API}/applications/{args.app_id}/submissions/{pid}/status", timeout=60)
         state = st.json().get("status", "unknown") if st.ok else "unknown"
         print(f"a submission is already pending: {pid} (status {state})")
+        # --delete-pending on its own (no --commit) is the cleanup path: a failed
+        # attempt leaves a draft, and something has to be able to remove it
+        # without also starting a new submission.
+        if args.delete_pending and not args.commit:
+            print(f"deleting pending submission {pid} (status {state})")
+            r = http.delete(f"{API}/applications/{args.app_id}/submissions/{pid}", timeout=120)
+            if not r.ok:
+                fail(f"could not delete pending submission [{r.status_code}]\n{r.text}")
+            print("deleted. No new submission created.")
+            return 0
         if args.commit:
             if not args.delete_pending:
                 # Deleting an in-progress submission is not this script's call to
