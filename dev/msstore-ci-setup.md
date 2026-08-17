@@ -189,20 +189,25 @@ subscription (and therefore Azure Artifact Signing) lives in. Deleting the tenan
 take **Windows code signing** down with it, which is a far worse outcome than a Store lane that does
 not submit yet.
 
-> **An app registration lives *inside* a tenant, and dies with it.** That is what happened here: the
-> CI app registration of §1 was created while the Entra portal was pointed at the *other* tenant, and
-> deleting that tenant destroyed it. `az account list --all` does **not** show this — it lists
-> subscriptions, and an app registration is not a subscription, so the tenant looked empty and safe
-> to delete. Nothing warned at delete time; the failure surfaced later as a Store dry run reporting
-> `Failed to auth`, with the client id and secret both still sitting correctly in GitHub secrets.
+> **`az account list --all` is not a tenant-emptiness check.** It lists *subscriptions*. App
+> registrations, enterprise apps and service principals are not subscriptions and do not appear in
+> it, so a tenant can look empty by that command and still hold the identity your CI authenticates
+> as — which dies with the tenant, silently, with no warning at delete time.
 >
-> **Before deleting a tenant, list its app registrations** (Entra → App registrations → *All
-> applications*) — not just its subscriptions. And note the tenant id of *every* registration you
-> create: an app registration and the `STORE_TENANT_ID` you authenticate against must be the same
-> directory, and nothing in the GitHub secret names records which directory that was.
+> **Before deleting a tenant, also list its app registrations** (Entra → App registrations → *All
+> applications*). And record the tenant id of every registration you create: an app registration and
+> the `STORE_TENANT_ID` you authenticate against must be the same directory, and nothing in the
+> GitHub secret *names* records which directory that was.
 >
-> Recovery is re-creation, not repair: a new app registration means a **new client id and a new
-> secret**, and the Partner Center grant of §3 has to be redone against the new app.
+> Here the registrations happened to be in the surviving tenant and nothing was lost — but that was
+> luck, not verification. Confirm with `az ad app list --all -o table` after signing in to the
+> tenant you intend to keep, before deleting the other one.
+
+> **A dead portal session lies about which tenant exists.** After the deletion, the Entra admin
+> center failed with `AADSTS90002: Tenant <id> not found` — because the browser session was still
+> pinned to the deleted tenant, not because anything was wrong with the surviving one. That error is
+> about your *session*, and it is easy to mistake for evidence that resources were destroyed. Sign in
+> again against the surviving tenant before drawing any conclusion from it.
 
 **Confirm the association took** without trusting the tenants page alone: *Account settings → Legal
 info* lists **Microsoft Entra tenants**, and the tenant table shows the tenant id — it must match
