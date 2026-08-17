@@ -2,7 +2,8 @@
 
 **Purpose:** reproduce, from nothing, the credential that lets CI submit Airclone's MSIX to the
 Microsoft Store — for a new Partner Center account, a rotated secret, or a different app.
-**Status:** steps 1–4 ✅ complete (2026-08-17); step 6 records the first verified run.
+**Status:** ✅ **WORKING** — verified end to end on 2026-08-17 (see §6). Submission is a manual
+workflow; the credential itself is proven.
 **Related:** [`dev/windows-signing-and-store.md`](windows-signing-and-store.md) §2 (the manual
 submission runbook + as-built account facts) · [`docs/store/README.md`](../docs/store/README.md) (the
 store hub) · [`dev/play-ci-setup.md`](play-ci-setup.md) (the same job for Google Play — read it too,
@@ -94,8 +95,22 @@ Two UI quirks in the Custom flow, both of which look like the form is broken:
 
 | | |
 | :--- | :--- |
-| Created | **2026-08-16** (description `github-actions-long`) |
-| Expires | **2028-08-15** (the maximum Entra allows) |
+| Created | **2026-08-17** (description `github-actions-ci`) |
+| Expires | **2028-08-17** (the maximum Entra allows) |
+
+> **Set it through a pipe, and strip the newline.** The first secret here was pasted through a
+> PowerShell stdin pipe, and PowerShell appends `\r\n` — a secret carrying a stray carriage return
+> fails authentication *identically* to a wrong one, with no hint that whitespace is the problem.
+> Use Git Bash and `tr` so the value goes from Entra to GitHub without ever being displayed:
+>
+> ```bash
+> az ad app credential reset --id <appId> --years 2 --display-name "github-actions-ci" \
+>   --query password -o tsv | tr -d '\r\n' | gh secret set STORE_CLIENT_SECRET --org <org> \
+>   --visibility selected --repos <repo>
+> ```
+>
+> **`credential reset` replaces every existing secret on the app** — there is no confirmation, and
+> `--append` is what you want if you meant to add one alongside. Here replacing was the intent.
 
 **Rotation (5 minutes, no CI change):** Entra → the app → *Certificates & secrets* → **New client
 secret** → copy the Value → `gh secret set STORE_CLIENT_SECRET --org <org> --visibility selected
@@ -196,13 +211,33 @@ credential will authenticate fine and then be refused.
 
 ## 3. Grant it Store access — Partner Center (browser, no API exists) ✅
 
-Partner Center → **Account settings → User management → Azure AD applications** → add the app from
-step 1 with the **Manager** role (that role is what grants Submission-API access).
+Partner Center → **Account settings → User management → Microsoft Entra applications** → add the app
+from step 1 with the **Developer** role.
+
+> **Developer, not Manager — verified, and this runbook previously said otherwise.** Microsoft's
+> guidance commonly names Manager, but Manager grants "complete access to account features except tax
+> and payout… can manage users, roles, and tenants", which is a lot of authority to hand a CI secret.
+> Developer is scoped to exactly what publishing needs — "can upload packages and submit apps and
+> add-ons" — and `msstore apps list` succeeds with it, returning the real listing. Least privilege
+> wins here; escalate only if a future CLI operation genuinely needs more.
 
 > User management demands a *second* sign-in — "You are currently signed in as `<you>`. To manage
 > users, sign in with your **associated** Microsoft Entra ID credentials". That is the work account
 > from §2a, not the MSA you browsed in with. With a tenant associated this resolves; without one it
 > loops forever (§2).
+
+**The same create-vs-select trap as §2.** *Add Microsoft Entra application* opens a dialog offering
+**Create Microsoft Entra application** (makes a brand-new registration) and **Add Microsoft Entra
+application** (selects an existing one). Pick the second — the first silently gives you a second app
+that your `STORE_CLIENT_ID` knows nothing about.
+
+The picker lists every app registration in the associated tenant, which doubles as a check that
+Partner Center is reading the directory you think it is: if the app you created in §1 is not in that
+list, the tenant association points somewhere else. Tick **only** the StoreSubmit app — leaving the
+signing app out is the whole point of having two (§1).
+
+Saving takes ~10s behind a "Saving. Do not close." spinner, then the app appears **twice**, once as
+`Microsoft Entra Apps` and once as `Service Principal`. That is normal, not a double-add.
 
 Capture, while there:
 
@@ -253,9 +288,25 @@ found. `msstore apps list` then proves the further thing reconfigure cannot: tha
 *authorised on this Store account* (the §3 Manager grant), not merely able to get a token. It is
 also what Microsoft's own README uses as its smoke test.
 
-## 6. Verification
+## 6. Verification ✅
 
-*(recorded after the first automated submission)*
+First green dry run: **2026-08-17**, `submit-msstore.yml` against `v0.6.7`. Verified by reading the
+log, not by the green check (AGENT.md §9) — `airclone.msix` downloaded at 98,156,524 bytes,
+`reconfigure` passed its own auth test, and `msstore apps list` returned the real listing with
+ProductId matching `STORE_APP_ID`.
+
+**Two independent faults had to be fixed, and each masked the other:**
+
+| Fault | Symptom | Fix |
+| :--- | :--- | :--- |
+| The Entra app was never added in Partner Center | `Really failed to auth` | §3 — the applications tab read "You have not added any Microsoft Entra applications yet" |
+| The stored client secret was unusable | `Really failed to auth` — *identical* | §1a — rotated through a pipe with the newline stripped |
+
+The lesson worth keeping: **`Failed to auth` is not a diagnosis.** It covers a missing app
+registration, a wrong tenant, an unauthorised app, and a malformed secret, with no way to tell them
+apart from the message. Work through the four candidates in order of what you can *prove* — `az ad
+app list` proves the app exists, the Partner Center applications tab proves the grant, and only the
+secret cannot be inspected, so rotate that last rather than first.
 
 ---
 
