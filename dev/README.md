@@ -93,7 +93,7 @@ Store submission is the manual `submit-msstore.yml` workflow, not a tag side-eff
 | **Hard fail** — the app-local MSVC runtime (`msvcp140.dll`, `vcruntime140*.dll`) is missing from the Release dir | `windows` job |
 | **Hard fail** — rclone not bundled / checksum mismatch (was `continue-on-error` until v0.5.3; see below) | `windows` job |
 | **Degrades** — `librclone` artifact download is `continue-on-error` → that platform ships **binary-engine-only**, with only a `::warning::` | `windows`, `linux`, `macos` jobs |
-| **Degrades** — MSIX build, MSIX upload, and the `msstore publish` step are all `continue-on-error`; a missing `MSIX_*` variable only warns and still produces a package carrying pubspec **placeholder** identity | `windows` job |
+| **Degrades** — MSIX build and MSIX upload are `continue-on-error`; a missing `MSIX_*` variable only warns and still produces a package carrying pubspec **placeholder** identity. (Store *submission* is no longer part of a tagged build at all — it is the manual [`submit-msstore.yml`](../.github/workflows/submit-msstore.yml).) | `windows` job |
 | **Degrades** — notarization is best-effort and bounded ([`.github/scripts/notarize.sh`](../.github/scripts/notarize.sh)); the signed zip is uploaded **before** notarizing so an Apple outage cannot block a release | `macos` job |
 
 ---

@@ -90,11 +90,11 @@ jobs:
           msstore --version
           msstore publish --help
 
-          # `reconfigure` only writes the values to local config — it proves
-          # nothing about whether they work. This read-only call is what makes a
-          # dry run meaningful: it fails here if the Entra app is missing, the
-          # secret has lapsed, the tenant is not associated with the Partner
-          # Center account, or the app lacks the Manager role.
+          # A second, read-only proof that the credential works end to end.
+          # `reconfigure` does test auth itself ("Testing configuration...",
+          # 3 retries, then a hard fail), so a broken credential rarely gets
+          # this far — but reconfigure only proves a token can be issued, while
+          # this proves the app is actually authorised on the Store account.
           msstore apps list
 
       - name: Submit

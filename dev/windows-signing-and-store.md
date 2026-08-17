@@ -569,12 +569,18 @@ category + support contact, and a **privacy-policy URL** — the Store REQUIRES 
 a short page (e.g. in the wiki) and link it.
 
 ### 2g. Submit
-CI uses the **Microsoft Store Developer CLI** (`msstore`):
-`dotnet tool install --global MSStore.CLI` → `msstore reconfigure …` → `msstore publish
-airclone.msix --appId <STORE_APP_ID>`. Verify exact flags against `msstore --help` at
-activation (the CLI evolves). **Recommendation:** keep `STORE_PUBLISH_ENABLED` OFF and
-run the FIRST submission manually (Store review is slow and the listing must be
-complete); turn it on later for tag-triggered updates.
+CI uses the **Microsoft Store Developer CLI** (`msstore`), installed via Microsoft's own
+`microsoft/microsoft-store-apppublisher` action → `msstore reconfigure …` → `msstore apps
+list` (the credential smoke test) → `msstore publish airclone.msix --appId <STORE_APP_ID>`.
+
+> **Do NOT use `dotnet tool install --global MSStore.CLI`.** The package was removed from
+> nuget.org (absent from the flat container too, so not merely unlisted) and the command
+> now fails with *"msstore.cli is not found in NuGet feeds"*. The CLI is alive and shipping
+> as release binaries; the vendor action is the supported way to get it.
+
+Submission is a **manual** workflow, not a tag side-effect — see
+[`dev/msstore-ci-setup.md`](msstore-ci-setup.md). Store review is slow and a bad submission
+burns a cycle, so deciding a build is worth one is a human call.
 
 ### As-built — Microsoft Store (started 2026-07-12; verification pending)
 | Thing | Value |

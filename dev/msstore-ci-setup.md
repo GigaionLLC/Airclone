@@ -2,7 +2,7 @@
 
 **Purpose:** reproduce, from nothing, the credential that lets CI submit Airclone's MSIX to the
 Microsoft Store — for a new Partner Center account, a rotated secret, or a different app.
-**Status:** IN PROGRESS (2026-08-16). Steps are marked ✅ as they are completed and verified.
+**Status:** steps 1–4 ✅ complete (2026-08-17); step 6 records the first verified run.
 **Related:** [`dev/windows-signing-and-store.md`](windows-signing-and-store.md) §2 (the manual
 submission runbook + as-built account facts) · [`docs/store/README.md`](../docs/store/README.md) (the
 store hub) · [`dev/play-ci-setup.md`](play-ci-setup.md) (the same job for Google Play — read it too,
@@ -48,7 +48,7 @@ Partner Center ever sees it.
 
 ---
 
-## 1. Create the CI identity (Entra app registration)
+## 1. Create the CI identity (Entra app registration) ✅
 
 A **dedicated** app registration, separate from the code-signing identity: a leaked publishing secret
 then cannot sign binaries, and either can be rotated without disturbing the other.
@@ -108,7 +108,7 @@ Center grant are unaffected.
 The symptom of a lapsed secret is an auth failure at submission time — annoying, but it cannot break
 a release: submission is a separate manual workflow, so builds and GitHub releases keep working.
 
-## 2. FIRST: associate an Entra tenant with the Partner Center account
+## 2. FIRST: associate an Entra tenant with the Partner Center account ✅
 
 **Do this before anything else in Partner Center.** Azure AD applications can only be added under an
 *associated tenant*, so without one there is nothing to grant the CI identity.
@@ -142,17 +142,71 @@ Entra ID" → **Associate Microsoft Entra ID**, then sign in as a **global admin
 Associating a tenant grants its users access to the developer account, and removing it later strips
 those users and their permissions — so it is a deliberate, admin-level decision, not a formality.
 
-## 3. Grant it Store access — Partner Center (browser, no API exists)
+> **URL gotcha:** the page is `/dashboard/account/v3/**tenantmanagement**`. The obvious
+> `/dashboard/account/v3/tenants` renders Partner Center's *"Sorry, we couldn't find that page"*,
+> which looks like a permissions problem and is not.
+
+### 2a. What made this hard here — one identity, three meanings
+
+Worth reading before touching any of it, because the same string `jbraun@gigaion.com` named **three
+different identities** during this setup and the errors never say which one is being refused:
+
+1. a **Microsoft account (MSA)** — the personal identity that *owns the Partner Center account*;
+2. an **`#EXT#` guest** in the work tenant — that MSA invited in, which is what an early attempt
+   signed in as, and why the association was refused;
+3. a **native member** of the work tenant — what actually works.
+
+Two tenants existed, and the custom domain was initially verified on the wrong one. A custom domain
+can be verified in **exactly one tenant at a time**, so the fix is to move the domain, not to
+duplicate it. The end state:
+
+- one surviving workforce tenant, holding the custom domain, the Azure subscription, the
+  **code-signing** account, and the CI app registration;
+- Partner Center associated with **that** tenant;
+- the second tenant deleted, having held nothing — verified before deleting, not assumed.
+
+**Check before deleting any tenant:** `az account list --all` shows which tenant the Azure
+subscription (and therefore Azure Artifact Signing) lives in. Deleting the tenant that holds it would
+take **Windows code signing** down with it, which is a far worse outcome than a Store lane that does
+not submit yet.
+
+> **An app registration lives *inside* a tenant, and dies with it.** That is what happened here: the
+> CI app registration of §1 was created while the Entra portal was pointed at the *other* tenant, and
+> deleting that tenant destroyed it. `az account list --all` does **not** show this — it lists
+> subscriptions, and an app registration is not a subscription, so the tenant looked empty and safe
+> to delete. Nothing warned at delete time; the failure surfaced later as a Store dry run reporting
+> `Failed to auth`, with the client id and secret both still sitting correctly in GitHub secrets.
+>
+> **Before deleting a tenant, list its app registrations** (Entra → App registrations → *All
+> applications*) — not just its subscriptions. And note the tenant id of *every* registration you
+> create: an app registration and the `STORE_TENANT_ID` you authenticate against must be the same
+> directory, and nothing in the GitHub secret names records which directory that was.
+>
+> Recovery is re-creation, not repair: a new app registration means a **new client id and a new
+> secret**, and the Partner Center grant of §3 has to be redone against the new app.
+
+**Confirm the association took** without trusting the tenants page alone: *Account settings → Legal
+info* lists **Microsoft Entra tenants**, and the tenant table shows the tenant id — it must match
+`STORE_TENANT_ID` exactly. A different id means a different directory was associated, and the CI
+credential will authenticate fine and then be refused.
+
+## 3. Grant it Store access — Partner Center (browser, no API exists) ✅
 
 Partner Center → **Account settings → User management → Azure AD applications** → add the app from
 step 1 with the **Manager** role (that role is what grants Submission-API access).
 
-Capture, while there — both are recorded as `_tbd_` in the as-built table and are needed:
+> User management demands a *second* sign-in — "You are currently signed in as `<you>`. To manage
+> users, sign in with your **associated** Microsoft Entra ID credentials". That is the work account
+> from §2a, not the MSA you browsed in with. With a tenant associated this resolves; without one it
+> loops forever (§2).
 
-- **Seller ID** — Account settings → Legal info / Developer
-- **Store ID** — the app's identity page (this becomes `STORE_APP_ID`)
+Capture, while there:
 
-## 4. GitHub configuration
+- **Seller ID** → *Account settings → Legal info*, under **Publisher IDs** (an 8-digit number,
+  listed beside "User Id" and "Windows publisher ID"). This becomes `STORE_SELLER_ID`.
+- **Store ID** → the app's identity page. This becomes `STORE_APP_ID`.
+
+## 4. GitHub configuration ✅
 
 Org-level (`GigaionLLC`), visibility Selected → Airclone, matching the existing signing secrets:
 
@@ -163,25 +217,37 @@ gh secret   set STORE_CLIENT_ID       --org $ORG --visibility selected --repos A
 gh secret   set STORE_CLIENT_SECRET   --org $ORG --visibility selected --repos Airclone --body "<secret>"
 gh secret   set STORE_SELLER_ID       --org $ORG --visibility selected --repos Airclone --body "<sellerId>"
 gh variable set STORE_APP_ID          --org $ORG --visibility selected --repos Airclone --body "<storeId>"
-gh variable set STORE_PUBLISH_ENABLED --org $ORG --visibility selected --repos Airclone --body "true"
 ```
 
-`STORE_PUBLISH_ENABLED` is the last thing to set — with it unset the step is skipped entirely and its
-secrets are never read, so everything above can be staged safely.
+There is no master switch to set last: submission is a manual dispatch, so all five can be staged
+whenever they are known. The workflow refuses to start if `STORE_CLIENT_SECRET` or `STORE_APP_ID` is
+missing.
 
-## 5. What CI runs
+## 5. What CI runs ✅
 
-Already wired in [`release.yml`](../.github/workflows/release.yml) (windows job, tag pushes only,
-`continue-on-error` so a Store hiccup never fails a release):
+[`submit-msstore.yml`](../.github/workflows/submit-msstore.yml), by hand from the Actions tab:
 
-```powershell
-dotnet tool install --global MSStore.CLI
-msstore reconfigure --tenantId … --sellerId … --clientId … --clientSecret …
-msstore publish airclone.msix --appId <STORE_APP_ID>
+```yaml
+- uses: microsoft/microsoft-store-apppublisher@v1.4   # installs `msstore`
+- run: msstore reconfigure --tenantId … --sellerId … --clientId … --clientSecret …
+- run: msstore apps list                              # credential smoke test
+- run: msstore publish airclone.msix --appId <STORE_APP_ID>   # skipped on a dry run
 ```
 
-**Verify the flags against `msstore --help` at activation** — the CLI evolves, and the wiring
-predates this setup.
+> **`dotnet tool install --global MSStore.CLI` is dead.** That is how this was originally wired,
+> and the first real run failed on it: *"msstore.cli is not found in NuGet feeds"*. The package is
+> gone from nuget.org — absent from the flat container too, so removed rather than unlisted. The CLI
+> itself is alive (`microsoft/msstore-cli`, v0.3.9, shipped as release binaries) and the action above
+> is Microsoft's own installer for it. It runs on **Node 24**, so it does not reintroduce the
+> deprecation warning of AGENT.md §8. It was renamed from `microsoft/setup-msstore-cli`; that name
+> still redirects, but pin the current one.
+
+**Both steps verify, at different depths.** `reconfigure` does not merely write local config: it
+prints `Testing configuration...`, retries auth 3× at 10s intervals, and fails hard — so a bad
+tenant/client/secret is caught right there, which is how the missing app registration above was
+found. `msstore apps list` then proves the further thing reconfigure cannot: that the app is
+*authorised on this Store account* (the §3 Manager grant), not merely able to get a token. It is
+also what Microsoft's own README uses as its smoke test.
 
 ## 6. Verification
 
