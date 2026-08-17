@@ -86,3 +86,7 @@ dev/secrets/*
 dev-profile.env
 *.env.enc
 .passphrase
+
+# Byte-code from the tool/ scripts (play_promote, play_tracks, store_submit).
+__pycache__/
+*.pyc

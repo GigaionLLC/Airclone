@@ -29,7 +29,9 @@ permissions:
 
 jobs:
   submit:
-    # windows-latest because MSStore.CLI targets the Windows packaging stack.
+    # windows-latest because the identity check reads AppxManifest.xml with the
+    # Windows packaging stack. The submission itself is plain HTTPS and would run
+    # anywhere.
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v5
@@ -102,50 +104,35 @@ jobs:
           }
           if ($bad) { exit 1 }
 
-      # Microsoft retired the `MSStore.CLI` dotnet tool from NuGet — `dotnet tool
-      # install` now dies with "msstore.cli is not found in NuGet feeds". The CLI
-      # itself is alive and shipping (microsoft/msstore-cli, release binaries);
-      # this is the vendor's own installer for it, and it runs on Node 24, so it
-      # does not reintroduce the deprecation warning of AGENT.md §8.
-      # The action was renamed from microsoft/setup-msstore-cli — that name still
-      # redirects, but pin the current one so a future redirect drop is not our
-      # publishing lane breaking.
-      - name: Install the Store CLI
-        uses: microsoft/microsoft-store-apppublisher@v1.4
+      # NOT `msstore publish`. The Microsoft Store Developer CLI refuses to update
+      # a paid product — "App updates are supported only for Free products" — and
+      # Airclone carries the Store listing price that funds its signing certs. It
+      # gets far enough to CREATE a submission before saying so, so the CLI also
+      # leaves a pending draft behind on every failed attempt. The REST API it
+      # sits on has no such restriction. See dev/msstore-ci-setup.md.
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
 
-      - name: Configure credentials
-        shell: pwsh
+      - name: Install dependencies
+        shell: bash
+        run: pip install --disable-pip-version-check requests
+
+      # Dry run authenticates and reads the app's real state without creating
+      # anything; --commit is what makes it a submission.
+      - name: Submit to the Store
+        shell: bash
         env:
-          MSSTORE_TENANT: ${{ secrets.STORE_TENANT_ID }}
-          MSSTORE_CLIENT: ${{ secrets.STORE_CLIENT_ID }}
-          MSSTORE_SECRET: ${{ secrets.STORE_CLIENT_SECRET }}
-          MSSTORE_SELLER: ${{ secrets.STORE_SELLER_ID }}
+          STORE_TENANT_ID: ${{ secrets.STORE_TENANT_ID }}
+          STORE_CLIENT_ID: ${{ secrets.STORE_CLIENT_ID }}
+          STORE_CLIENT_SECRET: ${{ secrets.STORE_CLIENT_SECRET }}
         run: |
-          msstore reconfigure --tenantId $env:MSSTORE_TENANT --sellerId $env:MSSTORE_SELLER `
-            --clientId $env:MSSTORE_CLIENT --clientSecret $env:MSSTORE_SECRET
-
-      - name: Verify the credential actually reaches Partner Center
-        shell: pwsh
-        run: |
-          # The CLI evolves and this wiring predates the setup — print the real
-          # surface into the log so a flag change is visible at the point it
-          # breaks, not guessed at later. This has to run AFTER reconfigure:
-          # even `--help` on a subcommand exits 1 with "SellerId is not set"
-          # when the CLI has no configuration.
-          msstore --version
-          msstore publish --help
-
-          # A second, read-only proof that the credential works end to end.
-          # `reconfigure` does test auth itself ("Testing configuration...",
-          # 3 retries, then a hard fail), so a broken credential rarely gets
-          # this far — but reconfigure only proves a token can be issued, while
-          # this proves the app is actually authorised on the Store account.
-          msstore apps list
-
-      - name: Submit
-        if: ${{ inputs.dry_run != true }}
-        shell: pwsh
-        run: msstore publish airclone.msix --appId ${{ vars.STORE_APP_ID }}
+          set -euo pipefail
+          COMMIT=""
+          if [ "${{ inputs.dry_run }}" != "true" ]; then COMMIT="--commit"; fi
+          python tool/store_submit.py \
+            --app-id "${{ vars.STORE_APP_ID }}" \
+            --package airclone.msix $COMMIT
 
       - name: Dry run — what would have happened
         if: ${{ inputs.dry_run == true }}

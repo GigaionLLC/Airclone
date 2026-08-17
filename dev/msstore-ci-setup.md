@@ -38,28 +38,27 @@ Partner Center ever sees it.
 > automatic-on-tag submission dormant; with submission behind a manual dispatch there is nothing to
 > gate — the workflow simply refuses to run without credentials.
 
-> ## ⛔ BLOCKER — `msstore publish` cannot update a paid product
+> ## ⚠️ Why this does not use `msstore publish`
 >
-> Proven on 2026-08-17 submitting v0.6.7. Authentication, identity and package upload all worked;
-> the CLI found the app, created a submission, retrieved it, and then stopped with:
+> The obvious tool is the Microsoft Store Developer CLI. **It cannot update a paid product.** Proven
+> on 2026-08-17 submitting v0.6.7: authentication and identity were fine, the CLI found the app,
+> created a submission, retrieved it — and then stopped with
 >
 > > **App updates are supported only for Free products.**
 >
-> Airclone is **not** free — it carries the small Store listing price that funds the signing certs.
-> So `msstore publish` is a dead end for this app, and no amount of credential work changes that.
-> Note the ordering trap: **the CLI creates a submission before it discovers it cannot finish one**,
-> so a failed run leaves a pending submission behind, and a pending submission blocks the next one.
-> Check Partner Center and delete the draft after any failed attempt.
+> Airclone is not free; it carries the Store listing price that funds the signing certificates. No
+> amount of credential work changes that, and making the app free is a **pricing decision, not an
+> engineering one** — it would defund the certs.
 >
-> **The way forward is the older Store submission REST API**
-> (`https://manage.devcenter.microsoft.com/v1.0/my/applications/…`), which does handle paid products:
-> create submission → PUT the package to the returned SAS URL → commit → poll status. That is the
-> same shape as [`tool/play_promote.py`](../tool/play_promote.py) and would replace the `msstore`
-> steps while keeping every credential built here — the Entra app, the Developer grant, and all four
-> `STORE_*` secrets are exactly what that API wants too. None of this setup is wasted.
+> Note the ordering trap, because it bites even when you are only experimenting: **the CLI creates a
+> submission before it discovers it cannot finish one.** A failed attempt can leave a pending draft,
+> and a pending submission blocks the next one. (In the v0.6.7 attempt nothing was actually left
+> behind — Partner Center still offered "Start update" — but do check.)
 >
-> The alternative — making the app free — is a **pricing decision, not an engineering one**, and it
-> would remove the funding for the signing certificates. It is not automation's call to make.
+> The restriction is in the CLI, not the Store. [`tool/store_submit.py`](../tool/store_submit.py)
+> talks to the submission REST API directly, which handles paid products, and reuses every credential
+> below unchanged. `STORE_SELLER_ID` is no longer read by anything — the REST API does not take a
+> seller id — but it is kept set, since it costs nothing and Partner Center tooling asks for it.
 
 **What automation does NOT do:**
 
@@ -292,29 +291,34 @@ missing.
 
 ## 5. What CI runs ✅
 
-[`submit-msstore.yml`](../.github/workflows/submit-msstore.yml), by hand from the Actions tab:
+[`submit-msstore.yml`](../.github/workflows/submit-msstore.yml), by hand from the Actions tab. It
+downloads the signed MSIX from the chosen release, checks its package identity, then runs
+[`tool/store_submit.py`](../tool/store_submit.py) — with `--commit` only when *Dry run* is unchecked.
 
-```yaml
-- uses: microsoft/microsoft-store-apppublisher@v1.4   # installs `msstore`
-- run: msstore reconfigure --tenantId … --sellerId … --clientId … --clientSecret …
-- run: msstore apps list                              # credential smoke test
-- run: msstore publish airclone.msix --appId <STORE_APP_ID>   # skipped on a dry run
-```
+The script walks the REST flow, each step depending on the last:
 
-> **`dotnet tool install --global MSStore.CLI` is dead.** That is how this was originally wired,
-> and the first real run failed on it: *"msstore.cli is not found in NuGet feeds"*. The package is
-> gone from nuget.org — absent from the flat container too, so removed rather than unlisted. The CLI
-> itself is alive (`microsoft/msstore-cli`, v0.3.9, shipped as release binaries) and the action above
-> is Microsoft's own installer for it. It runs on **Node 24**, so it does not reintroduce the
-> deprecation warning of AGENT.md §8. It was renamed from `microsoft/setup-msstore-cli`; that name
-> still redirects, but pin the current one.
+| Step | Why it matters |
+| :--- | :--- |
+| token (client credentials, `resource=…devcenter…`) | the only place a wrong tenant/app/secret shows up |
+| `GET /applications/{id}` | reads real state; **refuses if a submission is already pending** |
+| `POST /submissions` | clones the last published submission — listing copy, screenshots, age rating and **pricing** carry over untouched |
+| `PUT /submissions/{id}` | old packages → `PendingDelete`, new one → `PendingUpload` |
+| `PUT` the zip to the SAS URL | `x-ms-blob-type: BlockBlob` |
+| `POST /commit` | hands it to certification |
+| `GET /status`, bounded poll | catches an immediate rejection; certification itself takes **days**, so polling to completion is pointless |
 
-**Both steps verify, at different depths.** `reconfigure` does not merely write local config: it
-prints `Testing configuration...`, retries auth 3× at 10s intervals, and fails hard — so a bad
-tenant/client/secret is caught right there, which is how the missing app registration above was
-found. `msstore apps list` then proves the further thing reconfigure cannot: that the app is
-*authorised on this Store account* (the §3 Manager grant), not merely able to get a token. It is
-also what Microsoft's own README uses as its smoke test.
+**A pending submission blocks a new one**, and the script refuses rather than deleting it, because a
+draft may be a listing edit somebody made by hand. `--delete-pending` overrides that deliberately.
+
+**Identity is checked before any of it** (`AppxManifest.xml` vs the `MSIX_*` repo variables), because
+Partner Center validates the four identity fields in a fixed order and **the first failure masks the
+rest** — fix one, resubmit, wait days, discover the next. That is how v0.6.0 burned four cycles.
+
+> **`dotnet tool install --global MSStore.CLI` is dead**, if you ever go looking for the CLI path:
+> the package is gone from nuget.org (absent from the flat container too, so removed rather than
+> unlisted). The CLI itself still ships as release binaries via
+> `microsoft/microsoft-store-apppublisher@v1.4` — but see the paid-product blocker in §0 before
+> reaching for it.
 
 ## 6. Verification ✅
 
