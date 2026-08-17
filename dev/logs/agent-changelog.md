@@ -4,27 +4,42 @@ All changes made by AI agents are tracked chronologically below (most recent fir
 
 ---
 
-## [2026-08-17] - Microsoft Store submission credential proven working
+## [2026-08-17] - Microsoft Store submission automated; v0.6.7 submitted for certification
 
 **Agent:** Claude Opus 5 — `main`
-**Files Modified:** `.github/workflows/submit-msstore.yml`, `dev/msstore-ci-setup.md`,
-`dev/windows-signing-and-store.md`, `dev/README.md`
-**Database/API Changes:** Microsoft Store submission API now reachable from CI. Org secret
+**Files Modified:** `.github/workflows/submit-msstore.yml`, `tool/store_submit.py` (new),
+`dev/msstore-ci-setup.md`, `dev/microsoft-account-setup.md` (new),
+`dev/windows-signing-and-store.md`, `dev/README.md`, `.gitignore`
+**Database/API Changes:** Microsoft Store submission REST API now driven from CI. Org secret
 `STORE_SELLER_ID` added; `STORE_CLIENT_SECRET` rotated (old secret destroyed by `credential reset`).
-The Entra app `GigaionLLC-StoreSubmit` granted the **Developer** role on the Partner Center account.
-**Summary:** The Store lane had been written but never executed, and running it surfaced four
-separate faults. Two were in the workflow: the `MSStore.CLI` dotnet tool no longer exists on nuget.org
-(replaced with Microsoft's own `microsoft-store-apppublisher` action, which runs on Node 24), and
-`msstore <cmd> --help` requires credentials so it cannot run before `reconfigure`. Two were in the
-credential: the Entra app had never been added in Partner Center at all, and the stored secret was
-unusable — most likely the CRLF a PowerShell stdin pipe appends, which fails identically to a wrong
-secret. Both produce the same opaque `Really failed to auth`, which is why this took several rounds.
-Verified by reading the log rather than trusting the green check: MSIX downloaded at 98,156,524 bytes
-and `msstore apps list` returned the real listing with ProductId matching `STORE_APP_ID`. Two earlier
-claims were corrected rather than left standing — the role is Developer (not Manager, which would
-give a CI secret control of users, roles and tenants), and the app registration was never destroyed
-by the tenant deletion. Also hardened the dry run so it proves the credential instead of merely
-reporting that values were configured.
+The Entra app `GigaionLLC-StoreSubmit` granted the **Developer** role on the Partner Center account,
+and the Partner Center account associated with the surviving Entra tenant.
+**Summary:** The Store lane had been written but never executed, and running it surfaced fault after
+fault. In the workflow: the `MSStore.CLI` dotnet tool no longer exists on nuget.org, and
+`msstore <cmd> --help` needs credentials so it cannot run before `reconfigure`. In the credential:
+the Entra app had never been added in Partner Center at all, and the stored secret was unusable —
+most likely the CRLF a PowerShell stdin pipe appends, which fails identically to a wrong secret.
+Both produce the same opaque `Really failed to auth`. Then the CLI itself proved a dead end: it
+refuses to update a **paid** product, so `tool/store_submit.py` drives the submission REST API
+directly (create → retire old packages → upload to the SAS URL → commit → bounded poll), with a
+package-identity check first because identity mismatches cost this app four review cycles.
+
+**The pricing detour, recorded because the lesson is the expensive part.** For a product on the
+advanced pricing model the v1 API cannot express the real price: it returns `priceId: "Base"`,
+refuses that value on write, refuses an omitted pricing object, and accepts only a payload that reads
+back as `Free`. That readback was mistaken for the app being about to go free, and a correct
+submission was cancelled mid-certification on the strength of it. It was wrong. Partner Center showed
+the staged draft at **$1.49 across 240 markets** with the free trial intact, and after submission the
+API's own `priceId` reconciled back to `Base`. `priceId` is a legacy projection and is now explicitly
+excluded from the pricing guard — comparing it would false-alarm on every release. When pricing needs
+checking, Partner Center is the authority, never the API JSON.
+
+Also added: `mode: stage`, which uploads the package and leaves an editable draft for a human to
+check and submit (the practical middle ground); superseding a submission still in certification so a
+newer build never queues behind an older one; and `dev/microsoft-account-setup.md`, the from-nothing
+runbook for the whole Microsoft identity layer. Two earlier claims were corrected rather than left
+standing: the role is Developer (not Manager, which would give a CI secret control of users, roles
+and tenants), and the app registration was never destroyed by the tenant deletion.
 
 ---
 
