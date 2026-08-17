@@ -140,6 +140,20 @@ def main() -> int:
     print(f"package: {args.package} ({size_mb:.1f} MB)")
 
     if not args.commit:
+        # Report the pricing of whatever submission is current. This script has
+        # to touch the pricing block (see step 4), and pricing on a paid product
+        # is money — so make it inspectable rather than assumed.
+        show = (pending or {}).get("id") or last
+        if show:
+            st = http.get(f"{API}/applications/{args.app_id}/submissions/{show}", timeout=60)
+            if st.ok:
+                pricing = st.json().get("pricing", {})
+                which = "pending" if pending else "last published"
+                print(f"\npricing on the {which} submission {show}:")
+                print(f"  priceId              = {pricing.get('priceId')}")
+                print(f"  isAdvancedPricingModel = {pricing.get('isAdvancedPricingModel')}")
+                print(f"  trialPeriod          = {pricing.get('trialPeriod')}")
+                print(f"  marketSpecificPricings = {len(pricing.get('marketSpecificPricings') or {})} entries")
         print("\nDRY RUN — authenticated, app reachable, no submission created.")
         print("Re-run with --commit to submit for certification.")
         return 0
