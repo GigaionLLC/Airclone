@@ -156,6 +156,18 @@ def main() -> int:
     print(f"created submission {sub_id}")
 
     # ── 4. Point it at the new package ──────────────────────────────────────
+    # The API hands back `pricing.priceId = "Base"` for a product on the advanced
+    # pricing model and then rejects that same value on the way back in:
+    #     'Base' is not a valid PriceId for base price.
+    # Drop only that key. Omitting the whole pricing object would be the obvious
+    # shortcut and is dangerous — pricing is cloned from the live submission, and
+    # discarding it risks resetting a PAID product. Everything else about pricing
+    # is preserved, and the advanced model still governs the actual price.
+    pricing = sub.get("pricing")
+    if isinstance(pricing, dict) and pricing.get("priceId") == "Base":
+        pricing.pop("priceId")
+        print("dropped pricing.priceId='Base' (the API returns it but refuses it)")
+
     # Existing packages must be explicitly retired; leaving them Pending means
     # the old build stays alongside the new one.
     for pkg in sub.get("applicationPackages", []):

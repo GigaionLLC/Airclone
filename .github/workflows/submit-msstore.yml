@@ -23,6 +23,11 @@ on:
         required: true
         default: true
         type: boolean
+      delete_pending:
+        description: 'Delete an existing pending submission first (it may be a hand-made listing edit — check Partner Center)'
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -128,9 +133,10 @@ jobs:
           STORE_CLIENT_SECRET: ${{ secrets.STORE_CLIENT_SECRET }}
         run: |
           set -euo pipefail
-          COMMIT=""
-          if [ "${{ inputs.dry_run }}" != "true" ]; then COMMIT="--commit"; fi
+          ARGS=""
+          if [ "${{ inputs.dry_run }}" != "true" ]; then ARGS="$ARGS --commit"; fi
+          if [ "${{ inputs.delete_pending }}" = "true" ]; then ARGS="$ARGS --delete-pending"; fi
           python tool/store_submit.py \
             --app-id "${{ vars.STORE_APP_ID }}" \
-            --package airclone.msix $COMMIT
+            --package airclone.msix $ARGS
 
