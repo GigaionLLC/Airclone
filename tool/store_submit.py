@@ -209,19 +209,21 @@ def main() -> int:
 
     # PRICING — handle with care, this is money.
     #
-    # The API hands back `priceId: "Base"` for a product on the advanced pricing
-    # model and then refuses that same value on the way in ("'Base' is not a
-    # valid PriceId for base price"). The obvious fix — drop just that key — was
-    # tried and is wrong: the field then reads back as `Free` where the live
-    # submission reads `Base`. Whether publishing that would really have made a
-    # paid app free was never established (it was cancelled first), and that is
-    # exactly the point — an unexplained pricing divergence is not something to
-    # resolve by shipping it. Omit the whole pricing object instead, so the
-    # server keeps what it already had.
+    # There is exactly one payload this API accepts, and it is not the one you
+    # would choose. For a product on the advanced pricing model the API hands
+    # back `priceId: "Base"` and then refuses it on the way in ("'Base' is not a
+    # valid PriceId for base price"); omitting the whole pricing object is also
+    # refused ("Pricing data was not provided in the request"). That leaves
+    # sending pricing with `priceId` dropped — after which the field reads back
+    # as `Free`.
     #
-    # And then verify, because the whole lesson here is that a plausible-looking
-    # pricing edit is invisible until it publishes.
-    payload = {k: v for k, v in sub.items() if k != "pricing"}
+    # So the write is forced, and safety has to come from verifying the result
+    # instead: read the submission back, compare against what is live, and let
+    # that decide whether committing is allowed.
+    payload = dict(sub)
+    pricing_in = dict(payload.get("pricing") or {})
+    pricing_in.pop("priceId", None)
+    payload["pricing"] = pricing_in
     check(
         http.put(
             f"{API}/applications/{args.app_id}/submissions/{sub_id}", json=payload, timeout=120
