@@ -183,18 +183,6 @@ def main() -> int:
     print(f"created submission {sub_id}")
 
     # ── 4. Point it at the new package ──────────────────────────────────────
-    # The API hands back `pricing.priceId = "Base"` for a product on the advanced
-    # pricing model and then rejects that same value on the way back in:
-    #     'Base' is not a valid PriceId for base price.
-    # Drop only that key. Omitting the whole pricing object would be the obvious
-    # shortcut and is dangerous — pricing is cloned from the live submission, and
-    # discarding it risks resetting a PAID product. Everything else about pricing
-    # is preserved, and the advanced model still governs the actual price.
-    pricing = sub.get("pricing")
-    if isinstance(pricing, dict) and pricing.get("priceId") == "Base":
-        pricing.pop("priceId")
-        print("dropped pricing.priceId='Base' (the API returns it but refuses it)")
-
     # Existing packages must be explicitly retired; leaving them Pending means
     # the old build stays alongside the new one.
     for pkg in sub.get("applicationPackages", []):
@@ -202,10 +190,54 @@ def main() -> int:
     sub["applicationPackages"].append(
         {"fileName": os.path.basename(args.package), "fileStatus": "PendingUpload"}
     )
+
+    # PRICING — handle with care, this is money.
+    #
+    # The API hands back `priceId: "Base"` for a product on the advanced pricing
+    # model and then refuses that same value on the way in ("'Base' is not a
+    # valid PriceId for base price"). The obvious fix — drop just that key — was
+    # tried and is WRONG: the price silently became `Free`, which on a paid app
+    # means giving it away. Omit the whole pricing object instead, so the server
+    # keeps what it already had.
+    #
+    # And then verify, because the whole lesson here is that a plausible-looking
+    # pricing edit is invisible until it publishes.
+    payload = {k: v for k, v in sub.items() if k != "pricing"}
     check(
-        http.put(f"{API}/applications/{args.app_id}/submissions/{sub_id}", json=sub, timeout=120),
+        http.put(
+            f"{API}/applications/{args.app_id}/submissions/{sub_id}", json=payload, timeout=120
+        ),
         "update submission",
     )
+
+    live_pricing = {}
+    if last:
+        r = http.get(f"{API}/applications/{args.app_id}/submissions/{last}", timeout=60)
+        if r.ok:
+            live_pricing = r.json().get("pricing", {})
+    now = check(
+        http.get(f"{API}/applications/{args.app_id}/submissions/{sub_id}", timeout=60),
+        "read back submission",
+    ).get("pricing", {})
+
+    def price_shape(p: dict) -> tuple:
+        return (
+            p.get("priceId"),
+            p.get("isAdvancedPricingModel"),
+            p.get("trialPeriod"),
+            tuple(sorted((p.get("marketSpecificPricings") or {}).items())),
+        )
+
+    if live_pricing and price_shape(now) != price_shape(live_pricing):
+        # Refuse BEFORE commit. An uncommitted submission is a draft nobody sees;
+        # a committed one is a price change in front of customers.
+        fail(
+            "pricing on the new submission does not match what is live — refusing to commit.\n"
+            f"  live:    {live_pricing}\n"
+            f"  new:     {now}\n"
+            f"Delete draft {sub_id} in Partner Center and investigate."
+        )
+    print(f"pricing preserved: priceId={now.get('priceId')} (matches the live submission)")
 
     # ── 5. Upload ───────────────────────────────────────────────────────────
     # The API takes a ZIP whose entry names match the fileName values above.
