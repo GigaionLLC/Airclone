@@ -210,6 +210,34 @@ def main() -> int:
     print(f"last published submission: {last}")
     print(f"package: {args.package} ({size_mb:.1f} MB)")
 
+    live_pricing: dict = {}
+    if last:
+        _r = http.get(f"{API}/applications/{args.app_id}/submissions/{last}", timeout=60)
+        if _r.ok:
+            live_pricing = _r.json().get("pricing", {})
+
+    # ── The commit trap — checked BEFORE anything is created ────────────────
+    # Committing through this API DESTROYS the price of a product on the
+    # advanced pricing model. Proven the hard way on 2026-08-17: v0.6.8 was
+    # API-committed, Partner Center then showed its base price as $0 against a
+    # live price of $1.49, and it published free.
+    #
+    # The PUT is harmless — a staged draft still shows the real price. It is
+    # `commit` that applies the submission's pricing block, and the block we are
+    # forced to send says Free. Submitting from Partner Center instead re-derives
+    # pricing from the pricing module, which is why the v0.6.7 stage-then-submit
+    # path published correctly at $1.49.
+    #
+    # Refuse before creating a submission, so a refusal leaves nothing behind.
+    if live_pricing.get("isAdvancedPricingModel") and args.commit:
+        fail(
+            "this product uses the ADVANCED PRICING MODEL, and committing through the API "
+            "sets its price to 0.\n"
+            "Use mode 'stage' instead, then press 'Submit for certification' in Partner "
+            "Center, which preserves the price.\n"
+            "See dev/msstore-ci-setup.md - 'the commit trap'."
+        )
+
     if not (args.commit or args.stage):
         # Report the pricing of whatever submission is current. This script has
         # to touch the pricing block (see step 4), and pricing on a paid product
@@ -278,11 +306,8 @@ def main() -> int:
         "update submission",
     )
 
-    live_pricing = {}
-    if last:
-        r = http.get(f"{API}/applications/{args.app_id}/submissions/{last}", timeout=60)
-        if r.ok:
-            live_pricing = r.json().get("pricing", {})
+    # live_pricing was read before the submission was created, so the commit
+    # trap could be refused without leaving a draft behind.
     now = check(
         http.get(f"{API}/applications/{args.app_id}/submissions/{sub_id}", timeout=60),
         "read back submission",
