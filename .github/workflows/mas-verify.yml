@@ -1,0 +1,167 @@
+name: Mac App Store (sandbox verify)
+
+# Builds Airclone as a MAC APP STORE build and RUNS it, sandboxed, on a real Mac.
+#
+# Why this exists: nobody on this project owns a Mac. But a GitHub `macos-latest`
+# runner IS a real Mac, and - crucially - the App Sandbox is enforced by the code
+# signature plus the entitlement, NOT by the App Store. So an ad-hoc signature
+# with MacAppStore.entitlements gives us the same sandbox a customer would get,
+# and a denied file read fails here exactly as it would for them.
+#
+# That makes the biggest MAS unknown - "what breaks under the sandbox?" -
+# answerable without hardware, which is the whole point. See
+# dev/plans/apple-appstore-plan.md Gate C3.
+#
+# What it does NOT do: submit anything, sign with a real identity, or need any
+# Apple secret. It is pure verification. Distribution lives in release.yml.
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_seconds:
+        description: 'How long to let the app run before capturing'
+        required: true
+        default: '25'
+        type: string
+  push:
+    paths:
+      - 'app/lib/src/state/build_flavor.dart'
+      - 'app/lib/src/state/native_actions_policy.dart'
+      - 'app/lib/src/state/mount_policy.dart'
+      - 'app/lib/src/state/serve_policy.dart'
+      - 'app/macos/Runner/MacAppStore.entitlements'
+      - '.github/workflows/mas-verify.yml'
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    working-directory: app
+
+jobs:
+  sandbox-verify:
+    runs-on: macos-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v5
+      - uses: subosito/flutter-action@v2
+        with: { channel: stable, flutter-version: 3.47.0, cache: true }
+      - uses: actions/setup-go@v6
+        # cache:false - there is no committed go.sum (the build script synthesizes
+        # the pinning module in /tmp), so the default lookup would cache nothing
+        # and warn on every run.
+        with: { go-version: 'stable', cache: false }
+
+      - name: Build librclone (the ONLY legal engine in a sandboxed build)
+        working-directory: .
+        run: bash dev/desktop/build-librclone.sh
+
+      - run: flutter config --enable-macos-desktop
+      - run: flutter pub get
+
+      - name: Build the Mac App Store flavour
+        # AIRCLONE_MAS is what flips kMacAppStoreBuild, which forces the
+        # in-process engine and gates off mount/serve/archive/reveal. Building
+        # WITHOUT it but signing WITH the sandbox entitlement would produce an
+        # app that tries to spawn rclone and is killed - so the two must always
+        # travel together.
+        run: flutter build macos --release --dart-define=AIRCLONE_MAS=true
+
+      - name: Bundle librclone into the app
+        run: |
+          set -euo pipefail
+          APP="build/macos/Build/Products/Release/Airclone.app"
+          test -f macos/librclone/librclone.dylib
+          mkdir -p "$APP/Contents/Frameworks"
+          cp macos/librclone/librclone.dylib "$APP/Contents/Frameworks/librclone.dylib"
+          lipo -info "$APP/Contents/Frameworks/librclone.dylib"
+
+      - name: Sign ad-hoc WITH the sandbox entitlement
+        # The signature is ad-hoc (`-s -`), which is all that is needed for the
+        # kernel to enforce the sandbox. Inside-out, per Apple's guidance: every
+        # Mach-O leaf first, then the bundle, so the outer signature seals the
+        # inner ones.
+        run: |
+          set -euo pipefail
+          APP="build/macos/Build/Products/Release/Airclone.app"
+          find "$APP/Contents/Frameworks" -type f \( -name '*.dylib' -o -name '*.so' \) \
+            -exec codesign --force --timestamp=none -s - {} \; 2>/dev/null || true
+          find "$APP/Contents/Frameworks" -type d -name '*.framework' \
+            -exec codesign --force --timestamp=none -s - {} \; 2>/dev/null || true
+          codesign --force --timestamp=none \
+            --entitlements macos/Runner/MacAppStore.entitlements \
+            -s - "$APP"
+          echo "--- entitlements actually embedded ---"
+          codesign -d --entitlements - "$APP" || true
+          codesign --verify --strict --verbose=2 "$APP"
+
+      - name: Confirm the sandbox is really on
+        # A build that silently lost the entitlement would pass every other check
+        # in this job while proving nothing, so assert it explicitly.
+        run: |
+          set -euo pipefail
+          APP="build/macos/Build/Products/Release/Airclone.app"
+          if codesign -d --entitlements - "$APP" 2>&1 | grep -q 'app-sandbox'; then
+            echo "app-sandbox entitlement present"
+          else
+            echo "::error::the app-sandbox entitlement is MISSING - this run proves nothing"
+            exit 1
+          fi
+
+      - name: Run it, and watch for sandbox denials
+        # `log stream` is started FIRST so it cannot miss an early denial. The app
+        # is launched detached; we let it settle, screenshot it, then stop.
+        env:
+          RUN_SECONDS: ${{ inputs.run_seconds || '25' }}
+        run: |
+          set -uo pipefail
+          APP="build/macos/Build/Products/Release/Airclone.app"
+          mkdir -p ../artifacts
+
+          log stream --style compact --predicate \
+            'senderImagePath CONTAINS "Sandbox" OR eventMessage CONTAINS "deny("' \
+            > ../artifacts/sandbox-log.txt 2>&1 &
+          LOG_PID=$!
+
+          open -a "$APP" || echo "::warning::open returned non-zero"
+          sleep "$RUN_SECONDS"
+
+          if pgrep -f "Airclone.app/Contents/MacOS/Airclone" > /dev/null; then
+            echo "the app is still running after ${RUN_SECONDS}s"
+            echo "ALIVE=yes" >> "$GITHUB_ENV"
+          else
+            echo "::warning::the app is NOT running - it exited or never started"
+            echo "ALIVE=no" >> "$GITHUB_ENV"
+          fi
+
+          screencapture -x ../artifacts/screen.png || \
+            echo "::warning::screencapture failed (no window server?)"
+
+          kill "$LOG_PID" 2>/dev/null || true
+          pkill -f "Airclone.app/Contents/MacOS/Airclone" 2>/dev/null || true
+
+      - name: Report sandbox denials
+        # Denials are the POINT of this job, not a failure: the first runs are
+        # expected to show them, and the list is the to-do for the bookmark work.
+        # They are surfaced loudly rather than failing the build, so the artifacts
+        # always upload.
+        run: |
+          set -uo pipefail
+          LOG=../artifacts/sandbox-log.txt
+          if [ -s "$LOG" ] && grep -qi 'deny(' "$LOG"; then
+            echo "::warning::sandbox denials were recorded - see the sandbox-log artifact"
+            grep -i 'deny(' "$LOG" | sed 's/^/  /' | head -40
+          else
+            echo "no sandbox denials recorded in this run"
+          fi
+          echo "app still alive after the run window: ${ALIVE:-unknown}"
+
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: mas-sandbox-verify
+          path: |
+            artifacts/screen.png
+            artifacts/sandbox-log.txt
+          if-no-files-found: warn
