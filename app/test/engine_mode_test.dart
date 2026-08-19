@@ -1,3 +1,4 @@
+import 'package:airclone/src/state/build_flavor.dart';
 import 'package:airclone/src/state/engine_mode.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -110,6 +111,43 @@ void main() {
       expect(engineModeFromName(null), EngineMode.auto);
       expect(engineModeFromName(''), EngineMode.auto);
       expect(engineModeFromName('nonsense'), EngineMode.auto);
+    });
+  });
+  group('build flavour policy', () {
+    test(
+      'a subprocess is allowed on desktop, and nowhere Apple forbids it',
+      () {
+        expect(subprocessAllowedFor(macAppStore: false, isIOS: false), isTrue);
+        expect(subprocessAllowedFor(macAppStore: true, isIOS: false), isFalse);
+        expect(subprocessAllowedFor(macAppStore: false, isIOS: true), isFalse);
+      },
+    );
+
+    test('MAS resolves to the in-process engine whatever the user picked', () {
+      for (final setting in EngineMode.values) {
+        expect(
+          resolveEngineMode(
+            setting: setting,
+            subprocessAllowed: subprocessAllowedFor(
+              macAppStore: true,
+              isIOS: false,
+            ),
+            libraryAvailable: true,
+            binaryAvailable: true,
+          ),
+          EngineMode.inProcess,
+          reason: 'setting $setting must not defeat the sandbox constraint',
+        );
+      }
+    });
+
+    test('the config is app-private exactly on the confined platforms', () {
+      bool f({bool a = false, bool m = false, bool i = false}) =>
+          configMustBeAppPrivateFor(isAndroid: a, macAppStore: m, isIOS: i);
+      expect(f(), isFalse, reason: 'desktop shares rclone CLI default');
+      expect(f(a: true), isTrue);
+      expect(f(m: true), isTrue);
+      expect(f(i: true), isTrue);
     });
   });
 }

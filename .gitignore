@@ -87,6 +87,12 @@ dev-profile.env
 *.env.enc
 .passphrase
 
+# Encrypted notes vault (tool/vault.py). The CIPHERTEXT is committed on purpose --
+# gitignoring the notes outright would mean they live on one machine and die with it.
+# The decrypted notes and the passphrase never are. See dev/vault/README.md.
+dev/vault/notes/
+.vault-passphrase
+
 # Byte-code from the tool/ scripts (play_promote, play_tracks, store_submit).
 __pycache__/
 *.pyc

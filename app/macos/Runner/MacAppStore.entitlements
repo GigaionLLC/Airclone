@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- MAC APP STORE ONLY. The direct-download DMG keeps Release.entitlements
+	     (sandbox OFF) and loses none of its features; this file exists because the
+	     App Sandbox is MANDATORY for the Mac App Store, and it changes what the
+	     app is allowed to be. Build it by passing the AIRCLONE_MAS dart-define:
+
+	         flutter build macos "‑‑dart‑define=AIRCLONE_MAS=true"
+
+	     (an XML comment may not contain a literal double hyphen, so the flag is
+	     spelled with non-breaking hyphens above; type it normally). That flag
+	     flips `kMacAppStoreBuild` and forces the in-process librclone engine, see
+	     state/build_flavor.dart. Signing this bundle with the sandbox entitlement
+	     but WITHOUT that dart-define produces an app that tries to spawn rclone
+	     and is killed by the sandbox.
+
+	     Every key below is deliberately minimal: each one has to be justified to
+	     App Review in the version page's "App Sandbox Information" section, so
+	     entitlements we do not need are not merely untidy, they are review risk.
+	     See dev/plans/apple-appstore-plan.md Gate C1. -->
+	<key>com.apple.security.app-sandbox</key>
+	<true/>
+
+	<!-- rclone talks to cloud provider APIs over the network. Outbound only. -->
+	<key>com.apple.security.network.client</key>
+	<true/>
+
+	<!-- The user picks local folders through NSOpenPanel; the grant arrives via
+	     PowerBox, not by us naming a path. This is the ONLY way a sandboxed
+	     Airclone reads local files. -->
+	<key>com.apple.security.files.user-selected.read-write</key>
+	<true/>
+
+	<!-- Persist those grants across launches. Without this, every restart would
+	     re-prompt for every folder the user added as a Location. App-scoped (not
+	     document-scoped): the bookmarks belong to the app, not to a document. -->
+	<key>com.apple.security.files.bookmarks.app-scope</key>
+	<true/>
+
+	<!-- The in-process engine streams preview/thumbnail/media bytes to the UI over a
+	     LOOPBACK-ONLY HTTP bridge (rclone/librclone_object_server.dart binds
+	     InternetAddress.loopbackIPv4 on an ephemeral port). App Sandbox requires this
+	     entitlement to listen() at all, loopback included - WITHOUT it a MAS build has
+	     no image previews, no thumbnails, no video/audio playback and no PDF viewer.
+	     Justify to App Review as exactly that: an internal bridge between the embedded
+	     engine and the app's own player, reachable only from this machine. -->
+	<key>com.apple.security.network.server</key>
+	<true/>
+
+	<!-- flutter_secure_storage keeps the OPT-IN, default-off rclone config password in
+	     the Keychain (state/config_password_vault.dart), which is what lets biometric
+	     unlock and unattended scheduled runs work. A sandboxed app needs an explicit
+	     keychain group; without it those features fail at runtime rather than being
+	     absent, which is worse. -->
+	<key>com.apple.security.keychain-access-groups</key>
+	<array>
+		<string>$(AppIdentifierPrefix)com.gigaionllc.airclone</string>
+	</array>
+
+	<!-- DELIBERATELY ABSENT, and each absence is a feature that must be gated off in a
+	     MAS build rather than left to fail at runtime:
+
+	     No entitlement exists for OS mount at all. FUSE is impossible under the
+	     sandbox, which is why Mount is gated off rather than degraded.
+
+	     Archive (create/extract) spawns the `rclone archive` CLI, and "Show in Finder"
+	     spawns `open`. A sandboxed app may only execute code bundled and signed with
+	     it, and the MAS build bundles no rclone binary, so both are gated off.
+
+	     rclone's own Serve feature (serve/start over RC) is gated off for the first
+	     submission by serveEnabledProvider - not for want of an entitlement, but to
+	     keep the review surface small. The network.server entitlement above exists for
+	     the internal preview bridge, NOT for Serve; re-enabling Serve is a separate,
+	     deliberate decision. -->
+</dict>
+</plist>

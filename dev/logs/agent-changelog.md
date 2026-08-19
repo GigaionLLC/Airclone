@@ -4,6 +4,59 @@ All changes made by AI agents are tracked chronologically below (most recent fir
 
 ---
 
+## [2026-08-19] - Apple App Store account configured; MAS build foundation; encrypted notes vault
+
+**Agent:** Claude Opus 5 - `main`
+**Files Modified:** `app/lib/src/state/build_flavor.dart` (new), `engine_controller.dart`,
+`mount_policy.dart`, `serve_policy.dart`, `app/lib/src/ui/settings_screen.dart`,
+`app/macos/Runner/MacAppStore.entitlements` (new), `app/test/engine_mode_test.dart`,
+`config_override_test.dart`, `tool/vault.py` (new), `dev/vault/` (new),
+`dev/plans/apple-appstore-plan.md` (new), `dev/secrets/dev-profile.example.env`, `.gitignore`
+**Database/API Changes:** App Store Connect API now reachable from CI. Org secret
+`APPSTORE_API_PRIVATE_KEY` plus org variables `APPSTORE_ISSUER_ID` and `APPSTORE_API_KEY_ID`
+added (visibility `all`, matching the existing `APPLE_*` credentials). The key is an
+App Store Connect **Team Key** with the **App Manager** role - not Admin, which would give a
+CI secret control of users, roles and agreements.
+
+**Summary:** Took the Apple track from "app record exists" to "everything Apple gates on
+paperwork is done": categories, content rights, age rating (4+ globally), App Privacy
+(Data Not Collected), subtitle, bank account, Paid Apps Agreement, EU DSA trader status,
+$1.49 in 175 countries, availability, and Public/discoverable distribution verified by
+reading the selected radio rather than trusting the "(default)" label.
+
+Two traps worth remembering. An updated **Apple Developer Program License Agreement** blocks
+App Store Connect and presents as *"We can't process your request"* on one sub-page while
+others load fine - the banner naming the cause appears only on the Apps list, never on the
+failing page. And **$1.49 is not in Apple's default price dropdown** (it jumps $0.99 to
+$1.99, and searching "1.49" returns $14.99); it exists only behind "See Additional Prices".
+Without that link the obvious move is to break price parity with the other two stores.
+
+On the build: `build_flavor.dart` adds the compile-time `AIRCLONE_MAS` flag, so the spawn
+path is const-folded out of a store build, plus two pure predicates -
+`subprocessAllowedFor` and `configMustBeAppPrivateFor` - that make the sandbox policy
+unit-testable with no Mac. Mount and Serve gate off through the existing one-line policy
+providers. `MacAppStore.entitlements` is new, and its first draft was WRONG: it omitted
+`com.apple.security.network.server` on the reasoning that Serve was the only consumer. It
+is not - `librclone_object_server.dart` binds a loopback socket and is the ONLY source of
+preview, thumbnail, video, audio and PDF bytes under the in-process engine, so that build
+would have shipped with no media at all.
+
+`resolveConfigPath` lost its Android-specific parameters: the constraint was never about
+Android but about platforms that cannot spawn `rclone config file` to locate their own
+config, which would break config backup, restore and export on an otherwise-working
+sandboxed build. `flutter analyze` caught a third call site that would have shown a
+confidently wrong config path in Settings.
+
+Also added `tool/vault.py` and `dev/vault/`, an encrypted notes vault modelled on the
+sibling RD-API-Server repo (ported to Python; this repo has no Node). `vault.enc` is
+committed, `notes/` and the passphrase are not: scrypt N=2^16 to AES-256-GCM, fresh salt and
+IV per lock, verified by round-trip checksum and by confirming a one-byte ciphertext flip
+fails loudly. The split from `dev/secrets/` is deliberate and is the security argument -
+sensitive **notes** go in the vault, **credentials** never get committed in any form,
+because this repo is public and a leaked passphrase would expose every historical revision.
+
+---
+
 ## [2026-08-17] - Microsoft Store submission automated; v0.6.7 submitted for certification
 
 **Agent:** Claude Opus 5 — `main`

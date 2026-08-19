@@ -15,29 +15,29 @@ void main() {
   group('resolveConfigPath — resolution order', () {
     test('desktop uses the override when set', () {
       expect(
-        resolveConfigPath(isAndroid: false, override: '/etc/rclone.conf'),
+        resolveConfigPath(appPrivateOnly: false, override: '/etc/rclone.conf'),
         '/etc/rclone.conf',
       );
     });
 
     test('desktop with no override → null (rclone default)', () {
-      expect(resolveConfigPath(isAndroid: false, override: null), isNull);
+      expect(resolveConfigPath(appPrivateOnly: false, override: null), isNull);
     });
 
     test('desktop treats an empty override as unset → null', () {
-      expect(resolveConfigPath(isAndroid: false, override: ''), isNull);
+      expect(resolveConfigPath(appPrivateOnly: false, override: ''), isNull);
     });
 
     test('desktop preserves a path containing spaces verbatim', () {
       const p = r'C:/Users/Jo Smith/rclone.conf';
-      expect(resolveConfigPath(isAndroid: false, override: p), p);
+      expect(resolveConfigPath(appPrivateOnly: false, override: p), p);
     });
 
     test('android always uses its app-private path, ignoring the override', () {
       expect(
         resolveConfigPath(
-          isAndroid: true,
-          androidConfigPath: '/data/app/rclone.conf',
+          appPrivateOnly: true,
+          appPrivateConfigPath: '/data/app/rclone.conf',
           override: '/sdcard/other.conf',
         ),
         '/data/app/rclone.conf',
@@ -46,7 +46,7 @@ void main() {
 
     test('android with an unknown app-private path → null', () {
       expect(
-        resolveConfigPath(isAndroid: true, androidConfigPath: null),
+        resolveConfigPath(appPrivateOnly: true, appPrivateConfigPath: null),
         isNull,
       );
     });

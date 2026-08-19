@@ -18,6 +18,7 @@ import '../state/config_password_vault.dart';
 import '../state/config_transfer_controller.dart';
 import '../state/diagnostics.dart';
 import '../state/download_settings.dart';
+import '../state/build_flavor.dart';
 import '../state/engine_controller.dart';
 import '../state/engine_flags.dart';
 import '../state/engine_mode.dart';
@@ -468,19 +469,22 @@ class _ConfigSectionState extends ConsumerState<_ConfigSection> {
   /// falling back to the conventional default for display only.
   Future<void> _resolvePath() async {
     final override = ref.read(settingsControllerProvider).configPathOverride;
-    String? androidPath;
-    if (Platform.isAndroid) {
+    // Confined platforms (Android, Mac App Store, iOS) keep the config in
+    // app-private storage, so the conventional $HOME path below would be a
+    // confident lie there.
+    String? appPrivatePath;
+    if (configMustBeAppPrivateHere) {
       try {
         final support = await getApplicationSupportDirectory();
-        androidPath = '${support.path}/rclone.conf';
+        appPrivatePath = '${support.path}/rclone.conf';
       } catch (_) {
         /* leave null → "rclone default" */
       }
     }
     final resolved =
         resolveConfigPath(
-          isAndroid: Platform.isAndroid,
-          androidConfigPath: androidPath,
+          appPrivateOnly: configMustBeAppPrivateHere,
+          appPrivateConfigPath: appPrivatePath,
           override: override,
         ) ??
         conventionalRcloneConfigPath();

@@ -10,6 +10,7 @@ import '../rclone/librclone_ffi.dart';
 import '../rclone/rclone_client.dart';
 import '../rclone/rclone_engine.dart';
 import 'biometric_unlock.dart';
+import 'build_flavor.dart';
 import 'cache_crypto.dart';
 import 'config_password_vault.dart';
 import 'engine_flags.dart';
@@ -21,17 +22,20 @@ import 'settings_controller.dart';
 /// decision is unit-tested without a process — see `config_override_test.dart`.
 ///
 /// Resolution order:
-///  - **Android** always uses its app-private config ([androidConfigPath]); the
-///    sandbox has nowhere else the engine may exec/read a config against, and the
-///    override picker is desktop-only.
+///  - **Confined platforms** (Android, Mac App Store, iOS — see
+///    [configMustBeAppPrivateFor]) always use their app-private config
+///    ([appPrivateConfigPath]) at a path we choose, so it can be located without
+///    spawning `rclone config file`. The override picker is desktop-only, so
+///    [override] is deliberately ignored here.
 ///  - **Desktop** uses [override] when set (Settings → Config → "Use a different
-///    config file…"), otherwise null — rclone resolves its own default.
+///    config file…"), otherwise null — rclone resolves its own default, which is
+///    what lets Airclone and the `rclone` CLI share one config.
 String? resolveConfigPath({
-  required bool isAndroid,
-  String? androidConfigPath,
+  required bool appPrivateOnly,
+  String? appPrivateConfigPath,
   String? override,
 }) {
-  if (isAndroid) return androidConfigPath;
+  if (appPrivateOnly) return appPrivateConfigPath;
   return (override != null && override.isNotEmpty) ? override : null;
 }
 
@@ -151,26 +155,36 @@ class EngineController extends Notifier<EngineUi> {
 
   /// Resolve the engine to run from the persisted setting + availability. Android
   /// always runs its bundled binary (its jniLib-subprocess model is the only one
-  /// wired there); engine choice is desktop-only. Desktop DMG allows a subprocess
-  /// — the iOS/MAS "library only" constraint lands with those targets.
+  /// wired there); engine choice is desktop-only. Desktop DMG allows a subprocess;
+  /// the Mac App Store build and iOS do not, and there [subprocessAllowedHere]
+  /// forces the in-process library whatever the user's setting says.
   Future<EngineMode> _resolveEngineMode({required bool binaryAvailable}) async {
     if (Platform.isAndroid) return EngineMode.binary;
     await ref.read(settingsControllerProvider.notifier).ensureLoaded();
     final setting = ref.read(settingsControllerProvider).engineMode;
     return resolveEngineMode(
       setting: setting,
-      subprocessAllowed: true,
+      subprocessAllowed: subprocessAllowedHere,
       libraryAvailable: File(defaultLibrclonePath()).existsSync(),
       binaryAvailable: binaryAvailable,
     );
   }
 
-  /// Android runs the engine sandboxed: the config lives in the app's own
-  /// storage (passed via `--config`), temp files go to the app cache (there is
-  /// no /tmp), and `local` writes skip chtimes, which Android storage rejects.
+  /// Where the config lives, and any environment the engine needs.
+  ///
   /// Desktop lets rclone use its own default location UNLESS the user set a
   /// config-file override (Settings → Config), which flows through here as the
-  /// spawn's `--config` arg AND the file `isConfigEncrypted` reads directly.
+  /// spawn's `--config` arg AND the file `isConfigEncrypted` reads directly —
+  /// sharing one config with the `rclone` CLI is the point on a machine with both.
+  ///
+  /// Confined platforms ([configMustBeAppPrivateHere]) instead pin the config to
+  /// app-private storage so it can be found without `rclone config file`, which
+  /// is a subprocess they cannot spawn. Android additionally needs its own env:
+  /// temp files to the app cache (there is no /tmp), `local` writes skipping
+  /// chtimes (Android storage rejects them), and RCLONE_CONFIG for the children
+  /// it re-execs. The Mac App Store and iOS need none of that — the engine is
+  /// in-process, so there is no child to inherit anything, and the sandbox
+  /// already redirects HOME and TMPDIR into the container.
   Future<(String?, Map<String, String>)> _platformSetup() async {
     // Hydrate the persisted override before reading it: build() returns the
     // default synchronously and fills from disk on a later microtask, so a cold
@@ -178,19 +192,20 @@ class EngineController extends Notifier<EngineUi> {
     // the user's override is still loading. ensureLoaded() is idempotent.
     await ref.read(settingsControllerProvider.notifier).ensureLoaded();
     final override = ref.read(settingsControllerProvider).configPathOverride;
-    if (!Platform.isAndroid) {
+    if (!configMustBeAppPrivateHere) {
       return (
-        resolveConfigPath(isAndroid: false, override: override),
+        resolveConfigPath(appPrivateOnly: false, override: override),
         const <String, String>{},
       );
     }
     final support = await getApplicationSupportDirectory();
     final cache = await getTemporaryDirectory();
     final configPath = resolveConfigPath(
-      isAndroid: true,
-      androidConfigPath: '${support.path}/rclone.conf',
+      appPrivateOnly: true,
+      appPrivateConfigPath: '${support.path}/rclone.conf',
       override: override,
     );
+    if (!Platform.isAndroid) return (configPath, const <String, String>{});
     return (
       configPath,
       <String, String>{
