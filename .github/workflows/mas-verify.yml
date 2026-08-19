@@ -124,7 +124,10 @@ jobs:
             > ../artifacts/sandbox-log.txt 2>&1 &
           LOG_PID=$!
 
-          open -a "$APP" || echo "::warning::open returned non-zero"
+          # NOT `open -a`: that resolves its argument as an application NAME via
+          # LaunchServices and fails on a path ("Unable to find application
+          # named ..."). Plain `open` on an ABSOLUTE .app path is the correct form.
+          open "$PWD/$APP" || echo "::warning::open returned non-zero"
           sleep "$RUN_SECONDS"
 
           if pgrep -f "Airclone.app/Contents/MacOS/Airclone" > /dev/null; then
@@ -149,11 +152,18 @@ jobs:
         run: |
           set -uo pipefail
           LOG=../artifacts/sandbox-log.txt
-          if [ -s "$LOG" ] && grep -qi 'deny(' "$LOG"; then
-            echo "::warning::sandbox denials were recorded - see the sandbox-log artifact"
-            grep -i 'deny(' "$LOG" | sed 's/^/  /' | head -40
+          # The stream captures every denial on the machine, and a CI runner is
+          # full of unrelated daemons (siriknowledged, businessservicesd, ...).
+          # Only OUR denials mean anything, and the denial format is
+          # `Sandbox: <proc>(<pid>) deny(...)` - so match on "Airclone(" with the
+          # paren, which excludes other processes merely touching our .app path.
+          # The full log still ships as an artifact for context.
+          if [ -s "$LOG" ] && grep -q 'Airclone(' "$LOG"; then
+            echo "::warning::AIRCLONE sandbox denials recorded - this is the bookmark to-do list"
+            grep 'Airclone(' "$LOG" | sed 's/^/  /' | head -40
           else
-            echo "no sandbox denials recorded in this run"
+            echo "no denials from Airclone itself in this run"
+            echo "(unrelated system-daemon denials are expected on a CI runner and are ignored)"
           fi
           echo "app still alive after the run window: ${ALIVE:-unknown}"
 
