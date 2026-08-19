@@ -4,6 +4,8 @@ import 'package:flutter/foundation.dart'
     show TargetPlatform, defaultTargetPlatform;
 import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import 'build_flavor.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 /// An executable + its argv. Never a shell string — each element is passed
@@ -94,6 +96,10 @@ class OsIntegration {
   /// Returns true on apparent success. On Linux, falls back to opening the
   /// containing folder if the FileManager1 D-Bus call fails.
   Future<bool> revealInFileManager(String path) async {
+    // Belt-and-braces with revealEnabledProvider: the UI hides this, but the
+    // service refuses too, so no future caller can reintroduce a spawn into a
+    // sandboxed build by forgetting the gate.
+    if (!subprocessAllowedHere) return false;
     final abs = File(path).absolute.path;
     final cmd = revealCommand(_os, abs);
     ProcessResult? res;

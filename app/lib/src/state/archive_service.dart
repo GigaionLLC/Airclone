@@ -11,6 +11,7 @@ import 'archive_command.dart';
 import 'cache_crypto.dart';
 import 'jobs_controller.dart';
 import 'settings_controller.dart';
+import 'build_flavor.dart';
 
 /// A user-actionable archive failure (binary missing, list failed).
 class ArchiveError implements Exception {
@@ -55,6 +56,13 @@ class ArchiveService {
   /// local job id. Never throws — a failure lands on the job. Stop (jobs panel)
   /// kills the child through the registered cancel hook.
   Future<int> runJob(ArchiveCommand cmd) async {
+    // Belt-and-braces with archiveEnabledProvider, which hides the menu items: a
+    // store build must not be able to reach a spawn even if a future caller
+    // forgets the UI gate. rclone has no RC method for archives, so there is
+    // nothing to degrade to - refusing is the honest outcome.
+    if (!subprocessAllowedHere) {
+      throw const ArchiveError('Archives are not available in this build.');
+    }
     final jobs = _ref.read(jobsControllerProvider.notifier);
     final job = jobs.add(
       type: JobType.archive,
@@ -158,6 +166,13 @@ class ArchiveService {
   /// child rather than orphan it holding the config + connections. Throws
   /// [ArchiveError] on a missing binary, timeout, or non-zero exit.
   Future<String> listContents(ArchiveCommand cmd) async {
+    // Belt-and-braces with archiveEnabledProvider, which hides the menu items: a
+    // store build must not be able to reach a spawn even if a future caller
+    // forgets the UI gate. rclone has no RC method for archives, so there is
+    // nothing to degrade to - refusing is the honest outcome.
+    if (!subprocessAllowedHere) {
+      throw const ArchiveError('Archives are not available in this build.');
+    }
     final rclone = await _rclone();
     if (rclone == null) {
       throw const ArchiveError('The rclone engine binary was not found.');

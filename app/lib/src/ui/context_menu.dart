@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../state/open_external.dart';
 import 'theme/tokens.dart';
+import '../state/build_flavor.dart';
 
 /// Actions offered when right-clicking a file or folder row.
 enum FileMenuAction {
@@ -106,11 +107,15 @@ Future<FileMenuAction?> showFileContextMenu(
           Icons.open_in_new_outlined,
           'Open with default app',
         ),
-      _item(
-        FileMenuAction.revealInFolder,
-        Icons.folder_open_outlined,
-        'Show in File Explorer',
-      ),
+      // Reveal spawns a process (`open -R` / `explorer /select,` / dbus-send),
+      // so a store build cannot offer it. "Open with default app" above stays:
+      // it goes through url_launcher (NSWorkspace), not a spawn.
+      if (subprocessAllowedHere)
+        _item(
+          FileMenuAction.revealInFolder,
+          Icons.folder_open_outlined,
+          'Show in File Explorer',
+        ),
     ] else if (!isLocal && !Platform.isAndroid)
       // Android's folder picker returns SAF content:// URIs, which rclone's
       // local backend can't write to — phones download via Copy → Paste into
@@ -137,25 +142,31 @@ Future<FileMenuAction?> showFileContextMenu(
         Icons.splitscreen_outlined,
         'Open in other pane',
       ),
-    const _Entry.divider(),
     // Archive: Compress anything; Extract/List only for a recognised archive.
-    _item(FileMenuAction.compress, Icons.folder_zip_outlined, 'Compress…'),
-    if (isArchive) ...[
-      _item(
-        FileMenuAction.extractHere,
-        Icons.unarchive_outlined,
-        'Extract here',
-      ),
-      _item(
-        FileMenuAction.extractTo,
-        Icons.drive_folder_upload_outlined,
-        'Extract to…',
-      ),
-      _item(
-        FileMenuAction.listArchive,
-        Icons.list_alt_outlined,
-        'List contents…',
-      ),
+    // rclone exposes no RC method for archives, so this shells out to the
+    // `rclone archive` CLI - impossible in a store build, which may not spawn and
+    // bundles no binary. The leading divider is inside the gate so hiding the
+    // block cannot leave two dividers stacked.
+    if (subprocessAllowedHere) ...[
+      const _Entry.divider(),
+      _item(FileMenuAction.compress, Icons.folder_zip_outlined, 'Compress…'),
+      if (isArchive) ...[
+        _item(
+          FileMenuAction.extractHere,
+          Icons.unarchive_outlined,
+          'Extract here',
+        ),
+        _item(
+          FileMenuAction.extractTo,
+          Icons.drive_folder_upload_outlined,
+          'Extract to…',
+        ),
+        _item(
+          FileMenuAction.listArchive,
+          Icons.list_alt_outlined,
+          'List contents…',
+        ),
+      ],
     ],
     const _Entry.divider(),
     _item(FileMenuAction.rename, Icons.edit_outlined, 'Rename'),

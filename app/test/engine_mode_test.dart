@@ -1,4 +1,5 @@
 import 'package:airclone/src/state/build_flavor.dart';
+import 'package:airclone/src/state/native_actions_policy.dart';
 import 'package:airclone/src/state/engine_mode.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -149,5 +150,22 @@ void main() {
       expect(f(m: true), isTrue);
       expect(f(i: true), isTrue);
     });
+
+    test(
+      'subprocess-spawning OS actions are off exactly where spawning is',
+      () {
+        expect(revealInFileManagerAllowedFor(subprocessAllowed: true), isTrue);
+        expect(
+          revealInFileManagerAllowedFor(subprocessAllowed: false),
+          isFalse,
+        );
+        expect(archiveAllowedFor(subprocessAllowed: true), isTrue);
+        expect(archiveAllowedFor(subprocessAllowed: false), isFalse);
+        // The MAS build is the case that matters: both must be off.
+        final mas = subprocessAllowedFor(macAppStore: true, isIOS: false);
+        expect(revealInFileManagerAllowedFor(subprocessAllowed: mas), isFalse);
+        expect(archiveAllowedFor(subprocessAllowed: mas), isFalse);
+      },
+    );
   });
 }
