@@ -82,6 +82,24 @@ jobs:
           # Length only - never the contents.
           echo "key written, $(wc -c < "$HOME/.appstoreconnect/private_keys/AuthKey_${KEY_ID}.p8") bytes"
 
+      - name: Create a keychain for the provisioned certificate
+        # Without this, -allowProvisioningUpdates has nowhere to store a
+        # certificate: the runner's login keychain is locked, so provisioning
+        # "succeeds" having created nothing and the archive falls back to
+        # ad-hoc. The symptom is `0 valid identities found` with no error at all.
+        # Ephemeral and job-scoped; deleted in the always() cleanup.
+        run: |
+          set -euo pipefail
+          KC="$RUNNER_TEMP/airclone-signing.keychain-db"
+          security create-keychain -p "" "$KC"
+          security set-keychain-settings -lut 7200 "$KC"
+          security unlock-keychain -p "" "$KC"
+          # Keep the login keychain in the search list so system roots still
+          # resolve; put ours first and make it the default.
+          security list-keychains -d user -s "$KC" login.keychain-db
+          security default-keychain -s "$KC"
+          security list-keychains
+
       - name: Build librclone (the only legal engine in a sandboxed build)
         working-directory: .
         run: bash dev/desktop/build-librclone.sh
@@ -117,13 +135,18 @@ jobs:
           cp macos/Runner/MacAppStore.entitlements macos/Runner/Release.entitlements
           echo "--- entitlements the Runner target will build with ---"
           cat macos/Runner/Release.entitlements | grep -E '<key>|<true|<false' || true
-          # No CODE_SIGN_IDENTITY here. Automatic signing chooses the identity
-          # itself, and naming one is a hard conflict:
-          #   "Runner is automatically signed for development, but a conflicting
-          #    code signing identity Apple Distribution has been manually specified"
-          # The DISTRIBUTION identity is applied later, by -exportArchive with
-          # method app-store-connect. Archive as development, export as release -
-          # that is the normal Xcode flow, not a workaround.
+          # CODE_SIGN_IDENTITY must be "Apple Development" - not omitted, and not
+          # "Apple Distribution". Omitting it leaves project.pbxproj's "-" in
+          # charge and the archive is signed ad-hoc; naming Distribution conflicts
+          # with automatic signing. Xcode's own error spelled this out:
+          #   "Set the code signing identity value to 'Apple Development' ...
+          #    or switch to manual signing"
+          # The DISTRIBUTION identity is applied later by -exportArchive with
+          # method app-store-connect. Archive as development, export as release,
+          # which is the normal Xcode flow.
+          #
+          # Unlike CODE_SIGN_ENTITLEMENTS, applying this to every target is fine:
+          # it is an identity name, not a path resolved per project directory.
           xcodebuild -workspace macos/Runner.xcworkspace \
             -scheme Runner \
             -configuration Release \
@@ -134,6 +157,7 @@ jobs:
             -authenticationKeyIssuerID "$ISSUER" \
             CODE_SIGN_STYLE=Automatic \
             DEVELOPMENT_TEAM="$TEAM_ID" \
+            "CODE_SIGN_IDENTITY=Apple Development" \
             archive
           echo "--- what the archive was actually signed with ---"
           codesign -dv --verbose=2 \
@@ -237,6 +261,8 @@ jobs:
           echo "separate events."
           echo "https://appstoreconnect.apple.com/apps/6790176897/distribution/macos/version/inflight"
 
-      - name: Shred the API key
+      - name: Shred the API key and the keychain
         if: always()
-        run: rm -rf "$HOME/.appstoreconnect" || true
+        run: |
+          rm -rf "$HOME/.appstoreconnect" || true
+          security delete-keychain "$RUNNER_TEMP/airclone-signing.keychain-db" || true
