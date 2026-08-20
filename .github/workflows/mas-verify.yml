@@ -29,7 +29,12 @@ on:
       - 'app/lib/src/state/native_actions_policy.dart'
       - 'app/lib/src/state/mount_policy.dart'
       - 'app/lib/src/state/serve_policy.dart'
-      - 'app/macos/Runner/MacAppStore.entitlements'
+      - 'app/lib/src/state/mac_bookmarks.dart'
+      - 'app/lib/src/state/local_locations.dart'
+      # Any native macOS change: Swift cannot be compiled off a Mac, so this
+      # workflow IS the compiler for it. A Swift file missing from
+      # project.pbxproj also fails here rather than silently never building.
+      - 'app/macos/**'
       - '.github/workflows/mas-verify.yml'
 
 permissions:
