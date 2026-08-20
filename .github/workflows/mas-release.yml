@@ -12,9 +12,11 @@ name: Mac App Store (build + upload)
 # once it started. See AGENT.md rules 10-13.
 #
 # Prerequisites (one-time, see dev/plans/apple-appstore-plan.md Gate B):
-#   APPSTORE_ISSUER_ID       org variable
+#   APPSTORE_ISSUER_ID       org SECRET  (a variable is not masked, and this one
+#                                        appeared verbatim in a public CI log)
 #   APPSTORE_API_KEY_ID      org variable
-#   APPSTORE_API_PRIVATE_KEY org secret (.p8 contents)
+#   APPSTORE_API_PRIVATE_KEY org secret  (.p8 contents)
+#   APPLE_TEAM_ID            org secret  (already present for the Developer ID lane)
 # Signing identities are created ON DEMAND by -allowProvisioningUpdates using
 # that key, so no certificate has to be minted by hand and no .p12 is stored.
 
@@ -49,14 +51,16 @@ jobs:
         # Fail here rather than 40 minutes later at the upload step.
         env:
           HAS_KEY: ${{ secrets.APPSTORE_API_PRIVATE_KEY != '' }}
-          ISSUER: ${{ vars.APPSTORE_ISSUER_ID }}
+          ISSUER: ${{ secrets.APPSTORE_ISSUER_ID }}
           KEY_ID: ${{ vars.APPSTORE_API_KEY_ID }}
+          TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
           set -euo pipefail
           missing=""
           [ "$HAS_KEY" = "true" ] || missing="$missing APPSTORE_API_PRIVATE_KEY(secret)"
-          [ -n "$ISSUER" ] || missing="$missing APPSTORE_ISSUER_ID(var)"
+          [ -n "$ISSUER" ] || missing="$missing APPSTORE_ISSUER_ID(secret)"
           [ -n "$KEY_ID" ] || missing="$missing APPSTORE_API_KEY_ID(var)"
+          [ -n "$TEAM_ID" ] || missing="$missing APPLE_TEAM_ID(secret)"
           if [ -n "$missing" ]; then
             echo "::error::missing:$missing - see dev/plans/apple-appstore-plan.md Gate B"
             exit 1
@@ -98,8 +102,9 @@ jobs:
         # demand, authenticated by the ASC key. That is why this repo stores no
         # .p12 for App Store signing, unlike the Developer ID lane in release.yml.
         env:
-          ISSUER: ${{ vars.APPSTORE_ISSUER_ID }}
+          ISSUER: ${{ secrets.APPSTORE_ISSUER_ID }}
           KEY_ID: ${{ vars.APPSTORE_API_KEY_ID }}
+          TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
           set -euo pipefail
           xcodebuild -workspace macos/Runner.xcworkspace \
@@ -111,7 +116,14 @@ jobs:
             -authenticationKeyID "$KEY_ID" \
             -authenticationKeyIssuerID "$ISSUER" \
             CODE_SIGN_ENTITLEMENTS=Runner/MacAppStore.entitlements \
+            CODE_SIGN_STYLE=Automatic \
+            DEVELOPMENT_TEAM="$TEAM_ID" \
+            "CODE_SIGN_IDENTITY=Apple Distribution" \
             archive
+          echo "--- what the archive was actually signed with ---"
+          codesign -dv --verbose=2 \
+            "$RUNNER_TEMP/Airclone.xcarchive/Products/Applications/Airclone.app" 2>&1 \
+            | grep -E 'Authority|Identifier' || true
 
       - name: Put librclone inside the archived app, then re-sign
         # The engine is bundled AFTER archiving because it is not an Xcode build
@@ -126,9 +138,11 @@ jobs:
           cp macos/librclone/librclone.dylib "$APP/Contents/Frameworks/librclone.dylib"
           lipo -info "$APP/Contents/Frameworks/librclone.dylib"
           IDENTITY=$(security find-identity -v -p codesigning \
-            | grep -o '"Apple Distribution: [^"]*"' | head -1 | tr -d '"')
+            | grep -o '"Apple Distribution: [^"]*"' | head -1 | tr -d '"' || true)
           if [ -z "$IDENTITY" ]; then
-            echo "::error::no Apple Distribution identity - automatic signing did not produce one"
+            echo "::error::no Apple Distribution identity in the keychain."
+            echo "Automatic signing did not produce one. Identities present:"
+            security find-identity -v -p codesigning || true
             exit 1
           fi
           echo "re-signing with: $IDENTITY"
@@ -141,8 +155,9 @@ jobs:
 
       - name: Export the App Store package
         env:
-          ISSUER: ${{ vars.APPSTORE_ISSUER_ID }}
+          ISSUER: ${{ secrets.APPSTORE_ISSUER_ID }}
           KEY_ID: ${{ vars.APPSTORE_API_KEY_ID }}
+          TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
           set -euo pipefail
           cat > "$RUNNER_TEMP/export.plist" <<'PLIST'
@@ -178,8 +193,9 @@ jobs:
         # Validate first: a rejected upload wastes nothing, but a half-uploaded
         # build has to be cleaned up in the console by hand.
         env:
-          ISSUER: ${{ vars.APPSTORE_ISSUER_ID }}
+          ISSUER: ${{ secrets.APPSTORE_ISSUER_ID }}
           KEY_ID: ${{ vars.APPSTORE_API_KEY_ID }}
+          TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
           set -euo pipefail
           PKG=$(ls "$RUNNER_TEMP/export"/*.pkg | head -1)
