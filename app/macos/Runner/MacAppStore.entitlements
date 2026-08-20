@@ -49,15 +49,14 @@
 	<key>com.apple.security.network.server</key>
 	<true/>
 
-	<!-- flutter_secure_storage keeps the OPT-IN, default-off rclone config password in
-	     the Keychain (state/config_password_vault.dart), which is what lets biometric
-	     unlock and unattended scheduled runs work. A sandboxed app needs an explicit
-	     keychain group; without it those features fail at runtime rather than being
-	     absent, which is worse. -->
-	<key>com.apple.security.keychain-access-groups</key>
-	<array>
-		<string>$(AppIdentifierPrefix)com.gigaionllc.airclone</string>
-	</array>
+	<!-- com.apple.security.keychain-access-groups is DELIBERATELY ABSENT.
+	     It was added here on the reasoning that flutter_secure_storage needs it
+	     for the config-password vault - true on iOS, wrong on macOS. Apple's
+	     validator rejects the whole package:
+	       "Invalid Code Signing Entitlements ... key
+	        'com.apple.security.keychain-access-groups' ... is not supported" (90285)
+	     A sandboxed macOS app already gets its own keychain access from its
+	     application-identifier, so nothing is lost by removing it. -->
 
 	<!-- DELIBERATELY ABSENT, and each absence is a feature that must be gated off in a
 	     MAS build rather than left to fail at runtime:
