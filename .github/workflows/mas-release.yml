@@ -1,0 +1,205 @@
+name: Mac App Store (build + upload)
+
+# Builds the Mac App Store package and uploads it to App Store Connect.
+#
+# Deliberately DISPATCH-ONLY, and deliberately NOT a submission. It puts a build
+# in App Store Connect; a human then attaches it to a version and presses
+# "Add for Review", and chooses "Manually release this version" so even an
+# approved build waits. Three gates, and a machine holds none of them.
+#
+# That shape is not caution for its own sake. On the Microsoft Store a machine
+# was allowed to commit a submission and published the app at $0 - unstoppable
+# once it started. See AGENT.md rules 10-13.
+#
+# Prerequisites (one-time, see dev/plans/apple-appstore-plan.md Gate B):
+#   APPSTORE_ISSUER_ID       org variable
+#   APPSTORE_API_KEY_ID      org variable
+#   APPSTORE_API_PRIVATE_KEY org secret (.p8 contents)
+# Signing identities are created ON DEMAND by -allowProvisioningUpdates using
+# that key, so no certificate has to be minted by hand and no .p12 is stored.
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Build and sign, but do NOT upload'
+        required: true
+        default: true
+        type: boolean
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    working-directory: app
+
+jobs:
+  build-upload:
+    runs-on: macos-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v5
+      - uses: subosito/flutter-action@v2
+        with: { channel: stable, flutter-version: 3.47.0, cache: true }
+      - uses: actions/setup-go@v6
+        with: { go-version: 'stable', cache: false }
+
+      - name: Refuse without credentials
+        # Fail here rather than 40 minutes later at the upload step.
+        env:
+          HAS_KEY: ${{ secrets.APPSTORE_API_PRIVATE_KEY != '' }}
+          ISSUER: ${{ vars.APPSTORE_ISSUER_ID }}
+          KEY_ID: ${{ vars.APPSTORE_API_KEY_ID }}
+        run: |
+          set -euo pipefail
+          missing=""
+          [ "$HAS_KEY" = "true" ] || missing="$missing APPSTORE_API_PRIVATE_KEY(secret)"
+          [ -n "$ISSUER" ] || missing="$missing APPSTORE_ISSUER_ID(var)"
+          [ -n "$KEY_ID" ] || missing="$missing APPSTORE_API_KEY_ID(var)"
+          if [ -n "$missing" ]; then
+            echo "::error::missing:$missing - see dev/plans/apple-appstore-plan.md Gate B"
+            exit 1
+          fi
+          echo "credentials present"
+
+      - name: Write the App Store Connect API key
+        # xcodebuild wants the key as a FILE. It goes to a private dir and is
+        # removed in an always() step below.
+        env:
+          P8: ${{ secrets.APPSTORE_API_PRIVATE_KEY }}
+          KEY_ID: ${{ vars.APPSTORE_API_KEY_ID }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$HOME/.appstoreconnect/private_keys"
+          chmod 700 "$HOME/.appstoreconnect/private_keys"
+          printf '%s' "$P8" > "$HOME/.appstoreconnect/private_keys/AuthKey_${KEY_ID}.p8"
+          chmod 600 "$HOME/.appstoreconnect/private_keys/AuthKey_${KEY_ID}.p8"
+          # Length only - never the contents.
+          echo "key written, $(wc -c < "$HOME/.appstoreconnect/private_keys/AuthKey_${KEY_ID}.p8") bytes"
+
+      - name: Build librclone (the only legal engine in a sandboxed build)
+        working-directory: .
+        run: bash dev/desktop/build-librclone.sh
+
+      - run: flutter config --enable-macos-desktop
+      - run: flutter pub get
+
+      - name: Build the Mac App Store flavour
+        # Generates the Flutter assets and the ephemeral xcconfig that the
+        # xcodebuild archive below consumes. AIRCLONE_MAS must travel with the
+        # sandbox entitlement - a build without it tries to spawn rclone and is
+        # killed by the sandbox.
+        run: flutter build macos --release --dart-define=AIRCLONE_MAS=true
+
+      - name: Archive with automatic signing
+        # -allowProvisioningUpdates lets Xcode create the Apple Distribution and
+        # Mac Installer Distribution certificates and the provisioning profile on
+        # demand, authenticated by the ASC key. That is why this repo stores no
+        # .p12 for App Store signing, unlike the Developer ID lane in release.yml.
+        env:
+          ISSUER: ${{ vars.APPSTORE_ISSUER_ID }}
+          KEY_ID: ${{ vars.APPSTORE_API_KEY_ID }}
+        run: |
+          set -euo pipefail
+          xcodebuild -workspace macos/Runner.xcworkspace \
+            -scheme Runner \
+            -configuration Release \
+            -archivePath "$RUNNER_TEMP/Airclone.xcarchive" \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$HOME/.appstoreconnect/private_keys/AuthKey_${KEY_ID}.p8" \
+            -authenticationKeyID "$KEY_ID" \
+            -authenticationKeyIssuerID "$ISSUER" \
+            CODE_SIGN_ENTITLEMENTS=Runner/MacAppStore.entitlements \
+            archive
+
+      - name: Put librclone inside the archived app, then re-sign
+        # The engine is bundled AFTER archiving because it is not an Xcode build
+        # input, and re-signed BEFORE export so the export's signature seals it.
+        # A dylib that the outer signature does not cover is rejected on upload.
+        run: |
+          set -euo pipefail
+          APP="$RUNNER_TEMP/Airclone.xcarchive/Products/Applications/Airclone.app"
+          test -d "$APP"
+          test -f macos/librclone/librclone.dylib
+          mkdir -p "$APP/Contents/Frameworks"
+          cp macos/librclone/librclone.dylib "$APP/Contents/Frameworks/librclone.dylib"
+          lipo -info "$APP/Contents/Frameworks/librclone.dylib"
+          IDENTITY=$(security find-identity -v -p codesigning \
+            | grep -o '"Apple Distribution: [^"]*"' | head -1 | tr -d '"')
+          if [ -z "$IDENTITY" ]; then
+            echo "::error::no Apple Distribution identity - automatic signing did not produce one"
+            exit 1
+          fi
+          echo "re-signing with: $IDENTITY"
+          codesign --force --timestamp --options runtime -s "$IDENTITY" \
+            "$APP/Contents/Frameworks/librclone.dylib"
+          codesign --force --timestamp --options runtime \
+            --entitlements macos/Runner/MacAppStore.entitlements \
+            -s "$IDENTITY" "$APP"
+          codesign --verify --strict --verbose=2 "$APP"
+
+      - name: Export the App Store package
+        env:
+          ISSUER: ${{ vars.APPSTORE_ISSUER_ID }}
+          KEY_ID: ${{ vars.APPSTORE_API_KEY_ID }}
+        run: |
+          set -euo pipefail
+          cat > "$RUNNER_TEMP/export.plist" <<'PLIST'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key><string>app-store-connect</string>
+            <key>destination</key><string>export</string>
+            <key>signingStyle</key><string>automatic</string>
+          </dict>
+          </plist>
+          PLIST
+          xcodebuild -exportArchive \
+            -archivePath "$RUNNER_TEMP/Airclone.xcarchive" \
+            -exportPath "$RUNNER_TEMP/export" \
+            -exportOptionsPlist "$RUNNER_TEMP/export.plist" \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$HOME/.appstoreconnect/private_keys/AuthKey_${KEY_ID}.p8" \
+            -authenticationKeyID "$KEY_ID" \
+            -authenticationKeyIssuerID "$ISSUER"
+          ls -lh "$RUNNER_TEMP/export"
+
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: mas-package
+          path: ${{ runner.temp }}/export/*.pkg
+          if-no-files-found: warn
+
+      - name: Upload to App Store Connect
+        if: ${{ inputs.dry_run == false }}
+        # Validate first: a rejected upload wastes nothing, but a half-uploaded
+        # build has to be cleaned up in the console by hand.
+        env:
+          ISSUER: ${{ vars.APPSTORE_ISSUER_ID }}
+          KEY_ID: ${{ vars.APPSTORE_API_KEY_ID }}
+        run: |
+          set -euo pipefail
+          PKG=$(ls "$RUNNER_TEMP/export"/*.pkg | head -1)
+          echo "validating $PKG"
+          xcrun altool --validate-app -f "$PKG" -t macos \
+            --apiKey "$KEY_ID" --apiIssuer "$ISSUER"
+          echo "uploading $PKG"
+          xcrun altool --upload-app -f "$PKG" -t macos \
+            --apiKey "$KEY_ID" --apiIssuer "$ISSUER"
+
+      - name: What happens next
+        if: ${{ inputs.dry_run == false }}
+        run: |
+          echo "Uploaded. Processing in App Store Connect takes a few minutes."
+          echo "NOTHING is submitted: attach the build to the macOS version, fill"
+          echo "the review notes, press 'Add for Review', and set"
+          echo "'Manually release this version' so approval and publication stay"
+          echo "separate events."
+          echo "https://appstoreconnect.apple.com/apps/6790176897/distribution/macos/version/inflight"
+
+      - name: Shred the API key
+        if: always()
+        run: rm -rf "$HOME/.appstoreconnect" || true
