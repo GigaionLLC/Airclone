@@ -33,36 +33,73 @@ There is **no per-release manual runbook** for macOS direct — it is fully auto
 only recurring human step is confirming the notarized zip/DMG replaced the pre-notarization zip on the
 release.
 
-## 2. Apple App Store (MAS / iOS) — FUTURE (do not attempt yet)
+## 2. Apple App Store — macOS IN PROGRESS, iOS still blocked
 
-**There is no MAS or TestFlight CI, and none should be added yet.** The Mac App Store is structurally
-incompatible with today's **subprocess** engine: a sandboxed MAS app may only exec code bundled +
-signed at build time; an inherit-sandboxed child cannot hold the parent's security-scoped folder
-grants; and OS mount is impossible in the sandbox. rclone is the process doing all local file I/O, so
-those are hard blockers, not CI problems.
+**This section was rewritten on 2026-08-20.** It previously said "FUTURE (do not
+attempt yet)" and "There is no MAS or TestFlight CI, and none should be added yet."
+Both are now wrong for macOS. The account work is done and a sandboxed build runs.
 
-**The unblock is already decided:** a **dual-engine backend** behind the existing `RcloneClient` seam —
-`HttpRcloneClient` (spawn `rclone rcd`; today's default, full features incl. mount) **plus** a new
-`LibRcloneClient` (in-process **librclone** over `dart:ffi`). In-process I/O holds the host's
-security-scoped grants, which dissolves the MAS blocker. The MAS build would be **librclone-only**
-(spawn path compile-disabled, mount hidden). **iOS** needs the same work regardless (iOS cannot spawn
-subprocesses at all), so librclone is a hard prerequisite for any Apple App Store target.
+### Mac App Store — in progress
 
-See `dev/plans/dual-engine-plan.md` and the **REVISED** section of
-`dev/plans/store-automation-plan.md` (which supersedes that file's stale "VERDICT: SKIP" heading) for
-the full rationale and build order. The iOS/App-Store submission **lanes** (App Store Connect API key
-auth, `apple-actions/upload-testflight-build`) are pre-scoped in that same plan and get wired only once
-an iOS/MAS target actually builds and archives.
+The old blocker was the **subprocess** engine. That is gone: `FfiRcloneClient` runs
+librclone in-process and ships on macOS today, and in-process I/O holds the host's
+security-scoped grants, which is what dissolved the original objection.
 
-### Prerequisites, when MAS/iOS becomes real
+Proven on real hardware, by [`mas-verify.yml`](../.github/workflows/mas-verify.yml)
+on a GitHub `macos-latest` runner — nobody on this project owns a Mac:
 
-- [ ] `LibRcloneClient` (dart:ffi) shipping + cgo librclone builds (the FFI spike is already proven on
-      Windows).
-- [ ] Security-scoped bookmark plumbing for macOS local paths.
-- [ ] MAS target + `app-sandbox`/`inherit` entitlements; an iOS Runner target that `flutter build ipa`
-      archives.
-- [ ] App Store Connect app record + API-key secrets (`APPSTORE_ISSUER_ID`, `APPSTORE_API_KEY_ID`,
-      `APPSTORE_API_PRIVATE_KEY` — see `dev/plans/store-automation-plan.md`).
+- a sandboxed build **launches and runs**, with `engine ok · rclone v1.75.0`
+- the `app-sandbox` entitlement is asserted present, so the run proves something
+- **zero** sandbox denials from Airclone itself
+
+The trick worth remembering: **the App Sandbox is enforced by the code signature
+plus the entitlement, not by the App Store.** An ad-hoc signature with
+`MacAppStore.entitlements` gives CI the same sandbox a customer gets, so "what
+breaks under the sandbox?" is answerable without hardware. That workflow is also
+the only compiler this project has for Swift.
+
+| Piece | State |
+| :--- | :--- |
+| `AIRCLONE_MAS` compile-time flavour ([`build_flavor.dart`](../app/lib/src/state/build_flavor.dart)) | done |
+| `MacAppStore.entitlements` (sandbox, 6 keys) | done |
+| Mount / Serve / Archive / Reveal gated off | done |
+| App-private config path | done |
+| Security-scoped bookmarks (Swift + Dart + schema) | done |
+| Build + upload lane ([`mas-release.yml`](../.github/workflows/mas-release.yml)) | written, **unproven** |
+| Listing copy + screenshots | not started |
+
+**Feature parity, stated plainly:** the MAS build is a *strictly smaller* app than
+the DMG — no OS mount, no archive create/extract, no "Show in Finder". That is
+the sandbox, not a shortcut, and the listing copy must say so. "Open with default
+app" DOES survive: it goes through `url_launcher`/NSWorkspace rather than a spawn.
+
+Two entitlement facts that are easy to get wrong:
+
+- **`com.apple.security.network.server` is required, and not for Serve.**
+  `librclone_object_server.dart` binds a loopback socket and is the ONLY source of
+  preview, thumbnail, video, audio and PDF bytes under the in-process engine.
+  Omitting it ships a build with no media at all.
+- Under the sandbox `$HOME` is redirected into the container, and macOS
+  pre-creates `Desktop`/`Documents`/`Downloads` there. Seeded Locations therefore
+  do NOT vanish — they render and point at empty folders, which is worse. A MAS
+  build seeds nothing and asks for the first folder.
+
+### iOS — still blocked, but no longer unknown
+
+Off-road but **proven by others**: two apps ship rclone embedded on iOS today, one
+of them Flutter + librclone like us, and one publishes its whole build script.
+Upstream rclone does NOT support it — iOS builds were disabled in 2021 and the
+iOS-support PR was closed unmerged in June 2026.
+
+Full detail, including the linker flags that cost people the most time, lives in
+[`dev/plans/apple-appstore-plan.md`](plans/apple-appstore-plan.md) Gate C2. The
+short version: `c-archive` only (`c-shared` is unsupported on iOS), a trimmed
+wrapper package to avoid `cmd/mount2` on the simulator slice, and the Xcode target
+must supply `-framework CoreFoundation -framework Security -lresolv` because Go
+does not apply its own `//go:cgo_ldflag`s for `c-archive`.
+
+Prerequisites still open for iOS: the librclone build, the FFI process-linkage
+branch, and the local-file-access redesign (iOS has no arbitrary filesystem).
 
 ## See also
 
