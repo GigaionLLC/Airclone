@@ -23,11 +23,12 @@ name: Mac App Store (build + upload)
 on:
   workflow_dispatch:
     inputs:
-      dry_run:
-        description: 'Build and sign, but do NOT upload'
+      mode:
+        description: 'dry-run = build only | validate = ask Apple if it would accept it | upload = send it'
         required: true
-        default: true
-        type: boolean
+        default: dry-run
+        type: choice
+        options: [dry-run, validate, upload]
 
 permissions:
   contents: read
@@ -280,26 +281,34 @@ jobs:
           path: ${{ runner.temp }}/export/*.pkg
           if-no-files-found: warn
 
-      - name: Upload to App Store Connect
-        if: ${{ inputs.dry_run == false }}
-        # Validate first: a rejected upload wastes nothing, but a half-uploaded
-        # build has to be cleaned up in the console by hand.
+      - name: Ask Apple whether it would accept the package
+        if: ${{ inputs.mode != 'dry-run' }}
+        # A real server-side check of signature, entitlements, provisioning
+        # profile and bundle identity - and it changes NOTHING. It runs for both
+        # validate and upload, because a rejected validation costs nothing while a
+        # half-uploaded build has to be cleaned up in the console by hand.
         env:
           ISSUER: ${{ secrets.APPSTORE_ISSUER_ID }}
           KEY_ID: ${{ vars.APPSTORE_API_KEY_ID }}
-          TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
           set -euo pipefail
           PKG=$(ls "$RUNNER_TEMP/export"/*.pkg | head -1)
           echo "validating $PKG"
-          xcrun altool --validate-app -f "$PKG" -t macos \
-            --apiKey "$KEY_ID" --apiIssuer "$ISSUER"
+          xcrun altool --validate-app -f "$PKG" -t macos             --apiKey "$KEY_ID" --apiIssuer "$ISSUER"
+
+      - name: Upload to App Store Connect
+        if: ${{ inputs.mode == 'upload' }}
+        env:
+          ISSUER: ${{ secrets.APPSTORE_ISSUER_ID }}
+          KEY_ID: ${{ vars.APPSTORE_API_KEY_ID }}
+        run: |
+          set -euo pipefail
+          PKG=$(ls "$RUNNER_TEMP/export"/*.pkg | head -1)
           echo "uploading $PKG"
-          xcrun altool --upload-app -f "$PKG" -t macos \
-            --apiKey "$KEY_ID" --apiIssuer "$ISSUER"
+          xcrun altool --upload-app -f "$PKG" -t macos             --apiKey "$KEY_ID" --apiIssuer "$ISSUER"
 
       - name: What happens next
-        if: ${{ inputs.dry_run == false }}
+        if: ${{ inputs.mode == 'upload' }}
         run: |
           echo "Uploaded. Processing in App Store Connect takes a few minutes."
           echo "NOTHING is submitted: attach the build to the macOS version, fill"
