@@ -107,6 +107,23 @@ jobs:
           TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
           set -euo pipefail
+          # Swap the Runner target's Release entitlements for the MAS ones, in CI
+          # only, never committed. This replaces an earlier attempt to pass
+          # CODE_SIGN_ENTITLEMENTS on the command line, which failed because a
+          # command-line build setting applies to EVERY target in the workspace:
+          # a dozen SPM plugin packages each tried to open the path relative to
+          # their own directory and the archive died. Release.entitlements is
+          # referenced only by Runner, so overwriting it is precisely scoped.
+          cp macos/Runner/MacAppStore.entitlements macos/Runner/Release.entitlements
+          echo "--- entitlements the Runner target will build with ---"
+          cat macos/Runner/Release.entitlements | grep -E '<key>|<true|<false' || true
+          # No CODE_SIGN_IDENTITY here. Automatic signing chooses the identity
+          # itself, and naming one is a hard conflict:
+          #   "Runner is automatically signed for development, but a conflicting
+          #    code signing identity Apple Distribution has been manually specified"
+          # The DISTRIBUTION identity is applied later, by -exportArchive with
+          # method app-store-connect. Archive as development, export as release -
+          # that is the normal Xcode flow, not a workaround.
           xcodebuild -workspace macos/Runner.xcworkspace \
             -scheme Runner \
             -configuration Release \
@@ -115,10 +132,8 @@ jobs:
             -authenticationKeyPath "$HOME/.appstoreconnect/private_keys/AuthKey_${KEY_ID}.p8" \
             -authenticationKeyID "$KEY_ID" \
             -authenticationKeyIssuerID "$ISSUER" \
-            CODE_SIGN_ENTITLEMENTS=Runner/MacAppStore.entitlements \
             CODE_SIGN_STYLE=Automatic \
             DEVELOPMENT_TEAM="$TEAM_ID" \
-            "CODE_SIGN_IDENTITY=Apple Distribution" \
             archive
           echo "--- what the archive was actually signed with ---"
           codesign -dv --verbose=2 \
@@ -137,11 +152,17 @@ jobs:
           mkdir -p "$APP/Contents/Frameworks"
           cp macos/librclone/librclone.dylib "$APP/Contents/Frameworks/librclone.dylib"
           lipo -info "$APP/Contents/Frameworks/librclone.dylib"
+          # The archive is signed for DEVELOPMENT (automatic signing chose it);
+          # -exportArchive applies the distribution identity afterwards. So this
+          # re-sign only has to produce a VALID signature so the bundle verifies
+          # before export - prefer a distribution identity if one exists, else
+          # use whatever automatic signing did provision.
           IDENTITY=$(security find-identity -v -p codesigning \
-            | grep -o '"Apple Distribution: [^"]*"' | head -1 | tr -d '"' || true)
+            | grep -oE '"Apple (Distribution|Development)[^"]*"' \
+            | head -1 | tr -d '"' || true)
           if [ -z "$IDENTITY" ]; then
-            echo "::error::no Apple Distribution identity in the keychain."
-            echo "Automatic signing did not produce one. Identities present:"
+            echo "::error::no Apple signing identity in the keychain at all."
+            echo "Automatic signing provisioned nothing. Identities present:"
             security find-identity -v -p codesigning || true
             exit 1
           fi
