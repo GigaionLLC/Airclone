@@ -23,6 +23,7 @@ import '../state/external_config_backup.dart';
 import '../state/file_ops.dart';
 import '../state/jobs_controller.dart';
 import '../state/local_locations.dart';
+import '../state/mac_bookmarks.dart';
 import '../state/mount_policy.dart';
 import '../state/pane_layout.dart';
 import '../state/recent_locations.dart';
@@ -1272,6 +1273,20 @@ class _SectionHeader extends ConsumerWidget {
 
 /// Opens the native folder picker and adds the chosen folder to Locations.
 Future<void> _addFolderViaPicker(WidgetRef ref) async {
+  // A sandboxed build MUST take the native panel, not file_selector: the plugin
+  // returns a bare path and discards the NSURL carrying the sandbox extension,
+  // so there would be nothing left to make a bookmark from and the Location
+  // would break at the next launch. See state/mac_bookmarks.dart.
+  if (bookmarksRequired) {
+    final grant = await grantFolder();
+    if (grant != null) {
+      ref
+          .read(userLocationsProvider.notifier)
+          .addFolder(grant.path, bookmark: grant.bookmark);
+      await startAccess(grant.bookmark);
+    }
+    return;
+  }
   final dir = await getDirectoryPath();
   if (dir != null && dir.isNotEmpty) {
     ref.read(userLocationsProvider.notifier).addFolder(dir);
@@ -1280,6 +1295,12 @@ Future<void> _addFolderViaPicker(WidgetRef ref) async {
 
 /// Adds any dropped paths that are directories to Locations.
 void _addDroppedFolders(WidgetRef ref, List<String> paths) {
+  // Drag-and-drop carries no grant a sandboxed build can bookmark: the drop
+  // plugin hands Dart a Uri, not an NSURL with a sandbox extension. Rather than
+  // add a Location that silently cannot be read, MAS takes the picker route
+  // only - addFolder refuses a bookmark-less add there anyway, so this is the
+  // honest early return rather than a second line of defence.
+  if (bookmarksRequired) return;
   final notifier = ref.read(userLocationsProvider.notifier);
   for (final p in paths) {
     if (Directory(p).existsSync()) notifier.addFolder(p);

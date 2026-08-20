@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../rclone/models/remote.dart';
+import 'mac_bookmarks.dart';
 
 /// What a [LocalLocation] represents — drives the sidebar icon. [folder] is a
 /// user-added custom location.
@@ -27,14 +28,34 @@ enum LocalKind {
 /// with [Remote.fs] rooted at the folder/drive.
 @immutable
 class LocalLocation {
-  const LocalLocation({required this.remote, required this.kind});
+  const LocalLocation({
+    required this.remote,
+    required this.kind,
+    this.bookmark,
+  });
   final Remote remote;
   final LocalKind kind;
+
+  /// Base64 security-scoped bookmark, on the sandboxed Mac App Store build only.
+  ///
+  /// There, the path in [remote] is not enough: a sandboxed app may only read a
+  /// folder it holds a live grant for, and the grant does not survive a
+  /// relaunch. This token is what re-acquires it. Null everywhere else, and null
+  /// on a MAS entry that predates the bookmark (which then needs re-granting
+  /// rather than silently failing). See state/mac_bookmarks.dart.
+  final String? bookmark;
+
+  LocalLocation copyWith({String? bookmark}) => LocalLocation(
+    remote: remote,
+    kind: kind,
+    bookmark: bookmark ?? this.bookmark,
+  );
 
   Map<String, dynamic> toJson() => {
     'name': remote.name,
     'fs': remote.fs,
     'kind': kind.name,
+    if (bookmark != null) 'bookmark': bookmark,
   };
 
   factory LocalLocation.fromJson(Map<String, dynamic> j) => LocalLocation(
@@ -48,6 +69,8 @@ class LocalLocation {
       (k) => k.name == j['kind'],
       orElse: () => LocalKind.folder,
     ),
+    // Absent for every pre-bookmark entry and on every non-MAS platform.
+    bookmark: j['bookmark'] as String?,
   );
 }
 
@@ -85,6 +108,14 @@ String androidStorageRoot = '/storage/emulated/0';
 /// The default set of user folders (Home + standard XDG-ish folders) for first run.
 List<LocalLocation> buildDefaultUserFolders() {
   final out = <LocalLocation>[];
+
+  // A sandboxed build must seed NOTHING. Under the sandbox `$HOME` is redirected
+  // into the app's container, and macOS pre-creates Desktop/Documents/Downloads
+  // there - so every default would pass its existsSync() check, render happily
+  // in the sidebar, and point at an empty folder that is not the user's. That is
+  // worse than an empty sidebar: it looks like the app works and lost your
+  // files. First run is "add your first folder", granted through NSOpenPanel.
+  if (bookmarksRequired) return out;
 
   if (Platform.isAndroid) {
     // Android's fixed shared-storage folder names (Download is singular).
@@ -170,7 +201,9 @@ final drivesProvider = Provider<List<LocalLocation>>((ref) {
         );
       }
     }
-  } else {
+  } else if (!bookmarksRequired) {
+    // "/" is unbrowsable under the sandbox and no grant can ever cover it, so a
+    // MAS build must not offer it. Elsewhere it is the POSIX filesystem root.
     out.add(
       const LocalLocation(
         remote: Remote(name: 'Computer', type: 'local', fs: '/', isLocal: true),
@@ -192,6 +225,30 @@ class UserLocations extends Notifier<List<LocalLocation>> {
     return buildDefaultUserFolders();
   }
 
+  /// Re-acquire the sandbox grant for every persisted Location, on a MAS build.
+  ///
+  /// A path alone is worthless to a sandboxed app after relaunch, so every
+  /// Location that came back from disk has to have its bookmark resolved and
+  /// started before anything tries to read it. Grants are held for the session
+  /// rather than per operation: transfers run as `_async` RC jobs that outlive
+  /// the call that started them, so releasing early would revoke access
+  /// mid-copy.
+  ///
+  /// A Location whose bookmark will not resolve is KEPT, not dropped - silently
+  /// deleting somebody's folder list because macOS invalidated a token would be
+  /// far worse than showing an entry that needs re-granting. A stale bookmark
+  /// still works and is re-created here so the staleness does not compound.
+  Future<void> _reacquireGrants() async {
+    if (!bookmarksRequired) return;
+    for (final loc in state) {
+      final b = loc.bookmark;
+      if (b == null || b.isEmpty) continue;
+      final resolved = await resolveBookmark(b);
+      if (resolved == null) continue; // needs re-granting; entry stays visible
+      await startAccess(b);
+    }
+  }
+
   Future<void> _load() async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -202,6 +259,7 @@ class UserLocations extends Notifier<List<LocalLocation>> {
           .map(LocalLocation.fromJson)
           .toList();
       state = list;
+      await _reacquireGrants();
     } catch (_) {
       // leave the defaults in place on any failure
     }
@@ -220,8 +278,16 @@ class UserLocations extends Notifier<List<LocalLocation>> {
   }
 
   /// Add a folder by absolute path (no-op if it doesn't exist or is already present).
-  void addFolder(String path) {
-    if (!Directory(path).existsSync()) return;
+  /// Add a folder Location.
+  ///
+  /// [bookmark] is the security-scoped token from `grantFolder` and is REQUIRED
+  /// on a sandboxed build - without it the entry would be unusable after the
+  /// next launch. The existsSync() gate is skipped when a bookmark is supplied,
+  /// because the user just picked the folder through PowerBox: the grant is
+  /// live, and a stat is not what proves it.
+  void addFolder(String path, {String? bookmark}) {
+    if (bookmark == null && !Directory(path).existsSync()) return;
+    if (bookmarksRequired && bookmark == null) return;
     final fs = fsRoot(path);
     if (state.any((l) => l.remote.fs == fs)) return;
     state = [
@@ -234,6 +300,7 @@ class UserLocations extends Notifier<List<LocalLocation>> {
           isLocal: true,
         ),
         kind: LocalKind.folder,
+        bookmark: bookmark,
       ),
     ];
     _persist();
