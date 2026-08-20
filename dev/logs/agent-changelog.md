@@ -4,6 +4,42 @@ All changes made by AI agents are tracked chronologically below (most recent fir
 
 ---
 
+## [2026-08-20] - Mac App Store lane validated by Apple
+
+**Agent:** Claude Opus 5 - `main`
+**Files Modified:** `.github/workflows/mas-release.yml` (new), `mas-verify.yml` (new),
+`app/macos/Runner/{SecurityScopedBookmarks.swift,MainFlutterWindow.swift,MacAppStore.entitlements,Info.plist}`,
+`Runner.xcodeproj/project.pbxproj`, `app/lib/src/state/{mac_bookmarks.dart,local_locations.dart,native_actions_policy.dart,archive_service.dart,os_integration.dart}`,
+`app/lib/src/ui/{home_screen,context_menu}.dart`, `docs/store/apple/listing-en-US.md` (new),
+`dev/apple-appstore-and-macos.md`, `docs/store/README.md`
+**Database/API Changes:** Distribution certificates and the Mac App Store
+provisioning profile created through the App Store Connect API. Org secrets added:
+`APPLE_MAS_APP_P12_BASE64`, `APPLE_MAS_INSTALLER_P12_BASE64`, `APPLE_MAS_P12_PASSWORD`,
+`APPLE_MAS_PROVISIONING_PROFILE_BASE64`. `APPSTORE_ISSUER_ID` moved from variable to
+secret after it was printed in a public CI log.
+**Summary:** `xcrun altool --validate-app` returns **VERIFY SUCCEEDED with no errors**
+for a 136 MB signed `Airclone.pkg`. Nothing uploaded, nothing submitted.
+
+Security-scoped bookmarks landed (Swift + Dart + schema), so a sandboxed build can
+read the folders a user grants. `mas-verify.yml` proves on real Apple hardware that
+the sandboxed app launches with `engine ok - rclone v1.75.0` and zero denials - the
+App Sandbox is enforced by signature+entitlement, not by the App Store, so an ad-hoc
+signature on a CI Mac reproduces exactly what a customer gets.
+
+Nine failed runs preceded the green one. The instructive ones: `open -a` resolves an
+app NAME not a path; a workspace-wide `CODE_SIGN_ENTITLEMENTS` is applied to every
+SPM plugin target; `set -e`+pipefail kills `X=$(...|grep)` at the assignment so the
+guard below is unreachable; a locked keychain makes `-allowProvisioningUpdates`
+create nothing and report no error; and "Cloud signing permission error" restricts
+only Xcode's cloud path, not the Certificates API - testing that boundary is what
+kept the CI key at App Manager instead of Admin.
+
+Apple's two rejections were declarative, not structural: a missing
+`LSApplicationCategoryType`, and `keychain-access-groups`, which is unsupported on
+macOS and had been added here on a correct-for-iOS assumption.
+
+---
+
 ## [2026-08-19] - Apple App Store account configured; MAS build foundation; encrypted notes vault
 
 **Agent:** Claude Opus 5 - `main`
