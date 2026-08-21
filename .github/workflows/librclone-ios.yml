@@ -1,0 +1,63 @@
+name: librclone (iOS spike)
+
+# Answers ONE question: does librclone build and link for iOS?
+#
+# It is deliberately isolated from the app. Nothing here touches the Flutter
+# project, so a failure costs nothing and a success is a real, downloadable
+# xcframework rather than an opinion. Everything upstream says this is off-road -
+# rclone disabled iOS builds in 2021 and closed the iOS-support PR unmerged in
+# June 2026 - but two App Store apps ship rclone embedded on iOS today, one of
+# them Flutter + librclone like us, so the path exists.
+#
+# See dev/plans/apple-appstore-plan.md Gate C2.
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'dev/ios/**'
+      - '.github/workflows/librclone-ios.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with: { go-version: 'stable', cache: false }
+
+      - name: Toolchain
+        run: |
+          go version
+          xcodebuild -version
+          echo "--- Go's own iOS support ---"
+          go tool dist list | grep '^ios/' || echo "no ios targets!"
+
+      - name: Build librclone for iOS
+        run: bash dev/ios/build-librclone-ios.sh
+
+      - name: Inspect what came out
+        run: |
+          set -uo pipefail
+          XC="app/ios/librclone/librclone.xcframework"
+          echo "--- xcframework layout ---"
+          find "$XC" | sed 's/^/  /'
+          echo "--- Info.plist ---"
+          plutil -p "$XC/Info.plist" || true
+          echo "--- the exported symbols Dart needs ---"
+          for a in $(find "$XC" -name '*.a'); do
+            echo "== $a"
+            nm -g "$a" 2>/dev/null | grep -E '_Rclone(Initialize|Finalize|RPC|FreeString)$' | sort -u | sed 's/^/    /' || \
+              echo "    NONE FOUND - the archive would be useless to dart:ffi"
+          done
+
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: librclone-ios-xcframework
+          path: app/ios/librclone/librclone.xcframework/**
+          if-no-files-found: warn
