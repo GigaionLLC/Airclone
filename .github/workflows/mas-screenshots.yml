@@ -200,6 +200,7 @@ jobs:
           SHOT_H: '800'
           TOP: '140'    # (1080-800)/2 - centres the window vertically
           LEFT: '320'   # (1920-1280)/2 - and horizontally
+          DQ: '"'
         run: |
           set -uo pipefail
           mkdir -p ../artifacts/shots
@@ -240,14 +241,34 @@ jobs:
           # runner has not granted, and it fails silently.
           sudo killall -9 UserNotificationCenter 2>/dev/null || true
           sleep 3
-          # Open the seeded remote so the shots show files rather than an empty
-          # pane. Needs the accessibility grant above; without it this is a no-op
-          # and the artifacts simply show the home view.
-          osascript \
-            -e 'tell application "System Events" to tell process "Airclone"' \
-            -e '  click static text "Demo Cloud" of window 1' \
-            -e 'end tell' 2>&1 | head -3 || echo "::warning::could not click Demo Cloud"
+          # Flutter renders its own widgets, so System Events cannot address them
+          # by name: `static text "Demo Cloud"` fails with -1728. Coordinates work,
+          # and the geometry is deterministic because the window is pinned to a
+          # known size and origin.
+          shot() {  # $1 = output name
+            sudo killall -9 UserNotificationCenter 2>/dev/null || true
+            sleep 1
+            screencapture -x "../artifacts/shots/$1.png"
+            sips -c "${SHOT_H}" "${SHOT_W}" "../artifacts/shots/$1.png" > /dev/null
+          }
+          click() {  # $1,$2 = window-relative x,y
+            osascript -e "tell application ${DQ}System Events${DQ} to click at {$(( LEFT + $1 )), $(( TOP + $2 ))}" 2>&1 | head -2 || true
+          }
+
+          shot 01-home
+
+          click 374 242      # the Demo Cloud tile
           sleep 6
+          shot 02-browse
+
+          click 1030 98      # grid view
+          sleep 4
+          shot 03-grid
+
+          click 1063 98      # gallery view
+          sleep 5
+          shot 04-gallery
+
           screencapture -x ../artifacts/shots/99-fullscreen.png
           # sips ships with macOS; pip3 does not work here (PEP 668 externally
           # managed environment on the Homebrew python). Its crop is CENTRED,
