@@ -138,6 +138,11 @@ jobs:
           set -uo pipefail
           APP="build/macos/Build/Products/Release/Airclone.app"
           open "$PWD/$APP"; sleep 25
+          echo "--- is the seeded remote still in the config the app used? ---"
+          CONF="$HOME/Library/Containers/com.gigaionllc.airclone/Data/Library/Application Support/Airclone/rclone.conf"
+          if [ -f "$CONF" ]; then cat "$CONF"; else echo "CONFIG GONE - the app replaced or moved it"; fi
+          echo "--- what does the engine itself think it loaded? ---"
+          ls -la "$HOME/Library/Containers/com.gigaionllc.airclone/Data/Library/Application Support/" || true
           pkill -f "Airclone.app/Contents/MacOS/Airclone" || true
           sleep 3
           echo "--- containers ---"
@@ -188,11 +193,21 @@ jobs:
           # shot. My earlier theory - that `-R` specifically caused it - was
           # wrong; it happens with plain -x too. So: burn one capture to trigger
           # the prompt, dismiss it, and only then take the real one.
+          # The consent prompt persists until dismissed, and osascript keystroke
+          # does nothing here because synthetic events need accessibility
+          # permission the runner has not granted. Try harder, and REPORT which
+          # approach worked so the next run is not another guess.
           screencapture -x /tmp/warmup.png || true
-          sleep 2
-          osascript -e 'tell application "System Events" to keystroke return' 2>/dev/null || true
-          osascript -e 'tell application "System Events" to key code 53' 2>/dev/null || true
-          sleep 2
+          sleep 3
+          echo "--- who owns the prompt? ---"
+          ps aux | grep -iE 'notification|tcc|screencapt|control' | grep -v grep | awk '{print $11}' | sort -u | head
+          echo "--- SIP (decides whether TCC can be written at all) ---"
+          csrutil status || true
+          echo "--- try dismissing ---"
+          sudo killall -9 UserNotificationCenter 2>/dev/null && echo "killed UserNotificationCenter" || true
+          sudo killall -9 ScreenCaptureAgent 2>/dev/null && echo "killed ScreenCaptureAgent" || true
+          sudo killall -9 controlcenter 2>/dev/null && echo "killed controlcenter" || true
+          sleep 3
           screencapture -x ../artifacts/shots/99-fullscreen.png
           # sips ships with macOS; pip3 does not work here (PEP 668 externally
           # managed environment on the Homebrew python). Its crop is CENTRED,
@@ -204,6 +219,11 @@ jobs:
           for f in ../artifacts/shots/*.png; do
             python3 -c "import struct,sys;d=open(sys.argv[1],'rb').read(33);w,h=struct.unpack('>II',d[16:24]);print(sys.argv[1],f'{w}x{h}','OK' if (w,h)==(${SHOT_W},${SHOT_H}) else 'NOT an App Store size')" "$f"
           done
+          echo "--- is the seeded remote still in the config the app used? ---"
+          CONF="$HOME/Library/Containers/com.gigaionllc.airclone/Data/Library/Application Support/Airclone/rclone.conf"
+          if [ -f "$CONF" ]; then cat "$CONF"; else echo "CONFIG GONE - the app replaced or moved it"; fi
+          echo "--- what does the engine itself think it loaded? ---"
+          ls -la "$HOME/Library/Containers/com.gigaionllc.airclone/Data/Library/Application Support/" || true
           pkill -f "Airclone.app/Contents/MacOS/Airclone" || true
 
       - uses: actions/upload-artifact@v6
