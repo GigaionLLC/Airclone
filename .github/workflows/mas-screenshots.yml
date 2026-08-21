@@ -129,6 +129,24 @@ jobs:
           echo "--- seeded config ---"
           cat "$C/Library/Application Support/Airclone/rclone.conf"
 
+      - name: Find where the app really keeps its config
+        if: ${{ inputs.mode == 'capture' }}
+        # Two guesses at this path have now failed - .../Application Support/
+        # Airclone/ and .../com.gigaionllc.airclone/. Rather than guess a third
+        # time, run the app once and look.
+        run: |
+          set -uo pipefail
+          APP="build/macos/Build/Products/Release/Airclone.app"
+          open "$PWD/$APP"; sleep 25
+          pkill -f "Airclone.app/Contents/MacOS/Airclone" || true
+          sleep 3
+          echo "--- containers ---"
+          ls -la "$HOME/Library/Containers/" | grep -i airclone || echo "NO CONTAINER"
+          echo "--- everything the app created ---"
+          find "$HOME/Library/Containers" -ipath '*airclone*' -maxdepth 8             \( -name '*.conf' -o -name '*.plist' -o -type d -name 'Application Support' \) 2>/dev/null | head -30
+          echo "--- any rclone.conf anywhere under HOME ---"
+          find "$HOME" -name 'rclone.conf' -not -path '*/go/*' 2>/dev/null | head -10
+
       - name: Capture at exact App Store dimensions
         if: ${{ inputs.mode == 'capture' }}
         # The runner offers 800x600 up to 1920x1080 and NONE of Apple's exact Mac
@@ -165,6 +183,16 @@ jobs:
           # appears in the screenshot itself. Plain full-screen -x does not, so
           # capture the screen and crop to the window offline - identical pixels,
           # no prompt, no rescale.
+          # macOS 26 raises a screen-recording consent prompt on the FIRST
+          # screencapture of a session, and it renders fast enough to land in the
+          # shot. My earlier theory - that `-R` specifically caused it - was
+          # wrong; it happens with plain -x too. So: burn one capture to trigger
+          # the prompt, dismiss it, and only then take the real one.
+          screencapture -x /tmp/warmup.png || true
+          sleep 2
+          osascript -e 'tell application "System Events" to keystroke return' 2>/dev/null || true
+          osascript -e 'tell application "System Events" to key code 53' 2>/dev/null || true
+          sleep 2
           screencapture -x ../artifacts/shots/99-fullscreen.png
           # sips ships with macOS; pip3 does not work here (PEP 668 externally
           # managed environment on the Homebrew python). Its crop is CENTRED,
