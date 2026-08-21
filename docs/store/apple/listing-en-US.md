@@ -131,8 +131,9 @@ screenshot.
 
 ## Screenshots — Mac, 1280×800 / 1440×900 / 2560×1600 / 2880×1800
 
-Ship 5–6. Storage convention: `docs/store/apple/mac/` with a `store-ready/`
-subfolder and a `MANIFEST.md`, matching `docs/store/play/`.
+Ship 5–6. Captured automatically on a CI Mac — see
+[`mac/store-ready/MANIFEST.md`](mac/store-ready/MANIFEST.md) for what is banked so
+far and how the exact dimensions are achieved.
 
 1. Dual-pane explorer — cloud on one side, local on the other (hero)
 2. Photo gallery grid with real thumbnails

@@ -1,7 +1,7 @@
 # Mac App Store screenshots — store-ready
 
 Captured on a GitHub `macos-latest` runner by
-[`mas-screenshots.yml`](../../../../.github/workflows/mas-screenshots.yml), from the
+[`mas-screenshots.yml`](../../../../../.github/workflows/mas-screenshots.yml), from the
 **sandboxed** build — the one customers get, with its empty Locations sidebar and
 without mount/archive/reveal. A screenshot of a feature the shipped binary lacks
 is a straightforward rejection.
@@ -19,7 +19,7 @@ no rescale.
 
 The remote is an rclone **alias** pointing inside the app's sandbox container, and
 the photographs are the same CC0 set the Play listing uses — see
-[`../../play/DEMO-MEDIA-PROVENANCE.md`](../../play/DEMO-MEDIA-PROVENANCE.md).
+[`../../../play/DEMO-MEDIA-PROVENANCE.md`](../../../play/DEMO-MEDIA-PROVENANCE.md).
 
 Real media is not a nicety here: Google rejected a screenshot from this project as
 *"placeholder images or stock photos"* when it showed gradient tiles named
