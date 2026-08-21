@@ -101,8 +101,24 @@ jobs:
         run: |
           set -euo pipefail
           C="$HOME/Library/Containers/com.gigaionllc.airclone/Data"
-          mkdir -p "$C/Library/Application Support/Airclone"
           mkdir -p "$C/Demo/Photos" "$C/Demo/Documents" "$C/Demo/Videos"
+          # Fetch the same CC0 photographs the Play listing uses. Real media is not
+          # optional: Google rejected a screenshot from this project as
+          # "placeholder images or stock photos" when it showed gradient tiles.
+          # Provenance: docs/store/play/DEMO-MEDIA-PROVENANCE.md
+          i=0
+          for U in             "Paxos_coastline_at_sunrise_DSC06029.jpg"             "Boat_Harbour_Beach_20190722-004.jpg"             "Mountain_and_Landscape.jpg"             "Garden_flowers,_Runita,_Moldova.jpg"             "Forest_trail,_Oberlibbach.jpg" ; do
+            i=$((i+1))
+            curl -fsSL -A "Airclone-CI/1.0"               "https://commons.wikimedia.org/wiki/Special:FilePath/$U?width=1600"               -o "$C/Demo/Photos/IMG_010$i.jpg" || echo "::warning::could not fetch $U"
+          done
+          ls -la "$C/Demo/Photos" || true
+          # path_provider keys application-support by BUNDLE IDENTIFIER on macOS,
+          # not by app name. The first attempt wrote to .../Application Support/
+          # Airclone/ and the app never looked there, so the remote silently did
+          # not exist. Write both, cheaply.
+          for D in "Airclone" "com.gigaionllc.airclone"; do
+            mkdir -p "$C/Library/Application Support/$D"
+          done
           cat > "$C/Library/Application Support/Airclone/rclone.conf" <<'CONF'
           [Demo Cloud]
           type = alias
@@ -143,9 +159,14 @@ jobs:
             -e "tell application \"System Events\" to tell process \"Airclone\" to set size of front window to {${SHOT_W}, ${SHOT_H}}" \
             || echo "::warning::window geometry could not be set"
           sleep 4
-          screencapture -x -R "0,${TOP},${SHOT_W},${SHOT_H}" ../artifacts/shots/01-explorer.png
-          # Full screen too: if the geometry did not take, this is what shows why.
-          screencapture -x ../artifacts/shots/99-fullscreen.png || true
+          # NOT `screencapture -R`: on macOS 26 a region capture raises the
+          # "bypass the system private window picker" consent dialog, which then
+          # appears in the screenshot itself. Plain full-screen -x does not, so
+          # capture the screen and crop to the window offline - identical pixels,
+          # no prompt, no rescale.
+          screencapture -x ../artifacts/shots/99-fullscreen.png
+          pip3 install --quiet --disable-pip-version-check pillow
+          python3 -c "from PIL import Image; im=Image.open('../artifacts/shots/99-fullscreen.png'); im.crop((0,${TOP},${SHOT_W},${TOP}+${SHOT_H})).save('../artifacts/shots/01-explorer.png')"
 
           for f in ../artifacts/shots/*.png; do
             python3 -c "import struct,sys;d=open(sys.argv[1],'rb').read(33);w,h=struct.unpack('>II',d[16:24]);print(sys.argv[1],f'{w}x{h}','OK' if (w,h)==(${SHOT_W},${SHOT_H}) else 'NOT an App Store size')" "$f"

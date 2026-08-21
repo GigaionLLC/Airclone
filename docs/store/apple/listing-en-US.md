@@ -1,7 +1,16 @@
 # Mac App Store — listing details (English, United States)
 
-Paste-ready copy for App Store Connect → macOS version. **DRAFT — needs review before
-it goes in.**
+Paste-ready copy for App Store Connect → macOS version.
+
+**Decisions taken 2026-08-21** (both were flagged as judgement calls; either is one
+edit to reverse):
+- The `ABOUT THIS VERSION` paragraph **stays**. Someone paying $1.49 and then
+  discovering the sandboxed build has no mount or archive is a bad review we would
+  have earned, and a listing that matches the binary reads well to a reviewer.
+- Keywords use the **conservative set**, without third-party marks. A rejection
+  costs a review cycle on a first submission; the marginal discovery does not.
+  Terms can be added in a later version once approved - that direction is cheap,
+  the reverse is not.
 
 Three constraints shape every word here, and each one has already cost this project
 a review cycle on another store:
@@ -64,25 +73,31 @@ This is the Mac App Store edition, which runs inside Apple's App Sandbox. Mounti
 
 ## Keywords (100 max, comma-separated)
 
-```
-cloud storage,file manager,sync,backup,file transfer,s3,webdav,sftp,drive,dropbox,onedrive
-```
-
-90 characters.
-
-⚠️ **Judgement call to confirm.** `dropbox`, `onedrive` and `drive` are third-party
-trademarks. Naming genuinely supported services is normal for a client app and is
-usually accepted, but Apple *has* rejected keyword sets for third-party marks. A
-zero-risk alternative, 78 characters:
+**Use this one** (78 characters):
 
 ```
 cloud storage,file manager,sync,backup,file transfer,s3,webdav,sftp,remote files
+```
+
+Rejected alternative, kept for the record (90 characters). `dropbox`, `onedrive`
+and `drive` are third-party trademarks; naming genuinely supported services is
+normal for a client app and usually accepted, but Apple *has* rejected keyword
+sets over third-party marks, and a first submission is the wrong place to spend a
+review cycle finding out:
+
+```
+cloud storage,file manager,sync,backup,file transfer,s3,webdav,sftp,drive,dropbox,onedrive
 ```
 
 `rclone` is deliberately **absent from keywords** even though it is central to the
 description — a trademark in the keyword field is the highest-risk placement.
 
 ## URLs
+
+**Version: 0.6.8** — set in App Store Connect to match the app, rather than the
+placeholder 1.0 the record was created with. Apple requires the submitted version
+and the build's CFBundleShortVersionString to agree, and three stores disagreeing
+about what version Airclone is would be worse than a modest-looking number.
 
 | Field | Value |
 | :--- | :--- |
