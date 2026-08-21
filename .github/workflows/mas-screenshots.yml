@@ -49,7 +49,7 @@ jobs:
           echo "--- current display ---"
           system_profiler SPDisplaysDataType 2>/dev/null | grep -iE "resolution|display type|pixel" || true
           echo "--- displayplacer ---"
-          brew install displayplacer > /dev/null 2>&1 || echo "displayplacer install failed"
+          brew install displayplacer cliclick > /dev/null 2>&1 || echo "brew install failed"
           displayplacer list 2>/dev/null | grep -iE "^ *mode|res:|Persistent screen id|current mode" | head -40 || \
             echo "displayplacer unavailable"
           echo "--- screencapture sanity ---"
@@ -252,7 +252,10 @@ jobs:
             sips -c "${SHOT_H}" "${SHOT_W}" "../artifacts/shots/$1.png" > /dev/null
           }
           click() {  # $1,$2 = window-relative x,y
-            osascript -e "tell application ${DQ}System Events${DQ} to click at {$(( LEFT + $1 )), $(( TOP + $2 ))}" 2>&1 | head -2 || true
+            # cliclick posts real CGEvents. System Events' `click at` returned no
+            # error and had no effect - it is not a reliable way to deliver a
+            # click into an application window.
+            cliclick "c:$(( LEFT + $1 )),$(( TOP + $2 ))" || echo "::warning::click failed"
           }
 
           shot 01-home
