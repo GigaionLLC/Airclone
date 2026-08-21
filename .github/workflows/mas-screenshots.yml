@@ -257,20 +257,31 @@ jobs:
             # click into an application window.
             cliclick "c:$(( LEFT + $1 )),$(( TOP + $2 ))" || echo "::warning::click failed"
           }
+          dclick() {  # double-click, for opening a folder row
+            cliclick "dc:$(( LEFT + $1 )),$(( TOP + $2 ))" || echo "::warning::double-click failed"
+          }
 
           shot 01-home
 
-          click 374 242      # the Demo Cloud tile
+          # Coordinates are read off the previous run's frames. The toolbar
+          # RE-LAYS OUT after navigation - the view toggles sit at x~778/810/842
+          # once a remote is open, not at the home-view positions - so the
+          # earlier grid/gallery clicks landed on the filter box instead.
+          click 374 242         # Demo Cloud tile
           sleep 6
           shot 02-browse
 
-          click 1030 98      # grid view
-          sleep 4
-          shot 03-grid
+          dclick 310 185        # open Photos
+          sleep 7
+          shot 03-photos
 
-          click 1063 98      # gallery view
-          sleep 5
+          click 842 98          # gallery view - the shot that needs real media
+          sleep 8
           shot 04-gallery
+
+          click 810 98          # grid view
+          sleep 5
+          shot 05-grid
 
           screencapture -x ../artifacts/shots/99-fullscreen.png
           # sips ships with macOS; pip3 does not work here (PEP 668 externally
