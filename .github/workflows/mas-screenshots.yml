@@ -266,9 +266,30 @@ jobs:
           ls -la "$HOME/Library/Containers/com.gigaionllc.airclone/Data/Library/Application Support/" || true
           pkill -f "Airclone.app/Contents/MacOS/Airclone" || true
 
+      - name: Collect any crash report
+        if: ${{ always() && inputs.mode == 'capture' }}
+        # The app died during this run. A crash in the SANDBOXED build is a
+        # shipping blocker, not a screenshot inconvenience, so the report is
+        # collected as a first-class artifact.
+        run: |
+          set -uo pipefail
+          mkdir -p ../artifacts/crash
+          for D in "$HOME/Library/Logs/DiagnosticReports" /Library/Logs/DiagnosticReports; do
+            [ -d "$D" ] || continue
+            find "$D" -iname "*irclone*" -exec cp {} ../artifacts/crash/ \; 2>/dev/null || true
+          done
+          ls -la ../artifacts/crash/ || true
+          for f in ../artifacts/crash/*; do
+            [ -f "$f" ] || continue
+            echo "===== $f ====="
+            head -60 "$f"
+          done
+
       - uses: actions/upload-artifact@v6
         if: ${{ always() && inputs.mode == 'capture' }}
         with:
           name: mas-screenshots
-          path: artifacts/shots/*.png
+          path: |
+            artifacts/shots/*.png
+            artifacts/crash/*
           if-no-files-found: warn
