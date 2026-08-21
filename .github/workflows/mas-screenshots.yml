@@ -128,6 +128,18 @@ jobs:
             "$C/Library/Application Support/Airclone/rclone.conf"
           echo "--- seeded config ---"
           cat "$C/Library/Application Support/Airclone/rclone.conf"
+          # THIS copy is the one that matters. path_provider keys its
+          # application-support directory by BUNDLE IDENTIFIER on macOS, so the
+          # app reads .../Application Support/com.gigaionllc.airclone/. An
+          # earlier edit dropped this line and that directory stayed empty -
+          # which is the whole reason the seeded remote never appeared. The
+          # config was correct, complete, and in a directory nothing reads.
+          cp "$C/Library/Application Support/Airclone/rclone.conf" \
+             "$C/Library/Application Support/com.gigaionllc.airclone/rclone.conf"
+          echo "--- configs present (the bundle-id one must be non-empty) ---"
+          ls -la "$C/Library/Application Support/Airclone/rclone.conf" \
+                 "$C/Library/Application Support/com.gigaionllc.airclone/rclone.conf"
+          test -s "$C/Library/Application Support/com.gigaionllc.airclone/rclone.conf"
 
       - name: Find where the app really keeps its config
         if: ${{ inputs.mode == 'capture' }}
@@ -199,14 +211,11 @@ jobs:
           # approach worked so the next run is not another guess.
           screencapture -x /tmp/warmup.png || true
           sleep 3
-          echo "--- who owns the prompt? ---"
-          ps aux | grep -iE 'notification|tcc|screencapt|control' | grep -v grep | awk '{print $11}' | sort -u | head
-          echo "--- SIP (decides whether TCC can be written at all) ---"
-          csrutil status || true
-          echo "--- try dismissing ---"
-          sudo killall -9 UserNotificationCenter 2>/dev/null && echo "killed UserNotificationCenter" || true
-          sudo killall -9 ScreenCaptureAgent 2>/dev/null && echo "killed ScreenCaptureAgent" || true
-          sudo killall -9 controlcenter 2>/dev/null && echo "killed controlcenter" || true
+          # UserNotificationCenter owns the prompt and killing it clears it -
+          # confirmed, this produced the first clean frame. osascript keystroke
+          # does NOT work: synthetic events need accessibility permission the
+          # runner has not granted, and it fails silently.
+          sudo killall -9 UserNotificationCenter 2>/dev/null || true
           sleep 3
           screencapture -x ../artifacts/shots/99-fullscreen.png
           # sips ships with macOS; pip3 does not work here (PEP 668 externally
