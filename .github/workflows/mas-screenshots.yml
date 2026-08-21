@@ -1,0 +1,139 @@
+name: Mac App Store (screenshots)
+
+# Captures App Store screenshots of the SANDBOXED build on a real Mac.
+#
+# Apple accepts only exact sizes for Mac: 1280x800, 1440x900, 2560x1600 or
+# 2880x1800. The runner's default display is smaller than all of them, so step
+# one is finding out what resolutions it will actually accept - hence the
+# diagnostic mode below, which is cheap and answers that before any real capture
+# work is built on a guess.
+#
+# The other hard problem is CONTENT. An empty file manager makes a terrible
+# screenshot, and Google already rejected a screenshot from this project for
+# looking like placeholder media. A sandboxed app cannot be handed an arbitrary
+# folder without a user clicking through NSOpenPanel - but it CAN read anything
+# inside its own container, so the demo data and an rclone alias remote pointing
+# at it are seeded there.
+#
+# See dev/plans/apple-appstore-plan.md Gate E.
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'diagnose = report what the runner can do | capture = take screenshots'
+        required: true
+        default: diagnose
+        type: choice
+        options: [diagnose, capture]
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    working-directory: app
+
+jobs:
+  screenshots:
+    runs-on: macos-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: What can this runner's display actually do?
+        # Everything downstream depends on the answer, and it costs 30 seconds
+        # here versus a 15-minute build to find out the hard way.
+        run: |
+          set -uo pipefail
+          echo "--- current display ---"
+          system_profiler SPDisplaysDataType 2>/dev/null | grep -iE "resolution|display type|pixel" || true
+          echo "--- displayplacer ---"
+          brew install displayplacer > /dev/null 2>&1 || echo "displayplacer install failed"
+          displayplacer list 2>/dev/null | grep -iE "^ *mode|res:|Persistent screen id|current mode" | head -40 || \
+            echo "displayplacer unavailable"
+          echo "--- screencapture sanity ---"
+          screencapture -x /tmp/probe.png && \
+            python3 -c "import struct;d=open('/tmp/probe.png','rb').read(33);print('captured', struct.unpack('>II', d[16:24]))" || \
+            echo "screencapture failed"
+
+      - name: Stop here if only diagnosing
+        if: ${{ inputs.mode == 'diagnose' }}
+        run: echo "Diagnostic complete - read the step above before building the capture path."
+
+      - uses: subosito/flutter-action@v2
+        if: ${{ inputs.mode == 'capture' }}
+        with: { channel: stable, flutter-version: 3.47.0, cache: true }
+      - uses: actions/setup-go@v6
+        if: ${{ inputs.mode == 'capture' }}
+        with: { go-version: 'stable', cache: false }
+
+      - name: Build librclone
+        if: ${{ inputs.mode == 'capture' }}
+        working-directory: .
+        run: bash dev/desktop/build-librclone.sh
+
+      - name: Build and ad-hoc sign the sandboxed app
+        if: ${{ inputs.mode == 'capture' }}
+        # Ad-hoc signing is enough for the kernel to enforce the sandbox, which
+        # is the point: these screenshots must show the app customers get, with
+        # its Locations sidebar and its missing mount/archive actions, not the
+        # roomier DMG build.
+        run: |
+          set -euo pipefail
+          flutter config --enable-macos-desktop
+          flutter pub get
+          flutter build macos --release --dart-define=AIRCLONE_MAS=true
+          APP="build/macos/Build/Products/Release/Airclone.app"
+          mkdir -p "$APP/Contents/Frameworks"
+          cp macos/librclone/librclone.dylib "$APP/Contents/Frameworks/librclone.dylib"
+          find "$APP/Contents/Frameworks" -type f \( -name '*.dylib' -o -name '*.so' \) \
+            -exec codesign --force --timestamp=none -s - {} \; 2>/dev/null || true
+          codesign --force --timestamp=none \
+            --entitlements macos/Runner/MacAppStore.entitlements -s - "$APP"
+
+      - name: Seed demo content INSIDE the sandbox container
+        if: ${{ inputs.mode == 'capture' }}
+        # A sandboxed app cannot be handed an arbitrary folder without a human in
+        # an NSOpenPanel, but it can read its own container freely. So the demo
+        # tree and an rclone alias remote pointing at it both live there, which
+        # needs no grant and no interaction.
+        run: |
+          set -euo pipefail
+          C="$HOME/Library/Containers/com.gigaionllc.airclone/Data"
+          mkdir -p "$C/Library/Application Support/Airclone"
+          mkdir -p "$C/Demo/Photos" "$C/Demo/Documents" "$C/Demo/Videos"
+          cat > "$C/Library/Application Support/Airclone/rclone.conf" <<'CONF'
+          [Demo Cloud]
+          type = alias
+          remote = DEMO_PATH
+          CONF
+          sed -i '' "s|DEMO_PATH|$C/Demo|" \
+            "$C/Library/Application Support/Airclone/rclone.conf"
+          echo "--- seeded config ---"
+          cat "$C/Library/Application Support/Airclone/rclone.conf"
+
+      - name: Capture
+        if: ${{ inputs.mode == 'capture' }}
+        run: |
+          set -uo pipefail
+          mkdir -p ../artifacts/shots
+          APP="build/macos/Build/Products/Release/Airclone.app"
+          open "$PWD/$APP"
+          sleep 30
+          # Size the window deterministically; a screenshot of a randomly-sized
+          # window cannot be composited to an exact App Store dimension.
+          osascript -e 'tell application "System Events" to tell process "Airclone" to set size of front window to {1280, 800}' 2>&1 || \
+            echo "::warning::could not resize the window (accessibility permission?)"
+          osascript -e 'tell application "System Events" to tell process "Airclone" to set position of front window to {0, 0}' 2>&1 || true
+          sleep 3
+          screencapture -x ../artifacts/shots/01-window.png || echo "::warning::capture failed"
+          python3 -c "import struct;d=open('../artifacts/shots/01-window.png','rb').read(33);print('captured', struct.unpack('>II', d[16:24]))" || true
+          pkill -f "Airclone.app/Contents/MacOS/Airclone" || true
+
+      - uses: actions/upload-artifact@v6
+        if: ${{ always() && inputs.mode == 'capture' }}
+        with:
+          name: mas-screenshots
+          path: artifacts/shots/*.png
+          if-no-files-found: warn
