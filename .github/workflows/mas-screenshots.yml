@@ -137,25 +137,18 @@ jobs:
           open "$PWD/$APP"
           sleep 35   # engine start + first paint; a short wait captures a spinner
 
-          osascript <<OSA || echo "::warning::window geometry could not be set"
-          tell application "System Events" to tell process "Airclone"
-            set frontmost to true
-            set position of front window to {0, ${TOP}}
-            set size of front window to {${SHOT_W}, ${SHOT_H}}
-          end tell
-OSA
+          osascript \
+            -e 'tell application "System Events" to tell process "Airclone" to set frontmost to true' \
+            -e "tell application \"System Events\" to tell process \"Airclone\" to set position of front window to {0, ${TOP}}" \
+            -e "tell application \"System Events\" to tell process \"Airclone\" to set size of front window to {${SHOT_W}, ${SHOT_H}}" \
+            || echo "::warning::window geometry could not be set"
           sleep 4
           screencapture -x -R "0,${TOP},${SHOT_W},${SHOT_H}" ../artifacts/shots/01-explorer.png
           # Full screen too: if the geometry did not take, this is what shows why.
           screencapture -x ../artifacts/shots/99-fullscreen.png || true
 
           for f in ../artifacts/shots/*.png; do
-            python3 -c "
-import struct,sys
-d=open(sys.argv[1],'rb').read(33)
-w,h=struct.unpack('>II', d[16:24])
-ok='OK' if (w,h)==(${SHOT_W},${SHOT_H}) else 'not an App Store size'
-print(f'{sys.argv[1]}: {w}x{h} {ok}')" "$f"
+            python3 -c "import struct,sys;d=open(sys.argv[1],'rb').read(33);w,h=struct.unpack('>II',d[16:24]);print(sys.argv[1],f'{w}x{h}','OK' if (w,h)==(${SHOT_W},${SHOT_H}) else 'NOT an App Store size')" "$f"
           done
           pkill -f "Airclone.app/Contents/MacOS/Airclone" || true
 
