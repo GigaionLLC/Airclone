@@ -113,22 +113,50 @@ jobs:
           echo "--- seeded config ---"
           cat "$C/Library/Application Support/Airclone/rclone.conf"
 
-      - name: Capture
+      - name: Capture at exact App Store dimensions
         if: ${{ inputs.mode == 'capture' }}
+        # The runner offers 800x600 up to 1920x1080 and NONE of Apple's exact Mac
+        # sizes (1280x800, 1440x900, 2560x1600, 2880x1800). That is fine: set the
+        # display LARGER than the target, size the window to the target exactly,
+        # and capture that region. `screencapture -R` writes exactly the pixels
+        # asked for, so the output dimension is deterministic rather than a
+        # rescale - Apple rejects off-by-one sizes and rescaling looks soft.
+        env:
+          SHOT_W: '1280'
+          SHOT_H: '800'
+          TOP: '40'
         run: |
           set -uo pipefail
           mkdir -p ../artifacts/shots
+          SCREEN=$(displayplacer list | grep -m1 'Persistent screen id' | awk '{print $4}')
+          displayplacer "id:${SCREEN} res:1920x1080 hz:60 color_depth:7 enabled:true scaling:off origin:(0,0) degree:0" ||             echo "::warning::could not change resolution - capture may be clipped"
+          sleep 3
+          echo "display now: $(displayplacer list | grep 'current mode')"
+
           APP="build/macos/Build/Products/Release/Airclone.app"
           open "$PWD/$APP"
-          sleep 30
-          # Size the window deterministically; a screenshot of a randomly-sized
-          # window cannot be composited to an exact App Store dimension.
-          osascript -e 'tell application "System Events" to tell process "Airclone" to set size of front window to {1280, 800}' 2>&1 || \
-            echo "::warning::could not resize the window (accessibility permission?)"
-          osascript -e 'tell application "System Events" to tell process "Airclone" to set position of front window to {0, 0}' 2>&1 || true
-          sleep 3
-          screencapture -x ../artifacts/shots/01-window.png || echo "::warning::capture failed"
-          python3 -c "import struct;d=open('../artifacts/shots/01-window.png','rb').read(33);print('captured', struct.unpack('>II', d[16:24]))" || true
+          sleep 35   # engine start + first paint; a short wait captures a spinner
+
+          osascript <<OSA || echo "::warning::window geometry could not be set"
+          tell application "System Events" to tell process "Airclone"
+            set frontmost to true
+            set position of front window to {0, ${TOP}}
+            set size of front window to {${SHOT_W}, ${SHOT_H}}
+          end tell
+OSA
+          sleep 4
+          screencapture -x -R "0,${TOP},${SHOT_W},${SHOT_H}" ../artifacts/shots/01-explorer.png
+          # Full screen too: if the geometry did not take, this is what shows why.
+          screencapture -x ../artifacts/shots/99-fullscreen.png || true
+
+          for f in ../artifacts/shots/*.png; do
+            python3 -c "
+import struct,sys
+d=open(sys.argv[1],'rb').read(33)
+w,h=struct.unpack('>II', d[16:24])
+ok='OK' if (w,h)==(${SHOT_W},${SHOT_H}) else 'not an App Store size'
+print(f'{sys.argv[1]}: {w}x{h} {ok}')" "$f"
+          done
           pkill -f "Airclone.app/Contents/MacOS/Airclone" || true
 
       - uses: actions/upload-artifact@v6
