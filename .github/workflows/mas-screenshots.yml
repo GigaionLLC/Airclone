@@ -140,7 +140,8 @@ jobs:
         env:
           SHOT_W: '1280'
           SHOT_H: '800'
-          TOP: '40'
+          TOP: '140'    # (1080-800)/2 - centres the window vertically
+          LEFT: '320'   # (1920-1280)/2 - and horizontally
         run: |
           set -uo pipefail
           mkdir -p ../artifacts/shots
@@ -155,7 +156,7 @@ jobs:
 
           osascript \
             -e 'tell application "System Events" to tell process "Airclone" to set frontmost to true' \
-            -e "tell application \"System Events\" to tell process \"Airclone\" to set position of front window to {0, ${TOP}}" \
+            -e "tell application \"System Events\" to tell process \"Airclone\" to set position of front window to {${LEFT}, ${TOP}}" \
             -e "tell application \"System Events\" to tell process \"Airclone\" to set size of front window to {${SHOT_W}, ${SHOT_H}}" \
             || echo "::warning::window geometry could not be set"
           sleep 4
@@ -165,8 +166,12 @@ jobs:
           # capture the screen and crop to the window offline - identical pixels,
           # no prompt, no rescale.
           screencapture -x ../artifacts/shots/99-fullscreen.png
-          pip3 install --quiet --disable-pip-version-check pillow
-          python3 -c "from PIL import Image; im=Image.open('../artifacts/shots/99-fullscreen.png'); im.crop((0,${TOP},${SHOT_W},${TOP}+${SHOT_H})).save('../artifacts/shots/01-explorer.png')"
+          # sips ships with macOS; pip3 does not work here (PEP 668 externally
+          # managed environment on the Homebrew python). Its crop is CENTRED,
+          # which is exactly right because the window is centred too: a 1280x800
+          # centre crop of a 1920x1080 screen is precisely the window rectangle.
+          cp ../artifacts/shots/99-fullscreen.png ../artifacts/shots/01-explorer.png
+          sips -c "${SHOT_H}" "${SHOT_W}" ../artifacts/shots/01-explorer.png > /dev/null
 
           for f in ../artifacts/shots/*.png; do
             python3 -c "import struct,sys;d=open(sys.argv[1],'rb').read(33);w,h=struct.unpack('>II',d[16:24]);print(sys.argv[1],f'{w}x{h}','OK' if (w,h)==(${SHOT_W},${SHOT_H}) else 'NOT an App Store size')" "$f"
