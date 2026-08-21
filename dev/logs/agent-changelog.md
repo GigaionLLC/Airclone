@@ -4,6 +4,47 @@ All changes made by AI agents are tracked chronologically below (most recent fir
 
 ---
 
+## [2026-08-21] - Mac App Store screenshots captured on CI; iOS librclone builds
+
+**Agent:** Claude Opus 5 - `main`
+**Files Modified:** `.github/workflows/mas-screenshots.yml` (new),
+`librclone-ios.yml` (new), `dev/ios/{build-librclone-ios.sh,librclone_ios.go,clangwrap.sh}` (new),
+`docs/store/apple/mac/store-ready/*` (new, 5 PNGs + MANIFEST),
+`docs/store/apple/listing-en-US.md`, `dev/plans/apple-appstore-plan.md`
+**Database/API Changes:** macOS App Store version string set to 0.6.8 via the App
+Store Connect API, matching the app instead of the placeholder 1.0.
+**Summary:** Five store-ready Mac screenshots, all exactly 1280x800, captured on a
+GitHub runner with no Mac in the building - including a gallery view of real CC0
+photographs. And librclone now builds for iOS: both device and simulator slices,
+all four FFI symbols exported, packaged as an xcframework.
+
+The screenshot work took ten runs, and the instructive failures were all the same
+shape - **macOS automation reporting success while doing nothing**. `osascript`
+clicks and keystrokes silently no-op without accessibility permission; System
+Events' `click at` returns no error and delivers no click; and a `|| true` hid both
+for four runs. Flutter renders its own widgets, so System Events cannot address
+them by name at all (-1728). `cliclick` posts real CGEvents and works - which is
+what this repo's Windows screenshot rig already did.
+
+Other traps now recorded: the runner's display offers none of Apple's exact sizes
+(fixed by setting 1920x1080, pinning the window to 1280x800 centred, and letting
+sips centre-crop); macOS 26 raises a screen-recording consent prompt that lands IN
+the frame (killing UserNotificationCenter clears it); and the toolbar re-lays out
+once a remote is open, so coordinates must be read off captured frames.
+
+The seeded demo remote failed for three runs because path_provider keys
+application-support by BUNDLE IDENTIFIER on macOS - I identified that correctly,
+then talked myself out of it when an unrelated edit dropped the copy, and looked
+elsewhere. The step now asserts the file is non-empty.
+
+On iOS: the simulator slice was expected to be blocked by golang/go#57442, and the
+community -target ...-simulator triple produced a correct platform 7 stamp. The
+trimmed wrapper (avoiding cmd/mount2, importing fs/sync explicitly) and the
+storj.io/common linkname patch both worked first time. This does NOT prove it
+runs - linking into Runner and a real RPC round-trip are still ahead.
+
+---
+
 ## [2026-08-20] - Mac App Store lane validated by Apple
 
 **Agent:** Claude Opus 5 - `main`
