@@ -164,6 +164,29 @@ jobs:
           echo "--- any rclone.conf anywhere under HOME ---"
           find "$HOME" -name 'rclone.conf' -not -path '*/go/*' 2>/dev/null | head -10
 
+      - name: Grant accessibility so the UI can be driven
+        if: ${{ inputs.mode == 'capture' }}
+        # SIP is DISABLED on these runners (confirmed by csrutil), so the TCC
+        # database can be written directly. Without accessibility permission,
+        # every osascript click and keystroke fails SILENTLY - which is what made
+        # the earlier dismissal attempts look like they had run.
+        #
+        # This is a throwaway CI VM. Doing it anywhere else would be indefensible.
+        run: |
+          set -uo pipefail
+          DB="/Library/Application Support/com.apple.TCC/TCC.db"
+          for CLIENT in /usr/bin/osascript /bin/bash /usr/sbin/screencapture; do
+            sudo sqlite3 "$DB" "INSERT OR REPLACE INTO access \
+              (service,client,client_type,auth_value,auth_reason,auth_version,indirect_object_identifier,flags) \
+              VALUES ('kTCCServiceAccessibility','$CLIENT',1,2,4,1,'UNUSED',0);" 2>&1 | head -2 || true
+          done
+          sudo killall tccd 2>/dev/null || true
+          sleep 4
+          echo "--- accessibility entries now ---"
+          sudo sqlite3 "$DB" "SELECT service,client,auth_value FROM access WHERE service='kTCCServiceAccessibility';" || true
+          echo "--- can osascript drive the UI? ---"
+          osascript -e 'tell application "System Events" to return name of first process' && echo "ACCESSIBILITY OK" || echo "::warning::still blocked"
+
       - name: Capture at exact App Store dimensions
         if: ${{ inputs.mode == 'capture' }}
         # The runner offers 800x600 up to 1920x1080 and NONE of Apple's exact Mac
@@ -217,6 +240,14 @@ jobs:
           # runner has not granted, and it fails silently.
           sudo killall -9 UserNotificationCenter 2>/dev/null || true
           sleep 3
+          # Open the seeded remote so the shots show files rather than an empty
+          # pane. Needs the accessibility grant above; without it this is a no-op
+          # and the artifacts simply show the home view.
+          osascript \
+            -e 'tell application "System Events" to tell process "Airclone"' \
+            -e '  click static text "Demo Cloud" of window 1' \
+            -e 'end tell' 2>&1 | head -3 || echo "::warning::could not click Demo Cloud"
+          sleep 6
           screencapture -x ../artifacts/shots/99-fullscreen.png
           # sips ships with macOS; pip3 does not work here (PEP 668 externally
           # managed environment on the Homebrew python). Its crop is CENTRED,
