@@ -88,9 +88,16 @@ build_slice iphonesimulator arm64 "${WORK}/out/ios-arm64-sim"
 
 mkdir -p "$OUT_DIR"
 rm -rf "${OUT_DIR}/librclone.xcframework"
+# -headers copies the whole directory, so the .a has to be kept out of it or it
+# is duplicated inside Headers/ in the shipped xcframework.
+for slice in ios-arm64 ios-arm64-sim; do
+  mkdir -p "${WORK}/out/${slice}/include"
+  cp "${WORK}/out/${slice}/librclone.h" "${WORK}/out/${slice}/include/"
+done
+
 xcodebuild -create-xcframework \
-  -library "${WORK}/out/ios-arm64/librclone.a"     -headers "${WORK}/out/ios-arm64" \
-  -library "${WORK}/out/ios-arm64-sim/librclone.a" -headers "${WORK}/out/ios-arm64-sim" \
+  -library "${WORK}/out/ios-arm64/librclone.a"     -headers "${WORK}/out/ios-arm64/include" \
+  -library "${WORK}/out/ios-arm64-sim/librclone.a" -headers "${WORK}/out/ios-arm64-sim/include" \
   -output "${OUT_DIR}/librclone.xcframework"
 
 echo "== built =="

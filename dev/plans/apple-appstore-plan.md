@@ -154,6 +154,30 @@ Everything in C1 plus:
 | 9 | **Info.plist keys** — `NSCameraUsageDescription` (QR scanner), `NSFaceIDUsageDescription` (biometric unlock), `ITSAppUsesNonExemptEncryption`. All three are missing; the first two cause an immediate reject, the third stalls every upload with a questionnaire. | Trivial, easy to forget |
 | 10 | **Plugin sweep on device** | The dependency set is largely iOS-capable (`media_kit`, `pdfrx`, `mobile_scanner`, `file_selector`, `local_auth`, `super_drag_and_drop`). `flutter_acrylic` and `desktop_multi_window` are desktop-only and already `Platform`-guarded. Verify, don't assume. |
 
+**RESULT (2026-08-21): librclone BUILDS for iOS.** Both slices, on a CI Mac, with
+no hardware:
+
+```
+== iphoneos arm64 ==          platform 2   (PLATFORM_IOS)
+== iphonesimulator arm64 ==   platform 7   (PLATFORM_IOSSIMULATOR)
+xcframework successfully written out
+_RcloneInitialize / _RcloneFinalize / _RcloneRPC / _RcloneFreeString  all exported
+```
+
+The **simulator slice worked**, which the research expected to be blocked:
+golang/go#57442 is still open, and Go stamps simulator archives as device
+binaries. The community `-target arm64-apple-ios13.0-simulator` fix produced a
+correct `platform 7` stamp on the current toolchain. The trimmed wrapper and the
+`storj.io/common` patch both worked first time.
+
+What this does NOT prove: that it RUNS. Linking the archive into the Runner
+target, `DynamicLibrary.process()`, and an actual RPC round-trip are still ahead -
+and rclone's author's warning ("until it tries to link it with the wrong linker")
+was about the app link, not the archive. Risk drops from Medium to Low-Medium.
+
+Build: [`dev/ios/build-librclone-ios.sh`](../ios/build-librclone-ios.sh) via
+[`librclone-ios.yml`](../../.github/workflows/librclone-ios.yml).
+
 **CORRECTION (researched 2026-08-18).** An earlier draft of this plan said rclone upstream
 ships gomobile bindings covering iOS. **That was wrong.** Upstream's gomobile binding is
 Android-only; `librclone/README.md` says merely *"iOS has not been tested (but should
