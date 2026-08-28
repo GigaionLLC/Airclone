@@ -146,6 +146,12 @@ jobs:
         # what it actually saw.
         working-directory: app
         run: |
+          # `set +e` explicitly. GitHub runs every `run:` block as `bash -e {0}`,
+          # so errexit is ALREADY ON and `set -uo pipefail` does not undo it.
+          # That has now aborted three separate diagnostics in this lane, each
+          # time on a `grep` that legitimately found nothing - which is exactly
+          # the case worth reporting.
+          set +e
           set -uo pipefail
           CONFIG="${{ inputs.configuration || 'debug' }}"
           DIR="build/ios/iphonesimulator/Runner.app"

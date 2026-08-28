@@ -185,6 +185,12 @@ jobs:
         # In short: -force_load does not survive -dead_strip (hence the
         # -Wl,-u,_Rclone* roots), and nm's type letter is not worth hard-coding.
         run: |
+          # `set +e` explicitly. GitHub runs every `run:` block as `bash -e {0}`,
+          # so errexit is ALREADY ON and `set -uo pipefail` does not undo it.
+          # That has now aborted three separate diagnostics in this lane, each
+          # time on a `grep` that legitimately found nothing - which is exactly
+          # the case worth reporting.
+          set +e
           set -uo pipefail
           APP="$(find "$RUNNER_TEMP/Airclone.xcarchive/Products/Applications" \
             -maxdepth 1 -name '*.app' | head -1)"

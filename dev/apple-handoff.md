@@ -137,6 +137,12 @@ scan covers it.
 missing from a binary that contained all four. Match the last field with awk and
 reject only `U`.
 
+**GitHub runs every `run:` block as `bash -e {0}` — errexit is ALREADY ON.**
+`set -uo pipefail` does not undo it; only `set +e` does. This aborted three
+separate diagnostics in the iOS lane, every time on a `grep` that legitimately
+found nothing, which is exactly the case worth reporting. A step that dies at its
+first empty `grep` looks identical to a step whose subject is missing.
+
 **A check must print what it SAW, not just its verdict.** Every wrong theory in
 this lane — `nm -gU` semantics, the debug dylib being immune, the archive "not
 being linked" — survived a full CI round trip because the step reported a boolean.
