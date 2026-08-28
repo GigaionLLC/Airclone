@@ -36,6 +36,12 @@ on:
         default: dry-run
         type: choice
         options: [dry-run, validate, upload]
+      signing:
+        description: 'secrets = stored p12+profile | automatic = let Xcode provision'
+        required: true
+        default: secrets
+        type: choice
+        options: [secrets, automatic]
 
 permissions:
   contents: read
@@ -74,8 +80,10 @@ jobs:
           [ -n "$ISSUER" ] || missing="$missing APPSTORE_ISSUER_ID(secret)"
           [ -n "$KEY_ID" ] || missing="$missing APPSTORE_API_KEY_ID(var)"
           [ -n "$TEAM_ID" ] || missing="$missing APPLE_TEAM_ID(secret)"
-          [ "$HAS_DIST" = "true" ] || missing="$missing APPLE_IOS_DIST_P12_BASE64(secret)"
-          [ "$HAS_PROFILE" = "true" ] || missing="$missing APPLE_IOS_PROVISIONING_PROFILE_BASE64(secret)"
+          if [ "${{ inputs.signing }}" = "secrets" ]; then
+            [ "$HAS_DIST" = "true" ] || missing="$missing APPLE_IOS_DIST_P12_BASE64(secret)"
+            [ "$HAS_PROFILE" = "true" ] || missing="$missing APPLE_IOS_PROVISIONING_PROFILE_BASE64(secret)"
+          fi
           if [ -n "$missing" ]; then
             echo "::error::missing:$missing - see dev/plans/apple-appstore-plan.md Gate B/D"
             exit 1
@@ -103,7 +111,7 @@ jobs:
         # An ephemeral, job-scoped keychain: the runner's login keychain is
         # locked, and a locked keychain makes signing report "0 valid identities
         # found" with no error of its own. That cost several runs on the Mac lane.
-        if: ${{ inputs.mode != 'dry-run' }}
+        if: ${{ inputs.mode != 'dry-run' && inputs.signing == 'secrets' }}
         env:
           DIST_P12: ${{ secrets.APPLE_IOS_DIST_P12_BASE64 }}
           P12_PASSWORD: ${{ secrets.APPLE_IOS_P12_PASSWORD }}
@@ -129,6 +137,21 @@ jobs:
           printf '%s' "$PROFILE" | base64 -d > "$PROFILE_DIR/Airclone_iOS.mobileprovision"
           echo "--- identities available for signing ---"
           security find-identity -v -p codesigning "$KC"
+
+      - name: Create a keychain for automatically provisioned signing
+        # Same lesson as the Mac lane: -allowProvisioningUpdates has nowhere to
+        # store a certificate if the login keychain is locked, so it creates
+        # none and reports no error - the symptom is "0 valid identities found".
+        if: ${{ inputs.mode != 'dry-run' && inputs.signing == 'automatic' }}
+        run: |
+          set -euo pipefail
+          KC="$RUNNER_TEMP/airclone-ios.keychain-db"
+          security create-keychain -p "" "$KC"
+          security set-keychain-settings -lut 7200 "$KC"
+          security unlock-keychain -p "" "$KC"
+          security list-keychains -d user -s "$KC" login.keychain-db
+          security default-keychain -s "$KC"
+          security list-keychains
 
       - run: flutter pub get
 
@@ -249,13 +272,24 @@ jobs:
             echo '<plist version="1.0"><dict>'
             echo '<key>method</key><string>app-store-connect</string>'
             echo '<key>destination</key><string>export</string>'
-            echo '<key>signingStyle</key><string>manual</string>'
             echo "<key>teamID</key><string>${TEAM_ID}</string>"
-            echo '<key>signingCertificate</key><string>Apple Distribution</string>'
             echo '<key>uploadSymbols</key><true/>'
-            echo '<key>provisioningProfiles</key><dict>'
-            echo "<key>com.gigaionllc.airclone</key><string>${PROFILE_NAME:-Airclone iOS App Store}</string>"
-            echo '</dict></dict></plist>'
+            if [ "${{ inputs.signing }}" = "automatic" ]; then
+              # The open question this mode exists to answer: can
+              # -allowProvisioningUpdates mint an iOS DISTRIBUTION identity with
+              # an App Manager key? On macOS it could not - "Cloud signing
+              # permission error" - and the Certificates API had to be used
+              # instead. Whether iOS behaves the same is worth one CI run rather
+              # than an assumption.
+              echo '<key>signingStyle</key><string>automatic</string>'
+            else
+              echo '<key>signingStyle</key><string>manual</string>'
+              echo '<key>signingCertificate</key><string>Apple Distribution</string>'
+              echo '<key>provisioningProfiles</key><dict>'
+              echo "<key>com.gigaionllc.airclone</key><string>${PROFILE_NAME:-Airclone iOS App Store}</string>"
+              echo '</dict>'
+            fi
+            echo '</dict></plist>'
           } > "$RUNNER_TEMP/export.plist"
           echo "--- export options ---"; cat "$RUNNER_TEMP/export.plist"
           xcodebuild -exportArchive \
