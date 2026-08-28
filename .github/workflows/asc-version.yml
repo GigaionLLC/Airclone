@@ -41,6 +41,15 @@ on:
         description: 'Build number to attach (blank = newest VALID)'
         required: false
         type: string
+      set_version:
+        description: 'Rewrite the version string (e.g. 0.6.8). Blank = leave it.'
+        required: false
+        type: string
+      attach:
+        description: 'Attach a build (turn off for a platform with no build yet)'
+        required: true
+        default: true
+        type: boolean
 
 permissions:
   contents: read
@@ -81,10 +90,16 @@ jobs:
           umask 077
           printf '%s' "$P8" > key.p8
           ARGS=""
-          [ "${{ inputs.mode }}" = "apply" ] && ARGS="$ARGS --apply"
-          [ "${{ inputs.notes }}" = "true" ] && ARGS="$ARGS --notes"
-          [ -n "${{ inputs.version }}" ] && ARGS="$ARGS --version ${{ inputs.version }}"
-          [ -n "${{ inputs.build }}" ] && ARGS="$ARGS --build ${{ inputs.build }}"
+          # `if`, not `[ ... ] && ARGS=...`: a false test makes the whole line
+          # return 1, and this block runs under errexit (GitHub invokes every
+          # `run:` as `bash -e {0}`), so the step would die on the first input
+          # left blank. That trap has already cost this repo three CI runs.
+          if [ "${{ inputs.mode }}" = "apply" ]; then ARGS="$ARGS --apply"; fi
+          if [ "${{ inputs.notes }}" = "true" ]; then ARGS="$ARGS --notes"; fi
+          if [ "${{ inputs.attach }}" = "false" ]; then ARGS="$ARGS --no-attach"; fi
+          if [ -n "${{ inputs.version }}" ]; then ARGS="$ARGS --version ${{ inputs.version }}"; fi
+          if [ -n "${{ inputs.build }}" ]; then ARGS="$ARGS --build ${{ inputs.build }}"; fi
+          if [ -n "${{ inputs.set_version }}" ]; then ARGS="$ARGS --set-version ${{ inputs.set_version }}"; fi
           # 6790176897 is the App Store Connect app id for Airclone. It is not a
           # secret - it is in every public App Store URL for the app.
           python tool/asc_build.py key.p8 "$KEY_ID" "$ISSUER" 6790176897 \

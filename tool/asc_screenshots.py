@@ -11,8 +11,16 @@ Skipping step 3 leaves a screenshot that exists and never appears. The MD5 is a
 transport checksum Apple requires, not a security claim.
 
 Usage:
-  python tool/asc_screenshots.py <key.p8> <keyid> <issuerid> <appid> [--apply]
-Without --apply it lists what it would upload and changes nothing.
+  python tool/asc_screenshots.py <key.p8> <keyid> <issuerid> <appid> [options]
+
+Options:
+  --device mac|iphone|ipad   which screenshot SET to fill (default mac)
+  --dir <path>               override the directory for that device
+  --apply                    actually upload
+
+Apple wants one set per display type, and iPhone and iPad are SEPARATE sets on
+the same iOS version - not one set holding both sizes. Without --apply it lists
+what it would upload and changes nothing.
 """
 import base64, hashlib, json, os, sys, time, urllib.request, urllib.error
 from cryptography.hazmat.primitives import hashes, serialization
@@ -23,11 +31,28 @@ for _s in (sys.stdout, sys.stderr):
     except (AttributeError, ValueError): pass
 
 KEY, KID, ISS, APP = sys.argv[1:5]
-APPLY = "--apply" in sys.argv
-SHOTS = "docs/store/apple/mac/store-ready"
-# Apple's enum for a Mac screenshot. Mac accepts one display type; iPhone/iPad
-# would each need their own set.
-DISPLAY_TYPE = "APP_DESKTOP"
+ARGV = sys.argv[5:]
+APPLY = "--apply" in ARGV
+
+
+def _opt(name, default):
+    return ARGV[ARGV.index(name) + 1] if name in ARGV else default
+
+
+# Apple wants one screenshot SET per display type, and iPhone and iPad are
+# separate sets on the same iOS version - not one set with mixed sizes. Mac has
+# exactly one. `--device` picks which; the directory follows from it, so the
+# shots for each device live somewhere obvious rather than in one soup.
+DEVICES = {
+    "mac": ("MAC_OS", "APP_DESKTOP", "docs/store/apple/mac/store-ready"),
+    "iphone": ("IOS", "APP_IPHONE_67", "docs/store/apple/ios/iphone"),
+    "ipad": ("IOS", "APP_IPAD_PRO_3GEN_129", "docs/store/apple/ios/ipad"),
+}
+DEVICE = _opt("--device", "mac")
+if DEVICE not in DEVICES:
+    sys.exit("--device must be one of: %s" % ", ".join(DEVICES))
+PLATFORM, DISPLAY_TYPE, SHOTS = DEVICES[DEVICE]
+SHOTS = _opt("--dir", SHOTS)
 
 
 def token():
@@ -74,7 +99,9 @@ if not APPLY:
     sys.exit(0)
 
 vs = call("GET", "/v1/apps/%s/appStoreVersions?limit=200" % APP)
-ver = next(v for v in vs["data"] if v["attributes"]["platform"] == "MAC_OS")
+ver = next((v for v in vs["data"] if v["attributes"]["platform"] == PLATFORM), None)
+if not ver:
+    sys.exit("no %s version found" % PLATFORM)
 locs = call("GET", "/v1/appStoreVersions/%s/appStoreVersionLocalizations" % ver["id"])
 loc = next(l for l in locs["data"] if l["attributes"]["locale"] == "en-US")
 
