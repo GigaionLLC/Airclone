@@ -130,10 +130,11 @@ jobs:
           exit "$RC"
 
       - name: The linked binary must still export the Go symbols
-        # Per ARCHITECTURE. `flutter build ios --simulator` emits a fat
-        # x86_64+arm64 binary, and a bare `nm` on a universal file is not a
-        # per-slice answer - which is how "the link worked" and "the symbols are
-        # there" first disagreed here.
+        # Per ARCHITECTURE, and with `nm -g` alone - NOT `nm -gU`. On this
+        # toolchain -U selects UNDEFINED symbols, so `-gU` asked for exactly the
+        # opposite of what is wanted and reported all four missing on a binary
+        # that had them. The archive check above always used bare -g, which is
+        # why it agreed with reality and this one did not.
         working-directory: app
         run: |
           set -euo pipefail
@@ -147,16 +148,23 @@ jobs:
           for arch in $(lipo -archs "$BIN"); do
             echo "-- $arch --"
             for sym in RcloneInitialize RcloneFinalize RcloneRPC RcloneFreeString; do
-              if nm -arch "$arch" -gU "$BIN" 2>/dev/null | grep -q " _${sym}$"; then
+              if nm -arch "$arch" -g "$BIN" 2>/dev/null | grep -q " T _${sym}$"; then
                 echo "  _${sym} present"
               else
-                echo "::error::_${sym} missing from the $arch slice ($CONFIG) - force_load or strip"
+                echo "::error::_${sym} missing from the $arch slice ($CONFIG)"
                 MISSING=1
               fi
             done
+            if [ "$MISSING" = "1" ]; then
+              # Carry the evidence with the failure rather than needing a rerun.
+              echo "  -- every Rclone-ish symbol nm can see in this slice --"
+              nm -arch "$arch" -g "$BIN" 2>/dev/null | grep -i rclone | head -20 \
+                || echo "     (none at all - the archive really is not linked)"
+            fi
           done
           echo "APP_DIR=$DIR" >> "$GITHUB_ENV"
           exit "$MISSING"
+
 
       - name: Install and run it
         env:

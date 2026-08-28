@@ -11,12 +11,13 @@ name: librclone (iOS spike)
 #
 # See dev/plans/apple-appstore-plan.md Gate C2.
 
+# DISPATCH-ONLY since 2026-08-28. ios-verify.yml's first two steps do exactly
+# what this job does - build the archive, check the four symbols - and then go
+# on to link and run the app, so leaving the push trigger here spent a second
+# macOS runner proving the same thing. Kept as a standalone tool: when the Go
+# build itself is what broke, this is the fastest way to look at it alone.
 on:
   workflow_dispatch:
-  push:
-    paths:
-      - 'dev/ios/**'
-      - '.github/workflows/librclone-ios.yml'
 
 permissions:
   contents: read

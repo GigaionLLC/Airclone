@@ -4,6 +4,31 @@ All changes made by AI agents are tracked chronologically below (most recent fir
 
 ---
 
+## [2026-08-28] - iOS: fat simulator archive, a real local pane, a TestFlight lane
+
+**Agent:** Claude Opus 5 - `main`
+**Files Modified:** `dev/ios/build-librclone-ios.sh`,
+`app/ios/Runner.xcodeproj/project.pbxproj`, `app/ios/Runner/Info.plist`,
+`app/lib/src/state/local_locations.dart`, `app/lib/main.dart`,
+`app/lib/src/ui/home_screen.dart`, `app/lib/src/rclone/rclone_engine.dart`,
+`app/test/mas_locations_test.dart`, `.github/workflows/ios-release.yml` (new),
+`.github/workflows/ios-verify.yml`, `.github/workflows/mas-verify.yml`,
+`dev/plans/apple-appstore-plan.md`, `dev/apple-handoff.md`
+**Database/API Changes:** None
+**Summary:** The first integration run linked cleanly and produced a binary with
+none of the four Go symbols in it. `flutter build ios --simulator` always emits a
+fat x86_64+arm64 binary, the archive was arm64 only, and `-force_load` of an
+archive missing an architecture is a WARNING - so the link succeeded over an
+empty slice. Fixed by building a third `ios/amd64` slice and lipo-ing one fat
+simulator archive, and by linking stable `device/` and `simulator/` paths instead
+of the xcframework's slice directories, which renamed themselves to
+`ios-arm64_x86_64-simulator` on this very change. ios-verify now prints the
+resolved OTHER_LDFLAGS/STRIP_STYLE/ARCHS before building, keeps the build log so
+linker warnings survive, checks symbols per architecture, and fails when the app
+is not running. iOS also gained an honest local pane - the container's Documents,
+exposed to the Files app - and `ios-release.yml`, whose dry-run mode needs no
+Apple credential and exists to prove the DEVICE slice links.
+
 ## [2026-08-28] - iOS: link librclone into the app and prove it at runtime
 
 **Agent:** Claude Opus 5 - `main`

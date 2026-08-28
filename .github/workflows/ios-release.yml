@@ -187,14 +187,21 @@ jobs:
           echo "binary: $BIN"
           file "$BIN"
           MISSING=0
+          # `nm -g`, never `nm -gU`: on this toolchain -U selects UNDEFINED
+          # symbols, so -gU asks for the opposite of what is wanted and reports
+          # everything missing on a binary that has it.
           for sym in RcloneInitialize RcloneFinalize RcloneRPC RcloneFreeString; do
-            if nm -gU "$BIN" 2>/dev/null | grep -q " _${sym}$"; then
+            if nm -g "$BIN" 2>/dev/null | grep -q " T _${sym}$"; then
               echo "  _${sym} present"
             else
               echo "::error::_${sym} is NOT in the archived device binary - force_load or strip"
               MISSING=1
             fi
           done
+          if [ "$MISSING" = "1" ]; then
+            echo "-- every Rclone-ish symbol nm can see --"
+            nm -g "$BIN" 2>/dev/null | grep -i rclone | head -20 || echo "   (none)"
+          fi
           exit "$MISSING"
 
       - name: Export the App Store package
