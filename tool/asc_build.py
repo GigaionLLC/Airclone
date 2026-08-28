@@ -1,0 +1,239 @@
+#!/usr/bin/env python3
+"""Attach an uploaded build to an App Store version and set the review notes.
+
+The two steps between "a build finished uploading" and "a human presses Add for
+Review". Both are plain App Store Connect API calls, and both are the kind of
+retyping that lets the console drift from the doc that justifies it - the review
+notes in particular carry a constraint that already cost this project review
+cycles elsewhere (never point a reviewer at the command console).
+
+What it deliberately does NOT do:
+
+  * export compliance. `usesNonExemptEncryption` is a US export-control
+    declaration about the LLC, and Airclone encrypts the user's rclone config
+    with a passphrase, so "no" would probably be false. A human answers it.
+  * submit. Adding a version to review is the one action AGENT.md rules 10-13
+    exist for: a machine once committed a store submission and published this
+    app at $0. There is no code path here that can do it.
+
+Usage:
+  python tool/asc_build.py <key.p8> <keyid> <issuerid> <appid> [options]
+
+Options:
+  --platform MAC_OS|IOS   which version to work on (default MAC_OS)
+  --version 0.6.8         version string; default is the newest editable one
+  --build 117             build number to attach; default is the newest VALID one
+  --notes                 also set the App Review notes from the listing doc
+  --apply                 actually send it. Without this nothing is written.
+
+Everything printed is ASCII: GitHub's Windows runners give Python a cp1252
+stdout and a stray arrow aborts the process mid-run (AGENT.md rule 12).
+"""
+import base64
+import io
+import json
+import sys
+import time
+import urllib.error
+import urllib.request
+
+from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.primitives.asymmetric import ec, utils as au
+
+for _s in (sys.stdout, sys.stderr):
+    try:
+        _s.reconfigure(encoding="utf-8", errors="replace")
+    except (AttributeError, ValueError):
+        pass
+
+if len(sys.argv) < 5:
+    print(__doc__)
+    sys.exit(2)
+
+KEY, KID, ISS, APP = sys.argv[1:5]
+ARGV = sys.argv[5:]
+APPLY = "--apply" in ARGV
+SET_NOTES = "--notes" in ARGV
+DOC = "docs/store/apple/listing-en-US.md"
+
+
+def opt(name, default=None):
+    return ARGV[ARGV.index(name) + 1] if name in ARGV else default
+
+
+PLATFORM = opt("--platform", "MAC_OS")
+WANT_VERSION = opt("--version")
+WANT_BUILD = opt("--build")
+
+# States a version can still be edited in. Anything else means the version is
+# in review or shipped, and writing to it is either refused or a mistake.
+EDITABLE = {
+    "PREPARE_FOR_SUBMISSION",
+    "DEVELOPER_REJECTED",
+    "REJECTED",
+    "METADATA_REJECTED",
+    "WAITING_FOR_REVIEW",
+    "INVALID_BINARY",
+}
+
+
+def token():
+    def b64u(b):
+        return base64.urlsafe_b64encode(b).rstrip(b"=")
+
+    pk = serialization.load_pem_private_key(open(KEY, "rb").read(), password=None)
+    now = int(time.time())
+    si = (
+        b64u(json.dumps({"alg": "ES256", "kid": KID, "typ": "JWT"}).encode())
+        + b"."
+        + b64u(
+            json.dumps(
+                {"iss": ISS, "iat": now, "exp": now + 600, "aud": "appstoreconnect-v1"}
+            ).encode()
+        )
+    )
+    r, s = au.decode_dss_signature(pk.sign(si, ec.ECDSA(hashes.SHA256())))
+    return (si + b"." + b64u(r.to_bytes(32, "big") + s.to_bytes(32, "big"))).decode()
+
+
+TOK = token()
+
+
+def call(method, path, body=None):
+    req = urllib.request.Request(
+        "https://api.appstoreconnect.apple.com" + path,
+        data=json.dumps(body).encode() if body else None,
+        headers={"Authorization": "Bearer " + TOK, "Content-Type": "application/json"},
+        method=method,
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=60) as r:
+            return json.load(r) if r.status != 204 else {}
+    except urllib.error.HTTPError as e:
+        print("  HTTP %s on %s" % (e.code, path))
+        try:
+            for x in json.load(e).get("errors", []):
+                print("   ", x.get("title"), "|", x.get("detail"))
+        except Exception:
+            print("   ", e.read()[:300])
+        return None
+
+
+def fenced(doc, header):
+    """The first ``` block after `header`."""
+    i = doc.index(header)
+    j = doc.index("```", i) + 3
+    return doc[j:doc.index("```", j)].strip("\n")
+
+
+def pick_version():
+    vs = call("GET", "/v1/apps/%s/appStoreVersions?limit=200" % APP)
+    if not vs:
+        sys.exit(1)
+    cand = [v for v in vs["data"] if v["attributes"]["platform"] == PLATFORM]
+    if WANT_VERSION:
+        cand = [v for v in cand if v["attributes"]["versionString"] == WANT_VERSION]
+    if not cand:
+        sys.exit("no %s version%s found"
+                 % (PLATFORM, " " + WANT_VERSION if WANT_VERSION else ""))
+    editable = [v for v in cand if v["attributes"]["appStoreState"] in EDITABLE]
+    if not editable:
+        for v in cand:
+            print("  %s is %s" % (v["attributes"]["versionString"],
+                                  v["attributes"]["appStoreState"]))
+        sys.exit("no editable %s version - refusing to touch one in review" % PLATFORM)
+    return editable[0]
+
+
+def pick_build():
+    # Builds are per-app and carry their own platform, so filter on both. A build
+    # is only attachable once processingState is VALID; PROCESSING means Apple is
+    # still working and the attach would fail with a confusing 409.
+    bs = call("GET", "/v1/builds?filter[app]=%s&limit=50&sort=-uploadedDate" % APP)
+    if not bs:
+        sys.exit(1)
+    rows = []
+    for b in bs["data"]:
+        a = b["attributes"]
+        plat = (b.get("relationships", {}).get("preReleaseVersion") or {})
+        rows.append((b["id"], a.get("version"), a.get("processingState"),
+                     a.get("expired"), a.get("uploadedDate", "")[:19], plat))
+    print("recent builds:")
+    for r in rows[:8]:
+        print("  build %-6s %-12s expired=%-5s %s" % (r[1], r[2], r[3], r[4]))
+    usable = [r for r in rows if r[2] == "VALID" and not r[3]]
+    if WANT_BUILD:
+        usable = [r for r in usable if r[1] == WANT_BUILD]
+    if not usable:
+        print()
+        print("no VALID unexpired build to attach yet.")
+        print("PROCESSING means Apple is still working - wait and re-run.")
+        sys.exit(1)
+    return usable[0]
+
+
+def main():
+    ver = pick_version()
+    va = ver["attributes"]
+    print("%s version %s  state=%s"
+          % (PLATFORM, va["versionString"], va["appStoreState"]))
+
+    cur = call("GET", "/v1/appStoreVersions/%s/build" % ver["id"])
+    attached = (cur or {}).get("data")
+    print("  build attached: %s"
+          % (attached["id"] if attached else "-- NONE --"))
+
+    bid, bnum, _, _, when, _ = pick_build()
+    print("  will attach:    build %s (uploaded %s)" % (bnum, when))
+
+    notes = None
+    if SET_NOTES:
+        doc = io.open(DOC, encoding="utf-8").read()
+        notes = fenced(doc, "Notes (4,000 max):")
+        if "console" in notes.lower():
+            sys.exit("refusing: the review notes mention the console. "
+                     "That cost Microsoft review cycles - see the listing doc.")
+        print("  review notes:   %d chars, demoAccountRequired=false" % len(notes))
+
+    if not APPLY:
+        print()
+        print("dry run - nothing sent. Pass --apply to write.")
+        return
+
+    if attached and attached["id"] == bid:
+        print("\nalready attached; nothing to do")
+    else:
+        r = call("PATCH", "/v1/appStoreVersions/%s/relationships/build" % ver["id"],
+                 {"data": {"type": "builds", "id": bid}})
+        if r is None:
+            sys.exit(1)
+        print("\nattached build %s" % bnum)
+
+    if notes is not None:
+        det = call("GET", "/v1/appStoreVersions/%s/appStoreReviewDetail" % ver["id"])
+        existing = (det or {}).get("data")
+        attrs = {"notes": notes, "demoAccountRequired": False}
+        if existing:
+            r = call("PATCH", "/v1/appStoreReviewDetails/%s" % existing["id"],
+                     {"data": {"id": existing["id"],
+                               "type": "appStoreReviewDetails",
+                               "attributes": attrs}})
+        else:
+            r = call("POST", "/v1/appStoreReviewDetails",
+                     {"data": {"type": "appStoreReviewDetails",
+                               "attributes": attrs,
+                               "relationships": {"appStoreVersion": {
+                                   "data": {"type": "appStoreVersions",
+                                            "id": ver["id"]}}}}})
+        if r is None:
+            sys.exit(1)
+        print("review notes set, sign-in required = NO")
+
+    print()
+    print("STILL YOURS, and deliberately not automatable here:")
+    print("  1. export compliance on the build (it is a legal declaration)")
+    print("  2. Add for Review")
+    print("  3. choose 'Manually release this version'")
+
+
+main()

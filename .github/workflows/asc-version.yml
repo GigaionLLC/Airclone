@@ -1,0 +1,95 @@
+name: App Store Connect (attach build + review notes)
+
+# The two steps between "a build finished uploading" and "a human presses Add for
+# Review": attach the build to a version, and set the App Review notes from
+# docs/store/apple/listing-en-US.md.
+#
+# Runs on ubuntu, not macOS - these are plain REST calls, and there is no reason
+# to spend a Mac on them.
+#
+# It CANNOT submit. There is no code path in tool/asc_build.py that adds a
+# version to review, and there is no export-compliance answer here either:
+# usesNonExemptEncryption is a US export-control declaration about the LLC, and
+# Airclone encrypts the user's config with a passphrase, so "no" would probably
+# be false. A human answers that one. See AGENT.md rules 10-13.
+
+on:
+  workflow_dispatch:
+    inputs:
+      platform:
+        description: 'Which platform version to work on'
+        required: true
+        default: MAC_OS
+        type: choice
+        options: [MAC_OS, IOS]
+      mode:
+        description: 'report = show what it would do | apply = write it'
+        required: true
+        default: report
+        type: choice
+        options: [report, apply]
+      notes:
+        description: 'Also set the App Review notes from the listing doc'
+        required: true
+        default: true
+        type: boolean
+      version:
+        description: 'Version string (blank = the newest editable one)'
+        required: false
+        type: string
+      build:
+        description: 'Build number to attach (blank = newest VALID)'
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  version:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with: { python-version: '3.12' }
+      - run: pip install --quiet cryptography
+
+      - name: Refuse without credentials
+        env:
+          HAS_KEY: ${{ secrets.APPSTORE_API_PRIVATE_KEY != '' }}
+          ISSUER: ${{ secrets.APPSTORE_ISSUER_ID }}
+          KEY_ID: ${{ vars.APPSTORE_API_KEY_ID }}
+        run: |
+          set -euo pipefail
+          missing=""
+          [ "$HAS_KEY" = "true" ] || missing="$missing APPSTORE_API_PRIVATE_KEY(secret)"
+          [ -n "$ISSUER" ] || missing="$missing APPSTORE_ISSUER_ID(secret)"
+          [ -n "$KEY_ID" ] || missing="$missing APPSTORE_API_KEY_ID(var)"
+          if [ -n "$missing" ]; then
+            echo "::error::missing:$missing"
+            exit 1
+          fi
+
+      - name: Attach the build, and set the review notes
+        env:
+          P8: ${{ secrets.APPSTORE_API_PRIVATE_KEY }}
+          KEY_ID: ${{ vars.APPSTORE_API_KEY_ID }}
+          ISSUER: ${{ secrets.APPSTORE_ISSUER_ID }}
+        run: |
+          set -euo pipefail
+          umask 077
+          printf '%s' "$P8" > key.p8
+          ARGS=""
+          [ "${{ inputs.mode }}" = "apply" ] && ARGS="$ARGS --apply"
+          [ "${{ inputs.notes }}" = "true" ] && ARGS="$ARGS --notes"
+          [ -n "${{ inputs.version }}" ] && ARGS="$ARGS --version ${{ inputs.version }}"
+          [ -n "${{ inputs.build }}" ] && ARGS="$ARGS --build ${{ inputs.build }}"
+          # 6790176897 is the App Store Connect app id for Airclone. It is not a
+          # secret - it is in every public App Store URL for the app.
+          python tool/asc_build.py key.p8 "$KEY_ID" "$ISSUER" 6790176897 \
+            --platform ${{ inputs.platform }} $ARGS
+
+      - name: Shred the key
+        if: always()
+        run: rm -f key.p8
