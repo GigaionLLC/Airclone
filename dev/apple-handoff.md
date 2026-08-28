@@ -1,13 +1,14 @@
 # Apple App Store — session handoff
 
 Where the Apple track stands, what to do next, and the traps that already cost
-time. Written 2026-08-21. **Value-free by design** — real IDs, key paths and
-account state live in the encrypted vault (`python tool/vault.py unlock`, then
+time. Written 2026-08-21, updated 2026-08-28. **Value-free by design** — real
+IDs, key paths and account state live in the encrypted vault
+(`python tool/vault.py unlock`, then
 `dev/vault/notes/apple-appstore-setup-record.md`).
 
 ## State: macOS is one button from submission
 
-Working tree clean, everything pushed to `main` (head `e17002f`).
+Working tree clean, everything pushed to `main`.
 
 | | |
 | :--- | :--- |
@@ -65,18 +66,34 @@ plainly — deliberate, so a buyer is not surprised.
 in-process engine serves preview/thumbnail/media bytes over a loopback socket.
 Removing it ships a build with no media at all.
 
-## iOS: librclone builds, nothing else does
+## iOS: linked, and a lane written; still a separate track
 
-`dev/ios/build-librclone-ios.sh` + `librclone-ios.yml` produce a working
-xcframework — device **and** simulator slices, all four FFI symbols exported.
-The simulator slice was expected to be blocked by golang/go#57442; the
-`-target …-simulator` triple works on the current toolchain.
+Done since the first version of this note:
 
-**It does not run yet.** Still ahead: link the archive into the Runner target,
-`DynamicLibrary.process()` instead of `open()`, the linker flags Go does not apply
-for `c-archive` (`-framework CoreFoundation -framework Security -lresolv`), and a
-local-file-access redesign for a platform with no arbitrary filesystem. See
-`dev/plans/apple-appstore-plan.md` Gate C2.
+- **The archive is linked into the app.** Three build settings on all three
+  Runner configurations do it — two sdk-conditional `OTHER_LDFLAGS` carrying
+  CoreFoundation, Security, libresolv and a `-force_load`, plus
+  `STRIP_STYLE = non-global`. No `project.pbxproj` file-reference surgery: a
+  `-force_load` of an absolute path needs none, and it settles dead-stripping too.
+- **Dart resolves from the process.** `librcloneIsStaticallyLinked('ios')` →
+  empty path sentinel → `DynamicLibrary.process()`.
+  `librcloneLibraryAvailable()` replaces the `File(...).existsSync()` probes.
+- **A real local pane.** Locations seeds exactly the container's `Documents`,
+  which `UIFileSharingEnabled` + `LSSupportsOpeningDocumentsInPlace` expose as
+  the Files app's *On My iPhone → Airclone*. `/` is not offered and the **+**
+  button is hidden — `file_selector` has no `getDirectoryPath` on iOS.
+- **Two workflows.** [`ios-verify.yml`](../.github/workflows/ios-verify.yml)
+  builds for the simulator, checks the symbols per architecture, then installs,
+  launches and screenshots the app — and fails if it is not running.
+  [`ios-release.yml`](../.github/workflows/ios-release.yml) is the TestFlight
+  lane; its **`dry-run` needs no Apple credential** and exists to prove the
+  DEVICE slice links, which the simulator job cannot tell you.
+
+Still ahead: `validate`/`upload` need an **Apple Distribution certificate and an
+iOS App Store profile** — the Mac certs (`3rd Party Mac Developer *`) do not
+cover iOS. The Certificates API can mint them with the existing App Manager key.
+And `UIDocumentPicker`, so a file can be pulled in from elsewhere in Files.
+See `dev/plans/apple-appstore-plan.md` Gate C2 and Gate D.
 
 ## Traps already paid for — do not rediscover these
 
@@ -91,6 +108,17 @@ toolbar re-lays out once a remote is open.
 
 **`path_provider` keys application-support by BUNDLE IDENTIFIER on macOS**, not app
 name. Seeding the demo config anywhere else silently does nothing.
+
+**`-force_load` of an archive missing an architecture is a WARNING.** The link
+succeeds, that slice contains no engine, and nothing says so until symbols turn
+out not to be in the binary. `flutter build ios --simulator` always emits a fat
+x86_64+arm64 binary, so the simulator archive must be fat too — and symbol checks
+must be **per architecture**, because a bare `nm` on a universal file is not a
+per-slice answer.
+
+**Link stable paths, never xcframework slice directories.** xcodebuild renames
+`ios-arm64-simulator` to `ios-arm64_x86_64-simulator` the moment a second
+architecture appears.
 
 **A locked keychain makes `-allowProvisioningUpdates` create nothing and report no
 error** (`0 valid identities found`). The lane creates an ephemeral keychain.
@@ -116,7 +144,8 @@ Windows checkout does not reach the index.
 python tool/vault.py unlock          # account record, real IDs, cert expiry
 gh run list --workflow=mas-release.yml --limit 3
 gh workflow run mas-screenshots.yml --ref main -f mode=capture
-gh workflow run librclone-ios.yml --ref main
+gh workflow run ios-verify.yml --ref main -f configuration=release
+gh workflow run ios-release.yml --ref main -f mode=dry-run   # no secret needed
 python tool/check-docs.py            # must be 0 broken before committing
 cd app && flutter analyze && flutter test
 ```

@@ -9,6 +9,8 @@ import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 
+import '../state/build_flavor.dart';
+
 /// Locates — and, on first run, downloads + verifies — the `rclone` binary used by
 /// the desktop [HttpRcloneClient]. Mirrors the provisioning design in
 /// `wiki/core/08-core-architecture.md` (download → SHA256-verify → extract).
@@ -31,6 +33,13 @@ class RcloneEngine {
       if (await File(overridePath).exists()) return overridePath;
     }
     if (Platform.isAndroid) return bundledAndroidBinary();
+    // A build that may not spawn - Mac App Store, iOS - has no use for a binary
+    // it could never execute: resolveEngineMode forces the in-process library
+    // for it regardless of what is found. Searching anyway is not merely
+    // wasted work. Step 5 below is `Process.run('which', ...)`, and a build
+    // whose review notes say it spawns no processes should not be reaching for
+    // posix_spawn at startup, sandbox-denied or not.
+    if (!subprocessAllowedHere) return null;
     final managed = await _managedBinaryPath();
     if (await File(managed).exists()) return managed;
 
