@@ -4,6 +4,27 @@ All changes made by AI agents are tracked chronologically below (most recent fir
 
 ---
 
+## [2026-08-28] - iOS: librclone RUNS - engine reaches ready on a simulator
+
+**Agent:** Claude Opus 5 - `main`
+**Files Modified:** `app/ios/Runner.xcodeproj/project.pbxproj`,
+`.github/workflows/ios-verify.yml`, `.github/workflows/ios-release.yml`,
+`dev/plans/apple-appstore-plan.md`, `dev/apple-handoff.md`,
+`dev/vault/vault.enc`
+**Database/API Changes:** None
+**Summary:** Two real defects and three broken diagnostics stood between "the
+archive builds" and "the engine answers". `-force_load` does not survive
+`-dead_strip`: nothing references the Go exports, so the linker loaded the archive
+and threw it away - fixed with `-Wl,-u,_Rclone*` roots on all three Runner
+configurations. And every check that reported this was itself wrong at least once:
+one truncated by `head -20`, one aborted by `grep -c` exiting 1, one aborted
+because GitHub runs `run:` as `bash -e {0}` so `set -uo pipefail` never disabled
+errexit. Each looked exactly like "the symbols are missing". Both lanes now print
+every rclone symbol nm can see, on every Mach-O, pass or fail. Result: the Release
+device archive keeps all four exports, and the simulator build launches and
+reaches EnginePhase.ready - proven by the screenshot, since the UI renders
+EngineGate until it does.
+
 ## [2026-08-28] - iOS: fat simulator archive, a real local pane, a TestFlight lane
 
 **Agent:** Claude Opus 5 - `main`

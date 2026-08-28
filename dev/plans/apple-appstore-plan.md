@@ -170,10 +170,25 @@ binaries. The community `-target arm64-apple-ios13.0-simulator` fix produced a
 correct `platform 7` stamp on the current toolchain. The trimmed wrapper and the
 `storj.io/common` patch both worked first time.
 
-What this does NOT prove: that it RUNS. Linking the archive into the Runner
-target, `DynamicLibrary.process()`, and an actual RPC round-trip are still ahead -
-and rclone's author's warning ("until it tries to link it with the wrong linker")
-was about the app link, not the archive. Risk drops from Medium to Low-Medium.
+**IT RUNS (2026-08-28).** `ios-verify.yml` installed the app on a booted
+simulator, launched it, and screenshotted the Home view:
+
+```
+the engine is linked into: Runner.app/Runner.debug.dylib
+-- x86_64 --   _RcloneInitialize/_RcloneFinalize/_RcloneRPC/_RcloneFreeString defined
+-- arm64 --    (same)
+the app is still running after the run window
+```
+
+The screenshot is the load-bearing part. `_MobileFiles` renders `EngineGate`
+unless `engine.phase == EnginePhase.ready`, and the capture shows the ordinary
+Files view - *This phone / On My Device / Cloud* - so the engine reached **ready**.
+That means `DynamicLibrary.process()` resolved all four symbols, `RcloneInitialize`
+ran, and `config/setpath` succeeded against the app-private config. rclone's
+author's warning ("until it tries to link it with the wrong linker") is answered.
+
+It also shows the iOS local pane working as designed: one seeded location, the
+container's Documents, and no **+** beside it.
 
 Build: [`dev/ios/build-librclone-ios.sh`](../ios/build-librclone-ios.sh) via
 [`librclone-ios.yml`](../../.github/workflows/librclone-ios.yml).

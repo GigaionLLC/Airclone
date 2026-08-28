@@ -66,7 +66,7 @@ plainly — deliberate, so a buyer is not surprised.
 in-process engine serves preview/thumbnail/media bytes over a loopback socket.
 Removing it ships a build with no media at all.
 
-## iOS: linked, and a lane written; still a separate track
+## iOS: the engine RUNS; signing is what is left
 
 Done since the first version of this note:
 
@@ -88,6 +88,11 @@ Done since the first version of this note:
   [`ios-release.yml`](../.github/workflows/ios-release.yml) is the TestFlight
   lane; its **`dry-run` needs no Apple credential** and exists to prove the
   DEVICE slice links, which the simulator job cannot tell you.
+
+**Proven 2026-08-28**, on CI, with no hardware: the Release *device* archive keeps
+all four exports (`ios-release.yml -f mode=dry-run`, no Apple credential needed),
+and the Debug simulator build launches and reaches `EnginePhase.ready` - which the
+screenshot shows, because the UI renders `EngineGate` until it does.
 
 Still ahead: `validate`/`upload` need an **Apple Distribution certificate and an
 iOS App Store profile** — the Mac certs (`3rd Party Mac Developer *`) do not
