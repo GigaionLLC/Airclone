@@ -426,6 +426,12 @@ automatic; auto-to-external is not, and no CI can change that.
 
 ## 6️⃣ Gate E — Listing metadata and screenshots
 
+Copy lives in the repo, not in a browser tab:
+[`listing-en-US.md`](../../docs/store/apple/listing-en-US.md) for macOS and
+[`listing-ios-en-US.md`](../../docs/store/apple/listing-ios-en-US.md) for iOS.
+Both are pushed by [`tool/asc_listing.py`](../../tool/asc_listing.py), so the
+console cannot drift from the document that justifies each decision.
+
 Apple will not accept **Add for Review** until every one of these is filled. All live under the app
 record; the per-platform pages are separate and both must be completed if both platforms ship.
 

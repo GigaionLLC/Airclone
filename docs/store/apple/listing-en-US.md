@@ -1,6 +1,8 @@
 # Mac App Store — listing details (English, United States)
 
-Paste-ready copy for App Store Connect → macOS version.
+Paste-ready copy for App Store Connect → macOS version. The iOS copy is a
+separate document — [`listing-ios-en-US.md`](listing-ios-en-US.md) — because the
+iOS build is a different shape of app, not this one in a smaller window.
 
 **Decisions taken 2026-08-21** (both were flagged as judgement calls; either is one
 edit to reverse):

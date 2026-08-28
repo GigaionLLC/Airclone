@@ -7,8 +7,16 @@ each decision. Retyping that into a web form is how copy drifts from the doc tha
 justifies it, so this reads the doc and PATCHes App Store Connect directly.
 
 Usage:
-  python tool/asc_listing.py <key.p8> <keyid> <issuerid> <appid> [--apply]
-Without --apply it prints what it WOULD send and changes nothing.
+  python tool/asc_listing.py <key.p8> <keyid> <issuerid> <appid> [options]
+
+Options:
+  --platform MAC_OS|IOS   which version's localization to write (default MAC_OS)
+  --apply                 actually send it
+
+Without --apply it prints what it WOULD send and changes nothing. The iOS copy is
+a SEPARATE document, not a find-and-replace of the Mac one: the iOS build has no
+arbitrary filesystem, so its description and review notes describe a different
+app.
 """
 import base64, io, json, sys, time, urllib.request, urllib.error
 from cryptography.hazmat.primitives import hashes, serialization
@@ -19,8 +27,11 @@ for _s in (sys.stdout, sys.stderr):
     except (AttributeError, ValueError): pass
 
 KEY, KID, ISS, APP = sys.argv[1:5]
-APPLY = "--apply" in sys.argv
-DOC = "docs/store/apple/listing-en-US.md"
+ARGV = sys.argv[5:]
+APPLY = "--apply" in ARGV
+PLATFORM = ARGV[ARGV.index("--platform") + 1] if "--platform" in ARGV else "MAC_OS"
+DOC = ("docs/store/apple/listing-ios-en-US.md" if PLATFORM == "IOS"
+       else "docs/store/apple/listing-en-US.md")
 LIMITS = {"description": 4000, "keywords": 100, "promotionalText": 170}
 
 
@@ -69,7 +80,11 @@ fields = {
     "description": fenced(doc, "## Description"),
     # NOT the first keyword block in the doc - that one is the REJECTED
     # alternative kept for the record. Anchor on the marker instead.
-    "keywords": fenced(doc, "**Use this one**"),
+    # The Mac doc keeps a REJECTED keyword alternative for the record, and it
+    # comes first, so that one anchors on a marker. The iOS doc has no such
+    # alternative and its keywords are simply the block under the heading.
+    "keywords": fenced(doc, "**Use this one**" if "**Use this one**" in doc
+                       else "## Keywords"),
     "promotionalText": fenced(doc, "## Promotional text"),
     "supportUrl": "https://github.com/GigaionLLC/Airclone",
 }
@@ -81,11 +96,11 @@ if over:
 vs = call("GET", "/v1/apps/%s/appStoreVersions?limit=200" % APP)
 if not vs:
     sys.exit(1)
-ver = next((v for v in vs["data"] if v["attributes"]["platform"] == "MAC_OS"), None)
+ver = next((v for v in vs["data"] if v["attributes"]["platform"] == PLATFORM), None)
 if not ver:
-    sys.exit("no macOS version found")
-print("macOS %s (%s)" % (ver["attributes"]["versionString"],
-                         ver["attributes"]["appStoreState"]))
+    sys.exit("no %s version found" % PLATFORM)
+print("%s %s (%s)" % (PLATFORM, ver["attributes"]["versionString"],
+                      ver["attributes"]["appStoreState"]))
 
 locs = call("GET", "/v1/appStoreVersions/%s/appStoreVersionLocalizations" % ver["id"])
 loc = next((l for l in locs["data"] if l["attributes"]["locale"] == "en-US"), None)
