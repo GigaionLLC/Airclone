@@ -145,6 +145,11 @@ jobs:
           MODE: ${{ inputs.mode }}
         run: |
           set -euo pipefail
+          mkdir -p ../artifacts
+          # Tee the archive: linker warnings and the actual Ld command lines are
+          # the only way to tell "not linked" from "linked then stripped", and
+          # they scroll past in a successful build.
+          exec > >(tee -a ../artifacts/ios-archive.log) 2>&1
           if [ "$MODE" = "dry-run" ]; then
             # No identity, no Apple call. CODE_SIGNING_ALLOWED=NO is what makes
             # an unsigned archive legal; the point of this mode is the LINK.
@@ -195,7 +200,18 @@ jobs:
           done
           if [ -z "$HOST" ]; then
             echo "::error::no Mach-O in the archived bundle exports _RcloneRPC"
-            ls -la "$APP" | head -20
+            echo "-- the whole bundle, untruncated --"
+            ls -la "$APP"
+            for f in "$APP"/*; do
+              [ -f "$f" ] || continue
+              file "$f" 2>/dev/null | grep -q Mach-O || continue
+              echo "-- $f --"
+              echo "   global rclone symbols: $(nm -g "$f" 2>/dev/null | grep -ci rclone)"
+              echo "   any    rclone symbols: $(nm "$f" 2>/dev/null | grep -ci rclone)"
+              echo "   go runtime present:    $(nm "$f" 2>/dev/null | grep -c 'runtime\.' || true)"
+            done
+            echo "-- how the executable was linked --"
+            grep -oE '\-dead_strip|\-force_load [^ ]*librclone[^ ]*|\-u,_Rclone[A-Za-z]*'               ../artifacts/ios-archive.log | sort -u | sed 's/^/   /' || echo "   (nothing matched)"
             exit 1
           fi
           echo "the engine is linked into: $HOST"
@@ -247,6 +263,13 @@ jobs:
             -authenticationKeyID "$KEY_ID" \
             -authenticationKeyIssuerID "$ISSUER"
           ls -lh "$RUNNER_TEMP/export"
+
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: ios-archive-log
+          path: app/artifacts/ios-archive.log
+          if-no-files-found: warn
 
       - uses: actions/upload-artifact@v6
         if: ${{ always() && inputs.mode != 'dry-run' }}

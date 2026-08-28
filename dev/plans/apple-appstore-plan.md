@@ -183,11 +183,20 @@ settings on all three Runner configurations, and nothing else — no `project.pb
 file-reference surgery, because a `-force_load` of an absolute path needs none:
 
 ```
-"OTHER_LDFLAGS[sdk=iphoneos*]"        = -framework CoreFoundation -framework Security
-                                        -lresolv -force_load $(SRCROOT)/librclone/device/librclone.a
-"OTHER_LDFLAGS[sdk=iphonesimulator*]" = ...            -force_load $(SRCROOT)/librclone/simulator/librclone.a
+"OTHER_LDFLAGS[sdk=iphoneos*]"        = -framework CoreFoundation -framework Security -lresolv
+                                        -Wl,-u,_RcloneInitialize  (and the other three)
+                                        -force_load $(SRCROOT)/librclone/device/librclone.a
+"OTHER_LDFLAGS[sdk=iphonesimulator*]" = ...  -force_load $(SRCROOT)/librclone/simulator/librclone.a
 STRIP_STYLE                           = non-global
 ```
+
+**`-force_load` is not enough on its own for a Release executable.** The Release
+link carries `-dead_strip`, and nothing in the app references the Go exports —
+they exist only to be looked up at runtime — so the linker loads the archive and
+then throws it away again. The four `-Wl,-u,_Rclone*` flags name each symbol as
+required, which makes it a dead-strip root. Debug hides this: its code goes into
+`Runner.debug.dylib`, and a dylib exports its globals, so they survive without
+help. That is why the simulator lane and the archive lane can disagree.
 
 Those two paths are **stable by construction**, written by the build script, and deliberately not
 into the `.xcframework`: xcodebuild names the slice directories itself, and `ios-arm64-simulator`

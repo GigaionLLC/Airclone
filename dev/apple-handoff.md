@@ -120,6 +120,13 @@ per-slice answer.
 `ios-arm64-simulator` to `ios-arm64_x86_64-simulator` the moment a second
 architecture appears.
 
+**`-force_load` does not survive `-dead_strip` in a Release executable.** The
+Release link carries both, and nothing in the app references the Go exports —
+they exist only to be looked up at runtime — so the archive is loaded and then
+discarded. Name each symbol with `-Wl,-u,_Rclone*` to make it a dead-strip root.
+Debug hides this entirely, because its code lands in a dylib and a dylib exports
+its globals.
+
 **Xcode 16+ splits a Debug app in two.** `ENABLE_DEBUG_DYLIB = YES` puts the
 app's code in `Runner.debug.dylib` and leaves `Runner` as a launcher stub, so
 `nm Runner` finds nothing however correct the link was. Two runs said *"the
