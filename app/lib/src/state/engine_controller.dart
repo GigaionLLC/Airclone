@@ -121,7 +121,7 @@ class EngineController extends Notifier<EngineUi> {
     // In-process engine: the bundled library stands in for the binary, so skip
     // the "binary not found" branch entirely and go straight to the gate.
     if (_resolvedMode == EngineMode.inProcess) {
-      if (!File(defaultLibrclonePath()).existsSync()) {
+      if (!librcloneLibraryAvailable()) {
         state = const EngineUi(
           phase: EnginePhase.error,
           message:
@@ -165,7 +165,7 @@ class EngineController extends Notifier<EngineUi> {
     return resolveEngineMode(
       setting: setting,
       subprocessAllowed: subprocessAllowedHere,
-      libraryAvailable: File(defaultLibrclonePath()).existsSync(),
+      libraryAvailable: librcloneLibraryAvailable(),
       binaryAvailable: binaryAvailable,
     );
   }

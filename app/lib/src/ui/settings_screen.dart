@@ -7,7 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-import '../rclone/librclone_ffi.dart' show defaultLibrclonePath;
+import '../rclone/librclone_ffi.dart' show librcloneLibraryAvailable;
 import '../rclone/rclone_engine.dart';
 import '../state/advanced_mode.dart';
 import '../state/android_native.dart';
@@ -1131,7 +1131,7 @@ class _EngineModeSection extends ConsumerStatefulWidget {
 class _EngineModeSectionState extends ConsumerState<_EngineModeSection> {
   bool _switching = false;
   // Resolved once: whether this build shipped the in-process engine library.
-  late final bool _libAvailable = File(defaultLibrclonePath()).existsSync();
+  late final bool _libAvailable = librcloneLibraryAvailable();
 
   Future<void> _select(EngineMode mode) async {
     if (_switching) return;

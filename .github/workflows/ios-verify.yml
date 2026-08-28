@@ -1,0 +1,171 @@
+name: iOS (simulator verify)
+
+# Builds Airclone for the iOS SIMULATOR with librclone statically linked, then
+# RUNS it and reads the engine banner off the screen.
+#
+# Why this exists: librclone-ios.yml proved the ARCHIVE builds. It did not prove
+# the app LINKS against it or that dart:ffi can find the symbols at runtime -
+# and rclone's own author's warning ("until it tries to link it with the wrong
+# linker") was about exactly this step, not the archive. Three separate things
+# can fail here and only one of them shows up as a build error:
+#
+#   1. the link  - Go does NOT apply its //go:cgo_ldflag directives for
+#      c-archive, so CoreFoundation, Security and libresolv have to be named by
+#      the Xcode target or the link ends in undefined symbols;
+#   2. the strip - Release strips all symbols by default, which would delete the
+#      Go exports and leave dlsym with nothing (hence STRIP_STYLE=non-global);
+#   3. the runtime - DynamicLibrary.process() has to actually resolve
+#      RcloneInitialize/RcloneRPC/RcloneFinalize/RcloneFreeString.
+#
+# Only running the thing distinguishes those, so this job runs it. It submits
+# nothing and needs no Apple secret. See dev/plans/apple-appstore-plan.md C2.
+
+on:
+  workflow_dispatch:
+    inputs:
+      configuration:
+        description: 'Which Flutter configuration to build'
+        required: true
+        default: 'debug'
+        type: choice
+        options: [debug, release]
+      run_seconds:
+        description: 'How long to let the app run before capturing'
+        required: true
+        default: '30'
+        type: string
+  push:
+    paths:
+      - 'app/lib/src/rclone/librclone_ffi.dart'
+      - 'app/ios/**'
+      - 'dev/ios/**'
+      - '.github/workflows/ios-verify.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  simulator-verify:
+    runs-on: macos-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v5
+      - uses: subosito/flutter-action@v2
+        with: { channel: stable, flutter-version: 3.47.0, cache: true }
+      - uses: actions/setup-go@v6
+        # cache:false - the build script synthesizes its pinning module under
+        # $HOME, so there is no committed go.sum for the default lookup to key on.
+        with: { go-version: 'stable', cache: false }
+
+      - name: Build librclone for iOS
+        run: bash dev/ios/build-librclone-ios.sh
+
+      - name: The archive must carry the symbols Dart will look up
+        # Cheap, and it localises a later failure: if these are missing here the
+        # problem is the Go build, and nothing about Xcode is worth debugging.
+        run: |
+          set -euo pipefail
+          A=app/ios/librclone/librclone.xcframework/ios-arm64-simulator/librclone.a
+          test -f "$A"
+          for sym in RcloneInitialize RcloneFinalize RcloneRPC RcloneFreeString; do
+            nm -g "$A" 2>/dev/null | grep -q " T _${sym}$" \
+              || { echo "::error::_${sym} is not exported by the simulator slice"; exit 1; }
+            echo "  _${sym} exported"
+          done
+
+      - name: Boot a simulator
+        id: sim
+        run: |
+          set -euo pipefail
+          # An arm64 host gives an arm64 simulator, which is the slice we built.
+          UDID="$(xcrun simctl list devices available -j \
+            | python3 -c "import json,sys
+d=json.load(sys.stdin)['devices']
+c=[x for k,v in d.items() if 'iOS' in k for x in v if x.get('isAvailable') and 'iPhone' in x['name']]
+print(sorted(c, key=lambda x: x['name'])[-1]['udid'])")"
+          echo "udid=$UDID" >> "$GITHUB_OUTPUT"
+          xcrun simctl boot "$UDID" || true
+          xcrun simctl bootstatus "$UDID" -b
+          xcrun simctl list devices | grep "$UDID"
+
+      - name: Build the app for the simulator
+        working-directory: app
+        env:
+          CONFIG: ${{ inputs.configuration || 'debug' }}
+        run: |
+          set -euo pipefail
+          flutter pub get
+          # --simulator implies a non-signed build; --${CONFIG} picks the
+          # configuration whose STRIP_STYLE we care about. release exercises the
+          # strip path, debug is faster and is the default for a first look.
+          flutter build ios --simulator "--${CONFIG}" -v 2>&1 | tail -60
+
+      - name: The linked binary must still export the Go symbols
+        # This is the strip check. A Release build with the default STRIP_STYLE
+        # would pass the link and then fail at dlsym, which looks like a Dart
+        # bug and is not one.
+        working-directory: app
+        run: |
+          set -euo pipefail
+          CONFIG="${{ inputs.configuration || 'debug' }}"
+          DIR="build/ios/iphonesimulator/Runner.app"
+          test -d "$DIR" || DIR="$(find build/ios -name 'Runner.app' -maxdepth 4 | head -1)"
+          echo "app bundle: $DIR"
+          BIN="$DIR/Runner"
+          file "$BIN"
+          MISSING=0
+          for sym in RcloneInitialize RcloneFinalize RcloneRPC RcloneFreeString; do
+            if nm -gU "$BIN" 2>/dev/null | grep -q " _${sym}$"; then
+              echo "  _${sym} present in the app binary"
+            else
+              echo "::error::_${sym} is NOT in the linked binary ($CONFIG) - force_load or strip"
+              MISSING=1
+            fi
+          done
+          echo "APP_DIR=$DIR" >> "$GITHUB_ENV"
+          exit "$MISSING"
+
+      - name: Install and run it
+        env:
+          UDID: ${{ steps.sim.outputs.udid }}
+          RUN_SECONDS: ${{ inputs.run_seconds || '30' }}
+        run: |
+          set -uo pipefail
+          mkdir -p artifacts
+          xcrun simctl install "$UDID" "app/$APP_DIR"
+          # The log stream starts BEFORE launch so it cannot miss a crash on the
+          # very first frame, which is where a bad link would show up.
+          xcrun simctl spawn "$UDID" log stream --style compact \
+            --predicate 'process == "Runner"' > artifacts/ios-log.txt 2>&1 &
+          LOG_PID=$!
+          xcrun simctl launch "$UDID" com.gigaionllc.airclone || \
+            echo "::warning::launch returned non-zero"
+          sleep "$RUN_SECONDS"
+          if xcrun simctl spawn "$UDID" launchctl list 2>/dev/null | grep -q gigaionllc.airclone; then
+            echo "ALIVE=yes" >> "$GITHUB_ENV"
+          else
+            echo "ALIVE=unknown" >> "$GITHUB_ENV"
+          fi
+          xcrun simctl io "$UDID" screenshot artifacts/ios-screen.png || \
+            echo "::warning::screenshot failed"
+          kill "$LOG_PID" 2>/dev/null || true
+
+      - name: Report
+        run: |
+          set -uo pipefail
+          echo "still alive after the run window: ${ALIVE:-unknown}"
+          echo "--- anything that looks like a crash or an FFI failure ---"
+          grep -Ei 'crash|fatal|LibrcloneFfi|dlopen|symbol not found|Unhandled' \
+            artifacts/ios-log.txt | head -40 || echo "  (nothing matched)"
+          echo
+          echo "The screenshot is the real verdict: the Home view shows the engine"
+          echo "status, and librclone cannot report a version it did not start."
+
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: ios-simulator-verify
+          path: |
+            artifacts/ios-screen.png
+            artifacts/ios-log.txt
+          if-no-files-found: warn

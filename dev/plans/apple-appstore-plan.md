@@ -149,9 +149,9 @@ Everything in C1 plus:
 | # | Work | Risk |
 | :-- | :--- | :--- |
 | 6 | **librclone for iOS** — `GOOS=ios GOARCH=arm64 -buildmode=c-archive`, packaged as an `.xcframework`. `dev/desktop/build-librclone.sh` only emits `c-shared` for darwin/linux/windows today. | **Off-road, but proven.** See the corrected assessment below. |
-| 7 | **FFI must resolve from the process** — a static archive means `DynamicLibrary.process()`, not `DynamicLibrary.open()`. `librclone_ffi.dart` needs an iOS branch. | Low |
+| 7 | ~~**FFI must resolve from the process**~~ — **DONE 2026-08-28.** `librcloneIsStaticallyLinked('ios')` makes `defaultLibrclonePath()` return the empty sentinel and the worker takes `DynamicLibrary.process()`. `librcloneLibraryAvailable()` replaces the three `File(...).existsSync()` probes, which would otherwise report "not bundled in this build" on the one platform where the engine is *always* present. | ✅ |
 | 8 | **File-access model redesign** — iOS has no arbitrary local filesystem. The "local" pane becomes the app's own documents directory plus `UIDocumentPicker`/Files integration. | Design change, not a port. Sizeable. |
-| 9 | **Info.plist keys** — `NSCameraUsageDescription` (QR scanner), `NSFaceIDUsageDescription` (biometric unlock), `ITSAppUsesNonExemptEncryption`. All three are missing; the first two cause an immediate reject, the third stalls every upload with a questionnaire. | Trivial, easy to forget |
+| 9 | **Info.plist keys** — `NSCameraUsageDescription` and `NSFaceIDUsageDescription` **added 2026-08-28**; both dependencies are real (`mobile_scanner` for Offline-QR import, `local_auth` behind `biometric_unlock.dart`), so the strings describe what the app actually does. `ITSAppUsesNonExemptEncryption` is deliberately **absent** — see the note below. | ✅ |
 | 10 | **Plugin sweep on device** | The dependency set is largely iOS-capable (`media_kit`, `pdfrx`, `mobile_scanner`, `file_selector`, `local_auth`, `super_drag_and_drop`). `flutter_acrylic` and `desktop_multi_window` are desktop-only and already `Platform`-guarded. Verify, don't assume. |
 
 **RESULT (2026-08-21): librclone BUILDS for iOS.** Both slices, on a CI Mac, with
@@ -177,6 +177,41 @@ was about the app link, not the archive. Risk drops from Medium to Low-Medium.
 
 Build: [`dev/ios/build-librclone-ios.sh`](../ios/build-librclone-ios.sh) via
 [`librclone-ios.yml`](../../.github/workflows/librclone-ios.yml).
+
+**INTEGRATION (2026-08-28): the archive is now wired into the app.** Three build
+settings on all three Runner configurations, and nothing else — no `project.pbxproj`
+file-reference surgery, because a `-force_load` of an absolute path needs none:
+
+```
+"OTHER_LDFLAGS[sdk=iphoneos*]"        = -framework CoreFoundation -framework Security
+                                        -lresolv -force_load .../ios-arm64/librclone.a
+"OTHER_LDFLAGS[sdk=iphonesimulator*]" = ... .../ios-arm64-simulator/librclone.a
+STRIP_STYLE                           = non-global
+```
+
+`-force_load` also settles the dead-stripping problem: nothing in Swift references
+the Go exports, so without it the linker would drop the archive members and leave
+`dlsym` with nothing to find. The conditional form matters — a plain
+`OTHER_LDFLAGS` would be *replaced*, not merged, whenever an `[sdk=...]` variant
+matches, so both variants carry the full list rather than relying on the
+unconditional one.
+
+Proof is [`ios-verify.yml`](../../.github/workflows/ios-verify.yml), which builds
+for the simulator, asserts the four symbols survive into the linked binary, then
+installs, launches and screenshots the app. Three different failures live between
+"the archive builds" and "the engine answers", and only running it tells them
+apart: the link (Go omits its own `//go:cgo_ldflag` for `c-archive`), the strip
+(Release removes all symbols by default) and the runtime lookup.
+
+**`ITSAppUsesNonExemptEncryption` is deliberately NOT set — this one is yours.**
+Setting it to `false` would be a US export-control declaration made by a machine
+on the LLC's behalf, and it would very likely be *wrong*: Airclone encrypts the
+user's rclone config with a passphrase, which is data confidentiality, not the
+HTTPS-only case the exemption is usually claimed for. Leaving the key out means
+App Store Connect asks at upload time and a human answers. That is the correct
+place for it. The likely honest answer is "yes, uses encryption" plus the
+mass-market 5D992 exemption, which carries an annual self-classification report
+to BIS — worth deciding once, deliberately, rather than defaulting.
 
 **CORRECTION (researched 2026-08-18).** An earlier draft of this plan said rclone upstream
 ships gomobile bindings covering iOS. **That was wrong.** Upstream's gomobile binding is

@@ -4,6 +4,28 @@ All changes made by AI agents are tracked chronologically below (most recent fir
 
 ---
 
+## [2026-08-28] - iOS: link librclone into the app and prove it at runtime
+
+**Agent:** Claude Opus 5 - `main`
+**Files Modified:** `app/lib/src/rclone/librclone_ffi.dart`,
+`app/lib/src/state/engine_controller.dart`, `app/lib/src/ui/settings_screen.dart`,
+`app/test/ffi_rclone_client_test.dart`, `app/ios/Runner.xcodeproj/project.pbxproj`,
+`app/ios/Runner/Info.plist`, `.github/workflows/ios-verify.yml` (new),
+`.gitignore`, `dev/plans/apple-appstore-plan.md`
+**Database/API Changes:** None
+**Summary:** The iOS c-archive is now linked into the Runner target and Dart
+resolves its symbols from the process instead of a file. Three build settings do
+the linking - the two sdk-conditional `OTHER_LDFLAGS` (CoreFoundation, Security,
+libresolv and a `-force_load`, because Go does not apply its own cgo_ldflags for
+c-archive and nothing in Swift references the exports) plus
+`STRIP_STYLE = non-global`, without which Release would strip the Go symbols and
+break `dlsym`. `ios-verify.yml` builds for the simulator, asserts the four symbols
+survive into the linked binary, then installs, launches and screenshots the app,
+because the link, the strip and the runtime lookup fail differently and only
+running it tells them apart. `ITSAppUsesNonExemptEncryption` was deliberately left
+unset: it is a US export-control declaration, the app does encrypt user config
+with a passphrase, and the questionnaire puts that answer in front of a human.
+
 ## [2026-08-21] - Mac App Store screenshots captured on CI; iOS librclone builds
 
 **Agent:** Claude Opus 5 - `main`

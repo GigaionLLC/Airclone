@@ -42,6 +42,12 @@ app/windows/librclone/
 app/macos/librclone/
 app/linux/librclone/
 
+# iOS is the odd one out: Go cannot build c-shared there at all, so
+# dev/ios/build-librclone-ios.sh emits a STATIC c-archive packaged as an
+# .xcframework, which the Runner target -force_loads into the app binary.
+# Same rule though - it is a build artifact, not source.
+app/ios/librclone/
+
 # ─── Android release signing (SECRETS — never commit) ──────────────────────
 # The release keystore lives outside the repo (~/.airclone-signing); these
 # guards make sure a stray copy or the key.properties that points at it can

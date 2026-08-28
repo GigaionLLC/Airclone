@@ -56,6 +56,17 @@ void main() {
     });
   });
 
+  group('librcloneIsStaticallyLinked', () {
+    test('only iOS links the engine into the executable', () {
+      // c-shared is unsupported on iOS, so the build emits a c-archive that is
+      // force-loaded into the app binary - there is no file to open.
+      expect(librcloneIsStaticallyLinked('ios'), isTrue);
+      for (final os in ['macos', 'windows', 'linux', 'android', 'fuchsia']) {
+        expect(librcloneIsStaticallyLinked(os), isFalse, reason: os);
+      }
+    });
+  });
+
   group('parseByteRange (preview bridge Range header)', () {
     const total = 1000;
     test('a bounded range is inclusive', () {

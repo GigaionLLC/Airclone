@@ -59,6 +59,19 @@ String librcloneFileName(String operatingSystem) {
   }
 }
 
+/// Whether librclone is STATICALLY linked into the executable on
+/// [operatingSystem], instead of loaded from a file beside it.
+///
+/// Only iOS. Go's `c-shared` build mode is not supported there at all, so the
+/// iOS build emits a `c-archive` that the Xcode target `-force_load`s into the
+/// app binary: there is no `.dylib` to find and no path to resolve, and the
+/// symbols are already in the process. A missing library is therefore a LINK
+/// error at build time rather than anything a running app could detect.
+///
+/// Pure (takes the OS name) so it is testable without a device.
+bool librcloneIsStaticallyLinked(String operatingSystem) =>
+    operatingSystem == 'ios';
+
 /// Best-effort absolute path to the bundled librclone.
 ///
 /// - **Windows/Linux:** beside the executable (Windows would also find a bare
@@ -69,6 +82,9 @@ String librcloneFileName(String operatingSystem) {
 ///   pass already walks Frameworks, so the bundled lib is signed with the app and
 ///   passes notarization; a loose dylib in `MacOS/` would be unsigned and rejected.
 String defaultLibrclonePath() {
+  // Statically linked: there is no file, and the empty string is the sentinel
+  // that makes the worker use DynamicLibrary.process() instead of open().
+  if (librcloneIsStaticallyLinked(Platform.operatingSystem)) return '';
   final name = librcloneFileName(Platform.operatingSystem);
   final exe = File(Platform.resolvedExecutable);
   if (Platform.isMacOS) {
@@ -77,6 +93,14 @@ String defaultLibrclonePath() {
   }
   return '${exe.parent.path}${Platform.pathSeparator}$name';
 }
+
+/// Whether the in-process engine can be loaded in this build.
+///
+/// Replaces a bare `File(defaultLibrclonePath()).existsSync()`, which reports
+/// FALSE on iOS - where the engine is always present, just not as a file.
+bool librcloneLibraryAvailable() =>
+    librcloneIsStaticallyLinked(Platform.operatingSystem) ||
+    File(defaultLibrclonePath()).existsSync();
 
 /// Thrown for a catastrophic FFI/worker failure (symbol missing, isolate died) —
 /// distinct from an rclone-reported non-2xx status, which surfaces via the normal
@@ -268,7 +292,11 @@ class _Bindings {
     String? configPath,
     String? configPass,
   ) {
-    final lib = DynamicLibrary.open(libPath);
+    // An empty path means the archive is linked into this executable (iOS).
+    // `process()` searches the whole loaded image, `open('')` would fail.
+    final lib = libPath.isEmpty
+        ? DynamicLibrary.process()
+        : DynamicLibrary.open(libPath);
     final init = lib.lookupFunction<_VoidNative, _VoidDart>('RcloneInitialize');
     final finalize = lib.lookupFunction<_VoidNative, _VoidDart>(
       'RcloneFinalize',
