@@ -150,7 +150,7 @@ Everything in C1 plus:
 | :-- | :--- | :--- |
 | 6 | **librclone for iOS** — `GOOS=ios GOARCH=arm64 -buildmode=c-archive`, packaged as an `.xcframework`. `dev/desktop/build-librclone.sh` only emits `c-shared` for darwin/linux/windows today. | **Off-road, but proven.** See the corrected assessment below. |
 | 7 | ~~**FFI must resolve from the process**~~ — **DONE 2026-08-28.** `librcloneIsStaticallyLinked('ios')` makes `defaultLibrclonePath()` return the empty sentinel and the worker takes `DynamicLibrary.process()`. `librcloneLibraryAvailable()` replaces the three `File(...).existsSync()` probes, which would otherwise report "not bundled in this build" on the one platform where the engine is *always* present. | ✅ |
-| 8 | **File-access model redesign** — iOS has no arbitrary local filesystem. The "local" pane becomes the app's own documents directory plus `UIDocumentPicker`/Files integration. | Design change, not a port. Sizeable. |
+| 8 | **File-access model redesign** — **first cut done 2026-08-28.** The Locations sidebar seeds exactly one entry on iOS, the container's `Documents`, and `UIFileSharingEnabled` + `LSSupportsOpeningDocumentsInPlace` make that the Files app's *On My iPhone → Airclone*, so it is a shared folder rather than a private hole. `/` is no longer offered and the **+ button is hidden** — `file_selector` has no `getDirectoryPath` on iOS, so it would have thrown. Still open: pulling in a file the user picks elsewhere in Files (`UIDocumentPicker`). | 🟡 usable |
 | 9 | **Info.plist keys** — `NSCameraUsageDescription` and `NSFaceIDUsageDescription` **added 2026-08-28**; both dependencies are real (`mobile_scanner` for Offline-QR import, `local_auth` behind `biometric_unlock.dart`), so the strings describe what the app actually does. `ITSAppUsesNonExemptEncryption` is deliberately **absent** — see the note below. | ✅ |
 | 10 | **Plugin sweep on device** | The dependency set is largely iOS-capable (`media_kit`, `pdfrx`, `mobile_scanner`, `file_selector`, `local_auth`, `super_drag_and_drop`). `flutter_acrylic` and `desktop_multi_window` are desktop-only and already `Platform`-guarded. Verify, don't assume. |
 
@@ -184,10 +184,22 @@ file-reference surgery, because a `-force_load` of an absolute path needs none:
 
 ```
 "OTHER_LDFLAGS[sdk=iphoneos*]"        = -framework CoreFoundation -framework Security
-                                        -lresolv -force_load .../ios-arm64/librclone.a
-"OTHER_LDFLAGS[sdk=iphonesimulator*]" = ... .../ios-arm64-simulator/librclone.a
+                                        -lresolv -force_load $(SRCROOT)/librclone/device/librclone.a
+"OTHER_LDFLAGS[sdk=iphonesimulator*]" = ...            -force_load $(SRCROOT)/librclone/simulator/librclone.a
 STRIP_STYLE                           = non-global
 ```
+
+Those two paths are **stable by construction**, written by the build script, and deliberately not
+into the `.xcframework`: xcodebuild names the slice directories itself, and `ios-arm64-simulator`
+becomes `ios-arm64_x86_64-simulator` the moment a second architecture appears. The xcframework is
+still produced — it is the portable form, and creating it validates the platform stamps — but
+nothing in this repo links against it.
+
+**The simulator archive must be FAT (arm64 + x86_64).** `flutter build ios --simulator` always emits
+a universal binary, and `-force_load` of an archive that lacks an architecture is only a *warning*:
+the link succeeds, that slice silently contains no engine, and the first sign of trouble is symbols
+that are simply not in the binary. This is exactly how the first integration run failed — a green
+build over an empty binary.
 
 `-force_load` also settles the dead-stripping problem: nothing in Swift references
 the Go exports, so without it the linker would drop the archive members and leave
@@ -327,8 +339,33 @@ That last one deserves emphasis: on the version page, choosing **"Manually relea
 means even an *approved* build sits and waits. Approval and publication are separate events. Given
 what a committed submission did on the Microsoft Store, this setting should be non-negotiable.
 
-- **New:** `.github/workflows/submit-appstore.yml` — dispatch-only, mirroring `promote-play.yml`:
-  choose platform (iOS/macOS), build number, and a **`dry_run` default true**.
+**As built (2026-08-28):** two dispatch-only lanes, one per platform, rather than the single
+`submit-appstore.yml` sketched here — the signing story differs enough between them that one
+workflow with a platform switch would have been mostly branches.
+
+| Lane | Modes | State |
+| :--- | :--- | :--- |
+| [`mas-release.yml`](../../.github/workflows/mas-release.yml) | `dry-run` / `validate` / `upload` | ✅ Apple-validated |
+| [`ios-release.yml`](../../.github/workflows/ios-release.yml) | `dry-run` / `validate` / `upload` | 🟡 written; `dry-run` needs no secret, `validate`/`upload` need the certs below |
+
+`ios-release.yml`'s **`dry-run` deliberately requires no Apple credential at all**: it archives with
+`CODE_SIGNING_ALLOWED=NO` purely to prove the DEVICE slice links and keeps its Go symbols, which the
+simulator job cannot tell you. It is the cheapest possible check of the thing most likely to break.
+
+Still needed before `validate` works, because the Mac certificates (`3rd Party Mac Developer *`) do
+not cover iOS:
+
+| Secret / variable | What |
+| :--- | :--- |
+| `APPLE_IOS_DIST_P12_BASE64` | an **Apple Distribution** certificate + key, as a base64 `.p12` |
+| `APPLE_IOS_P12_PASSWORD` | its export password |
+| `APPLE_IOS_PROVISIONING_PROFILE_BASE64` | an **iOS App Store** profile for `com.gigaionllc.airclone` |
+| `APPLE_IOS_PROFILE_NAME` *(var, optional)* | the profile's name if it is not `Airclone iOS App Store` |
+
+The Certificates API can mint the certificate with the existing App Manager key — that is how the Mac
+pair was created, after Xcode's cloud signing refused. See §3e of the vault record.
+
+- ~~**New:** `submit-appstore.yml`~~ — superseded by the two lanes above.
 - **Extend:** `release.yml` — `ios`/`mas` jobs uploading to TestFlight via
   `apple-actions/upload-testflight-build`, gated on `APPSTORE_API_PRIVATE_KEY` existing so nothing
   changes until the secret lands (exactly how the Play lane was introduced).

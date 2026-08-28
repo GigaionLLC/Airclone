@@ -6,6 +6,7 @@ import 'package:media_kit/media_kit.dart';
 
 import 'src/headless/headless_runner.dart';
 import 'src/state/android_native.dart';
+import 'src/state/local_locations.dart';
 import 'src/state/window_backdrop.dart';
 import 'src/ui/app.dart';
 import 'src/ui/popout_image_app.dart';
@@ -44,6 +45,9 @@ Future<void> main(List<String> args) async {
   // Android: resolve the real shared-storage root (multi-user aware) before
   // the location providers build. No-op elsewhere.
   await initAndroidStorageRoot();
+  // iOS: resolve the app's Documents directory, which is the whole of "local"
+  // there. Same reason as above - the location providers stay synchronous.
+  await initIosDocumentsRoot();
   if (Platform.isWindows || Platform.isMacOS || Platform.isLinux) {
     // Prepare the window-effect plugin and apply the saved backdrop (if any)
     // before the first frame so there's no flash. Desktop only: on mobile the

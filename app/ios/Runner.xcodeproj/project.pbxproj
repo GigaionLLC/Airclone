@@ -390,7 +390,7 @@
 					Security,
 					"-lresolv",
 					"-force_load",
-					"$(SRCROOT)/librclone/librclone.xcframework/ios-arm64/librclone.a",
+					"$(SRCROOT)/librclone/device/librclone.a",
 				);
 				"OTHER_LDFLAGS[sdk=iphonesimulator*]" = (
 					"$(inherited)",
@@ -400,7 +400,7 @@
 					Security,
 					"-lresolv",
 					"-force_load",
-					"$(SRCROOT)/librclone/librclone.xcframework/ios-arm64-simulator/librclone.a",
+					"$(SRCROOT)/librclone/simulator/librclone.a",
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.gigaionllc.airclone;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -590,7 +590,7 @@
 					Security,
 					"-lresolv",
 					"-force_load",
-					"$(SRCROOT)/librclone/librclone.xcframework/ios-arm64/librclone.a",
+					"$(SRCROOT)/librclone/device/librclone.a",
 				);
 				"OTHER_LDFLAGS[sdk=iphonesimulator*]" = (
 					"$(inherited)",
@@ -600,7 +600,7 @@
 					Security,
 					"-lresolv",
 					"-force_load",
-					"$(SRCROOT)/librclone/librclone.xcframework/ios-arm64-simulator/librclone.a",
+					"$(SRCROOT)/librclone/simulator/librclone.a",
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.gigaionllc.airclone;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -633,7 +633,7 @@
 					Security,
 					"-lresolv",
 					"-force_load",
-					"$(SRCROOT)/librclone/librclone.xcframework/ios-arm64/librclone.a",
+					"$(SRCROOT)/librclone/device/librclone.a",
 				);
 				"OTHER_LDFLAGS[sdk=iphonesimulator*]" = (
 					"$(inherited)",
@@ -643,7 +643,7 @@
 					Security,
 					"-lresolv",
 					"-force_load",
-					"$(SRCROOT)/librclone/librclone.xcframework/ios-arm64-simulator/librclone.a",
+					"$(SRCROOT)/librclone/simulator/librclone.a",
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.gigaionllc.airclone;
 				PRODUCT_NAME = "$(TARGET_NAME)";

@@ -1084,13 +1084,18 @@ class _Sidebar extends ConsumerWidget {
       _SectionHeader(
         label: 'LOCATIONS',
         sectionKey: 'locations',
-        trailing: IconButton(
-          onPressed: () => _addFolderViaPicker(ref),
-          icon: const Icon(Icons.add, size: 16),
-          tooltip: 'Add a folder…',
-          color: c.textMuted,
-          visualDensity: VisualDensity.compact,
-        ),
+        // No + on iOS: there is no arbitrary filesystem to add a folder from,
+        // and no picker that could grant one. Offering a button that cannot
+        // work is worse than not offering it.
+        trailing: Platform.isIOS
+            ? null
+            : IconButton(
+                onPressed: () => _addFolderViaPicker(ref),
+                icon: const Icon(Icons.add, size: 16),
+                tooltip: 'Add a folder…',
+                color: c.textMuted,
+                visualDensity: VisualDensity.compact,
+              ),
       ),
       if (!collapsed.contains('locations'))
         NativePaneDropRegion(
@@ -1287,6 +1292,12 @@ Future<void> _addFolderViaPicker(WidgetRef ref) async {
     }
     return;
   }
+  // iOS has no folder picker to open: file_selector implements getDirectoryPath
+  // on desktop and Android only, so calling it here throws. There is also
+  // nothing for it to pick - the app's Documents directory IS local storage on
+  // iOS, and it is already seeded. The + affordance is hidden there; this is the
+  // matching guard, not a second line of defence.
+  if (Platform.isIOS) return;
   final dir = await getDirectoryPath();
   if (dir != null && dir.isNotEmpty) {
     ref.read(userLocationsProvider.notifier).addFolder(dir);

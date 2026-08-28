@@ -1,0 +1,283 @@
+name: iOS App Store (build + upload)
+
+# Builds the iOS App Store archive and uploads it to App Store Connect, where it
+# becomes a TestFlight build.
+#
+# Same shape as mas-release.yml and for the same reason: DISPATCH-ONLY, and it
+# submits nothing. A human attaches the build to a version and presses "Add for
+# Review". On the Microsoft Store a machine was once allowed to commit a
+# submission and published this app at $0, unstoppable once started - see
+# AGENT.md rules 10-13.
+#
+# Two things are EASIER here than on macOS, both because the engine is a static
+# archive rather than a dylib:
+#   - nothing has to be copied into the bundle after archiving, so there is no
+#     re-sign dance to make the outer signature cover the engine;
+#   - there is no library for the App Store to reject as an invalid bundle
+#     structure. The xcframework is linked, never embedded.
+#
+# One thing is HARDER: iOS App Store signing needs its own Apple Distribution
+# certificate and an "iOS App Store" provisioning profile. The Mac lane's certs
+# (3rd Party Mac Developer *) do not cover iOS.
+#
+# mode:
+#   dry-run   build and archive with NO signing identity and NO Apple secret.
+#             Proves the DEVICE slice links and keeps its symbols, which the
+#             simulator job in ios-verify.yml cannot tell you.
+#   validate  ask Apple whether it would accept the .ipa. Changes nothing.
+#   upload    send it. Becomes a TestFlight build; submits nothing.
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'dry-run = build only, no secrets | validate = ask Apple | upload = send it'
+        required: true
+        default: dry-run
+        type: choice
+        options: [dry-run, validate, upload]
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    working-directory: app
+
+jobs:
+  build-upload:
+    runs-on: macos-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v5
+      - uses: subosito/flutter-action@v2
+        with: { channel: stable, flutter-version: 3.47.0, cache: true }
+      - uses: actions/setup-go@v6
+        with: { go-version: 'stable', cache: false }
+
+      - name: Refuse without credentials
+        # dry-run deliberately needs none, so it stays usable as a pure link
+        # check. Anything that talks to Apple fails here rather than 40 minutes
+        # later at the upload step.
+        if: ${{ inputs.mode != 'dry-run' }}
+        env:
+          HAS_KEY: ${{ secrets.APPSTORE_API_PRIVATE_KEY != '' }}
+          ISSUER: ${{ secrets.APPSTORE_ISSUER_ID }}
+          KEY_ID: ${{ vars.APPSTORE_API_KEY_ID }}
+          TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          HAS_DIST: ${{ secrets.APPLE_IOS_DIST_P12_BASE64 != '' }}
+          HAS_PROFILE: ${{ secrets.APPLE_IOS_PROVISIONING_PROFILE_BASE64 != '' }}
+        run: |
+          set -euo pipefail
+          missing=""
+          [ "$HAS_KEY" = "true" ] || missing="$missing APPSTORE_API_PRIVATE_KEY(secret)"
+          [ -n "$ISSUER" ] || missing="$missing APPSTORE_ISSUER_ID(secret)"
+          [ -n "$KEY_ID" ] || missing="$missing APPSTORE_API_KEY_ID(var)"
+          [ -n "$TEAM_ID" ] || missing="$missing APPLE_TEAM_ID(secret)"
+          [ "$HAS_DIST" = "true" ] || missing="$missing APPLE_IOS_DIST_P12_BASE64(secret)"
+          [ "$HAS_PROFILE" = "true" ] || missing="$missing APPLE_IOS_PROVISIONING_PROFILE_BASE64(secret)"
+          if [ -n "$missing" ]; then
+            echo "::error::missing:$missing - see dev/plans/apple-appstore-plan.md Gate B/D"
+            exit 1
+          fi
+          echo "credentials present"
+
+      - name: Build librclone for iOS
+        working-directory: .
+        run: bash dev/ios/build-librclone-ios.sh
+
+      - name: Write the App Store Connect API key
+        if: ${{ inputs.mode != 'dry-run' }}
+        env:
+          P8: ${{ secrets.APPSTORE_API_PRIVATE_KEY }}
+          KEY_ID: ${{ vars.APPSTORE_API_KEY_ID }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$HOME/.appstoreconnect/private_keys"
+          chmod 700 "$HOME/.appstoreconnect/private_keys"
+          printf '%s' "$P8" > "$HOME/.appstoreconnect/private_keys/AuthKey_${KEY_ID}.p8"
+          chmod 600 "$HOME/.appstoreconnect/private_keys/AuthKey_${KEY_ID}.p8"
+          echo "key written, $(wc -c < "$HOME/.appstoreconnect/private_keys/AuthKey_${KEY_ID}.p8") bytes"
+
+      - name: Import the distribution certificate and profile
+        # An ephemeral, job-scoped keychain: the runner's login keychain is
+        # locked, and a locked keychain makes signing report "0 valid identities
+        # found" with no error of its own. That cost several runs on the Mac lane.
+        if: ${{ inputs.mode != 'dry-run' }}
+        env:
+          DIST_P12: ${{ secrets.APPLE_IOS_DIST_P12_BASE64 }}
+          P12_PASSWORD: ${{ secrets.APPLE_IOS_P12_PASSWORD }}
+          PROFILE: ${{ secrets.APPLE_IOS_PROVISIONING_PROFILE_BASE64 }}
+        run: |
+          set -euo pipefail
+          KC="$RUNNER_TEMP/airclone-ios.keychain-db"
+          security create-keychain -p "" "$KC"
+          security set-keychain-settings -lut 7200 "$KC"
+          security unlock-keychain -p "" "$KC"
+          security list-keychains -d user -s "$KC" login.keychain-db
+          security default-keychain -s "$KC"
+          printf '%s' "$DIST_P12" | base64 -d > "$RUNNER_TEMP/ios-dist.p12"
+          security import "$RUNNER_TEMP/ios-dist.p12" -k "$KC" -P "$P12_PASSWORD" \
+            -T /usr/bin/codesign -A
+          rm -f "$RUNNER_TEMP/ios-dist.p12"
+          # Without this, codesign blocks on a GUI keychain prompt nobody can
+          # answer and the job hangs until it times out.
+          security set-key-partition-list -S apple-tool:,apple:,codesign: \
+            -s -k "" "$KC" > /dev/null
+          PROFILE_DIR="$HOME/Library/MobileDevice/Provisioning Profiles"
+          mkdir -p "$PROFILE_DIR"
+          printf '%s' "$PROFILE" | base64 -d > "$PROFILE_DIR/Airclone_iOS.mobileprovision"
+          echo "--- identities available for signing ---"
+          security find-identity -v -p codesigning "$KC"
+
+      - run: flutter pub get
+
+      - name: Generate the Flutter build inputs
+        # --no-codesign: this only produces the assets and the ephemeral xcconfig
+        # that the xcodebuild archive below consumes. Signing happens there.
+        run: flutter build ios --release --no-codesign
+
+      - name: Archive
+        env:
+          ISSUER: ${{ secrets.APPSTORE_ISSUER_ID }}
+          KEY_ID: ${{ vars.APPSTORE_API_KEY_ID }}
+          TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          MODE: ${{ inputs.mode }}
+        run: |
+          set -euo pipefail
+          if [ "$MODE" = "dry-run" ]; then
+            # No identity, no Apple call. CODE_SIGNING_ALLOWED=NO is what makes
+            # an unsigned archive legal; the point of this mode is the LINK.
+            xcodebuild -workspace ios/Runner.xcworkspace \
+              -scheme Runner -configuration Release \
+              -destination 'generic/platform=iOS' \
+              -archivePath "$RUNNER_TEMP/Airclone.xcarchive" \
+              CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
+              archive
+          else
+            # "Apple Development" at archive time, distribution applied later by
+            # -exportArchive. Naming Distribution here conflicts with automatic
+            # signing; omitting it entirely hands control back to the project's
+            # own "-" and produces an ad-hoc signature. Both were learned on the
+            # Mac lane.
+            xcodebuild -workspace ios/Runner.xcworkspace \
+              -scheme Runner -configuration Release \
+              -destination 'generic/platform=iOS' \
+              -archivePath "$RUNNER_TEMP/Airclone.xcarchive" \
+              -allowProvisioningUpdates \
+              -authenticationKeyPath "$HOME/.appstoreconnect/private_keys/AuthKey_${KEY_ID}.p8" \
+              -authenticationKeyID "$KEY_ID" \
+              -authenticationKeyIssuerID "$ISSUER" \
+              CODE_SIGN_STYLE=Automatic \
+              DEVELOPMENT_TEAM="$TEAM_ID" \
+              "CODE_SIGN_IDENTITY=Apple Development" \
+              archive
+          fi
+
+      - name: The archived binary must still export the Go symbols
+        # The whole reason dry-run exists. Release strips all symbols by default,
+        # which would delete the Go exports and leave dart:ffi looking up nothing
+        # - a failure that appears only at runtime, on a device, as "the engine
+        # did not start". STRIP_STYLE=non-global is what prevents it.
+        run: |
+          set -euo pipefail
+          APPS="$RUNNER_TEMP/Airclone.xcarchive/Products/Applications"
+          BIN="$APPS/Runner.app/Runner"
+          test -f "$BIN" || BIN="$(find "$APPS" -maxdepth 2 -name Runner -type f | head -1)"
+          echo "binary: $BIN"
+          file "$BIN"
+          MISSING=0
+          for sym in RcloneInitialize RcloneFinalize RcloneRPC RcloneFreeString; do
+            if nm -gU "$BIN" 2>/dev/null | grep -q " _${sym}$"; then
+              echo "  _${sym} present"
+            else
+              echo "::error::_${sym} is NOT in the archived device binary - force_load or strip"
+              MISSING=1
+            fi
+          done
+          exit "$MISSING"
+
+      - name: Export the App Store package
+        if: ${{ inputs.mode != 'dry-run' }}
+        env:
+          ISSUER: ${{ secrets.APPSTORE_ISSUER_ID }}
+          KEY_ID: ${{ vars.APPSTORE_API_KEY_ID }}
+          TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          PROFILE_NAME: ${{ vars.APPLE_IOS_PROFILE_NAME }}
+        run: |
+          set -euo pipefail
+          # MANUAL signing, like the Mac lane: automatic sends Xcode to cloud
+          # signing, which cannot mint a distribution certificate with an App
+          # Manager key. Everything needed is already in the local keychain.
+          {
+            echo '<?xml version="1.0" encoding="UTF-8"?>'
+            echo '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">'
+            echo '<plist version="1.0"><dict>'
+            echo '<key>method</key><string>app-store-connect</string>'
+            echo '<key>destination</key><string>export</string>'
+            echo '<key>signingStyle</key><string>manual</string>'
+            echo "<key>teamID</key><string>${TEAM_ID}</string>"
+            echo '<key>signingCertificate</key><string>Apple Distribution</string>'
+            echo '<key>uploadSymbols</key><true/>'
+            echo '<key>provisioningProfiles</key><dict>'
+            echo "<key>com.gigaionllc.airclone</key><string>${PROFILE_NAME:-Airclone iOS App Store}</string>"
+            echo '</dict></dict></plist>'
+          } > "$RUNNER_TEMP/export.plist"
+          echo "--- export options ---"; cat "$RUNNER_TEMP/export.plist"
+          xcodebuild -exportArchive \
+            -archivePath "$RUNNER_TEMP/Airclone.xcarchive" \
+            -exportPath "$RUNNER_TEMP/export" \
+            -exportOptionsPlist "$RUNNER_TEMP/export.plist" \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$HOME/.appstoreconnect/private_keys/AuthKey_${KEY_ID}.p8" \
+            -authenticationKeyID "$KEY_ID" \
+            -authenticationKeyIssuerID "$ISSUER"
+          ls -lh "$RUNNER_TEMP/export"
+
+      - uses: actions/upload-artifact@v6
+        if: ${{ always() && inputs.mode != 'dry-run' }}
+        with:
+          name: ios-ipa
+          path: ${{ runner.temp }}/export/*.ipa
+          if-no-files-found: warn
+
+      - name: Ask Apple whether it would accept the package
+        if: ${{ inputs.mode != 'dry-run' }}
+        # A real server-side check of signature, entitlements, profile and bundle
+        # identity - and it changes nothing. It runs for upload too, because a
+        # rejected validation costs nothing while a half-uploaded build has to be
+        # cleaned up in the console by hand.
+        env:
+          ISSUER: ${{ secrets.APPSTORE_ISSUER_ID }}
+          KEY_ID: ${{ vars.APPSTORE_API_KEY_ID }}
+        run: |
+          set -euo pipefail
+          IPA=$(ls "$RUNNER_TEMP/export"/*.ipa | head -1)
+          echo "validating $IPA"
+          xcrun altool --validate-app -f "$IPA" -t ios --apiKey "$KEY_ID" --apiIssuer "$ISSUER"
+
+      - name: Upload to App Store Connect
+        if: ${{ inputs.mode == 'upload' }}
+        env:
+          ISSUER: ${{ secrets.APPSTORE_ISSUER_ID }}
+          KEY_ID: ${{ vars.APPSTORE_API_KEY_ID }}
+        run: |
+          set -euo pipefail
+          IPA=$(ls "$RUNNER_TEMP/export"/*.ipa | head -1)
+          echo "uploading $IPA"
+          xcrun altool --upload-app -f "$IPA" -t ios --apiKey "$KEY_ID" --apiIssuer "$ISSUER"
+
+      - name: What happens next
+        if: ${{ inputs.mode == 'upload' }}
+        run: |
+          echo "Uploaded. Processing takes a few minutes, then it appears in TestFlight."
+          echo "NOTHING is submitted. Export compliance is asked on the build itself -"
+          echo "ITSAppUsesNonExemptEncryption is deliberately absent from Info.plist so"
+          echo "a human answers it. See dev/plans/apple-appstore-plan.md Gate C2."
+          echo "https://appstoreconnect.apple.com/apps/6790176897/testflight/ios"
+
+      - name: Shred the API key and the keychain
+        if: always()
+        run: |
+          rm -rf "$HOME/.appstoreconnect" || true
+          security delete-keychain "$RUNNER_TEMP/airclone-ios.keychain-db" || true

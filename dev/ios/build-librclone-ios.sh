@@ -85,20 +85,54 @@ build_slice() { # sdk, goarch, out_dir
 rm -rf "${WORK}/out"
 build_slice iphoneos        arm64 "${WORK}/out/ios-arm64"
 build_slice iphonesimulator arm64 "${WORK}/out/ios-arm64-sim"
+# x86_64 simulator is NOT optional, even though every Mac worth having is arm64
+# now: `flutter build ios --simulator` always emits a FAT x86_64+arm64 binary,
+# and -force_load of an archive that lacks an architecture is only a WARNING.
+# The link succeeds, the x86_64 slice quietly contains no engine at all, and it
+# surfaces much later as symbols that are simply not in the binary.
+build_slice iphonesimulator amd64 "${WORK}/out/ios-amd64-sim"
 
+# One fat simulator archive: the linker picks the matching slice out of it, so a
+# single -force_load covers both simulator architectures.
+mkdir -p "${WORK}/out/sim-fat"
+lipo -create \
+  "${WORK}/out/ios-arm64-sim/librclone.a" \
+  "${WORK}/out/ios-amd64-sim/librclone.a" \
+  -output "${WORK}/out/sim-fat/librclone.a"
+cp "${WORK}/out/ios-arm64-sim/librclone.h" "${WORK}/out/sim-fat/librclone.h"
+echo "== fat simulator archive =="
+lipo -info "${WORK}/out/sim-fat/librclone.a"
+
+# STABLE paths are what the Xcode target links, deliberately NOT the xcframework
+# slice directories: xcodebuild names those itself, and ios-arm64-simulator
+# becomes ios-arm64_x86_64-simulator the moment a second architecture appears -
+# so a -force_load pointed into the xcframework breaks whenever the slice set
+# changes. device/ and simulator/ never move.
 mkdir -p "$OUT_DIR"
-rm -rf "${OUT_DIR}/librclone.xcframework"
+rm -rf "${OUT_DIR}/device" "${OUT_DIR}/simulator" "${OUT_DIR}/librclone.xcframework"
+mkdir -p "${OUT_DIR}/device" "${OUT_DIR}/simulator"
+cp "${WORK}/out/ios-arm64/librclone.a" "${OUT_DIR}/device/librclone.a"
+cp "${WORK}/out/ios-arm64/librclone.h" "${OUT_DIR}/device/librclone.h"
+cp "${WORK}/out/sim-fat/librclone.a"   "${OUT_DIR}/simulator/librclone.a"
+cp "${WORK}/out/sim-fat/librclone.h"   "${OUT_DIR}/simulator/librclone.h"
+
+# The xcframework is still built: it is the portable form to hand to anyone else,
+# and creating it validates the platform stamps. Nothing in this repo links it.
 # -headers copies the whole directory, so the .a has to be kept out of it or it
 # is duplicated inside Headers/ in the shipped xcframework.
-for slice in ios-arm64 ios-arm64-sim; do
+for slice in ios-arm64 sim-fat; do
   mkdir -p "${WORK}/out/${slice}/include"
   cp "${WORK}/out/${slice}/librclone.h" "${WORK}/out/${slice}/include/"
 done
 
 xcodebuild -create-xcframework \
-  -library "${WORK}/out/ios-arm64/librclone.a"     -headers "${WORK}/out/ios-arm64/include" \
-  -library "${WORK}/out/ios-arm64-sim/librclone.a" -headers "${WORK}/out/ios-arm64-sim/include" \
+  -library "${WORK}/out/ios-arm64/librclone.a" -headers "${WORK}/out/ios-arm64/include" \
+  -library "${WORK}/out/sim-fat/librclone.a"   -headers "${WORK}/out/sim-fat/include" \
   -output "${OUT_DIR}/librclone.xcframework"
 
 echo "== built =="
-find "${OUT_DIR}/librclone.xcframework" -maxdepth 2 -mindepth 1 | sed 's/^/  /'
+echo "-- what the Xcode target actually links --"
+for a in "${OUT_DIR}/device/librclone.a" "${OUT_DIR}/simulator/librclone.a"; do
+  printf '  %s: ' "$a"; lipo -info "$a" | sed 's/^.*: //'
+done
+find "${OUT_DIR}/librclone.xcframework" -maxdepth 2 -mindepth 1 | sed 's/^/  /' 

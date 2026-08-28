@@ -57,4 +57,35 @@ void main() {
       expect(withB.kind, LocalKind.pictures);
     });
   });
+
+  group('iOS local storage (buildIosUserFolders)', () {
+    test('seeds exactly the container Documents directory', () {
+      final out = buildIosUserFolders(
+        '/var/mobile/Containers/Data/App/X/Documents',
+      );
+      expect(out, hasLength(1));
+      expect(
+        out.single.remote.fs,
+        '/var/mobile/Containers/Data/App/X/Documents/',
+      );
+      expect(out.single.remote.isLocal, isTrue);
+      expect(out.single.kind, LocalKind.documents);
+    });
+
+    test('seeds nothing when the root has not been resolved', () {
+      // An empty Locations list is the honest state; a row pointing at "" would
+      // render fine and fail on every open.
+      expect(buildIosUserFolders(''), isEmpty);
+    });
+
+    test('never seeds the container root, only Documents', () {
+      // The whole point: "Home" at the container root would expose Library/ and
+      // tmp/, which are app plumbing.
+      final out = buildIosUserFolders('/c/Documents');
+      expect(
+        out.map((l) => l.remote.fs),
+        everyElement(contains('/Documents/')),
+      );
+    });
+  });
 }

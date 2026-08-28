@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../rclone/models/remote.dart';
@@ -105,6 +106,59 @@ LocalLocation? _folder(String name, String path, LocalKind kind) {
 /// users / work profiles live under a different index.
 String androidStorageRoot = '/storage/emulated/0';
 
+/// The app's own Documents directory on iOS — the entirety of "local" there.
+///
+/// iOS has no arbitrary filesystem to browse and no folder picker to grant one
+/// (`file_selector` implements `getDirectoryPath` on desktop and Android only),
+/// so the container is the whole story. It is not a private hole, though: with
+/// `UIFileSharingEnabled` + `LSSupportsOpeningDocumentsInPlace` in Info.plist,
+/// this exact directory is what the Files app shows as *On My iPhone → Airclone*,
+/// so the user can put files into it from outside and see what Airclone wrote.
+///
+/// Resolved once in `main()` via [initIosDocumentsRoot], for the same reason
+/// [androidStorageRoot] is: it keeps the location providers synchronous. Empty
+/// off iOS, and empty on iOS until that call lands - hence the guard before it
+/// is ever turned into a Location.
+String iosDocumentsRoot = '';
+
+/// Resolve [iosDocumentsRoot]. Call once in `main()` before `runApp`; no-op
+/// everywhere else. Failure leaves it empty, which shows an empty Locations
+/// list rather than a row pointing somewhere wrong.
+Future<void> initIosDocumentsRoot() async {
+  if (!Platform.isIOS) return;
+  try {
+    iosDocumentsRoot = (await getApplicationDocumentsDirectory()).path;
+  } catch (_) {
+    // keep the default
+  }
+}
+
+/// The iOS seed set: exactly the container's Documents directory, and nothing
+/// else.
+///
+/// Falling through to the `$HOME` branch of [buildDefaultUserFolders] would seed
+/// a "Home" pointing at the container ROOT, exposing `Library/` and `tmp/` -
+/// app plumbing the user has no business browsing and no way to use. Returns
+/// empty when [documentsRoot] has not been resolved, which shows an empty
+/// Locations list rather than a row pointing somewhere wrong.
+///
+/// Pure (takes the root) so the "exactly one, and it points there" contract is
+/// testable without a device.
+List<LocalLocation> buildIosUserFolders(String documentsRoot) {
+  if (documentsRoot.isEmpty) return const [];
+  return [
+    LocalLocation(
+      remote: Remote(
+        name: 'On My Device',
+        type: 'local',
+        fs: fsRoot(documentsRoot),
+        isLocal: true,
+      ),
+      kind: LocalKind.documents,
+    ),
+  ];
+}
+
 /// The default set of user folders (Home + standard XDG-ish folders) for first run.
 List<LocalLocation> buildDefaultUserFolders() {
   final out = <LocalLocation>[];
@@ -116,6 +170,8 @@ List<LocalLocation> buildDefaultUserFolders() {
   // worse than an empty sidebar: it looks like the app works and lost your
   // files. First run is "add your first folder", granted through NSOpenPanel.
   if (bookmarksRequired) return out;
+
+  if (Platform.isIOS) return buildIosUserFolders(iosDocumentsRoot);
 
   if (Platform.isAndroid) {
     // Android's fixed shared-storage folder names (Download is singular).
@@ -201,9 +257,11 @@ final drivesProvider = Provider<List<LocalLocation>>((ref) {
         );
       }
     }
-  } else if (!bookmarksRequired) {
+  } else if (!bookmarksRequired && !Platform.isIOS) {
     // "/" is unbrowsable under the sandbox and no grant can ever cover it, so a
-    // MAS build must not offer it. Elsewhere it is the POSIX filesystem root.
+    // MAS build must not offer it. On iOS it is not browsable by anyone at any
+    // privilege, so offering it would just be a row that always fails to open.
+    // Elsewhere it is the POSIX filesystem root.
     out.add(
       const LocalLocation(
         remote: Remote(name: 'Computer', type: 'local', fs: '/', isLocal: true),

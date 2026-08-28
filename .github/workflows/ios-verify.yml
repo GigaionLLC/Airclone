@@ -62,15 +62,21 @@ jobs:
 
       - name: The archive must carry the symbols Dart will look up
         # Cheap, and it localises a later failure: if these are missing here the
-        # problem is the Go build, and nothing about Xcode is worth debugging.
+        # problem is the Go build and nothing about Xcode is worth debugging.
+        # Checked PER ARCHITECTURE, because a fat archive missing one slice is
+        # exactly the failure that produced a green link and an empty binary.
         run: |
           set -euo pipefail
-          A=app/ios/librclone/librclone.xcframework/ios-arm64-simulator/librclone.a
+          A=app/ios/librclone/simulator/librclone.a
           test -f "$A"
-          for sym in RcloneInitialize RcloneFinalize RcloneRPC RcloneFreeString; do
-            nm -g "$A" 2>/dev/null | grep -q " T _${sym}$" \
-              || { echo "::error::_${sym} is not exported by the simulator slice"; exit 1; }
-            echo "  _${sym} exported"
+          lipo -info "$A"
+          for arch in arm64 x86_64; do
+            echo "-- $arch --"
+            for sym in RcloneInitialize RcloneFinalize RcloneRPC RcloneFreeString; do
+              nm -arch "$arch" -g "$A" 2>/dev/null | grep -q " T _${sym}$" \
+                || { echo "::error::_${sym} missing from the $arch simulator slice"; exit 1; }
+              echo "  _${sym} exported"
+            done
           done
 
       - name: Boot a simulator
@@ -87,6 +93,18 @@ jobs:
           xcrun simctl bootstatus "$UDID" -b
           xcrun simctl list devices | grep "$UDID"
 
+      - name: What the Runner target will actually link with
+        # Answers "were the flags applied at all?" independently of anything the
+        # build does. A conditional OTHER_LDFLAGS that never matched, or a
+        # STRIP_STYLE that did not take, is invisible in a successful build.
+        working-directory: app
+        run: |
+          set -uo pipefail
+          flutter pub get > /dev/null
+          xcodebuild -showBuildSettings -workspace ios/Runner.xcworkspace \
+            -scheme Runner -configuration Debug -sdk iphonesimulator 2>/dev/null \
+            | grep -E ' (OTHER_LDFLAGS|STRIP_STYLE|ARCHS|SRCROOT) =' | sed 's/^ */  /'
+
       - name: Build the app for the simulator
         working-directory: app
         env:
@@ -97,29 +115,45 @@ jobs:
           # --simulator implies a non-signed build; --${CONFIG} picks the
           # configuration whose STRIP_STYLE we care about. release exercises the
           # strip path, debug is faster and is the default for a first look.
-          flutter build ios --simulator "--${CONFIG}" -v 2>&1 | tail -60
+          mkdir -p ../artifacts
+          # The full log is kept: "ld: warning: ignoring file ..., missing
+          # required architecture" is the ONLY trace a partially-linked archive
+          # leaves, and it scrolls past in a successful build.
+          set +e
+          flutter build ios --simulator "--${CONFIG}" -v > ../artifacts/ios-build.log 2>&1
+          RC=$?
+          set -e
+          echo "--- linker complaints about the engine archive ---"
+          grep -Ei 'librclone|force_load|ignoring file|missing required architecture' \
+            ../artifacts/ios-build.log | head -30 || echo "  (none)"
+          tail -40 ../artifacts/ios-build.log
+          exit "$RC"
 
       - name: The linked binary must still export the Go symbols
-        # This is the strip check. A Release build with the default STRIP_STYLE
-        # would pass the link and then fail at dlsym, which looks like a Dart
-        # bug and is not one.
+        # Per ARCHITECTURE. `flutter build ios --simulator` emits a fat
+        # x86_64+arm64 binary, and a bare `nm` on a universal file is not a
+        # per-slice answer - which is how "the link worked" and "the symbols are
+        # there" first disagreed here.
         working-directory: app
         run: |
           set -euo pipefail
           CONFIG="${{ inputs.configuration || 'debug' }}"
           DIR="build/ios/iphonesimulator/Runner.app"
           test -d "$DIR" || DIR="$(find build/ios -name 'Runner.app' -maxdepth 4 | head -1)"
-          echo "app bundle: $DIR"
           BIN="$DIR/Runner"
+          echo "app bundle: $DIR"
           file "$BIN"
           MISSING=0
-          for sym in RcloneInitialize RcloneFinalize RcloneRPC RcloneFreeString; do
-            if nm -gU "$BIN" 2>/dev/null | grep -q " _${sym}$"; then
-              echo "  _${sym} present in the app binary"
-            else
-              echo "::error::_${sym} is NOT in the linked binary ($CONFIG) - force_load or strip"
-              MISSING=1
-            fi
+          for arch in $(lipo -archs "$BIN"); do
+            echo "-- $arch --"
+            for sym in RcloneInitialize RcloneFinalize RcloneRPC RcloneFreeString; do
+              if nm -arch "$arch" -gU "$BIN" 2>/dev/null | grep -q " _${sym}$"; then
+                echo "  _${sym} present"
+              else
+                echo "::error::_${sym} missing from the $arch slice ($CONFIG) - force_load or strip"
+                MISSING=1
+              fi
+            done
           done
           echo "APP_DIR=$DIR" >> "$GITHUB_ENV"
           exit "$MISSING"
@@ -143,22 +177,34 @@ jobs:
           if xcrun simctl spawn "$UDID" launchctl list 2>/dev/null | grep -q gigaionllc.airclone; then
             echo "ALIVE=yes" >> "$GITHUB_ENV"
           else
-            echo "ALIVE=unknown" >> "$GITHUB_ENV"
+            echo "ALIVE=no" >> "$GITHUB_ENV"
           fi
           xcrun simctl io "$UDID" screenshot artifacts/ios-screen.png || \
             echo "::warning::screenshot failed"
           kill "$LOG_PID" 2>/dev/null || true
 
       - name: Report
+        # This step FAILS when the app is not running, deliberately. mas-verify
+        # only warns, because there the sandbox denials were the to-do list and
+        # the app staying up was a bonus. Here "it runs" IS the assertion, so a
+        # job that went green over a process that died on the first frame would
+        # be exactly the false pass AGENT.md rule 9 is about.
         run: |
           set -uo pipefail
-          echo "still alive after the run window: ${ALIVE:-unknown}"
           echo "--- anything that looks like a crash or an FFI failure ---"
-          grep -Ei 'crash|fatal|LibrcloneFfi|dlopen|symbol not found|Unhandled' \
-            artifacts/ios-log.txt | head -40 || echo "  (nothing matched)"
+          PAT='crash|fatal|LibrcloneFfi|dlopen|symbol not found|Unhandled'
+          grep -Ei "$PAT" artifacts/ios-log.txt | head -40 || echo "  (nothing matched)"
           echo
-          echo "The screenshot is the real verdict: the Home view shows the engine"
-          echo "status, and librclone cannot report a version it did not start."
+          if [ "${ALIVE:-no}" = "yes" ]; then
+            echo "the app is still running after the run window"
+            echo "The screenshot is the finer verdict: the Home view shows the"
+            echo "engine status, and librclone cannot report a version it did"
+            echo "not start."
+          else
+            echo "::error::the app is NOT running - it never started or crashed."
+            echo "Check ios-screen.png and ios-log.txt in the artifact."
+            exit 1
+          fi
 
       - uses: actions/upload-artifact@v6
         if: always()
@@ -167,4 +213,5 @@ jobs:
           path: |
             artifacts/ios-screen.png
             artifacts/ios-log.txt
+            artifacts/ios-build.log
           if-no-files-found: warn
