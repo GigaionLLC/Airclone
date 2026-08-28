@@ -22,6 +22,7 @@ actually changed in a shipped version — and you need the exact file rather tha
 | **Triage a Windows certification failure** | [`windows-signing-and-store.md`](windows-signing-and-store.md) (2026-07-29 report + uninstall traps) | Expand every collapsed row and download the supporting-files ZIP before starting work. |
 | **Submit to Google Play** | [`google-play-store.md`](google-play-store.md) | Per-release runbook A→F. One-time service-account setup is in [`plans/store-automation-plan.md`](plans/store-automation-plan.md). |
 | **Ship macOS (direct download)** | [`apple-appstore-and-macos.md`](apple-appstore-and-macos.md) §1 | Fully automated by the tag — no manual runbook; only confirm the notarized zip/DMG landed. |
+- [`apple-handoff.md`](apple-handoff.md) — where the Apple track stands, what to do next, and the traps already paid for.
 | **Work toward Mac App Store / iOS** | [`apple-appstore-and-macos.md`](apple-appstore-and-macos.md) §2 → [`plans/dual-engine-plan.md`](plans/dual-engine-plan.md) | Blocked on the in-process `librclone` engine; do not wire MAS/TestFlight CI before it. |
 | **Check listing copy, pricing policy, pre-submission audit** | [`../docs/store/README.md`](../docs/store/README.md) | Owns the store-fee policy and the H-17 truth-audit checklist for every platform. |
 | **Build the Android rclone engine locally** | [`android/build-rclone.ps1`](android/build-rclone.ps1) | Cross-compiles per ABI into `app/android/app/src/main/jniLibs/<abi>/librclone.so`. CI equivalent: the `android` job. |
