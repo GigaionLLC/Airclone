@@ -130,41 +130,48 @@ jobs:
           exit "$RC"
 
       - name: The linked binary must still export the Go symbols
-        # Scan the whole BUNDLE, not just Runner. Xcode 16+ builds Debug with
-        # ENABLE_DEBUG_DYLIB=YES: the app's code goes into Runner.debug.dylib and
-        # `Runner` is a launcher stub, so `nm Runner` finds nothing however
-        # correct the link was. That is exactly what happened here - two runs
-        # said "the archive is not linked" while the build log showed
-        # -force_load on the Runner.debug.dylib link and not on Runner's.
-        # Release has no debug dylib and everything lives in Runner, so the same
-        # scan covers both without a configuration branch.
+        # Two rules learned the hard way here:
         #
-        # `nm -g`, never `nm -gU` - though the earlier suspicion about -U was
-        # wrong, the bare form is the one the archive check already agreed with.
+        #  - Scan the BUNDLE, not `Runner`. Xcode 16+ builds Debug with
+        #    ENABLE_DEBUG_DYLIB=YES, so the code lives in Runner.debug.dylib and
+        #    Runner is a launcher stub.
+        #  - Match the symbol with awk on the LAST field, not `grep " T _sym$"`.
+        #    nm's type letter is not something to hard-code: what matters is that
+        #    the name is there and its type is not U (undefined). Insisting on
+        #    exactly " T " reported four symbols missing from a binary that
+        #    demonstrably contained all four.
+        #
+        # And whatever the verdict, print the matching lines. Every wrong theory
+        # in this lane survived because a check reported a boolean instead of
+        # what it actually saw.
         working-directory: app
         run: |
-          set -euo pipefail
+          set -uo pipefail
           CONFIG="${{ inputs.configuration || 'debug' }}"
           DIR="build/ios/iphonesimulator/Runner.app"
           test -d "$DIR" || DIR="$(find build/ios -name 'Runner.app' -maxdepth 4 | head -1)"
           echo "app bundle: $DIR"
-          ls -la "$DIR" | grep -E 'Runner|\.dylib' || true
+
+          defined() {  # file, arch, symbol -> 0 when defined (type is not U)
+            nm -arch "$2" -g "$1" 2>/dev/null \
+              | awk -v s="_$3" '$NF==s && $(NF-1)!="U" {f=1} END{exit !f}'
+          }
 
           HOST=""
           for f in "$DIR"/Runner "$DIR"/*.dylib; do
             [ -f "$f" ] || continue
-            if nm -g "$f" 2>/dev/null | grep -q " T _RcloneRPC$"; then
-              HOST="$f"; break
-            fi
-          done
-          if [ -z "$HOST" ]; then
-            echo "::error::no Mach-O in the bundle exports _RcloneRPC ($CONFIG)"
-            for f in "$DIR"/Runner "$DIR"/*.dylib; do
-              [ -f "$f" ] || continue
-              echo "-- $f --"
-              file "$f" | sed 's/^/   /'
-              nm -g "$f" 2>/dev/null | grep -ic rclone | sed 's/^/   rclone-ish symbols: /'
+            echo "-- $f  ($(stat -f%z "$f") bytes, archs: $(lipo -archs "$f" 2>/dev/null)) --"
+            nm -g "$f" 2>/dev/null | grep -i rclone | sed 's/^/   /'
+            for a in $(lipo -archs "$f" 2>/dev/null); do
+              defined "$f" "$a" RcloneRPC && HOST="$f"
             done
+          done
+
+          if [ -z "$HOST" ]; then
+            echo "::error::no Mach-O in the bundle defines _RcloneRPC ($CONFIG)"
+            echo "-- how the executable was linked --"
+            grep -oE '\-dead_strip|\-force_load [^ ]*librclone[^ ]*|\-u,_Rclone[A-Za-z]*' \
+              ../artifacts/ios-build.log | sort -u | sed 's/^/   /'
             exit 1
           fi
           echo "the engine is linked into: $HOST"
@@ -173,8 +180,8 @@ jobs:
           for arch in $(lipo -archs "$HOST"); do
             echo "-- $arch --"
             for sym in RcloneInitialize RcloneFinalize RcloneRPC RcloneFreeString; do
-              if nm -arch "$arch" -g "$HOST" 2>/dev/null | grep -q " T _${sym}$"; then
-                echo "  _${sym} present"
+              if defined "$HOST" "$arch" "$sym"; then
+                echo "  _${sym} defined"
               else
                 echo "::error::_${sym} missing from the $arch slice of $HOST"
                 MISSING=1

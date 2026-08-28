@@ -180,48 +180,46 @@ jobs:
           fi
 
       - name: The archived binary must still export the Go symbols
-        # The whole reason dry-run exists. Release strips all symbols by default,
-        # which would delete the Go exports and leave dart:ffi looking up nothing
-        # - a failure that appears only at runtime, on a device, as "the engine
-        # did not start". STRIP_STYLE=non-global is what prevents it.
+        # See ios-verify.yml for why this matches with awk rather than
+        # `grep " T _sym$"`, and why it prints the lines whatever the verdict.
+        # In short: -force_load does not survive -dead_strip (hence the
+        # -Wl,-u,_Rclone* roots), and nm's type letter is not worth hard-coding.
         run: |
-          set -euo pipefail
-          APP="$(find "$RUNNER_TEMP/Airclone.xcarchive/Products/Applications"             -maxdepth 1 -name '*.app' | head -1)"
+          set -uo pipefail
+          APP="$(find "$RUNNER_TEMP/Airclone.xcarchive/Products/Applications" \
+            -maxdepth 1 -name '*.app' | head -1)"
           echo "app: $APP"
-          # Scan the bundle rather than assuming Runner. This is a Release
-          # archive, so ENABLE_DEBUG_DYLIB is off and everything IS in Runner -
-          # but the Debug split (Runner.debug.dylib) cost two runs on the verify
-          # lane, and a check that does not care which Mach-O holds the engine
-          # cannot be fooled by that again.
+
+          defined() {  # file, symbol -> 0 when defined (type is not U)
+            nm -g "$1" 2>/dev/null \
+              | awk -v s="_$2" '$NF==s && $(NF-1)!="U" {f=1} END{exit !f}'
+          }
+
           HOST=""
-          for f in "$APP"/* ; do
+          for f in "$APP"/*; do
             [ -f "$f" ] || continue
-            if nm -g "$f" 2>/dev/null | grep -q " T _RcloneRPC$"; then HOST="$f"; break; fi
+            file "$f" 2>/dev/null | grep -q Mach-O || continue
+            echo "-- $f  ($(stat -f%z "$f") bytes, archs: $(lipo -archs "$f" 2>/dev/null)) --"
+            nm -g "$f" 2>/dev/null | grep -i rclone | sed 's/^/   /'
+            defined "$f" RcloneRPC && HOST="$f"
           done
+
           if [ -z "$HOST" ]; then
-            echo "::error::no Mach-O in the archived bundle exports _RcloneRPC"
-            echo "-- the whole bundle, untruncated --"
+            echo "::error::no Mach-O in the archived bundle defines _RcloneRPC"
             ls -la "$APP"
-            for f in "$APP"/*; do
-              [ -f "$f" ] || continue
-              file "$f" 2>/dev/null | grep -q Mach-O || continue
-              echo "-- $f --"
-              echo "   global rclone symbols: $(nm -g "$f" 2>/dev/null | grep -ci rclone)"
-              echo "   any    rclone symbols: $(nm "$f" 2>/dev/null | grep -ci rclone)"
-              echo "   go runtime present:    $(nm "$f" 2>/dev/null | grep -c 'runtime\.' || true)"
-            done
             echo "-- how the executable was linked --"
-            grep -oE '\-dead_strip|\-force_load [^ ]*librclone[^ ]*|\-u,_Rclone[A-Za-z]*'               ../artifacts/ios-archive.log | sort -u | sed 's/^/   /' || echo "   (nothing matched)"
+            grep -oE '\-dead_strip|\-force_load [^ ]*librclone[^ ]*|\-u,_Rclone[A-Za-z]*' \
+              ../artifacts/ios-archive.log | sort -u | sed 's/^/   /'
             exit 1
           fi
           echo "the engine is linked into: $HOST"
-          file "$HOST"
+
           MISSING=0
           for sym in RcloneInitialize RcloneFinalize RcloneRPC RcloneFreeString; do
-            if nm -g "$HOST" 2>/dev/null | grep -q " T _${sym}$"; then
-              echo "  _${sym} present"
+            if defined "$HOST" "$sym"; then
+              echo "  _${sym} defined"
             else
-              echo "::error::_${sym} is NOT in the archived device binary - force_load or strip"
+              echo "::error::_${sym} is NOT defined in the archived device binary"
               MISSING=1
             fi
           done

@@ -120,26 +120,29 @@ per-slice answer.
 `ios-arm64-simulator` to `ios-arm64_x86_64-simulator` the moment a second
 architecture appears.
 
-**`-force_load` does not survive `-dead_strip` in a Release executable.** The
-Release link carries both, and nothing in the app references the Go exports —
-they exist only to be looked up at runtime — so the archive is loaded and then
-discarded. Name each symbol with `-Wl,-u,_Rclone*` to make it a dead-strip root.
-Debug hides this entirely, because its code lands in a dylib and a dylib exports
-its globals.
+**`-force_load` does not survive `-dead_strip`.** Both appear on the link line,
+and nothing in the app references the Go exports — they exist only to be looked
+up at runtime — so the archive is loaded and then thrown away. Name each symbol
+with `-Wl,-u,_Rclone*` to make it a dead-strip root. This bites **Debug as well
+as Release**; an early guess that the Debug dylib was immune (dylibs export their
+globals) did not survive the next run's evidence.
 
 **Xcode 16+ splits a Debug app in two.** `ENABLE_DEBUG_DYLIB = YES` puts the
 app's code in `Runner.debug.dylib` and leaves `Runner` as a launcher stub, so
-`nm Runner` finds nothing however correct the link was. Two runs said *"the
-archive is not linked"* while the build log showed `-force_load` on the
-`Runner.debug.dylib` link and, correctly, not on `Runner`'s. **Scan the whole
-bundle** and report which Mach-O holds the engine; Release has no debug dylib and
-the same scan covers it.
+`nm Runner` finds nothing however correct the link was. **Scan the whole bundle**
+and report which Mach-O holds the engine; Release has no debug dylib and the same
+scan covers it.
 
-That one cost two runs to a wrong first hypothesis — that `nm -gU` selects
-*undefined* symbols. Plausible, wrong, and it would have gone on being plausible
-if the failing step had not been made to print every Rclone-ish symbol it could
-see. **Make a check emit the evidence for its own verdict**: the second run then
-said "none at all", which killed the theory in one round instead of several.
+**Do not hard-code nm's type letter.** `grep " T _sym$"` reported four symbols
+missing from a binary that contained all four. Match the last field with awk and
+reject only `U`.
+
+**A check must print what it SAW, not just its verdict.** Every wrong theory in
+this lane — `nm -gU` semantics, the debug dylib being immune, the archive "not
+being linked" — survived a full CI round trip because the step reported a boolean.
+Three separate diagnostics then failed in their own right: one truncated by
+`head -20`, one aborted by `grep -c` exiting 1 under `pipefail`, one that counted
+matches without ever showing them. Print the lines.
 
 **A locked keychain makes `-allowProvisioningUpdates` create nothing and report no
 error** (`0 valid identities found`). The lane creates an ephemeral keychain.
