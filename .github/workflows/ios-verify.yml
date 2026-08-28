@@ -23,12 +23,15 @@ name: iOS (simulator verify)
 on:
   workflow_dispatch:
     inputs:
+      # No `release` option: Flutter refuses to build Release for a simulator.
+      # The Release path is covered by ios-release.yml -f mode=dry-run, which
+      # archives for a real device and needs no Apple credential either.
       configuration:
-        description: 'Which Flutter configuration to build'
+        description: 'Which Flutter configuration to build (simulator = debug only)'
         required: true
         default: 'debug'
         type: choice
-        options: [debug, release]
+        options: [debug]
       run_seconds:
         description: 'How long to let the app run before capturing'
         required: true

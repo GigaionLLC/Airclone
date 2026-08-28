@@ -1,0 +1,203 @@
+name: iOS App Store (screenshots)
+
+# Captures App Store screenshots on iOS simulators. Nobody on this project owns
+# an iPhone or an iPad, and Apple requires BOTH: the app ships with
+# TARGETED_DEVICE_FAMILY = "1,2", so iPad screenshots are mandatory, not optional.
+#
+# Easier than the Mac rig in one important way: `xcrun simctl io screenshot`
+# captures at the device's NATIVE resolution, so there is no display-mode
+# juggling, no window pinning and no centre-cropping. Pick the right simulator
+# and the pixels are already the size Apple wants.
+#
+#   iPhone 17 Pro Max (6.9")   1320 x 2868
+#   iPad Pro 13-inch           2064 x 2752
+#
+# Debug is fine for this: the app sets debugShowCheckedModeBanner: false, so a
+# Debug build looks exactly like a Release one. It is also the only option -
+# Flutter refuses to build Release for a simulator.
+#
+# mode:
+#   diagnose  list the simulators this runner actually has, boot one of each
+#             class and report the screenshot dimensions. Cheap, and it stops the
+#             capture run failing on a device name that does not exist here.
+#   capture   seed demo content, launch, and capture.
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'diagnose = list devices and sizes | capture = take the shots'
+        required: true
+        default: diagnose
+        type: choice
+        options: [diagnose, capture]
+      settle_seconds:
+        description: 'How long to let the app settle before capturing'
+        required: true
+        default: '25'
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  screenshots:
+    runs-on: macos-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: What simulators does this runner have
+        run: |
+          set +e
+          echo "--- iPhone ---"
+          xcrun simctl list devices available | grep -i "iPhone" | sed 's/^/  /'
+          echo "--- iPad ---"
+          xcrun simctl list devices available | grep -i "iPad" | sed 's/^/  /'
+
+      - uses: subosito/flutter-action@v2
+        with: { channel: stable, flutter-version: 3.47.0, cache: true }
+      - uses: actions/setup-go@v6
+        with: { go-version: 'stable', cache: false }
+
+      - name: Build librclone for iOS
+        run: bash dev/ios/build-librclone-ios.sh
+
+      - name: Build the app for the simulator
+        working-directory: app
+        run: |
+          set -euo pipefail
+          flutter pub get
+          # Debug is not a compromise here: debugShowCheckedModeBanner is false,
+          # and Flutter cannot build Release for a simulator at all.
+          flutter build ios --simulator --debug 2>&1 | tail -20
+
+      - name: Pick one device of each class, and boot them
+        id: devices
+        run: |
+          set -euo pipefail
+          pick() {  # regex -> udid of the newest matching available device
+            xcrun simctl list devices available -j \
+              | jq -r --arg re "$1" '[.devices | to_entries[] | select(.key | test("iOS")) | .value[] | select(.isAvailable and (.name | test($re)))] | sort_by(.name) | last | .udid'
+          }
+          PHONE="$(pick "iPhone.*Pro Max")"
+          [ "$PHONE" = "null" ] && PHONE="$(pick "iPhone")"
+          PAD="$(pick "iPad Pro.*13")"
+          [ "$PAD" = "null" ] && PAD="$(pick "iPad")"
+          test -n "$PHONE" && test "$PHONE" != null
+          test -n "$PAD" && test "$PAD" != null
+          echo "phone=$PHONE" >> "$GITHUB_OUTPUT"
+          echo "pad=$PAD" >> "$GITHUB_OUTPUT"
+          for U in "$PHONE" "$PAD"; do
+            xcrun simctl boot "$U" || true
+            xcrun simctl bootstatus "$U" -b
+            xcrun simctl list devices | grep "$U" | sed 's/^/  booted: /'
+          done
+
+      - name: Report the screenshot dimensions each device gives
+        # The whole point of diagnose mode. Apple accepts only a fixed set of
+        # sizes; knowing them BEFORE capturing saves a 20-minute round trip.
+        env:
+          PHONE: ${{ steps.devices.outputs.phone }}
+          PAD: ${{ steps.devices.outputs.pad }}
+        run: |
+          set +e
+          mkdir -p artifacts
+          for pair in "phone:$PHONE" "pad:$PAD"; do
+            name="${pair%%:*}"; udid="${pair#*:}"
+            xcrun simctl io "$udid" screenshot "artifacts/probe-$name.png" 2>/dev/null
+            if [ -f "artifacts/probe-$name.png" ]; then
+              echo "$name: $(sips -g pixelWidth -g pixelHeight "artifacts/probe-$name.png" | tr '\n' ' ')"
+            else
+              echo "::warning::$name produced no screenshot"
+            fi
+          done
+
+      - name: Seed demo content inside each app container
+        if: ${{ inputs.mode == 'capture' }}
+        # iOS has no arbitrary filesystem, so the demo tree lives in the app's own
+        # Documents directory - which is exactly what the Locations sidebar shows
+        # as "On My Device" - plus an rclone alias remote pointing at it. Both
+        # need the container to exist, so the app is installed and launched once
+        # first.
+        env:
+          PHONE: ${{ steps.devices.outputs.phone }}
+          PAD: ${{ steps.devices.outputs.pad }}
+        run: |
+          set -euo pipefail
+          APP="app/build/ios/iphonesimulator/Runner.app"
+          test -d "$APP"
+
+          # Fetch the CC0 photographs once, then copy into each container. Real
+          # media is not optional: Google rejected a screenshot from this project
+          # as "placeholder images or stock photos" when it showed gradient tiles.
+          # Provenance: docs/store/play/DEMO-MEDIA-PROVENANCE.md
+          mkdir -p /tmp/demo/Photos /tmp/demo/Documents /tmp/demo/Videos
+          i=0
+          for U in \
+            "Paxos_coastline_at_sunrise_DSC06029.jpg" \
+            "Boat_Harbour_Beach_20190722-004.jpg" \
+            "Mountain_and_Landscape.jpg" \
+            "Garden_flowers,_Runita,_Moldova.jpg" \
+            "Forest_trail,_Oberlibbach.jpg" ; do
+            i=$((i+1))
+            curl -fsSL -A "Airclone-CI/1.0" \
+              "https://commons.wikimedia.org/wiki/Special:FilePath/$U?width=1600" \
+              -o "/tmp/demo/Photos/IMG_010$i.jpg" || echo "::warning::could not fetch $U"
+          done
+          ls -la /tmp/demo/Photos
+
+          for U in "$PHONE" "$PAD"; do
+            xcrun simctl install "$U" "$APP"
+            # Launch once so the container and its Library tree exist, then stop.
+            xcrun simctl launch "$U" com.gigaionllc.airclone || true
+            sleep 12
+            xcrun simctl terminate "$U" com.gigaionllc.airclone || true
+            C="$(xcrun simctl get_app_container "$U" com.gigaionllc.airclone data)"
+            echo "container: $C"
+            cp -R /tmp/demo/Photos "$C/Documents/"
+            mkdir -p "$C/Documents/Documents" "$C/Documents/Videos"
+            # getApplicationSupportDirectory() on iOS is <data>/Library/Application
+            # Support with NO bundle-id subdirectory - that part is macOS-only.
+            mkdir -p "$C/Library/Application Support"
+            printf '[Demo Cloud]\ntype = alias\nremote = %s/Documents\n' "$C" \
+              > "$C/Library/Application Support/rclone.conf"
+            echo "--- seeded config ---"
+            cat "$C/Library/Application Support/rclone.conf"
+            ls -la "$C/Documents"
+          done
+
+      - name: Launch and capture
+        if: ${{ inputs.mode == 'capture' }}
+        env:
+          PHONE: ${{ steps.devices.outputs.phone }}
+          PAD: ${{ steps.devices.outputs.pad }}
+          SETTLE: ${{ inputs.settle_seconds || '25' }}
+        run: |
+          set +e
+          mkdir -p artifacts
+          for pair in "iphone:$PHONE" "ipad:$PAD"; do
+            name="${pair%%:*}"; udid="${pair#*:}"
+            xcrun simctl launch "$udid" com.gigaionllc.airclone
+            sleep "$SETTLE"
+            xcrun simctl io "$udid" screenshot "artifacts/${name}-01-home.png"
+            sips -g pixelWidth -g pixelHeight "artifacts/${name}-01-home.png" \
+              | sed "s/^/  ${name}: /"
+          done
+
+      - name: What came out
+        if: always()
+        run: |
+          set +e
+          ls -la artifacts || true
+          for f in artifacts/*.png; do
+            [ -f "$f" ] || continue
+            echo "$f -> $(sips -g pixelWidth -g pixelHeight "$f" | tail -2 | tr -d ' \n')"
+          done
+
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: ios-screenshots
+          path: artifacts/*.png
+          if-no-files-found: warn
