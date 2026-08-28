@@ -159,6 +159,17 @@ def pick_build():
     bs = call("GET", "/v1/builds?filter[app]=%s&limit=50&sort=-uploadedDate" % APP)
     if not bs:
         sys.exit(1)
+    # Distinguish "Apple has not registered it yet" from "the filter is wrong".
+    # An empty list here after a successful upload is normal for a while: a build
+    # takes minutes to appear and longer to finish PROCESSING.
+    print("builds visible to this key: %d" % len(bs["data"]))
+    if not bs["data"]:
+        pre = call("GET", "/v1/apps/%s/preReleaseVersions?limit=10" % APP)
+        n = len((pre or {}).get("data", []))
+        print("pre-release versions on the app: %d" % n)
+        for v in (pre or {}).get("data", []):
+            a = v["attributes"]
+            print("  %s (%s)" % (a.get("version"), a.get("platform")))
     rows = []
     for b in bs["data"]:
         a = b["attributes"]
@@ -174,6 +185,11 @@ def pick_build():
         print()
         print("no VALID unexpired build to attach yet.")
         print("PROCESSING means Apple is still working - wait and re-run.")
+        # In report mode this is information, not a failure: the whole point of
+        # running it is to find out. Only --apply, which was asked to attach
+        # something, has nothing to do and should say so loudly.
+        if not APPLY:
+            return None
         sys.exit(1)
     return usable[0]
 
@@ -194,8 +210,10 @@ def main():
 
     bid = bnum = when = None
     if ATTACH:
-        bid, bnum, _, _, when = pick_build()
-        print("  will attach:    build %s (uploaded %s)" % (bnum, when))
+        got = pick_build()
+        if got:
+            bid, bnum, _, _, when = got
+            print("  will attach:    build %s (uploaded %s)" % (bnum, when))
 
     notes = None
     if SET_NOTES:
@@ -221,8 +239,9 @@ def main():
         print()
         print("version string set to %s" % SET_VERSION)
 
-    if not ATTACH:
-        print("--no-attach: left the build relationship alone")
+    if not ATTACH or bid is None:
+        print("--no-attach: left the build relationship alone"
+              if not ATTACH else "no build to attach; left the relationship alone")
     elif attached and attached["id"] == bid:
         print("already attached; nothing to do")
     else:
