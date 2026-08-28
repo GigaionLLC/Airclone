@@ -19,12 +19,14 @@ Working tree clean, everything pushed to `main`.
 | Description, keywords, promo text, support URL | ✅ pushed via API |
 | **5 screenshots**, all exactly 1280×800, `COMPLETE` | ✅ uploaded |
 | `.pkg` build+sign lane, **Apple-validated** (`VERIFY SUCCEEDED with no errors`) | ✅ |
-| **Build attached to the version** | ⛔ **NOT YET — this is the next step** |
+| Build **uploaded** to App Store Connect (2026-08-28) | ✅ `UPLOAD SUCCEEDED with no errors` |
+| **Build attached to the version** | ⏳ waiting on Apple's processing |
+| Export compliance, *Add for Review*, *Manually release* | ⛔ **human only** |
 | iOS | ⛔ separate track, does not block macOS |
 
 ## Next: three steps to submit macOS
 
-**1. Upload the build** — outward-facing, so a human triggers it:
+**1. Upload the build** — DONE 2026-08-28:
 
 ```bash
 gh workflow run mas-release.yml --ref main -f mode=upload
@@ -33,13 +35,20 @@ gh workflow run mas-release.yml --ref main -f mode=upload
 Puts a build in App Store Connect and **submits nothing**. Modes are
 `dry-run` (build only) / `validate` (ask Apple if it would accept it) / `upload`.
 
-**2. Attach it** to version 0.6.8 once Apple finishes processing (minutes). Check
-state with the ASC API or the console.
+**2. Attach it and set the review notes** — one dispatch, once Apple's processing
+finishes (a build is not attachable until `processingState` is `VALID`):
 
-**3. In App Store Connect** — the reviewer notes and copyright are in
-[`docs/store/apple/listing-en-US.md`](../docs/store/apple/listing-en-US.md); set
-**Sign-in required: NO**, then *Add for Review* and
-**"Manually release this version"** so approval and publication stay separate.
+```bash
+gh workflow run asc-version.yml --ref main -f platform=MAC_OS -f mode=apply -f notes=true
+```
+
+Run it with `-f mode=report` first; that changes nothing and prints the build
+list. It refuses to touch a version that is not in an editable state.
+
+**3. In App Store Connect, by hand** — three things, all deliberately outside the
+tooling: answer **export compliance** on the build (a legal declaration — see
+below), press *Add for Review*, and choose **"Manually release this version"** so
+approval and publication stay separate.
 
 ## Rules that are not negotiable here
 
