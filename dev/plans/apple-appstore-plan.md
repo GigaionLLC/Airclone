@@ -224,6 +224,19 @@ the Go exports, so without it the linker would drop the archive members and leav
 matches, so both variants carry the full list rather than relying on the
 unconditional one.
 
+**PROVEN 2026-08-28 (Release, device):** `ios-release.yml -f mode=dry-run` archives a
+Release App Store build for `generic/platform=iOS` and finds all four exports intact:
+
+```
+Runner  (67552944 bytes, archs: arm64)
+   0000000101aa0890 T _RcloneFinalize      0000000101aa0844 T _RcloneInitialize
+   0000000101aa0940 T _RcloneFreeString    0000000101aa08dc T _RcloneRPC
+```
+
+That is the configuration that ships: `-dead_strip` on, strip phase run,
+no debug dylib. It needs no Apple credential, so it is the cheapest way to check
+the engine survives a real archive.
+
 Proof is [`ios-verify.yml`](../../.github/workflows/ios-verify.yml), which builds
 for the simulator, asserts the four symbols survive into the linked binary, then
 installs, launches and screenshots the app. Three different failures live between
