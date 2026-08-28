@@ -120,12 +120,19 @@ per-slice answer.
 `ios-arm64-simulator` to `ios-arm64_x86_64-simulator` the moment a second
 architecture appears.
 
-**`nm -gU` means "undefined only" here, not "defined only".** `-gU` reported all
-four Go symbols missing from a binary whose link line demonstrably carried
-`-force_load`. Use bare **`nm -g`** and match ` T _symbol$`, the shape the
-archive check had been using correctly all along. A verification step that is
-wrong in the *pessimistic* direction costs as many runs as one that is wrong in
-the optimistic direction — it just feels more responsible while doing it.
+**Xcode 16+ splits a Debug app in two.** `ENABLE_DEBUG_DYLIB = YES` puts the
+app's code in `Runner.debug.dylib` and leaves `Runner` as a launcher stub, so
+`nm Runner` finds nothing however correct the link was. Two runs said *"the
+archive is not linked"* while the build log showed `-force_load` on the
+`Runner.debug.dylib` link and, correctly, not on `Runner`'s. **Scan the whole
+bundle** and report which Mach-O holds the engine; Release has no debug dylib and
+the same scan covers it.
+
+That one cost two runs to a wrong first hypothesis — that `nm -gU` selects
+*undefined* symbols. Plausible, wrong, and it would have gone on being plausible
+if the failing step had not been made to print every Rclone-ish symbol it could
+see. **Make a check emit the evidence for its own verdict**: the second run then
+said "none at all", which killed the theory in one round instead of several.
 
 **A locked keychain makes `-allowProvisioningUpdates` create nothing and report no
 error** (`0 valid identities found`). The lane creates an ephemeral keychain.

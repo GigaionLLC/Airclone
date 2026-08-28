@@ -181,27 +181,34 @@ jobs:
         # did not start". STRIP_STYLE=non-global is what prevents it.
         run: |
           set -euo pipefail
-          APPS="$RUNNER_TEMP/Airclone.xcarchive/Products/Applications"
-          BIN="$APPS/Runner.app/Runner"
-          test -f "$BIN" || BIN="$(find "$APPS" -maxdepth 2 -name Runner -type f | head -1)"
-          echo "binary: $BIN"
-          file "$BIN"
+          APP="$(find "$RUNNER_TEMP/Airclone.xcarchive/Products/Applications"             -maxdepth 1 -name '*.app' | head -1)"
+          echo "app: $APP"
+          # Scan the bundle rather than assuming Runner. This is a Release
+          # archive, so ENABLE_DEBUG_DYLIB is off and everything IS in Runner -
+          # but the Debug split (Runner.debug.dylib) cost two runs on the verify
+          # lane, and a check that does not care which Mach-O holds the engine
+          # cannot be fooled by that again.
+          HOST=""
+          for f in "$APP"/* ; do
+            [ -f "$f" ] || continue
+            if nm -g "$f" 2>/dev/null | grep -q " T _RcloneRPC$"; then HOST="$f"; break; fi
+          done
+          if [ -z "$HOST" ]; then
+            echo "::error::no Mach-O in the archived bundle exports _RcloneRPC"
+            ls -la "$APP" | head -20
+            exit 1
+          fi
+          echo "the engine is linked into: $HOST"
+          file "$HOST"
           MISSING=0
-          # `nm -g`, never `nm -gU`: on this toolchain -U selects UNDEFINED
-          # symbols, so -gU asks for the opposite of what is wanted and reports
-          # everything missing on a binary that has it.
           for sym in RcloneInitialize RcloneFinalize RcloneRPC RcloneFreeString; do
-            if nm -g "$BIN" 2>/dev/null | grep -q " T _${sym}$"; then
+            if nm -g "$HOST" 2>/dev/null | grep -q " T _${sym}$"; then
               echo "  _${sym} present"
             else
               echo "::error::_${sym} is NOT in the archived device binary - force_load or strip"
               MISSING=1
             fi
           done
-          if [ "$MISSING" = "1" ]; then
-            echo "-- every Rclone-ish symbol nm can see --"
-            nm -g "$BIN" 2>/dev/null | grep -i rclone | head -20 || echo "   (none)"
-          fi
           exit "$MISSING"
 
       - name: Export the App Store package

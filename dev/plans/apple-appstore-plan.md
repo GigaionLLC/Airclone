@@ -195,6 +195,13 @@ becomes `ios-arm64_x86_64-simulator` the moment a second architecture appears. T
 still produced — it is the portable form, and creating it validates the platform stamps — but
 nothing in this repo links against it.
 
+**A Debug app bundle is two Mach-Os.** Xcode 16+ builds Debug with
+`ENABLE_DEBUG_DYLIB = YES`: the code lands in `Runner.debug.dylib` and `Runner`
+is a launcher stub. Nothing is wrong with that — `DynamicLibrary.process()` still
+resolves, because the dylib is loaded into the same process — but a symbol check
+pointed at `Runner` reports the engine missing from a perfectly good build. Scan
+the bundle. Release has no debug dylib.
+
 **The simulator archive must be FAT (arm64 + x86_64).** `flutter build ios --simulator` always emits
 a universal binary, and `-force_load` of an archive that lacks an architecture is only a *warning*:
 the link succeeds, that slice silently contains no engine, and the first sign of trouble is symbols
