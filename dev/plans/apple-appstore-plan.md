@@ -426,6 +426,20 @@ automatic; auto-to-external is not, and no CI can change that.
 
 ## 6️⃣ Gate E — Listing metadata and screenshots
 
+**Screenshot sizes CONFIRMED on CI 2026-08-28** — the runner's simulators produce
+Apple's required sizes natively, so nothing is rescaled or cropped:
+
+| Simulator | Native capture | Apple's requirement |
+| :--- | :--- | :--- |
+| iPhone 17 Pro Max | **1320 x 2868** | 6.9" — exact |
+| iPad Pro 13-inch (M5) | **2064 x 2752** | 13" — exact |
+
+The Mac rig had to set a display mode, pin a window and centre-crop to hit
+1280x800. `xcrun simctl io screenshot` just gives the right pixels.
+[`ios-screenshots.yml`](../../.github/workflows/ios-screenshots.yml) has a
+`diagnose` mode that reports this, because simulator device names change with
+Xcode and finding that out 20 minutes into a capture is expensive.
+
 Copy lives in the repo, not in a browser tab:
 [`listing-en-US.md`](../../docs/store/apple/listing-en-US.md) for macOS and
 [`listing-ios-en-US.md`](../../docs/store/apple/listing-ios-en-US.md) for iOS.
