@@ -98,14 +98,34 @@ void main() {
       if (await tapIfPresent(find.text('Photos'), settleSeconds: 5)) {
         await shot('03-photos');
 
-        // Gallery view renders real thumbnails rather than a list of names.
-        final gallery = find.byTooltip('Gallery');
-        if (await tapIfPresent(gallery, settleSeconds: 6)) {
-          await shot('04-gallery');
-        } else if (await tapIfPresent(find.text('Gallery'), settleSeconds: 6)) {
-          await shot('04-gallery');
+        // Grid and Gallery render real thumbnails rather than a list of names,
+        // and are the shots actually worth having.
+        //
+        // The phone control CYCLES List -> Grid -> Gallery and its tooltip names
+        // the CURRENT mode ("View: List"), so byTooltip('Gallery') never matched
+        // - it only ever says Gallery once you are already there. Match the
+        // prefix and tap twice, capturing both stops.
+        Finder viewToggle() => find.byWidgetPredicate(
+          (w) => w is Tooltip && (w.message ?? '').startsWith('View: '),
+        );
+
+        if (viewToggle().evaluate().isNotEmpty) {
+          if (await tapIfPresent(viewToggle(), settleSeconds: 6)) {
+            await shot('04-grid');
+          }
+          if (await tapIfPresent(viewToggle(), settleSeconds: 6)) {
+            await shot('05-gallery');
+          }
+        } else if (await tapIfPresent(find.text('View'), settleSeconds: 2)) {
+          // Desktop shell (iPad): a "View" menu with named entries rather than
+          // a cycling button.
+          if (await tapIfPresent(find.text('Gallery'), settleSeconds: 6)) {
+            await shot('05-gallery');
+          } else {
+            missed.add('Gallery entry in the View menu');
+          }
         } else {
-          missed.add('gallery view toggle');
+          missed.add('view-mode control');
         }
       } else {
         missed.add('Photos folder');
@@ -131,7 +151,7 @@ void main() {
     // The local side: the app's own Documents folder, which is the whole of
     // "local" on iOS and worth showing because it is what Files exposes.
     if (await tapIfPresent(find.text('On My Device'), settleSeconds: 4)) {
-      await shot('05-on-my-device');
+      await shot('06-on-my-device');
     } else {
       missed.add('On My Device location');
     }
