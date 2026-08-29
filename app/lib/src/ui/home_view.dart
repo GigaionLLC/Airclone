@@ -199,7 +199,11 @@ class _HomeViewState extends ConsumerState<HomeView> {
       if (recentTiles.isNotEmpty) section('Recent', recentTiles),
       if (deviceTiles.isNotEmpty)
         section(
-          Platform.isAndroid ? 'This device' : 'This computer',
+          // iPad gets the desktop layout via the 700px width gate, so without
+          // iOS here it called an iPad "This computer".
+          Platform.isAndroid || Platform.isIOS
+              ? 'This device'
+              : 'This computer',
           deviceTiles,
         ),
       if (cloudTiles.isNotEmpty) section('Cloud', cloudTiles),

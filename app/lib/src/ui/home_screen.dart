@@ -1121,8 +1121,12 @@ class _Sidebar extends ConsumerWidget {
         ),
 
       // ── Disks (auto-detected) ────────────────────────────────────────────────
-      const _SectionHeader(label: 'DISKS', sectionKey: 'disks'),
-      if (!collapsed.contains('disks'))
+      // Only when there ARE any. iOS has no browsable filesystem and a sandboxed
+      // Mac App Store build cannot be granted "/", so both leave this list empty
+      // - and an empty section header is just a heading over nothing.
+      if (drives.isNotEmpty)
+        const _SectionHeader(label: 'DISKS', sectionKey: 'disks'),
+      if (drives.isNotEmpty && !collapsed.contains('disks'))
         for (final d in drives)
           tile(
             d.remote,

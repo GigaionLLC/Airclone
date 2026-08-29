@@ -117,6 +117,7 @@ screenshot.
 Captured on simulators by
 [`ios-screenshots.yml`](../../../.github/workflows/ios-screenshots.yml) —
 `xcrun simctl io screenshot` gives native resolution, so no rescaling is involved.
+What is banked so far, and how, is in [`ios/MANIFEST.md`](ios/MANIFEST.md).
 
 | Device class | Required? | Size |
 | :--- | :--- | :--- |
