@@ -85,8 +85,22 @@ simulator app can read and which survives any number of reinstalls.
 "View: List" and tapping goes List → Grid → Gallery, so `byTooltip('Gallery')`
 matches only once you are already there. Match the `View: ` prefix instead.
 
-## Still worth adding
+## Grid and gallery: attempted, abandoned, and why
 
-Grid and gallery views, which show real thumbnails rather than filenames. The run
-that captures them takes over 90 minutes, because each view switch generates
-thumbnails for every photograph through the loopback object server.
+They would be the best shots — real thumbnails instead of filenames. Two runs
+were spent and both were cancelled:
+
+| Attempt | Result |
+| :--- | :--- |
+| 90-minute timeout | cancelled at 91 minutes, iPhone half done |
+| 180-minute timeout | cancelled at 181 minutes having written **nothing**, not even `01-home`, which is captured before any view switching |
+
+The second is a **hang**, not slowness. Switching view generates thumbnails for
+every photograph through the loopback object server, and something in that
+interacts badly with the `integration_test` binding — but the run produces no
+output to diagnose from, and each attempt costs three hours.
+
+Four screenshots per device are uploaded and the listing is complete, so this was
+stopped rather than paid for. The finder is correct and kept in the test for
+whoever picks it up. The workflow timeout went back to 120 minutes so a hang
+fails in an hour rather than half a day.

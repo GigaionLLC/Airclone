@@ -98,35 +98,32 @@ void main() {
       if (await tapIfPresent(find.text('Photos'), settleSeconds: 5)) {
         await shot('03-photos');
 
-        // Grid and Gallery render real thumbnails rather than a list of names,
-        // and are the shots actually worth having.
+        // GRID AND GALLERY ARE DELIBERATELY NOT CAPTURED. They would be the best
+        // shots - real thumbnails instead of filenames - and two attempts to
+        // reach them were abandoned:
         //
-        // The phone control CYCLES List -> Grid -> Gallery and its tooltip names
-        // the CURRENT mode ("View: List"), so byTooltip('Gallery') never matched
-        // - it only ever says Gallery once you are already there. Match the
-        // prefix and tap twice, capturing both stops.
-        Finder viewToggle() => find.byWidgetPredicate(
-          (w) => w is Tooltip && (w.message ?? '').startsWith('View: '),
+        //   run 1  cancelled at the 90-minute timeout, iPhone half done
+        //   run 2  cancelled at 180 minutes having written NOTHING at all, not
+        //          even 01-home, which is captured before any view switching
+        //
+        // The second is a hang, not slowness. Switching view generates
+        // thumbnails for every photograph through the loopback object server,
+        // and something in that interacts badly with the integration_test
+        // binding - but the run produces no output to diagnose from, and each
+        // attempt costs three hours.
+        //
+        // Four screenshots per device are already uploaded and the listing is
+        // complete, so this is worth stopping rather than paying for. The
+        // finder below is correct and kept for whoever picks it up: the phone
+        // control CYCLES List -> Grid -> Gallery and its tooltip names the
+        // CURRENT mode ("View: List"), which is why byTooltip('Gallery') never
+        // matched - it only ever reads Gallery once you are already there.
+        //
+        //   Finder viewToggle() => find.byWidgetPredicate(
+        //     (w) => w is Tooltip && (w.message ?? '').startsWith('View: '));
+        missed.add(
+          'grid and gallery views (deliberately skipped - see comment)',
         );
-
-        if (viewToggle().evaluate().isNotEmpty) {
-          if (await tapIfPresent(viewToggle(), settleSeconds: 6)) {
-            await shot('04-grid');
-          }
-          if (await tapIfPresent(viewToggle(), settleSeconds: 6)) {
-            await shot('05-gallery');
-          }
-        } else if (await tapIfPresent(find.text('View'), settleSeconds: 2)) {
-          // Desktop shell (iPad): a "View" menu with named entries rather than
-          // a cycling button.
-          if (await tapIfPresent(find.text('Gallery'), settleSeconds: 6)) {
-            await shot('05-gallery');
-          } else {
-            missed.add('Gallery entry in the View menu');
-          }
-        } else {
-          missed.add('view-mode control');
-        }
       } else {
         missed.add('Photos folder');
       }
@@ -151,7 +148,7 @@ void main() {
     // The local side: the app's own Documents folder, which is the whole of
     // "local" on iOS and worth showing because it is what Files exposes.
     if (await tapIfPresent(find.text('On My Device'), settleSeconds: 4)) {
-      await shot('06-on-my-device');
+      await shot('04-on-my-device');
     } else {
       missed.add('On My Device location');
     }

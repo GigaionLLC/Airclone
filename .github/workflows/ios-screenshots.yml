@@ -43,12 +43,12 @@ permissions:
 jobs:
   screenshots:
     runs-on: macos-latest
-    # 90 was not enough once the run started switching to grid and gallery: each
-    # switch generates thumbnails for every photograph through the loopback
-    # object server, and it does that twice over, on two devices, after a
-    # librclone build and a Flutter build. The run was cancelled at 91 minutes
-    # with the iPhone half finished.
-    timeout-minutes: 180
+    # 120 is generous for the four-shot run, which takes about 50. It was
+    # raised to 180 while chasing grid and gallery captures; that run hung and
+    # burned the full three hours writing nothing, so the ceiling is back down
+    # where a hang fails in an hour rather than half a day. See the comment in
+    # integration_test/store_screenshots_test.dart.
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@v5
 
