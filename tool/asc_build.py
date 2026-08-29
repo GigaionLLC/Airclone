@@ -281,6 +281,39 @@ def main():
         det = call("GET", "/v1/appStoreVersions/%s/appStoreReviewDetail" % ver["id"])
         existing = (det or {}).get("data")
         attrs = {"notes": notes, "demoAccountRequired": False}
+        # Apple requires the review CONTACT on this resource, and refuses the
+        # whole PATCH without it:
+        #   409 You must provide a value for the attribute 'contactFirstName'
+        # Those are personal details. They are not invented here and never touch
+        # the repo - they are read back from whichever platform's review detail
+        # already has them, because the human entered them once for this app and
+        # copying them across platforms is not new information.
+        CONTACT = ("contactFirstName", "contactLastName",
+                   "contactEmail", "contactPhone")
+        have = (existing or {}).get("attributes", {})
+        if not all(have.get(k) for k in CONTACT):
+            src = None
+            allv = call("GET", "/v1/apps/%s/appStoreVersions?limit=200" % APP) or {}
+            for v in allv.get("data", []):
+                if v["id"] == ver["id"]:
+                    continue
+                d2 = call("GET",
+                          "/v1/appStoreVersions/%s/appStoreReviewDetail" % v["id"])
+                a2 = ((d2 or {}).get("data") or {}).get("attributes", {})
+                if all(a2.get(k) for k in CONTACT):
+                    src = a2
+                    break
+            if src:
+                for k in CONTACT:
+                    attrs[k] = src[k]
+                print("  review contact: copied from the other platform's "
+                      "version (not stored anywhere)")
+            else:
+                print("::error::this version needs a review contact "
+                      "(first/last name, email, phone) and no other version has "
+                      "one to copy. Enter it once in App Store Connect - it is "
+                      "personal data and does not belong in this repo.")
+                sys.exit(1)
         if existing:
             r = call("PATCH", "/v1/appStoreReviewDetails/%s" % existing["id"],
                      {"data": {"id": existing["id"],
