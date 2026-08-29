@@ -147,6 +147,21 @@ simulator app is a host process and can read host paths, so that survives any
 number of reinstalls. Content is still copied into each container as well,
 because that is what *On My Device* legitimately shows.
 
+### Do not revoke the signing certificate after an upload
+
+`ios-release.yml -f signing=ephemeral` mints a distribution certificate per run
+and revokes it on the way out. That is right for `dry-run` and `validate`, where
+nothing produced is kept — and **wrong for `upload`**.
+
+The first iOS submission came back **Invalid Binary** within minutes of
+*Add for Review*, with the certificate that signed it already revoked. Apple
+accepts the upload and processes the build to `VALID` regardless, so nothing
+complains until submission. The lane now skips the revoke step for `upload` and
+prints the certificate id so it can be revoked by hand once the version is live.
+
+A leftover certificate is a tidiness problem. A revoked one underneath a
+submitted build is a blocked release.
+
 ### Export compliance
 
 Airclone implements standard confidentiality encryption of its own — rclone

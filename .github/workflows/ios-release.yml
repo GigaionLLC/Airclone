@@ -409,6 +409,9 @@ jobs:
       - name: What happens next
         if: ${{ inputs.mode == 'upload' }}
         run: |
+          echo "The ephemeral signing certificate was NOT revoked - a submitted"
+          echo "build needs it to stay valid. Revoke it by hand once the version"
+          echo "is live: certificate id was $EPHEMERAL_CERT_ID"
           echo "Uploaded. Processing takes a few minutes, then it appears in TestFlight."
           echo "NOTHING is submitted. Export compliance is asked on the build itself -"
           echo "ITSAppUsesNonExemptEncryption is deliberately absent from Info.plist so"
@@ -416,11 +419,18 @@ jobs:
           echo "https://appstoreconnect.apple.com/apps/6790176897/testflight/ios"
 
       - name: Revoke the ephemeral certificate
-        # BEFORE the key is shredded, because revoking needs it. Revoking a
-        # DISTRIBUTION certificate does not invalidate a build already uploaded -
-        # Apple re-signs for delivery - unlike Developer ID, where revocation
-        # breaks notarised apps in the field.
-        if: ${{ always() && env.EPHEMERAL_CERT_ID != '' }}
+        # NEVER after an upload. This step used to run unconditionally on the
+        # claim that revoking a distribution certificate cannot invalidate a
+        # build Apple has already accepted. That claim was never tested at the
+        # step where it matters, and the first iOS submission came back
+        # INVALID BINARY minutes after Add for Review - with the signing
+        # certificate revoked, which is the obvious suspect and was my own doing.
+        #
+        # dry-run and validate still revoke, because nothing they produce is kept.
+        # An upload leaves a build Apple must be able to validate later, so its
+        # certificate has to outlive the job. A leftover certificate is a tidiness
+        # problem; a revoked one under a submitted build is a blocked release.
+        if: ${{ always() && env.EPHEMERAL_CERT_ID != '' && inputs.mode != 'upload' }}
         env:
           KEY_ID: ${{ vars.APPSTORE_API_KEY_ID }}
           ISSUER: ${{ secrets.APPSTORE_ISSUER_ID }}
