@@ -11,11 +11,12 @@ IDs, key paths and account state live in the encrypted vault
 | | macOS | iOS |
 | :--- | :--- | :--- |
 | Build uploaded, Apple-accepted | ✅ `UPLOAD SUCCEEDED` | ✅ `UPLOAD SUCCEEDED` |
-| Build **registered** by Apple | ⛔ **still no record after 2.5h** | ✅ build 117 `VALID` |
-| Build attached to version 0.6.8 | ⛔ blocked by the above | ✅ |
+| Build **registered** by Apple | ✅ build 119 `VALID` (117 and 118 died silently — see below) | ✅ build 117 `VALID` |
+| Build attached to version 0.6.8 | ✅ | ✅ |
+| **Submission audit** (`asc-version.yml -f mode=audit`) | ✅ **no gaps** | ✅ **no gaps** |
 | Listing text, keywords, promo | ✅ | ✅ |
 | Screenshots | ✅ 5 x 1280x800 | ✅ iPhone 1320x2868 + iPad 2064x2752 |
-| Review notes | ✅ | ⛔ **needs a review contact** |
+| Review notes + contact | ✅ | ✅ |
 | Export compliance, Add for Review, Manually release | ⛔ human | ⛔ human |
 
 **Two things block a human-free finish, and both are genuinely yours:**
