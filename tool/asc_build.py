@@ -31,6 +31,9 @@ Options:
                           CFBundleShortVersionString to agree.
   --no-attach             skip attaching a build, for a platform whose build does
                           not exist yet
+  --audit                 report EVERYTHING Apple needs before submission and
+                          write nothing. The point is to find a missing field
+                          from one command rather than from a rejection.
   --apply                 actually send it. Without this nothing is written.
 
 Everything printed is ASCII: GitHub's Windows runners give Python a cp1252
@@ -63,6 +66,7 @@ ARGV = sys.argv[5:]
 APPLY = "--apply" in ARGV
 SET_NOTES = "--notes" in ARGV
 ATTACH = "--no-attach" not in ARGV
+AUDIT = "--audit" in ARGV
 
 
 def opt(name, default=None):
@@ -221,11 +225,94 @@ def pick_build():
     return usable[0]
 
 
+def audit(ver):
+    """Everything Apple checks at submission, in one place.
+
+    Written because "is it ready?" was six console pages, and a missing field
+    surfaces as a rejected submission rather than as a warning.
+    """
+    vid = ver["id"]
+    va = ver["attributes"]
+    rows = []
+
+    def row(name, ok, detail=""):
+        rows.append((name, ok, detail))
+
+    row("version state", va["appStoreState"] in EDITABLE, va["appStoreState"])
+    b = call("GET", "/v1/appStoreVersions/%s/build" % vid)
+    row("build attached", bool((b or {}).get("data")),
+        (b or {}).get("data", {}).get("id", "none") if (b or {}).get("data") else "none")
+
+    locs = call("GET", "/v1/appStoreVersions/%s/appStoreVersionLocalizations" % vid)
+    loc = next((l for l in (locs or {}).get("data", [])
+                if l["attributes"]["locale"] == "en-US"), None)
+    if loc:
+        a = loc["attributes"]
+        for f in ("description", "keywords", "promotionalText", "supportUrl"):
+            v = a.get(f) or ""
+            row(f, bool(v), "%d chars" % len(v) if v else "EMPTY")
+        sets = call("GET",
+                    "/v1/appStoreVersionLocalizations/%s/appScreenshotSets" % loc["id"])
+        found = []
+        for st in (sets or {}).get("data", []):
+            dt = st["attributes"]["screenshotDisplayType"]
+            shots = call("GET", "/v1/appScreenshotSets/%s/appScreenshots" % st["id"])
+            n = len((shots or {}).get("data", []))
+            done = sum(1 for x in (shots or {}).get("data", [])
+                       if (x["attributes"].get("assetDeliveryState") or {})
+                       .get("state") == "COMPLETE")
+            found.append("%s %d/%d complete" % (dt, done, n))
+        row("screenshot sets", bool(found), "; ".join(found) or "NONE")
+    else:
+        row("en-US localization", False, "missing")
+
+    det = call("GET", "/v1/appStoreVersions/%s/appStoreReviewDetail" % vid)
+    da = ((det or {}).get("data") or {}).get("attributes", {})
+    row("review notes", bool(da.get("notes")),
+        "%d chars" % len(da.get("notes") or "") if da.get("notes") else "EMPTY")
+    row("review contact", all(da.get(k) for k in
+                              ("contactFirstName", "contactLastName",
+                               "contactEmail", "contactPhone")),
+        "present" if da.get("contactEmail") else "MISSING")
+    row("sign-in required", da.get("demoAccountRequired") is False,
+        str(da.get("demoAccountRequired")))
+
+    infos = call("GET", "/v1/apps/%s/appInfos" % APP) or {"data": []}
+    purl = ""
+    for info in infos["data"]:
+        il = call("GET", "/v1/appInfos/%s/appInfoLocalizations" % info["id"])
+        e = next((l for l in (il or {}).get("data", [])
+                  if l["attributes"]["locale"] == "en-US"), None)
+        if e and e["attributes"].get("privacyPolicyUrl"):
+            purl = e["attributes"]["privacyPolicyUrl"]
+    row("privacy policy URL", bool(purl), purl or "EMPTY")
+
+    print()
+    print("== submission audit: %s %s ==" % (PLATFORM, va["versionString"]))
+    bad = 0
+    for name, ok, detail in rows:
+        if not ok:
+            bad += 1
+        print("  %-20s %-4s %s" % (name, "OK" if ok else "GAP", detail))
+    print()
+    if bad:
+        print("%d gap(s). Apple will refuse the submission until they are closed."
+              % bad)
+    else:
+        print("No gaps. What remains is human: export compliance, Add for")
+        print("Review, and 'Manually release this version'.")
+    return bad
+
+
 def main():
     ver = pick_version()
     va = ver["attributes"]
     print("%s version %s  state=%s"
           % (PLATFORM, va["versionString"], va["appStoreState"]))
+
+    if AUDIT:
+        audit(ver)
+        return
 
     cur = call("GET", "/v1/appStoreVersions/%s/build" % ver["id"])
     attached = (cur or {}).get("data")

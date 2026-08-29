@@ -23,11 +23,11 @@ on:
         type: choice
         options: [MAC_OS, IOS]
       mode:
-        description: 'report = show what it would do | apply = write it'
+        description: 'report = what it would do | apply = write it | audit = is it submittable?'
         required: true
         default: report
         type: choice
-        options: [report, apply]
+        options: [report, apply, audit]
       notes:
         description: 'Also set the App Review notes from the listing doc'
         required: true
@@ -99,6 +99,7 @@ jobs:
           # `run:` as `bash -e {0}`), so the step would die on the first input
           # left blank. That trap has already cost this repo three CI runs.
           if [ "${{ inputs.mode }}" = "apply" ]; then ARGS="$ARGS --apply"; fi
+          if [ "${{ inputs.mode }}" = "audit" ]; then ARGS="$ARGS --audit"; fi
           if [ "${{ inputs.notes }}" = "true" ]; then ARGS="$ARGS --notes"; fi
           if [ "${{ inputs.attach }}" = "false" ]; then ARGS="$ARGS --no-attach"; fi
           if [ -n "${{ inputs.version }}" ]; then ARGS="$ARGS --version ${{ inputs.version }}"; fi
