@@ -43,7 +43,12 @@ permissions:
 jobs:
   screenshots:
     runs-on: macos-latest
-    timeout-minutes: 90
+    # 90 was not enough once the run started switching to grid and gallery: each
+    # switch generates thumbnails for every photograph through the loopback
+    # object server, and it does that twice over, on two devices, after a
+    # librclone build and a Flutter build. The run was cancelled at 91 minutes
+    # with the iPhone half finished.
+    timeout-minutes: 180
     steps:
       - uses: actions/checkout@v5
 
