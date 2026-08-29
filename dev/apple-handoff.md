@@ -6,7 +6,32 @@ IDs, key paths and account state live in the encrypted vault
 (`python tool/vault.py unlock`, then
 `dev/vault/notes/apple-appstore-setup-record.md`).
 
-## State (2026-08-28, end of session)
+## State (2026-08-29): macOS SUBMITTED, iOS blocked on a binary rejection
+
+| | macOS | iOS |
+| :--- | :--- | :--- |
+| Version 0.6.8 | **WAITING_FOR_REVIEW** | `INVALID_BINARY` |
+| Build | 119, attached | 117 rejected; **118 uploaded with the fix** |
+| Release type | **MANUAL** | **MANUAL** |
+| Listing, screenshots, notes, contact, copyright, privacy URL | all set | all set |
+
+**Release type MANUAL on both is the important one.** An approved version waits
+for a human instead of publishing itself. It was found set to `AFTER_APPROVAL` on
+macOS *after* the audit had twice reported "no gaps" - copyright and release type
+live on the version, not the localization, and the audit only checked
+localization fields. Both are covered now.
+
+**The iOS rejection is most likely self-inflicted.** `signing=ephemeral` revoked
+its distribution certificate at the end of the run that uploaded build 117. Apple
+accepts the upload and processes the build to `VALID` regardless, so nothing
+complains until submission. The lane no longer revokes after an `upload`. Build
+118 is uploaded with its certificate retained; attach it and resubmit.
+
+Apple's **email** carries the actual reason. Nothing in the API explains an
+`INVALID_BINARY` - the same blind spot that made `ITMS-90284` invisible on macOS
+for two and a half hours.
+
+## Previously (2026-08-28)
 
 | | macOS | iOS |
 | :--- | :--- | :--- |
