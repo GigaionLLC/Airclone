@@ -121,6 +121,12 @@ dependencies:
 dev_dependencies:
   flutter_test:
     sdk: flutter
+  # Drives the real app on a real simulator for App Store screenshots. Tapping
+  # the Simulator window by coordinate is possible but brittle - device bezels,
+  # window zoom and title-bar height all move the target. Driving from inside
+  # the app finds widgets by what they SAY, which is stable.
+  integration_test:
+    sdk: flutter
 
   # The "flutter_lints" package below contains a set of recommended lints to
   # encourage good coding practices. The lint set provided by the package is

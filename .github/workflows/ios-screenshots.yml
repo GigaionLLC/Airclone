@@ -167,7 +167,40 @@ jobs:
             ls -la "$C/Documents"
           done
 
-      - name: Launch and capture
+      - name: Drive the app and capture the set
+        # `flutter drive` runs the app on the simulator and the test taps its way
+        # through, capturing at each stop. The alternative - cliclick against the
+        # Simulator window - has to guess where a device point lands on screen
+        # through bezels, zoom and a title bar. Finding widgets by what they say
+        # does not move.
+        if: ${{ inputs.mode == 'capture' }}
+        working-directory: app
+        env:
+          PHONE: ${{ steps.devices.outputs.phone }}
+          PAD: ${{ steps.devices.outputs.pad }}
+        run: |
+          set +e
+          for pair in "iphone:$PHONE" "ipad:$PAD"; do
+            name="${pair%%:*}"; udid="${pair#*:}"
+            echo "=== $name ==="
+            rm -rf screenshots
+            flutter drive               --driver=test_driver/integration_test.dart               --target=integration_test/store_screenshots_test.dart               -d "$udid" 2>&1 | tail -30
+            if [ -d screenshots ]; then
+              for f in screenshots/*.png; do
+                [ -f "$f" ] || continue
+                b="$(basename "$f")"
+                cp "$f" "../artifacts/${name}-${b}"
+              done
+            else
+              echo "::warning::$name produced no screenshots from the driver"
+            fi
+          done
+          ls -la ../artifacts || true
+
+      - name: Launch and capture the home view directly
+        # Belt and braces. `flutter drive` needs a debug build and a working
+        # observatory connection; if that end of it breaks, a plain launch plus
+        # simctl still yields one honest screenshot per device rather than none.
         if: ${{ inputs.mode == 'capture' }}
         env:
           PHONE: ${{ steps.devices.outputs.phone }}

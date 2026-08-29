@@ -102,3 +102,7 @@ dev/vault/notes/
 # Byte-code from the tool/ scripts (play_promote, play_tracks, store_submit).
 __pycache__/
 *.pyc
+
+# integration_test screenshot output (ios-screenshots.yml collects them into
+# artifacts; the store-ready ones are committed under docs/store/apple/ios/).
+app/screenshots/
