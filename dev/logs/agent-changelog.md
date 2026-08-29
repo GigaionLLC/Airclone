@@ -4,6 +4,29 @@ All changes made by AI agents are tracked chronologically below (most recent fir
 
 ---
 
+## [2026-08-28] - Both stores driven as far as a machine can take them
+
+**Agent:** Claude Opus 5 - `main`
+**Files Modified:** `tool/asc_build.py` (new), `tool/asc_ios_signing.py`,
+`tool/asc_listing.py`, `tool/asc_screenshots.py`,
+`.github/workflows/{asc-version,asc-listing,ios-screenshots}.yml` (new),
+`.github/workflows/ios-release.yml`, `docs/store/apple/listing-ios-en-US.md` (new),
+`docs/store/apple/ios/**` (new), `app/lib/src/ui/{home_screen,home_view}.dart`
+**Database/API Changes:** macOS build uploaded to App Store Connect; macOS review
+notes set; iOS version corrected 1.0 to 0.6.8; iOS listing text, review notes and
+both screenshot sets published. Nothing submitted.
+**Summary:** macOS: built, signed, Apple-validated and uploaded
+(UPLOAD SUCCEEDED, delivery UUID issued); review notes and sign-in-NO set through
+the API. iOS: the whole listing is complete except the build - version, copy,
+notes, and iPhone/iPad screenshots at Apple's exact sizes, captured on
+simulators. The iOS signing blocker turned out to be real and unavoidable (dev
+profiles need a registered device; cloud signing cannot mint a distribution cert
+with an App Manager key) so the lane now mints a certificate through the
+Certificates API per run and revokes it on the way out - VERIFY SUCCEEDED on a
+57MB ipa, with no distribution key stored anywhere. The screenshots also found
+two live UI defects: an empty DISKS header rendering over nothing (present in the
+sandboxed Mac build too) and an iPad calling itself "This computer".
+
 ## [2026-08-28] - iOS: librclone RUNS - engine reaches ready on a simulator
 
 **Agent:** Claude Opus 5 - `main`

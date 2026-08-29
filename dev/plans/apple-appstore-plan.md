@@ -396,6 +396,21 @@ workflow with a platform switch would have been mostly branches.
 `CODE_SIGNING_ALLOWED=NO` purely to prove the DEVICE slice links and keeps its Go symbols, which the
 simulator job cannot tell you. It is the cheapest possible check of the thing most likely to break.
 
+**SOLVED 2026-08-28 — no secret needed at all.** `signing=ephemeral` mints the
+certificate and profile through the Certificates API inside the job, signs,
+exports, and revokes the certificate in an `always()` step. Apple validated the
+result: `VERIFY SUCCEEDED with no errors` on a 57 MB `.ipa`.
+
+Two routes were tried before this and both are dead ends worth not repeating:
+
+| Attempt | Apple's answer |
+| :--- | :--- |
+| archive as `Apple Development`, automatic | *"Your team has no devices from which to generate a provisioning profile"* — iOS dev profiles need a registered device; macOS ones do not |
+| archive unsigned, export automatic | *"Cloud signing permission error"*, *"No signing certificate 'iOS Distribution' found"* — the same limit macOS hit |
+
+The stored-p12 path below still works and remains the default; it is simply no
+longer the only way in.
+
 Still needed before `validate` works, because the Mac certificates (`3rd Party Mac Developer *`) do
 not cover iOS:
 

@@ -103,8 +103,19 @@ all four exports (`ios-release.yml -f mode=dry-run`, no Apple credential needed)
 and the Debug simulator build launches and reaches `EnginePhase.ready` - which the
 screenshot shows, because the UI renders `EngineGate` until it does.
 
-Still ahead: `validate`/`upload` need an **Apple Distribution certificate and an
-iOS App Store profile** — the Mac certs (`3rd Party Mac Developer *`) do not
+**The iOS lane WORKS, with no stored certificate (2026-08-28).**
+`ios-release.yml -f mode=validate -f signing=ephemeral` mints a distribution
+certificate through the Certificates API, signs, exports a 57 MB `.ipa`, gets
+`VERIFY SUCCEEDED with no errors` from Apple, and revokes the certificate on the
+way out. Nothing long-lived is stored.
+
+Both automatic-signing routes were tried first and both are dead ends, so do not
+retry them: an iOS *development* profile needs a **registered device** and this
+team has none, and `exportArchive` gives **"Cloud signing permission error"** for
+distribution with an App Manager key - the same answer macOS gave.
+
+The `signing=secrets` path still exists and needs an **Apple Distribution
+certificate and an iOS App Store profile** — the Mac certs (`3rd Party Mac Developer *`) do not
 cover iOS. The Certificates API can mint them with the existing App Manager key.
 And `UIDocumentPicker`, so a file can be pulled in from elsewhere in Files.
 See `dev/plans/apple-appstore-plan.md` Gate C2 and Gate D.
