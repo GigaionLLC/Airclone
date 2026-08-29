@@ -234,9 +234,15 @@ jobs:
           ls -la ../artifacts || true
 
       - name: Launch and capture the home view directly
-        # Belt and braces. `flutter drive` needs a debug build and a working
-        # observatory connection; if that end of it breaks, a plain launch plus
-        # simctl still yields one honest screenshot per device rather than none.
+        # ONLY when the driver produced nothing. This step used to run
+        # unconditionally as "belt and braces" and actively destroyed good
+        # output: `flutter drive` UNINSTALLS the app when the test finishes, so
+        # the launch below silently did nothing and simctl captured the iOS
+        # springboard - which then overwrote the driver's real home screenshot
+        # under the same filename. One of those reached the App Store.
+        #
+        # The `|| echo warning` on the launch is what hid it. A fallback that can
+        # replace a good artifact with a worse one is not a safety net.
         if: ${{ inputs.mode == 'capture' }}
         env:
           PHONE: ${{ steps.devices.outputs.phone }}
@@ -245,21 +251,24 @@ jobs:
         run: |
           set +e
           mkdir -p artifacts
+          APP="app/build/ios/iphonesimulator/Runner.app"
           for pair in "iphone:$PHONE" "ipad:$PAD"; do
             name="${pair%%:*}"; udid="${pair#*:}"
-            # Apple's own marketing shots use a clean status bar, and a CI
-            # runner's clock and wifi bars look like what they are. This is
-            # the documented way to fix it, and it survives the relaunch.
-            xcrun simctl status_bar "$udid" override \
-              --time "9:41" --dataNetwork wifi --wifiMode active --wifiBars 3 \
-              --cellularMode active --cellularBars 4 \
-              --batteryState charged --batteryLevel 100 || \
-              echo "::warning::status bar override failed on $name"
-            xcrun simctl launch "$udid" com.gigaionllc.airclone
+            if [ -f "artifacts/${name}-01-home.png" ]; then
+              echo "$name: driver captured the home view; not overwriting it"
+              continue
+            fi
+            echo "::warning::$name has no driver home shot - falling back"
+            # Re-install, because the drive removed it. Without this the launch
+            # fails and the capture is the springboard, not the app.
+            xcrun simctl install "$udid" "$APP" || continue
+            if ! xcrun simctl launch "$udid" com.gigaionllc.airclone; then
+              echo "::error::$name: launch failed - refusing to capture a screenshot"
+              echo "that would show the iOS home screen rather than the app."
+              continue
+            fi
             sleep "$SETTLE"
             xcrun simctl io "$udid" screenshot "artifacts/${name}-01-home.png"
-            sips -g pixelWidth -g pixelHeight "artifacts/${name}-01-home.png" \
-              | sed "s/^/  ${name}: /"
           done
 
       - name: What came out

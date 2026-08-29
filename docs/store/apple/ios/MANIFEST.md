@@ -85,6 +85,25 @@ simulator app can read and which survives any number of reinstalls.
 "View: List" and tapping goes List → Grid → Gallery, so `byTooltip('Gallery')`
 matches only once you are already there. Match the `View: ` prefix instead.
 
+## A wrong screenshot reached the App Store
+
+The `01-home` shots uploaded on 2026-08-29 were the **iOS springboard**, not the
+app. `flutter drive` uninstalls the app when the test finishes, so the
+"belt and braces" fallback step that followed launched nothing, captured the home
+screen of the simulator, and wrote it over the driver's real capture under the
+same filename. A `|| echo warning` on the launch is what hid the failure.
+
+Two rules came out of it, both now enforced in the workflow:
+
+- **A fallback must never overwrite a better artifact.** It now runs only when
+  the driver produced nothing for that device.
+- **A capture step must fail rather than save a picture of the wrong thing.** If
+  the launch does not succeed, it refuses to screenshot at all.
+
+The giveaway was file size — 3.6 MB against 145 KB — because a photographic
+springboard compresses far worse than a flat app UI. Worth remembering as a cheap
+sanity check on any captured set.
+
 ## Grid and gallery: attempted, abandoned, and why
 
 They would be the best shots — real thumbnails instead of filenames. Two runs
