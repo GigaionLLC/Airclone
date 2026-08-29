@@ -239,6 +239,16 @@ def audit(ver):
         rows.append((name, ok, detail))
 
     row("version state", va["appStoreState"] in EDITABLE, va["appStoreState"])
+    # Copyright and the release type live on the VERSION, not the localization,
+    # which is why an audit built around localization fields missed both. The
+    # copyright was empty on a version that otherwise reported no gaps, and the
+    # release type was still AFTER_APPROVAL - the setting that makes approval and
+    # publication the same event.
+    row("copyright", bool(va.get("copyright")), va.get("copyright") or "EMPTY")
+    rel = va.get("releaseType") or "?"
+    row("release type", rel == "MANUAL",
+        rel + (" - approval and publication are the SAME event"
+               if rel != "MANUAL" else ""))
     b = call("GET", "/v1/appStoreVersions/%s/build" % vid)
     row("build attached", bool((b or {}).get("data")),
         (b or {}).get("data", {}).get("id", "none") if (b or {}).get("data") else "none")
