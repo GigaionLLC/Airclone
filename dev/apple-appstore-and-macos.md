@@ -42,26 +42,58 @@ contact and the delivery history live in the encrypted vault
 
 ### The order that works
 
-Each step is one dispatch. Every tool defaults to a dry run; nothing writes
-without `mode=apply` or `--apply`.
+Every tool defaults to a dry run; nothing writes without `mode=apply`. Substitute
+`-f platform=IOS` for the iOS pass, and run the screenshot step twice there
+(`-f device=iphone` **and** `-f device=ipad` — Apple wants one set per display
+type, not one set holding both sizes).
 
 | # | Step | Command |
 | :-- | :--- | :--- |
-| 1 | Listing copy | `gh workflow run asc-listing.yml -f platform=MAC_OS -f what=text -f mode=apply` |
-| 2 | Screenshots | `gh workflow run asc-listing.yml -f platform=MAC_OS -f what=screenshots -f device=mac -f mode=apply` |
-| 3 | Build + upload | `gh workflow run mas-release.yml -f mode=upload` |
-| 4 | Wait for Apple to finish processing | `gh workflow run asc-version.yml -f platform=MAC_OS -f mode=report` until a `VALID` build appears |
-| 5 | Attach it + review notes | `... asc-version.yml -f platform=MAC_OS -f mode=apply -f notes=true` |
-| 6 | **Human:** export compliance, *Add for Review*, *Manually release* | App Store Connect |
+| 1 | Listing copy | `asc-listing.yml -f platform=MAC_OS -f what=text -f mode=apply` |
+| 2 | Screenshots | `asc-listing.yml -f platform=MAC_OS -f what=screenshots -f device=mac -f replace=true -f mode=apply` |
+| 3 | Build + upload | `mas-release.yml -f mode=upload` (iOS: `ios-release.yml -f mode=upload -f signing=ephemeral`) |
+| 4 | Wait for processing | `asc-version.yml -f platform=MAC_OS -f mode=report` until a `VALID` build of the RIGHT platform appears |
+| 5 | Attach + notes + copyright + release type | `asc-version.yml -f platform=MAC_OS -f mode=apply -f notes=true -f copyright=true -f manual_release=true` |
+| 6 | **Check it is actually submittable** | `asc-version.yml -f platform=MAC_OS -f mode=audit` — must print *No gaps* |
+| 7 | **Human, in the console:** export compliance, then *Add for Review* | see below |
 
-For iOS, substitute `-f platform=IOS`, `-f device=iphone` **and** `-f device=ipad`
-(two separate sets — Apple wants one per display type), and
-`gh workflow run ios-release.yml -f mode=upload -f signing=ephemeral`.
+**Step 6 is not optional.** The audit twice reported "no gaps" on a version whose
+release type was `AFTER_APPROVAL` and whose copyright was empty, because those
+live on the *version* and it was only checking *localization* fields. It checks
+both now — but the habit that catches the next one is running it and reading it,
+not trusting that it covered everything.
 
-Screenshots are produced, not written by hand:
-`mas-screenshots.yml -f mode=capture` for Mac, `ios-screenshots.yml -f mode=capture`
-for iPhone + iPad. Both seed demo content and real CC0 photographs into the app's
-own container first.
+`-f replace=true` on screenshots matters: Apple does **not** overwrite by
+filename, it adds a second asset, so re-uploading an improved set without it
+leaves the old shots on the product page beside the new ones.
+
+### Export compliance, click by click
+
+Build → **Manage** beside *Missing Compliance*. Two questions:
+
+1. **"Standard encryption algorithms instead of, or in addition to, using or
+   accessing the encryption within Apple's operating system"** — the second
+   option. rclone `crypt`, the config encryption, the vault and Go's own TLS are
+   all the app's own implementations; the engine never calls Apple's Security
+   framework. Nothing is proprietary, so it is not option 1 or 3, and the app
+   plainly encrypts, so it is not option 4.
+2. **"Is your app going to be available for distribution in France?"** → **No**.
+
+**The France answer has a prerequisite.** Answering No is only truthful if France
+is actually deselected in *Pricing and Availability* — do that first and save it.
+Answering **Yes** instead requires an uploaded **ANSSI declaration**, approved by
+Apple before the build can ship, which is an external queue on a first
+submission. Availability is independent of the binary, so France can be added
+back in any later version with no rebuild.
+
+### If you swap the build after submitting
+
+Attaching a different build sends the version back to `PREPARE_FOR_SUBMISSION`
+and the new build arrives with **its own** *Missing Compliance* — answer it
+again. The header button then reads **Update Review** rather than *Add for
+Review*, and the submission page shows *Unresolved Issues* with a
+**Resubmit to App Review** button. Press that; the first button only re-opens the
+draft.
 
 ### Things that are true every time
 
@@ -83,7 +115,7 @@ own container first.
 - **The privacy-policy URL is app-level**, not per-version, and a submission is
   refused without it. `asc_listing.py` checks it on every run.
 
-### iOS signing: mint per run, revoke on the way out
+### iOS signing: mint per run (and see the revoke rule below)
 
 Two automatic routes were tried and **both are dead ends** — do not retry them:
 
@@ -94,7 +126,8 @@ Two automatic routes were tried and **both are dead ends** — do not retry them
 
 So `ios-release.yml -f signing=ephemeral` mints a distribution certificate through
 the **Certificates API** (which an App Manager key can do, unlike cloud signing),
-uses it inside that one job, and revokes it in an `always()` step. No distribution
+uses it inside that one job, and revokes it afterwards **except after an
+upload** - see "Do not revoke the signing certificate after an upload". No distribution
 private key is stored anywhere. Two details that matter: the profile is rebuilt
 each time, because a surviving profile references the revoked certificate and
 cannot sign; and `--revoke` takes an explicit id and never hunts for stale
@@ -194,6 +227,25 @@ Two entitlement facts that are easy to get wrong:
   `Desktop`/`Documents`/`Downloads` there, so seeded Locations do NOT vanish —
   they render and point at empty folders, which is worse. A MAS build seeds
   nothing and asks for the first folder.
+
+### Mistakes this release made, so the next one does not
+
+Four, and the shape is the same in every case: something reported success while
+being wrong, and only looking at the actual artifact caught it.
+
+| What happened | Why it was invisible | The rule |
+| :--- | :--- | :--- |
+| Two macOS builds uploaded and never appeared | `altool --validate-app` checks the outer package and never opens `Contents/Resources/*.bundle`, so `VERIFY SUCCEEDED` and a dead build are both true. **Apple reports it only by email** | Sign every nested bundle with `3rd Party Mac Developer Application` and **assert the authority on each one** before export |
+| The audit said "no gaps" with release type `AFTER_APPROVAL` | copyright and release type live on the version; the audit only read localization fields | An audit is only as good as its field list — run it, read it, and widen it when something slips past |
+| A screenshot of the **iOS home screen** reached the App Store | `flutter drive` uninstalls the app at the end, so the "belt and braces" fallback captured the springboard and overwrote the real shot under the same filename. `\|\| echo warning` hid the failed launch | A fallback must never overwrite a better artifact, and a capture step must **fail rather than save the wrong picture**. File size gave it away: 3.6 MB vs 145 KB |
+| iOS came back **Invalid Binary** minutes after submitting | `signing=ephemeral` revoked the certificate that signed the build under review. Apple accepts the upload and processes it to `VALID` regardless | Never revoke after an `upload`. And do not write a safety claim into a commit message without testing it at the step where it could fail |
+
+The one that generalises: **a check that reports a boolean instead of what it
+saw will hide its own bugs.** Three separate diagnostics failed in their own
+right during this release — one truncated by `head -20`, one aborted by `grep -c`
+exiting 1, one killed because GitHub runs every `run:` block as `bash -e` and
+`set -uo pipefail` does not undo that. Each looked exactly like the thing it was
+meant to detect.
 
 ### Verifying without hardware
 
