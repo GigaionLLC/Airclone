@@ -113,6 +113,28 @@ if not APPLY:
     print("\ndry run - pass --apply to send")
     sys.exit(0)
 
+# The privacy-policy URL is APP-level, not per-version, and Apple refuses a
+# submission without it. Checked and set here because it is listing metadata like
+# everything else in this file, and because "required field nobody filled in" is
+# a bad way to discover a blocked submission.
+PRIVACY_URL = "https://github.com/GigaionLLC/Airclone/blob/main/PRIVACY.md"
+infos = call("GET", "/v1/apps/%s/appInfos" % APP) or {"data": []}
+for info in infos["data"]:
+    ilocs = call("GET", "/v1/appInfos/%s/appInfoLocalizations" % info["id"])
+    iloc = next((l for l in (ilocs or {}).get("data", [])
+                 if l["attributes"]["locale"] == "en-US"), None)
+    if not iloc:
+        continue
+    have = iloc["attributes"].get("privacyPolicyUrl") or ""
+    print("  privacyPolicyUrl %s" % (have if have else "-- EMPTY --"))
+    if have == PRIVACY_URL or not APPLY:
+        continue
+    r = call("PATCH", "/v1/appInfoLocalizations/%s" % iloc["id"],
+             {"data": {"id": iloc["id"], "type": "appInfoLocalizations",
+                       "attributes": {"privacyPolicyUrl": PRIVACY_URL}}})
+    if r is not None:
+        print("  privacyPolicyUrl set")
+
 res = call("PATCH", "/v1/appStoreVersionLocalizations/%s" % loc["id"],
            {"data": {"id": loc["id"], "type": "appStoreVersionLocalizations",
                      "attributes": fields}})
