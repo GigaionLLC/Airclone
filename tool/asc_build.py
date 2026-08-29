@@ -170,6 +170,17 @@ def pick_build():
         for v in (pre or {}).get("data", []):
             a = v["attributes"]
             print("  %s (%s)" % (a.get("version"), a.get("platform")))
+        # Unfiltered, to tell "Apple has not created the build record yet" apart
+        # from "this key cannot see builds at all". Same question the app-scoped
+        # query asks, minus the filter that could be the thing that is wrong.
+        allb = call("GET", "/v1/builds?limit=10")
+        print("builds across the whole team: %d"
+              % len((allb or {}).get("data", [])))
+        for b in (allb or {}).get("data", [])[:5]:
+            a = b["attributes"]
+            print("  build %s  %s  %s"
+                  % (a.get("version"), a.get("processingState"),
+                     (a.get("uploadedDate") or "")[:19]))
     rows = []
     for b in bs["data"]:
         a = b["attributes"]
