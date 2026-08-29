@@ -259,6 +259,32 @@ installs, launches and screenshots the app. Three different failures live betwee
 apart: the link (Go omits its own `//go:cgo_ldflag` for `c-archive`), the strip
 (Release removes all symbols by default) and the runtime lookup.
 
+### Export compliance, answered for real (2026-08-28)
+
+Apple's dialog, and what Airclone's actual answers are:
+
+| Question | Answer | Why |
+| :--- | :--- | :--- |
+| What encryption does the app implement? | **Standard algorithms instead of, or in addition to, Apple's OS** | rclone `crypt` (NaCl secretbox/AES), config encryption, the vault (scrypt + AES-256-GCM), Argon2id for offline QR — and Go's own TLS, because the engine is statically linked and does not call Apple's Security framework |
+| Proprietary algorithms? | **No** | every algorithm is a published standard |
+| Available in **France**? | *the decision below* | |
+
+**France is the expensive answer.** Saying yes makes Apple require uploaded
+export-compliance documentation — France wants an **ANSSI declaration** and Apple
+wants a copy — approved before the build can ship. Saying no removes the
+requirement entirely.
+
+The exemptions do **not** apply: "HTTPS only" and "only Apple's OS crypto" are
+both false here. This is mass-market 5D992, which separately carries an annual
+self-classification report to BIS in the US regardless of the France answer.
+
+Two legitimate routes, and the choice is commercial rather than technical:
+
+- **ship without France**, add it in a later version once the declaration is
+  filed — availability is independent of the binary, so no rebuild is needed;
+- **file first**, upload the receipt, wait for Apple's approval, and get back the
+  `ITSEncryptionExportComplianceCode` for `Info.plist`.
+
 **`ITSAppUsesNonExemptEncryption` is deliberately NOT set — this one is yours.**
 Setting it to `false` would be a US export-control declaration made by a machine
 on the LLC's behalf, and it would very likely be *wrong*: Airclone encrypts the

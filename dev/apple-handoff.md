@@ -20,12 +20,17 @@ IDs, key paths and account state live in the encrypted vault
 
 **Two things block a human-free finish, and both are genuinely yours:**
 
-1. **The review contact** — Apple requires `contactFirstName` / `contactLastName`
-   / `contactEmail` / `contactPhone` on `appStoreReviewDetails` and rejects the
-   whole PATCH without them. Neither version has one on file to copy. It is
-   personal data, so it is not invented here and does not belong in this repo:
-   enter it once in App Store Connect and `asc-version.yml` will copy it to the
-   other platform from then on.
+1. ~~The review contact~~ **DONE.** It lives in the `APPLE_REVIEW_CONTACT` repo
+   secret as JSON — personal data, so it reaches Apple directly and is never
+   written to this repo or printed. `asc_build.py` prefers a contact already on
+   another platform's version and falls back to the secret.
+
+   **Export compliance is the live one.** Airclone implements standard
+   confidentiality encryption of its own, so the easy exemptions do not apply —
+   see the plan's "Export compliance, answered for real". Answering **yes** to
+   *available in France* makes Apple require an uploaded **ANSSI declaration**,
+   approved before shipping; answering no removes the requirement. Shipping
+   without France first and adding it in a later version costs no rebuild.
 2. **The macOS build never registered.** `altool` returned
    `UPLOAD SUCCEEDED with no errors` with a delivery UUID, and 2.5 hours later
    `/v1/builds` shows only the iOS one. The iOS build from the *same* release
