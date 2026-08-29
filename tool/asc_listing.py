@@ -107,12 +107,6 @@ loc = next((l for l in locs["data"] if l["attributes"]["locale"] == "en-US"), No
 if not loc:
     sys.exit("no en-US localization")
 
-for k, v in fields.items():
-    print("  %-16s %d chars" % (k, len(v)))
-if not APPLY:
-    print("\ndry run - pass --apply to send")
-    sys.exit(0)
-
 # The privacy-policy URL is APP-level, not per-version, and Apple refuses a
 # submission without it. Checked and set here because it is listing metadata like
 # everything else in this file, and because "required field nobody filled in" is
@@ -134,6 +128,12 @@ for info in infos["data"]:
                        "attributes": {"privacyPolicyUrl": PRIVACY_URL}}})
     if r is not None:
         print("  privacyPolicyUrl set")
+
+for k, v in fields.items():
+    print("  %-16s %d chars" % (k, len(v)))
+if not APPLY:
+    print("\ndry run - pass --apply to send")
+    sys.exit(0)
 
 res = call("PATCH", "/v1/appStoreVersionLocalizations/%s" % loc["id"],
            {"data": {"id": loc["id"], "type": "appStoreVersionLocalizations",
