@@ -114,6 +114,20 @@ void main() {
       missed.add('Demo Cloud remote');
     }
 
+    // Back out to the sidebar first. On the phone shell the browser replaces it,
+    // so "On My Device" is simply not on screen after opening a remote - which is
+    // why iPad captured this shot and iPhone reported it missing. iPad keeps the
+    // sidebar visible, so the back tap is a harmless no-op there.
+    for (var i = 0; i < 3; i++) {
+      if (find.text('On My Device').evaluate().isNotEmpty) break;
+      if (!await tapIfPresent(
+        find.byIcon(Icons.arrow_back),
+        settleSeconds: 2,
+      )) {
+        break;
+      }
+    }
+
     // The local side: the app's own Documents folder, which is the whole of
     // "local" on iOS and worth showing because it is what Files exposes.
     if (await tapIfPresent(find.text('On My Device'), settleSeconds: 4)) {

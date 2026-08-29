@@ -132,6 +132,10 @@ jobs:
           # media is not optional: Google rejected a screenshot from this project
           # as "placeholder images or stock photos" when it showed gradient tiles.
           # Provenance: docs/store/play/DEMO-MEDIA-PROVENANCE.md
+          # /tmp/airclone-demo is what the alias remote points at; the copies
+          # inside each container are what "On My Device" shows.
+          rm -rf /tmp/airclone-demo
+          mkdir -p /tmp/airclone-demo/Documents /tmp/airclone-demo/Videos
           mkdir -p /tmp/demo/Photos /tmp/demo/Documents /tmp/demo/Videos
           i=0
           for U in \
@@ -145,7 +149,8 @@ jobs:
               "https://commons.wikimedia.org/wiki/Special:FilePath/$U?width=1600" \
               -o "/tmp/demo/Photos/IMG_010$i.jpg" || echo "::warning::could not fetch $U"
           done
-          ls -la /tmp/demo/Photos
+          cp -R /tmp/demo/Photos /tmp/airclone-demo/Photos
+          ls -la /tmp/demo/Photos /tmp/airclone-demo
 
           for U in "$PHONE" "$PAD"; do
             xcrun simctl install "$U" "$APP"
@@ -160,7 +165,17 @@ jobs:
             # getApplicationSupportDirectory() on iOS is <data>/Library/Application
             # Support with NO bundle-id subdirectory - that part is macOS-only.
             mkdir -p "$C/Library/Application Support"
-            printf '[Demo Cloud]\ntype = alias\nremote = %s/Documents\n' "$C" \
+            # Point the alias at a HOST path, not at the container.
+            # Reinstalling preserves the data but gives the container a NEW
+            # UUID, so an absolute container path baked into the config goes
+            # stale the moment `flutter drive` installs: the config travels
+            # with the data, the photographs travel with it, and the remote
+            # then lists a directory that no longer exists. The app reported
+            # exactly that from inside its own sandbox -
+            #   docs=.../2EBB2267/...  conf=.../CB2C6DC7/...
+            # A simulator app is a host process and can read host paths, so
+            # /tmp/airclone-demo is stable across any number of reinstalls.
+            printf '[Demo Cloud]\ntype = alias\nremote = /tmp/airclone-demo\n' \
               > "$C/Library/Application Support/rclone.conf"
             echo "--- seeded config ---"
             cat "$C/Library/Application Support/rclone.conf"

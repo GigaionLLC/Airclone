@@ -124,6 +124,29 @@ The lane now signs every nested bundle explicitly and then **asserts the
 authority on each one** before export, because a silent mismatch costs a whole
 upload and an email you cannot poll for.
 
+### Screenshot seeding: never bake a container path into the config
+
+`flutter drive` reinstalls the app, and a reinstall **preserves the data while
+giving the container a new UUID**. So a config seeded with
+`remote = <container>/Documents` still exists after the install, and the
+photographs still exist beside it — but the path inside it now names the old
+container, and rclone lists a directory that is gone. The browser shows
+*"Empty folder"*, which is a completed listing with zero entries, not a failure.
+
+That is invisible from outside the process: the config is there, the files are
+there, and both look right. The app said it in one line from inside its own
+sandbox:
+
+```
+PROBE docs=  .../Application/2EBB2267-.../Documents
+PROBE conf=  remote = .../Application/CB2C6DC7-.../Documents
+```
+
+The demo remote therefore points at **`/tmp/airclone-demo`** on the host. A
+simulator app is a host process and can read host paths, so that survives any
+number of reinstalls. Content is still copied into each container as well,
+because that is what *On My Device* legitimately shows.
+
 ### Export compliance
 
 Airclone implements standard confidentiality encryption of its own — rclone
