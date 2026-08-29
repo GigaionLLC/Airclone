@@ -39,6 +39,7 @@ stdout and a stray arrow aborts the process mid-run (AGENT.md rule 12).
 import base64
 import io
 import json
+import os
 import sys
 import time
 import urllib.error
@@ -292,6 +293,22 @@ def main():
                    "contactEmail", "contactPhone")
         have = (existing or {}).get("attributes", {})
         if not all(have.get(k) for k in CONTACT):
+            # An explicitly supplied contact wins: APPLE_REVIEW_CONTACT holds the
+            # four fields as JSON and comes from a GitHub secret, so the values
+            # reach Apple without ever being written to this repo or printed.
+            env_json = os.environ.get("APPLE_REVIEW_CONTACT", "").strip()
+            if env_json:
+                try:
+                    supplied = json.loads(env_json)
+                except ValueError:
+                    sys.exit("APPLE_REVIEW_CONTACT is not valid JSON")
+                missing = [k for k in CONTACT if not supplied.get(k)]
+                if missing:
+                    sys.exit("APPLE_REVIEW_CONTACT is missing: %s" % ", ".join(missing))
+                for k in CONTACT:
+                    attrs[k] = supplied[k]
+                print("  review contact: supplied (kept out of the repo and the log)")
+                have = {k: attrs[k] for k in CONTACT}
             src = None
             allv = call("GET", "/v1/apps/%s/appStoreVersions?limit=200" % APP) or {}
             for v in allv.get("data", []):
@@ -303,11 +320,15 @@ def main():
                 if all(a2.get(k) for k in CONTACT):
                     src = a2
                     break
-            if src:
+            if all(attrs.get(k) for k in CONTACT):
+                src = True
+            if src and src is not True:
                 for k in CONTACT:
                     attrs[k] = src[k]
                 print("  review contact: copied from the other platform's "
                       "version (not stored anywhere)")
+            elif src is True:
+                pass
             else:
                 print("::error::this version needs a review contact "
                       "(first/last name, email, phone) and no other version has "

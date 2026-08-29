@@ -85,6 +85,10 @@ jobs:
           P8: ${{ secrets.APPSTORE_API_PRIVATE_KEY }}
           KEY_ID: ${{ vars.APPSTORE_API_KEY_ID }}
           ISSUER: ${{ secrets.APPSTORE_ISSUER_ID }}
+          # Apple requires a review contact on appStoreReviewDetails and rejects
+          # the whole PATCH without one. It is personal data, so it lives in a
+          # secret and is never written to this repo or printed.
+          APPLE_REVIEW_CONTACT: ${{ secrets.APPLE_REVIEW_CONTACT }}
         run: |
           set -euo pipefail
           umask 077
