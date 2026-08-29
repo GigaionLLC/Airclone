@@ -6,7 +6,34 @@ IDs, key paths and account state live in the encrypted vault
 (`python tool/vault.py unlock`, then
 `dev/vault/notes/apple-appstore-setup-record.md`).
 
-## State: macOS is one button from submission
+## State (2026-08-28, end of session)
+
+| | macOS | iOS |
+| :--- | :--- | :--- |
+| Build uploaded, Apple-accepted | ✅ `UPLOAD SUCCEEDED` | ✅ `UPLOAD SUCCEEDED` |
+| Build **registered** by Apple | ⛔ **still no record after 2.5h** | ✅ build 117 `VALID` |
+| Build attached to version 0.6.8 | ⛔ blocked by the above | ✅ |
+| Listing text, keywords, promo | ✅ | ✅ |
+| Screenshots | ✅ 5 x 1280x800 | ✅ iPhone 1320x2868 + iPad 2064x2752 |
+| Review notes | ✅ | ⛔ **needs a review contact** |
+| Export compliance, Add for Review, Manually release | ⛔ human | ⛔ human |
+
+**Two things block a human-free finish, and both are genuinely yours:**
+
+1. **The review contact** — Apple requires `contactFirstName` / `contactLastName`
+   / `contactEmail` / `contactPhone` on `appStoreReviewDetails` and rejects the
+   whole PATCH without them. Neither version has one on file to copy. It is
+   personal data, so it is not invented here and does not belong in this repo:
+   enter it once in App Store Connect and `asc-version.yml` will copy it to the
+   other platform from then on.
+2. **The macOS build never registered.** `altool` returned
+   `UPLOAD SUCCEEDED with no errors` with a delivery UUID, and 2.5 hours later
+   `/v1/builds` shows only the iOS one. The iOS build from the *same* release
+   processed fine, so this is specific to the Mac package. **Apple emails the
+   account holder when a build fails processing** — that message is the only
+   place the reason exists.
+
+## Previously: macOS is one button from submission
 
 Working tree clean, everything pushed to `main`.
 
