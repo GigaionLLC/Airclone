@@ -1,4 +1,7 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 
@@ -36,6 +39,33 @@ void main() {
     }
 
     await settle(12); // engine start + first listing
+
+    // What does the APP see? The rig seeds photographs into the container and
+    // the browser still renders "Empty folder" - which is a completed listing
+    // with zero entries, not a load in progress. Every theory about why has been
+    // wrong so far, so ask the process that actually has the sandbox view rather
+    // than inferring from outside it.
+    try {
+      final docs = await getApplicationDocumentsDirectory();
+      final support = await getApplicationSupportDirectory();
+      final conf = File('${support.path}/rclone.conf');
+      debugPrint('PROBE docs=${docs.path}');
+      debugPrint('PROBE docsExists=${docs.existsSync()}');
+      if (docs.existsSync()) {
+        final names = docs
+            .listSync()
+            .map((e) => e.path.split('/').last)
+            .toList();
+        debugPrint('PROBE docsEntries=$names');
+      }
+      debugPrint('PROBE confExists=${conf.existsSync()}');
+      if (conf.existsSync()) {
+        final lines = conf.readAsLinesSync();
+        debugPrint('PROBE conf=${lines.join(" | ")}');
+      }
+    } catch (e) {
+      debugPrint('PROBE failed: $e');
+    }
 
     // Required once on iOS before the surface can be read back.
     await binding.convertFlutterSurfaceToImage();

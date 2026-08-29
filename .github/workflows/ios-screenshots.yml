@@ -192,13 +192,15 @@ jobs:
             echo "container before drive: $BEFORE"
             ls "$BEFORE/Documents" 2>/dev/null | sed "s/^/  /" || echo "  (unreadable)"
             rm -rf screenshots
-            flutter drive               --driver=test_driver/integration_test.dart               --target=integration_test/store_screenshots_test.dart               -d "$udid" 2>&1 | tail -30
+            flutter drive               --driver=test_driver/integration_test.dart               --target=integration_test/store_screenshots_test.dart               -d "$udid" 2>&1 | tee "/tmp/drive-$name.log" | tail -30
             AFTER="$(xcrun simctl get_app_container "$udid" com.gigaionllc.airclone data 2>/dev/null)"
             echo "container after drive:  $AFTER"
             if [ "$BEFORE" != "$AFTER" ]; then
               echo "::warning::the data container MOVED - the seeded content is gone"
             fi
             ls "$AFTER/Documents" 2>/dev/null | sed "s/^/  /" || echo "  (unreadable)"
+            echo "--- what the app itself saw ---"
+            grep -E "PROBE " "/tmp/drive-$name.log" | sed 's/^/  /'               || echo "  (no probe output)"
             if [ -d screenshots ]; then
               for f in screenshots/*.png; do
                 [ -f "$f" ] || continue
