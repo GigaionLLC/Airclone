@@ -4,6 +4,29 @@ All changes made by AI agents are tracked chronologically below (most recent fir
 
 ---
 
+## [2026-08-29] - Airclone submitted to the Mac App Store and the iOS App Store
+
+**Agent:** Claude Opus 5 - `main`
+**Files Modified:** `tool/asc_build.py`, `tool/asc_screenshots.py`,
+`tool/asc_ios_signing.py`, `.github/workflows/{asc-version,asc-listing,ios-release,ios-screenshots}.yml`,
+`app/integration_test/**`, `docs/store/apple/ios/**`,
+`dev/apple-appstore-and-macos.md`, `dev/apple-handoff.md`, `dev/vault/vault.enc`
+**Database/API Changes:** macOS 0.6.8 (build 119) and iOS 0.6.8 (build 118) both
+WAITING_FOR_REVIEW. Copyright, MANUAL release type, export compliance and four
+iOS screenshots per device set on both.
+**Summary:** Both platforms submitted. Three things I had already called finished
+turned out not to be. The audit reported "no gaps" while release type was
+AFTER_APPROVAL - the setting that makes approval and publication one event -
+because copyright and release type live on the version and the audit only checked
+localization fields. The screenshot fallback shipped a picture of the iOS home
+screen to the App Store, because it ran unconditionally after flutter drive had
+uninstalled the app and overwrote the real capture; it now runs only when the
+driver produced nothing and refuses to save a screenshot if the launch fails. And
+the first iOS submission came back INVALID BINARY because signing=ephemeral
+revoked the certificate that signed the build under review - a safety claim I had
+written into a commit message without testing it at the only step where it could
+fail. Build 118 with a retained certificate was accepted.
+
 ## [2026-08-28] - Both stores driven as far as a machine can take them
 
 **Agent:** Claude Opus 5 - `main`

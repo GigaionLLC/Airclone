@@ -6,30 +6,42 @@ IDs, key paths and account state live in the encrypted vault
 (`python tool/vault.py unlock`, then
 `dev/vault/notes/apple-appstore-setup-record.md`).
 
-## State (2026-08-29): macOS SUBMITTED, iOS blocked on a binary rejection
+## State (2026-08-29): BOTH PLATFORMS SUBMITTED
 
 | | macOS | iOS |
 | :--- | :--- | :--- |
-| Version 0.6.8 | **WAITING_FOR_REVIEW** | `INVALID_BINARY` |
-| Build | 119, attached | 117 rejected; **118 uploaded with the fix** |
+| Version 0.6.8 | **WAITING_FOR_REVIEW** | **WAITING_FOR_REVIEW** |
+| Build | 119 | 118 (117 was rejected) |
 | Release type | **MANUAL** | **MANUAL** |
-| Listing, screenshots, notes, contact, copyright, privacy URL | all set | all set |
 
-**Release type MANUAL on both is the important one.** An approved version waits
-for a human instead of publishing itself. It was found set to `AFTER_APPROVAL` on
+**Release type MANUAL on both is the point.** An approved version waits for a
+human rather than publishing itself. It was found set to `AFTER_APPROVAL` on
 macOS *after* the audit had twice reported "no gaps" - copyright and release type
 live on the version, not the localization, and the audit only checked
-localization fields. Both are covered now.
+localization fields.
 
-**The iOS rejection is most likely self-inflicted.** `signing=ephemeral` revoked
-its distribution certificate at the end of the run that uploaded build 117. Apple
-accepts the upload and processes the build to `VALID` regardless, so nothing
-complains until submission. The lane no longer revokes after an `upload`. Build
-118 is uploaded with its certificate retained; attach it and resubmit.
+### The iOS rejection, and what actually fixed it
 
-Apple's **email** carries the actual reason. Nothing in the API explains an
-`INVALID_BINARY` - the same blind spot that made `ITMS-90284` invisible on macOS
-for two and a half hours.
+Build 117 was submitted and came back **Invalid Binary** within minutes.
+`signing=ephemeral` had revoked its distribution certificate at the end of the
+run that uploaded it. Apple accepts the upload and processes the build to `VALID`
+regardless, so nothing complains until submission.
+
+Build 118 was uploaded with its certificate **retained** and submitted without
+incident. The lane no longer revokes after an `upload`, and prints the
+certificate id instead. **Revoke `YQF53PS6AW` by hand once the iOS version is
+live** - the vault tracks every certificate minted.
+
+That is a hypothesis confirmed by outcome rather than by Apple's own words: the
+email carries the reason and was not needed in the end, but nothing in the API
+ever explains an `INVALID_BINARY`.
+
+### What happens next
+
+1. Apple reviews, up to 48 hours, and emails.
+2. On approval **neither version goes live by itself** - someone presses release.
+3. On rejection, the message names the guideline; fix, re-upload with a new
+   `-f build_number`, re-attach, resubmit.
 
 ## Previously (2026-08-28)
 
