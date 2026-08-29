@@ -1,4 +1,4 @@
-# Apple — macOS distribution + App Store (future)
+# Apple — macOS distribution + App Store
 
 Companion to `dev/windows-signing-and-store.md` and `dev/google-play-store.md`. Two very different
 things live under "Apple":
@@ -33,45 +33,95 @@ There is **no per-release manual runbook** for macOS direct — it is fully auto
 only recurring human step is confirming the notarized zip/DMG replaced the pre-notarization zip on the
 release.
 
-## 2. Apple App Store — macOS IN PROGRESS, iOS still blocked
+## 2. Apple App Store — per-release runbook (macOS **and** iOS)
 
-**This section was rewritten on 2026-08-20.** It previously said "FUTURE (do not
-attempt yet)" and "There is no MAS or TestFlight CI, and none should be added yet."
-Both are now wrong for macOS. The account work is done and a sandboxed build runs.
+**Rewritten 2026-08-28.** Both platforms build, sign and upload from CI, and a
+whole submission's metadata is pushed from this repo. Real IDs, the App Review
+contact and the delivery history live in the encrypted vault
+(`python tool/vault.py unlock`) — never here.
 
-### Mac App Store — in progress
+### The order that works
 
-The old blocker was the **subprocess** engine. That is gone: `FfiRcloneClient` runs
-librclone in-process and ships on macOS today, and in-process I/O holds the host's
-security-scoped grants, which is what dissolved the original objection.
+Each step is one dispatch. Every tool defaults to a dry run; nothing writes
+without `mode=apply` or `--apply`.
 
-Proven on real hardware, by [`mas-verify.yml`](../.github/workflows/mas-verify.yml)
-on a GitHub `macos-latest` runner — nobody on this project owns a Mac:
+| # | Step | Command |
+| :-- | :--- | :--- |
+| 1 | Listing copy | `gh workflow run asc-listing.yml -f platform=MAC_OS -f what=text -f mode=apply` |
+| 2 | Screenshots | `gh workflow run asc-listing.yml -f platform=MAC_OS -f what=screenshots -f device=mac -f mode=apply` |
+| 3 | Build + upload | `gh workflow run mas-release.yml -f mode=upload` |
+| 4 | Wait for Apple to finish processing | `gh workflow run asc-version.yml -f platform=MAC_OS -f mode=report` until a `VALID` build appears |
+| 5 | Attach it + review notes | `... asc-version.yml -f platform=MAC_OS -f mode=apply -f notes=true` |
+| 6 | **Human:** export compliance, *Add for Review*, *Manually release* | App Store Connect |
 
-- a sandboxed build **launches and runs**, with `engine ok · rclone v1.75.0`
-- the `app-sandbox` entitlement is asserted present, so the run proves something
-- **zero** sandbox denials from Airclone itself
+For iOS, substitute `-f platform=IOS`, `-f device=iphone` **and** `-f device=ipad`
+(two separate sets — Apple wants one per display type), and
+`gh workflow run ios-release.yml -f mode=upload -f signing=ephemeral`.
 
-The trick worth remembering: **the App Sandbox is enforced by the code signature
-plus the entitlement, not by the App Store.** An ad-hoc signature with
-`MacAppStore.entitlements` gives CI the same sandbox a customer gets, so "what
-breaks under the sandbox?" is answerable without hardware. That workflow is also
-the only compiler this project has for Swift.
+Screenshots are produced, not written by hand:
+`mas-screenshots.yml -f mode=capture` for Mac, `ios-screenshots.yml -f mode=capture`
+for iPhone + iPad. Both seed demo content and real CC0 photographs into the app's
+own container first.
 
-| Piece | State |
+### Things that are true every time
+
+- **`mode=report` / dry run first.** Every tool prints exactly what it would send.
+  A rejected metadata write costs a minute; a wrong one costs a review cycle.
+- **A build is not attachable until `processingState` is `VALID`.** `PROCESSING`
+  means wait. An empty build list right after an upload is normal for a while.
+- **macOS and iOS builds of one release share a build NUMBER**, because it is
+  `CFBundleVersion`. The platform lives on the build's `preReleaseVersion`, and
+  `asc_build.py` filters on it — attaching an iOS build to a macOS version is
+  rejected, and the error is more confusing than the mistake.
+- **Retrying a delivery needs a new build number.** Both release lanes take
+  `-f build_number=NNN`, which overrides it at build time rather than editing
+  `pubspec.yaml` and dragging every other platform along.
+- **The App Review contact is required** on `appStoreReviewDetails`, and Apple
+  409s the whole request without it — even when only the notes are changing. It is
+  personal data: `APPLE_REVIEW_CONTACT` (repo secret) holds it, and the tool
+  prefers a contact already on another platform's version.
+- **The privacy-policy URL is app-level**, not per-version, and a submission is
+  refused without it. `asc_listing.py` checks it on every run.
+
+### iOS signing: mint per run, revoke on the way out
+
+Two automatic routes were tried and **both are dead ends** — do not retry them:
+
+| Attempt | Apple's answer |
 | :--- | :--- |
-| `AIRCLONE_MAS` compile-time flavour ([`build_flavor.dart`](../app/lib/src/state/build_flavor.dart)) | done |
-| `MacAppStore.entitlements` (sandbox, 6 keys) | done |
-| Mount / Serve / Archive / Reveal gated off | done |
-| App-private config path | done |
-| Security-scoped bookmarks (Swift + Dart + schema) | done |
-| Build + upload lane ([`mas-release.yml`](../.github/workflows/mas-release.yml)) | written, **unproven** |
-| Listing copy + screenshots | not started |
+| archive as `Apple Development`, automatic signing | *"Your team has no devices from which to generate a provisioning profile"* — iOS development profiles need a **registered device**; macOS ones do not |
+| archive unsigned, export with automatic signing | *"Cloud signing permission error"*, *"No signing certificate 'iOS Distribution' found"* — the same wall macOS hit |
 
-**Feature parity, stated plainly:** the MAS build is a *strictly smaller* app than
-the DMG — no OS mount, no archive create/extract, no "Show in Finder". That is
-the sandbox, not a shortcut, and the listing copy must say so. "Open with default
-app" DOES survive: it goes through `url_launcher`/NSWorkspace rather than a spawn.
+So `ios-release.yml -f signing=ephemeral` mints a distribution certificate through
+the **Certificates API** (which an App Manager key can do, unlike cloud signing),
+uses it inside that one job, and revokes it in an `always()` step. No distribution
+private key is stored anywhere. Two details that matter: the profile is rebuilt
+each time, because a surviving profile references the revoked certificate and
+cannot sign; and `--revoke` takes an explicit id and never hunts for stale
+certificates, since Apple derives a certificate's name from the team and guessing
+would revoke something a human created.
+
+### Export compliance
+
+Airclone implements standard confidentiality encryption of its own — rclone
+`crypt`, config encryption, the vault, and Go's own TLS, because the engine is
+statically linked and never calls Apple's Security framework. The "HTTPS only"
+and "Apple's OS crypto only" exemptions are therefore **false**, and
+`ITSAppUsesNonExemptEncryption` is deliberately absent from `Info.plist` so a
+human answers it rather than a build claiming something untrue.
+
+**Answering "yes" to *available in France*** makes Apple require an uploaded
+**ANSSI declaration**, approved before shipping. Answering no removes the
+requirement, and availability is independent of the binary — shipping without
+France and adding it in a later version costs no rebuild. The full reasoning is in
+[`plans/apple-appstore-plan.md`](plans/apple-appstore-plan.md).
+
+### What the MAS build is, and is not
+
+The Mac App Store build is a **strictly smaller** app than the DMG: no OS mount,
+no archive create/extract, no "Show in Finder". That is the sandbox, not a
+shortcut, and the listing copy says so. "Open with default app" survives, because
+it goes through `url_launcher`/NSWorkspace rather than a spawn.
 
 Two entitlement facts that are easy to get wrong:
 
@@ -79,27 +129,26 @@ Two entitlement facts that are easy to get wrong:
   `librclone_object_server.dart` binds a loopback socket and is the ONLY source of
   preview, thumbnail, video, audio and PDF bytes under the in-process engine.
   Omitting it ships a build with no media at all.
-- Under the sandbox `$HOME` is redirected into the container, and macOS
-  pre-creates `Desktop`/`Documents`/`Downloads` there. Seeded Locations therefore
-  do NOT vanish — they render and point at empty folders, which is worse. A MAS
-  build seeds nothing and asks for the first folder.
+- Under the sandbox `$HOME` is redirected into the container and macOS pre-creates
+  `Desktop`/`Documents`/`Downloads` there, so seeded Locations do NOT vanish —
+  they render and point at empty folders, which is worse. A MAS build seeds
+  nothing and asks for the first folder.
 
-### iOS — still blocked, but no longer unknown
+### Verifying without hardware
 
-Off-road but **proven by others**: two apps ship rclone embedded on iOS today, one
-of them Flutter + librclone like us, and one publishes its whole build script.
-Upstream rclone does NOT support it — iOS builds were disabled in 2021 and the
-iOS-support PR was closed unmerged in June 2026.
+Nobody on this project owns a Mac, an iPhone or an iPad. Everything above is
+verified on GitHub runners:
 
-Full detail, including the linker flags that cost people the most time, lives in
-[`dev/plans/apple-appstore-plan.md`](plans/apple-appstore-plan.md) Gate C2. The
-short version: `c-archive` only (`c-shared` is unsupported on iOS), a trimmed
-wrapper package to avoid `cmd/mount2` on the simulator slice, and the Xcode target
-must supply `-framework CoreFoundation -framework Security -lresolv` because Go
-does not apply its own `//go:cgo_ldflag`s for `c-archive`.
+| Workflow | Answers |
+| :--- | :--- |
+| [`mas-verify.yml`](../.github/workflows/mas-verify.yml) | does the **sandboxed** Mac build run, with no denials? |
+| [`ios-verify.yml`](../.github/workflows/ios-verify.yml) | does the iOS build launch and reach `EnginePhase.ready`? |
+| [`ios-release.yml`](../.github/workflows/ios-release.yml) `mode=dry-run` | does the **Release device** archive keep the Go symbols? Needs no Apple credential. |
 
-Prerequisites still open for iOS: the librclone build, the FFI process-linkage
-branch, and the local-file-access redesign (iOS has no arbitrary filesystem).
+The trick that makes the Mac half possible: **the App Sandbox is enforced by the
+code signature plus the entitlement, not by the App Store.** An ad-hoc signature
+with `MacAppStore.entitlements` gives CI the same sandbox a customer gets. That
+workflow is also the only Swift compiler this project has.
 
 ## See also
 
