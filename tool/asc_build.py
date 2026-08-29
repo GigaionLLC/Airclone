@@ -31,6 +31,9 @@ Options:
                           CFBundleShortVersionString to agree.
   --no-attach             skip attaching a build, for a platform whose build does
                           not exist yet
+  --copyright             set the copyright from the listing document
+  --manual-release        set the release type to MANUAL, so an approved version
+                          waits for a human instead of publishing itself
   --audit                 report EVERYTHING Apple needs before submission and
                           write nothing. The point is to find a missing field
                           from one command rather than from a rejection.
@@ -67,6 +70,8 @@ APPLY = "--apply" in ARGV
 SET_NOTES = "--notes" in ARGV
 ATTACH = "--no-attach" not in ARGV
 AUDIT = "--audit" in ARGV
+SET_COPYRIGHT = "--copyright" in ARGV
+MANUAL_RELEASE = "--manual-release" in ARGV
 
 
 def opt(name, default=None):
@@ -349,10 +354,31 @@ def main():
         print("  review notes:   %d chars from %s" % (len(notes), DOC))
         print("                  demoAccountRequired = false")
 
+    # Both of these live on the VERSION rather than the localization, which is
+    # how an audit built around localization fields missed them.
+    attrs = {}
+    if SET_COPYRIGHT:
+        doc = io.open(DOC, encoding="utf-8").read()
+        attrs["copyright"] = fenced(doc, "## Copyright")
+        print("  copyright:      %s" % attrs["copyright"])
+    if MANUAL_RELEASE and va.get("releaseType") != "MANUAL":
+        attrs["releaseType"] = "MANUAL"
+        print("  release type:   %s -> MANUAL" % va.get("releaseType"))
+
     if not APPLY:
         print()
         print("dry run - nothing sent. Pass --apply to write.")
         return
+
+    if attrs:
+        r = call("PATCH", "/v1/appStoreVersions/%s" % ver["id"],
+                 {"data": {"id": ver["id"], "type": "appStoreVersions",
+                           "attributes": attrs}})
+        if r is None:
+            sys.exit(1)
+        got = r["data"]["attributes"]
+        for k in attrs:
+            print("set %s = %s" % (k, got.get(k)))
 
     if rename:
         r = call("PATCH", "/v1/appStoreVersions/%s" % ver["id"],
