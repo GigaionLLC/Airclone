@@ -173,7 +173,18 @@ jobs:
           # the only way to tell "not linked" from "linked then stripped", and
           # they scroll past in a successful build.
           exec > >(tee -a ../artifacts/ios-archive.log) 2>&1
-          if [ "$MODE" = "dry-run" ]; then
+          # Unsigned archive for dry-run AND for automatic signing. On iOS an
+          # "Apple Development" archive needs an iOS App Development profile, and
+          # generating one requires a REGISTERED DEVICE:
+          #
+          #   error: Your team has no devices from which to generate a
+          #   provisioning profile.
+          #
+          # Nobody here owns an iPhone, so that path is closed. macOS does not
+          # have this constraint, which is why the Mac lane archives as
+          # Apple Development and this one cannot. -exportArchive re-signs
+          # anyway, so archiving unsigned loses nothing.
+          if [ "$MODE" = "dry-run" ] || [ "${{ inputs.signing }}" = "automatic" ]; then
             # No identity, no Apple call. CODE_SIGNING_ALLOWED=NO is what makes
             # an unsigned archive legal; the point of this mode is the LINK.
             xcodebuild -workspace ios/Runner.xcworkspace \
