@@ -29,6 +29,10 @@ on:
         default: dry-run
         type: choice
         options: [dry-run, validate, upload]
+      build_number:
+        description: 'Override CFBundleVersion (blank = pubspec). Needed to re-upload.'
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -147,7 +151,7 @@ jobs:
         # xcodebuild archive below consumes. AIRCLONE_MAS must travel with the
         # sandbox entitlement - a build without it tries to spawn rclone and is
         # killed by the sandbox.
-        run: flutter build macos --release --dart-define=AIRCLONE_MAS=true
+        run: flutter build macos --release --dart-define=AIRCLONE_MAS=true${{ inputs.build_number && format(' --build-number={0}', inputs.build_number) || '' }}
 
       - name: Archive with automatic signing
         # -allowProvisioningUpdates lets Xcode create the Apple Distribution and
