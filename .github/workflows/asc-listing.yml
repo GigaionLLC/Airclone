@@ -1,0 +1,98 @@
+name: App Store Connect (listing text + screenshots)
+
+# Pushes the listing copy, and optionally the screenshots, from the repo to App
+# Store Connect. The documents are the source of truth - they carry the
+# constraints and the reasoning behind each decision, and retyping them into a
+# web form is how the console drifts from the doc that justifies it.
+#
+#   docs/store/apple/listing-en-US.md       macOS
+#   docs/store/apple/listing-ios-en-US.md   iOS
+#
+# Runs on ubuntu: these are plain REST calls and there is no reason to spend a
+# Mac on them. It writes metadata only - it cannot attach a build, cannot answer
+# export compliance, and cannot submit.
+
+on:
+  workflow_dispatch:
+    inputs:
+      platform:
+        description: 'Which platform listing to write'
+        required: true
+        default: MAC_OS
+        type: choice
+        options: [MAC_OS, IOS]
+      what:
+        description: 'text = description/keywords/promo | screenshots = upload images'
+        required: true
+        default: text
+        type: choice
+        options: [text, screenshots]
+      device:
+        description: 'screenshots only: which set to fill'
+        required: true
+        default: mac
+        type: choice
+        options: [mac, iphone, ipad]
+      mode:
+        description: 'report = show what it would send | apply = send it'
+        required: true
+        default: report
+        type: choice
+        options: [report, apply]
+
+permissions:
+  contents: read
+
+jobs:
+  listing:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with: { python-version: '3.12' }
+      - run: pip install --quiet cryptography
+
+      - name: Refuse without credentials
+        env:
+          HAS_KEY: ${{ secrets.APPSTORE_API_PRIVATE_KEY != '' }}
+          ISSUER: ${{ secrets.APPSTORE_ISSUER_ID }}
+          KEY_ID: ${{ vars.APPSTORE_API_KEY_ID }}
+        run: |
+          set -euo pipefail
+          missing=""
+          [ "$HAS_KEY" = "true" ] || missing="$missing APPSTORE_API_PRIVATE_KEY(secret)"
+          [ -n "$ISSUER" ] || missing="$missing APPSTORE_ISSUER_ID(secret)"
+          [ -n "$KEY_ID" ] || missing="$missing APPSTORE_API_KEY_ID(var)"
+          if [ -n "$missing" ]; then
+            echo "::error::missing:$missing"
+            exit 1
+          fi
+
+      - name: Push it
+        env:
+          P8: ${{ secrets.APPSTORE_API_PRIVATE_KEY }}
+          KEY_ID: ${{ vars.APPSTORE_API_KEY_ID }}
+          ISSUER: ${{ secrets.APPSTORE_ISSUER_ID }}
+        run: |
+          set -euo pipefail
+          umask 077
+          printf '%s' "$P8" > key.p8
+          # `if`, not `[ ... ] && ARGS=...`: a false test returns 1, and this
+          # block runs under errexit because GitHub invokes every `run:` as
+          # `bash -e {0}`. That trap has cost this repo several runs.
+          ARGS=""
+          if [ "${{ inputs.mode }}" = "apply" ]; then ARGS="--apply"; fi
+          # 6790176897 is the App Store Connect app id. Not a secret - it is in
+          # every public App Store URL for the app.
+          if [ "${{ inputs.what }}" = "text" ]; then
+            python tool/asc_listing.py key.p8 "$KEY_ID" "$ISSUER" 6790176897 \
+              --platform ${{ inputs.platform }} $ARGS
+          else
+            python tool/asc_screenshots.py key.p8 "$KEY_ID" "$ISSUER" 6790176897 \
+              --device ${{ inputs.device }} $ARGS
+          fi
+
+      - name: Shred the key
+        if: always()
+        run: rm -f key.p8
