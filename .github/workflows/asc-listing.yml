@@ -33,6 +33,11 @@ on:
         default: mac
         type: choice
         options: [mac, iphone, ipad]
+      replace:
+        description: 'screenshots only: clear the set first (Apple does not overwrite)'
+        required: true
+        default: false
+        type: boolean
       mode:
         description: 'report = show what it would send | apply = send it'
         required: true
