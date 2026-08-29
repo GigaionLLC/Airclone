@@ -20,6 +20,14 @@ What it does, in order:
 
 Usage:
   python tool/asc_ios_signing.py <key.p8> <keyid> <issuerid> [--apply]
+  python tool/asc_ios_signing.py <key.p8> <keyid> <issuerid> --revoke <cert-id>
+
+`--revoke` exists for the EPHEMERAL flow: a CI job creates a certificate, uses it
+within that one job, and revokes it on the way out, so no long-lived distribution
+private key is stored anywhere. It revokes exactly the id it is given and never
+searches for one to clean up - Apple's certificate `name` is derived from the
+team, so an ephemeral certificate is indistinguishable from one a human made by
+hand, and guessing wrong would revoke something somebody depends on.
 
 Without --apply it reports what already exists and what it WOULD create, and
 touches nothing. Output lands in dev/secrets/apple-ios/ (gitignored).
@@ -51,6 +59,14 @@ if len(sys.argv) < 4:
 
 KEY, KID, ISS = sys.argv[1:4]
 APPLY = "--apply" in sys.argv
+REVOKE = (sys.argv[sys.argv.index("--revoke") + 1]
+          if "--revoke" in sys.argv else None)
+OUT_OVERRIDE = (sys.argv[sys.argv.index("--out-dir") + 1]
+                if "--out-dir" in sys.argv else None)
+# The ephemeral flow generates a FRESH private key every run, so reusing an
+# existing certificate would pair our new key with someone else's certificate and
+# produce an identity codesign rejects. --force-new says "mint one for this key".
+FORCE_NEW = "--force-new" in sys.argv
 BUNDLE_ID = "com.gigaionllc.airclone"
 PROFILE_NAME = "Airclone iOS App Store"
 OUT = os.path.join("dev", "secrets", "apple-ios")
@@ -151,6 +167,15 @@ def bundle_resource_id():
 
 
 def main():
+    if REVOKE:
+        # DELETE on a certificate is how the API revokes it. Narrow on purpose:
+        # this id and nothing else.
+        r = call("DELETE", "/v1/certificates/%s" % REVOKE)
+        if r is None:
+            sys.exit(1)
+        print("revoked certificate %s" % REVOKE)
+        return
+
     ios_certs, profiles = survey()
     bid = bundle_resource_id()
     print("  bundle id resource:", "found" if bid else "MISSING - register it first")
@@ -171,7 +196,9 @@ def main():
         print("::error:: bundle id %s is not registered" % BUNDLE_ID)
         sys.exit(1)
 
-    os.makedirs(OUT, exist_ok=True)
+    out_dir = OUT_OVERRIDE or OUT
+    globals()["OUT"] = out_dir
+    os.makedirs(out_dir, exist_ok=True)
     key_path = os.path.join(OUT, "ios-dist.key")
     csr_path = os.path.join(OUT, "ios-dist.csr")
     cer_path = os.path.join(OUT, "ios-dist.cer")
@@ -189,7 +216,7 @@ def main():
     csr = open(csr_path).read()
 
     cert_id = None
-    if ios_certs:
+    if ios_certs and not FORCE_NEW:
         print("== reusing the existing distribution certificate ==")
         cert_id = ios_certs[0]["id"]
         content = ios_certs[0]["attributes"]["certificateContent"]
@@ -211,6 +238,7 @@ def main():
         content = r["data"]["attributes"]["certificateContent"]
         print("  created:", r["data"]["attributes"].get("name"))
 
+    open(os.path.join(OUT, "cert-id.txt"), "w").write(cert_id)
     open(cer_path, "wb").write(base64.b64decode(content))
     run("openssl", "x509", "-inform", "DER", "-in", cer_path, "-out", pem_path)
 
@@ -266,6 +294,7 @@ def main():
     open(os.path.join(OUT, "Airclone_iOS.mobileprovision"), "wb").write(
         base64.b64decode(prof)
     )
+    open(os.path.join(OUT, "profile-name.txt"), "w").write(PROFILE_NAME)
 
     # Base64 to FILES, never to stdout: a secret that reaches a transcript is a
     # secret that has to be rotated.

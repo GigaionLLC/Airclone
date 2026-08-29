@@ -37,11 +37,11 @@ on:
         type: choice
         options: [dry-run, validate, upload]
       signing:
-        description: 'secrets = stored p12+profile | automatic = let Xcode provision'
+        description: 'secrets = stored p12 | ephemeral = mint+revoke per run | automatic = Xcode (does NOT work, see notes)'
         required: true
         default: secrets
         type: choice
-        options: [secrets, automatic]
+        options: [secrets, ephemeral, automatic]
 
 permissions:
   contents: read
@@ -138,6 +138,49 @@ jobs:
           echo "--- identities available for signing ---"
           security find-identity -v -p codesigning "$KC"
 
+      - name: Mint a distribution identity for this run only
+        # Xcode's cloud signing cannot create an iOS distribution certificate
+        # with an App Manager key - "Cloud signing permission error", the same
+        # answer macOS gave. The Certificates API can, so this mints one, uses it
+        # inside this single job, and revokes it in the always() step at the end.
+        # Nothing long-lived is stored: no distribution private key ever leaves
+        # the runner, and there is no p12 sitting in a secret waiting to leak.
+        if: ${{ inputs.mode != 'dry-run' && inputs.signing == 'ephemeral' }}
+        env:
+          KEY_ID: ${{ vars.APPSTORE_API_KEY_ID }}
+          ISSUER: ${{ secrets.APPSTORE_ISSUER_ID }}
+        working-directory: .
+        run: |
+          set -euo pipefail
+          pip3 install --quiet --break-system-packages cryptography 2>/dev/null             || pip3 install --quiet cryptography
+          umask 077
+          mkdir -p "$RUNNER_TEMP/ios-signing"
+          python3 tool/asc_ios_signing.py             "$HOME/.appstoreconnect/private_keys/AuthKey_${KEY_ID}.p8"             "$KEY_ID" "$ISSUER" --apply --force-new             --out-dir "$RUNNER_TEMP/ios-signing"
+          CERT_ID="$(cat "$RUNNER_TEMP/ios-signing/cert-id.txt")"
+          echo "EPHEMERAL_CERT_ID=$CERT_ID" >> "$GITHUB_ENV"
+          echo "minted certificate $CERT_ID for this run"
+
+      - name: Install the ephemeral identity
+        if: ${{ inputs.mode != 'dry-run' && inputs.signing == 'ephemeral' }}
+        run: |
+          set -euo pipefail
+          D="$RUNNER_TEMP/ios-signing"
+          KC="$RUNNER_TEMP/airclone-ios.keychain-db"
+          security create-keychain -p "" "$KC"
+          security set-keychain-settings -lut 7200 "$KC"
+          security unlock-keychain -p "" "$KC"
+          security list-keychains -d user -s "$KC" login.keychain-db
+          security default-keychain -s "$KC"
+          security import "$D/ios-dist.p12" -k "$KC"             -P "$(cat "$D/p12.password")" -T /usr/bin/codesign -A
+          # Without this, codesign blocks on a GUI keychain prompt nobody can
+          # answer and the job hangs until it times out.
+          security set-key-partition-list -S apple-tool:,apple:,codesign:             -s -k "" "$KC" > /dev/null
+          PROFILE_DIR="$HOME/Library/MobileDevice/Provisioning Profiles"
+          mkdir -p "$PROFILE_DIR"
+          cp "$D/Airclone_iOS.mobileprovision" "$PROFILE_DIR/"
+          echo "--- identities available for signing ---"
+          security find-identity -v -p codesigning "$KC"
+
       - name: Create a keychain for automatically provisioned signing
         # Same lesson as the Mac lane: -allowProvisioningUpdates has nowhere to
         # store a certificate if the login keychain is locked, so it creates
@@ -184,7 +227,7 @@ jobs:
           # have this constraint, which is why the Mac lane archives as
           # Apple Development and this one cannot. -exportArchive re-signs
           # anyway, so archiving unsigned loses nothing.
-          if [ "$MODE" = "dry-run" ] || [ "${{ inputs.signing }}" = "automatic" ]; then
+          if [ "$MODE" = "dry-run" ] || [ "${{ inputs.signing }}" != "secrets" ]; then
             # No identity, no Apple call. CODE_SIGNING_ALLOWED=NO is what makes
             # an unsigned archive legal; the point of this mode is the LINK.
             xcodebuild -workspace ios/Runner.xcworkspace \
@@ -285,7 +328,13 @@ jobs:
             echo '<key>destination</key><string>export</string>'
             echo "<key>teamID</key><string>${TEAM_ID}</string>"
             echo '<key>uploadSymbols</key><true/>'
-            if [ "${{ inputs.signing }}" = "automatic" ]; then
+            if [ "${{ inputs.signing }}" = "ephemeral" ]; then
+              echo '<key>signingStyle</key><string>manual</string>'
+              echo '<key>signingCertificate</key><string>Apple Distribution</string>'
+              echo '<key>provisioningProfiles</key><dict>'
+              echo "<key>com.gigaionllc.airclone</key><string>$(cat "$RUNNER_TEMP/ios-signing/profile-name.txt")</string>"
+              echo '</dict>'
+            elif [ "${{ inputs.signing }}" = "automatic" ]; then
               # The open question this mode exists to answer: can
               # -allowProvisioningUpdates mint an iOS DISTRIBUTION identity with
               # an App Manager key? On macOS it could not - "Cloud signing
@@ -362,8 +411,23 @@ jobs:
           echo "a human answers it. See dev/plans/apple-appstore-plan.md Gate C2."
           echo "https://appstoreconnect.apple.com/apps/6790176897/testflight/ios"
 
+      - name: Revoke the ephemeral certificate
+        # BEFORE the key is shredded, because revoking needs it. Revoking a
+        # DISTRIBUTION certificate does not invalidate a build already uploaded -
+        # Apple re-signs for delivery - unlike Developer ID, where revocation
+        # breaks notarised apps in the field.
+        if: ${{ always() && env.EPHEMERAL_CERT_ID != '' }}
+        env:
+          KEY_ID: ${{ vars.APPSTORE_API_KEY_ID }}
+          ISSUER: ${{ secrets.APPSTORE_ISSUER_ID }}
+        working-directory: .
+        run: |
+          set -uo pipefail
+          python3 tool/asc_ios_signing.py             "$HOME/.appstoreconnect/private_keys/AuthKey_${KEY_ID}.p8"             "$KEY_ID" "$ISSUER" --revoke "$EPHEMERAL_CERT_ID"             || echo "::warning::could not revoke $EPHEMERAL_CERT_ID - revoke it by hand"
+
       - name: Shred the API key and the keychain
         if: always()
         run: |
           rm -rf "$HOME/.appstoreconnect" || true
+          rm -rf "$RUNNER_TEMP/ios-signing" || true
           security delete-keychain "$RUNNER_TEMP/airclone-ios.keychain-db" || true
