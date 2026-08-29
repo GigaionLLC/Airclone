@@ -262,6 +262,15 @@ def main():
     print("  p12 written (password in dev/secrets/apple-ios/p12.password)")
 
     existing = [p for p in profiles if p["attributes"]["name"] == PROFILE_NAME]
+    if existing and FORCE_NEW:
+        # A profile embeds the certificates it was built for. The ephemeral flow
+        # revokes its certificate on the way out, so any profile left over from a
+        # previous run references a dead one and would export an unsignable app.
+        # Delete it and rebuild against the certificate minted just now.
+        print("== replacing the stale profile (its certificate was revoked) ==")
+        if call("DELETE", "/v1/profiles/%s" % existing[0]["id"]) is None:
+            sys.exit(1)
+        existing = []
     if existing:
         print("== reusing the existing profile ==")
         prof = existing[0]["attributes"]["profileContent"]
