@@ -89,6 +89,7 @@ jobs:
             python tool/asc_listing.py key.p8 "$KEY_ID" "$ISSUER" 6790176897 \
               --platform ${{ inputs.platform }} $ARGS
           else
+            if [ "${{ inputs.replace }}" = "true" ]; then ARGS="$ARGS --replace"; fi
             python tool/asc_screenshots.py key.p8 "$KEY_ID" "$ISSUER" 6790176897 \
               --device ${{ inputs.device }} $ARGS
           fi

@@ -15,6 +15,9 @@ Usage:
 
 Options:
   --device mac|iphone|ipad   which screenshot SET to fill (default mac)
+  --replace                  delete the set's existing screenshots first. Apple
+                             does not overwrite by filename, so without this an
+                             improved set lands BESIDE the old one.
   --dir <path>               override the directory for that device
   --apply                    actually upload
 
@@ -121,6 +124,17 @@ else:
         sys.exit(1)
     sset = sset["data"]
     print("created %s set" % DISPLAY_TYPE)
+
+# Clear the set first when asked. Apple does not overwrite by filename - it
+# creates a second asset - so re-uploading an improved set without this leaves
+# the old shots on the product page beside the new ones.
+if "--replace" in ARGV:
+    existing = call("GET", "/v1/appScreenshotSets/%s/appScreenshots" % sset["id"])
+    for old_shot in (existing or {}).get("data", []):
+        nm = old_shot["attributes"].get("fileName", old_shot["id"])
+        if call("DELETE", "/v1/appScreenshots/%s" % old_shot["id"]) is None:
+            sys.exit("could not delete %s" % nm)
+        print("  removed %s" % nm)
 
 for name in files:
     path = os.path.join(SHOTS, name)

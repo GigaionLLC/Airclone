@@ -6,10 +6,19 @@ Nobody on this project owns an iPhone or an iPad, and Apple requires **both**:
 the app ships `TARGETED_DEVICE_FAMILY = "1,2"`, so iPad screenshots are
 mandatory, not a nice-to-have.
 
-| File | Device | Size | Apple's requirement |
-| :--- | :--- | :--- | :--- |
-| `iphone/01-home-1320x2868.png` | iPhone 17 Pro Max | 1320 × 2868 | 6.9" — exact |
-| `ipad/01-home-2064x2752.png` | iPad Pro 13-inch (M5) | 2064 × 2752 | 13" — exact |
+Four per device, captured by driving the real app with `integration_test`.
+
+| # | Shows |
+| :-- | :--- |
+| `01-home` | the sidebar — On My Device, and the Demo Cloud remote |
+| `02-remote` | browsing that remote: Photos, Documents, Videos |
+| `03-photos` | the photographs, with real names and sizes |
+| `04-on-my-device` | the app's own folder, which is all of "local" on iOS |
+
+| Device | Size | Apple's requirement |
+| :--- | :--- | :--- |
+| iPhone 17 Pro Max | 1320 × 2868 | 6.9" — exact |
+| iPad Pro 13-inch (M5) | 2064 × 2752 | 13" — exact |
 
 ## Why the sizes need no work
 
@@ -54,10 +63,30 @@ with it:
 
 Both are fixed; the next capture will not show them.
 
+## Two traps in the seeding, both found by looking rather than reasoning
+
+**Never bake a container path into the seeded config.** `flutter drive` reinstalls
+the app, and a reinstall *preserves the data while giving the container a new
+UUID*. The config travels with the data, the photographs travel with it, and the
+absolute path inside the config stays behind — so rclone lists a directory that no
+longer exists and the browser correctly shows "Empty folder". From outside the
+process this is invisible: the config is there, the files are there, both look
+right. The app said it in two lines from inside its own sandbox:
+
+```
+PROBE docs=  .../Application/2EBB2267-.../Documents
+PROBE conf=  remote = .../Application/CB2C6DC7-.../Documents
+```
+
+The demo remote therefore points at `/tmp/airclone-demo` on the host, which a
+simulator app can read and which survives any number of reinstalls.
+
+**The view control cycles, and its tooltip names the CURRENT mode.** It reads
+"View: List" and tapping goes List → Grid → Gallery, so `byTooltip('Gallery')`
+matches only once you are already there. Match the `View: ` prefix instead.
+
 ## Still worth adding
 
-These are Home views. A browsed folder and the photo gallery with real thumbnails
-would sell the app far better, and both need the UI actually *driven* rather than
-just launched — the Mac rig uses `cliclick`, and the simulator equivalent needs
-either that against the Simulator window or a tool like `idb`. One screenshot per
-device size is enough to submit; it is not enough to be proud of.
+Grid and gallery views, which show real thumbnails rather than filenames. The run
+that captures them takes over 90 minutes, because each view switch generates
+thumbnails for every photograph through the loopback object server.
