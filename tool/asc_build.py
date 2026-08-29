@@ -156,9 +156,17 @@ def pick_version():
 def pick_build():
     # A build is only attachable once processingState is VALID. PROCESSING means
     # Apple is still working on it and the attach fails with a confusing 409.
-    bs = call("GET", "/v1/builds?filter[app]=%s&limit=50&sort=-uploadedDate" % APP)
+    # include=preReleaseVersion because a build's PLATFORM lives there, not on
+    # the build itself - and macOS and iOS builds of the same release share a
+    # build NUMBER, so the number alone cannot tell them apart.
+    bs = call("GET", "/v1/builds?filter[app]=%s&limit=50&sort=-uploadedDate"
+                     "&include=preReleaseVersion" % APP)
     if not bs:
         sys.exit(1)
+    plat_of = {}
+    for inc in bs.get("included", []):
+        if inc.get("type") == "preReleaseVersions":
+            plat_of[inc["id"]] = inc["attributes"].get("platform")
     # Distinguish "Apple has not registered it yet" from "the filter is wrong".
     # An empty list here after a successful upload is normal for a while: a build
     # takes minutes to appear and longer to finish PROCESSING.
@@ -184,12 +192,19 @@ def pick_build():
     rows = []
     for b in bs["data"]:
         a = b["attributes"]
+        rel = ((b.get("relationships") or {}).get("preReleaseVersion") or {})
+        pv = (rel.get("data") or {}).get("id")
         rows.append((b["id"], a.get("version"), a.get("processingState"),
-                     a.get("expired"), (a.get("uploadedDate") or "")[:19]))
+                     a.get("expired"), (a.get("uploadedDate") or "")[:19],
+                     plat_of.get(pv, "?")))
     print("recent builds:")
     for r in rows[:8]:
-        print("  build %-6s %-12s expired=%-5s %s" % (r[1], r[2], r[3], r[4]))
-    usable = [r for r in rows if r[2] == "VALID" and not r[3]]
+        print("  build %-6s %-9s %-12s expired=%-5s %s"
+              % (r[1], r[5], r[2], r[3], r[4]))
+    # Platform matters: attaching an iOS build to a macOS version is rejected,
+    # and both platforms of one release carry the same build number.
+    usable = [r for r in rows
+              if r[2] == "VALID" and not r[3] and r[5] in (PLATFORM, "?")]
     if WANT_BUILD:
         usable = [r for r in usable if r[1] == WANT_BUILD]
     if not usable:
@@ -223,7 +238,7 @@ def main():
     if ATTACH:
         got = pick_build()
         if got:
-            bid, bnum, _, _, when = got
+            bid, bnum, _, _, when, _bplat = got
             print("  will attach:    build %s (uploaded %s)" % (bnum, when))
 
     notes = None
