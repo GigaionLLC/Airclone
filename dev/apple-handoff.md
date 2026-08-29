@@ -31,7 +31,20 @@ IDs, key paths and account state live in the encrypted vault
    *available in France* makes Apple require an uploaded **ANSSI declaration**,
    approved before shipping; answering no removes the requirement. Shipping
    without France first and adding it in a later version costs no rebuild.
-2. **The macOS build never registered.** `altool` returned
+2. ~~The macOS build never registered.~~ **SOLVED 2026-08-29 by Apple's email.**
+   `ITMS-90284: Invalid Code Signing` — nine times, once per Flutter plugin
+   resource bundle in `Contents/Resources/*.bundle`. The re-sign step picked its
+   identity with a grep for `"Apple (Distribution|Development)"`, which does not
+   match **`3rd Party Mac Developer Application`** — the identity a Mac App Store
+   build needs and the one inside the provisioning profile — so it silently fell
+   back to the development identity. `-exportArchive` re-signs the app and its
+   Frameworks but not those bundles, and **Apple's own validator does not look
+   inside them either**, which is exactly how `VERIFY SUCCEEDED with no errors`
+   and a rejected build coexist. The lane now signs every nested bundle with the
+   store identity and asserts the authority on each one before export.
+
+   The old text, kept because the reasoning was sound and only the conclusion was
+   unavailable: **the macOS build never registered.** `altool` returned
    `UPLOAD SUCCEEDED with no errors` with a delivery UUID, and 2.5 hours later
    `/v1/builds` shows only the iOS one. The iOS build from the *same* release
    processed fine, so this is specific to the Mac package. **Apple emails the

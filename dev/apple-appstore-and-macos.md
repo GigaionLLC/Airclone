@@ -101,6 +101,29 @@ cannot sign; and `--revoke` takes an explicit id and never hunts for stale
 certificates, since Apple derives a certificate's name from the team and guessing
 would revoke something a human created.
 
+### `VERIFY SUCCEEDED` does not mean the build will process
+
+Apple's `altool --validate-app` checks the outer package: signature, entitlements,
+embedded profile. It does **not** look inside `Contents/Resources/*.bundle`.
+Processing does, and reports by **email, hours later**:
+
+```
+ITMS-90284: Invalid Code Signing - The executable
+'Airclone.app/Contents/Resources/<plugin>.bundle' must be signed with the
+certificate that is contained in the provisioning profile.
+```
+
+Every Flutter plugin ships a resource bundle, so this arrives once per plugin —
+nine for this app. The cause was the re-sign step choosing its identity with a
+grep for `"Apple (Distribution|Development)"`, which does not match
+**`3rd Party Mac Developer Application`**, the identity a Mac App Store build is
+signed with. It fell back to development, and `-exportArchive` re-signs the app
+and its Frameworks but not those bundles.
+
+The lane now signs every nested bundle explicitly and then **asserts the
+authority on each one** before export, because a silent mismatch costs a whole
+upload and an email you cannot poll for.
+
 ### Export compliance
 
 Airclone implements standard confidentiality encryption of its own — rclone

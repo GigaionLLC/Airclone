@@ -215,27 +215,63 @@ jobs:
           mkdir -p "$APP/Contents/Frameworks"
           cp macos/librclone/librclone.dylib "$APP/Contents/Frameworks/librclone.dylib"
           lipo -info "$APP/Contents/Frameworks/librclone.dylib"
-          # The archive is signed for DEVELOPMENT (automatic signing chose it);
-          # -exportArchive applies the distribution identity afterwards. So this
-          # re-sign only has to produce a VALID signature so the bundle verifies
-          # before export - prefer a distribution identity if one exists, else
-          # use whatever automatic signing did provision.
+          # Prefer "3rd Party Mac Developer Application" - the identity a Mac
+          # App Store build is actually signed with, and the one inside the
+          # provisioning profile. This grep previously matched only
+          # "Apple Distribution|Development", so it silently fell back to the
+          # DEVELOPMENT identity and build 118 was rejected during processing:
+          #
+          #   ITMS-90284: Invalid Code Signing - The executable
+          #   'Airclone.app/Contents/Resources/<plugin>.bundle' must be signed
+          #   with the certificate that is contained in the provisioning profile.
           IDENTITY=$(security find-identity -v -p codesigning \
-            | grep -oE '"Apple (Distribution|Development)[^"]*"' \
+            | grep -oE '"3rd Party Mac Developer Application[^"]*"' \
             | head -1 | tr -d '"' || true)
           if [ -z "$IDENTITY" ]; then
-            echo "::error::no Apple signing identity in the keychain at all."
-            echo "Automatic signing provisioned nothing. Identities present:"
+            echo "::error::no 3rd Party Mac Developer Application identity."
             security find-identity -v -p codesigning || true
             exit 1
           fi
           echo "re-signing with: $IDENTITY"
-          codesign --force --timestamp --options runtime -s "$IDENTITY" \
-            "$APP/Contents/Frameworks/librclone.dylib"
+
+          # INSIDE-OUT, and it MUST include Contents/Resources/*.bundle. Every
+          # Flutter plugin ships one; -exportArchive re-signs the app and its
+          # Frameworks but not those, and Apple's own validator does not look
+          # inside them either - which is how VERIFY SUCCEEDED passed and the
+          # build was still rejected hours later, by email, nine times over.
+          for B in "$APP/Contents/Resources"/*.bundle; do
+            [ -e "$B" ] || continue
+            echo "  signing $(basename "$B")"
+            codesign --force --timestamp --options runtime -s "$IDENTITY" "$B"
+          done
+          for F in "$APP/Contents/Frameworks"/*; do
+            [ -e "$F" ] || continue
+            echo "  signing $(basename "$F")"
+            codesign --force --timestamp --options runtime -s "$IDENTITY" "$F"
+          done
           codesign --force --timestamp --options runtime \
             --entitlements macos/Runner/MacAppStore.entitlements \
             -s "$IDENTITY" "$APP"
           codesign --verify --strict --verbose=2 "$APP"
+
+          # Assert the authority on every nested bundle. A silent mismatch
+          # here costs a whole upload and an email hours later.
+          echo "--- authority on every nested bundle ---"
+          BAD=0
+          for B in "$APP/Contents/Resources"/*.bundle; do
+            [ -e "$B" ] || continue
+            AUTH=$(codesign -dv --verbose=2 "$B" 2>&1 \
+              | grep '^Authority=' | head -1 | cut -d= -f2-)
+            echo "  $(basename "$B"): $AUTH"
+            case "$AUTH" in
+              "3rd Party Mac Developer Application"*) ;;
+              *) BAD=1 ;;
+            esac
+          done
+          if [ "$BAD" = "1" ]; then
+            echo "::error::a nested bundle is not signed with the store identity"
+            exit 1
+          fi
 
       - name: Export the App Store package
         env:
