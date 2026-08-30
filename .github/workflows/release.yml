@@ -753,28 +753,29 @@ jobs:
         with:
           name: airclone-playstore-aab
           path: app/build/app/outputs/bundle/release/app-release.aab
-      # ── Google Play submission (open testing) ────────────────────────────
-      # Runs only on a tagged release when PLAY_SERVICE_ACCOUNT_JSON exists.
-      # The FIRST app listing had to be uploaded manually in the Play Console;
-      # every automated push after it must carry a HIGHER versionCode than
-      # that manual upload (pubspec build number strictly increases per
-      # release, so this holds as long as tags keep bumping it).
-      # Play wants short plain-text notes (max 500 chars/locale), not our
-      # markdown release file — distill dev/releases/<tag>.md down.
+      # Store "What's new" is deliberately GENERIC, and the same text every
+      # release. It used to be dev/releases/<tag>.md with headings stripped and
+      # the result cut at 480 characters, so every store update shipped a
+      # mid-sentence fragment of notes written for a different audience - and
+      # had to be eyeballed by hand each time to see what survived the cut.
+      #
+      # The detailed notes live on the GitHub release, which is where anyone who
+      # wants them looks. See docs/store/store-release-notes.txt.
       - name: Prepare Play release notes (plain text, <=500 chars)
         if: startsWith(github.ref, 'refs/tags/') && env.HAS_PLAY_CREDS == 'true'
         working-directory: .
         run: |
           set -euo pipefail
           mkdir -p distribution/whatsnew
-          notes="dev/releases/${GITHUB_REF_NAME}.md"
-          if [ -f "$notes" ]; then
-            grep -vE '^\s*(#|\||-{3,})' "$notes" | sed '/^\s*$/d' \
-              | head -c 480 > distribution/whatsnew/whatsnew-en-US
-          else
-            printf 'Airclone %s — see the GitHub release for full notes.' \
-              "$GITHUB_REF_NAME" > distribution/whatsnew/whatsnew-en-US
+          cp docs/store/store-release-notes.txt distribution/whatsnew/whatsnew-en-US
+          # Play truncates past 500 bytes SILENTLY, so fail loudly instead.
+          bytes=$(wc -c < distribution/whatsnew/whatsnew-en-US)
+          if [ "$bytes" -gt 500 ]; then
+            echo "::error::store notes are $bytes bytes; Play allows 500."
+            exit 1
           fi
+          echo "Play notes ($bytes bytes):"
+          cat distribution/whatsnew/whatsnew-en-US
       - name: Upload AAB to Google Play (open testing)
         if: startsWith(github.ref, 'refs/tags/') && env.HAS_PLAY_CREDS == 'true'
         uses: r0adkll/upload-google-play@v1

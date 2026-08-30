@@ -117,7 +117,8 @@ it is not, so every upload today is manual. CI never touches production.
 | :--- | :--- |
 | Per-release runbook | [`dev/google-play-store.md`](../../dev/google-play-store.md) |
 | Listing copy + screenshot checklist | [`play/listing-en-US.md`](play/listing-en-US.md) |
-| "What's new" copy (≤500 chars/locale) | [`play/whats-new-v0.6.0.md`](play/whats-new-v0.6.0.md) — still accurate for v0.6.1, which changed only the Store package identity |
+| "What's new" copy (≤500 chars/locale) | [`store-release-notes.md`](store-release-notes.md) — one generic line, every release, every store; the detail lives on the GitHub release |
+| Android TV assets | [`play/tv/MANIFEST.md`](play/tv/MANIFEST.md) — screenshots and banner, and the two traps that produced a wrong set first |
 | Upload-ready assets + slot map | [`play/store-ready/MANIFEST.md`](play/store-ready/MANIFEST.md) |
 | Demo-media licences | [`play/DEMO-MEDIA-PROVENANCE.md`](play/DEMO-MEDIA-PROVENANCE.md) |
 | One-time service-account setup | **[`dev/play-ci-setup.md`](../../dev/play-ci-setup.md)** — the as-built runbook (every command, every gotcha), for a new Google account or a rotated key. Original research: [`dev/plans/store-automation-plan.md`](../../dev/plans/store-automation-plan.md) § Google Play |

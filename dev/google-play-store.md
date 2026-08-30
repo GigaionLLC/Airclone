@@ -102,6 +102,8 @@ Save. Listing edits do **not** require a new AAB and can ship independently of a
 
 ## See also
 
+- [`dev/android-tv.md`](android-tv.md) — shipping to the Android TV form factor
+
 - One-time CI / service-account setup: `dev/plans/store-automation-plan.md` (§ Google Play).
 - Microsoft Store per-release runbook (same house style): `dev/windows-signing-and-store.md` §2.
 - Index + pricing policy + pre-submission truth audit: `docs/store/README.md`.
