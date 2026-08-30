@@ -14,7 +14,7 @@ label, so a banner that is only a logo ships an unnamed tile.
     python dev/brand/make-tv-banner.py
 
 Writes app/android/app/src/main/res/drawable-xhdpi/tv_banner.png and
-docs/store/play/tv-banner-1280x720.png. Re-run after any change to the master
+docs/store/play/tv-banner/. Re-run after any change to the master
 icon; the launcher tile is the first thing a TV user sees and a stale one is
 easy to miss (the adaptive launcher icon silently shipped near-blank once for
 exactly this reason).
@@ -30,7 +30,10 @@ from PIL import Image, ImageDraw, ImageFont
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 MASTER = ROOT / "docs/brand/airclone-icon-1024.png"
 LAUNCHER = ROOT / "app/android/app/src/main/res/drawable-xhdpi/tv_banner.png"
-STORE = ROOT / "docs/store/play/tv-banner-1280x720.png"
+# Its own folder because tool/play_images.py uploads a DIRECTORY: left
+# loose in docs/store/play/ it would be swept up alongside the feature
+# graphic and the icon.
+STORE = ROOT / "docs/store/play/tv-banner/tv-banner-1280x720.png"
 
 
 def render(icon: Image.Image, out: pathlib.Path, W: int, H: int) -> int:

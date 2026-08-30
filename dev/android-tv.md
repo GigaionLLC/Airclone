@@ -52,7 +52,7 @@ Confusing them is easy and neither surface complains.
 | Size | Where it lives | What draws it |
 | :--- | :--- | :--- |
 | 320x180 | `app/android/app/src/main/res/drawable-xhdpi/tv_banner.png`, named by `android:banner` | the TV home screen |
-| 1280x720 | `docs/store/play/tv-banner-1280x720.png`, uploaded as the `tvBanner` image type | the Play TV storefront |
+| 1280x720 | `docs/store/play/tv-banner/`, uploaded as the `tvBanner` image type | the Play TV storefront |
 
 Both are generated from the master icon, so they cannot drift from it:
 
