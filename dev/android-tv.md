@@ -147,9 +147,35 @@ So the split is:
 | bundle upload (`promote-play.yml`) | answer the TV declaration |
 | `tvBanner` + `tvScreenshots` upload (`tool/play_images.py`) | submit for TV review |
 
-The Console validates that a bundle in one of your tracks declares
-`LEANBACK_LAUNCHER` before it will let you add the form factor, so the release
-has to go up first.
+### The Console flow, as actually done (v0.7.0, 2026-08-30)
+
+Test and release -> the form-factor dropdown -> **Manage form factors** ->
+*Advanced settings / Form factors* -> **Add form factor** -> Android TV. That
+reveals a two-step checklist with the second step locked: upload TV screenshots,
+then opt in.
+
+Four things were not what I expected:
+
+- **Nothing ever checks for `LEANBACK_LAUNCHER`.** I had written that the Console
+  validates it before letting you add the form factor. It does not - the form
+  factor was added, and the opt-in completed, while production still served a
+  bundle with no TV support at all. Ship the TV bundle first anyway: the reason
+  is that Google reviews the TV experience against whatever is actually live,
+  not that the Console will stop you.
+- **"Upload screenshots" means SAVED, not drafted.** *Save as draft* leaves the
+  change private, Publishing overview reports "no unpublished changes", and the
+  checklist stays incomplete without saying why. The button is **Save**.
+- **Opting in applies immediately** - the form factor flips to Active and never
+  enters the review queue. Only the listing images do.
+- **Promoting through the API sweeps pending listing changes into that
+  submission**, so the TV assets reach review together with the build that
+  supports TV. That is the ordering you want, for free.
+
+Uploading the images needs the service account to hold **Manage store
+presence**. Without it `edits.commit` returns a bare 403 *after* the upload step
+reports success - the images sit in an edit that is then discarded, so nothing
+lands and nothing breaks. Granting it also grants edit access to pricing and
+distribution, so weigh that against uploading by hand.
 
 ```bash
 # TV screenshots (16:9, 1280x720 minimum). --replace because Play APPENDS.
