@@ -935,7 +935,9 @@ class _ConfigToolsHookState extends ConsumerState<_ConfigToolsHook> {
               // QR import is phone-camera only. A phone scans the QR live; a
               // computer has no camera, so it explains that and points at the
               // file-based flows (opening a file is for Import File Config).
-              onPressed: () => desktop
+              // A television has no camera either, and offering it a scanner
+              // that cannot open is exactly the dead end a TV review fails on.
+              onPressed: () => desktop || androidIsTelevision
                   ? showQrCameraUnavailableDialog(context)
                   : showScanFromDesktopSheet(context),
               icon: const Icon(Icons.qr_code_scanner, size: 16),

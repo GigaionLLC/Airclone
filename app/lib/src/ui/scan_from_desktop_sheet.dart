@@ -55,8 +55,8 @@ Future<void> showQrCameraUnavailableDialog(BuildContext context) {
       content: DialogBody(
         width: 420,
         child: Text(
-          'Scanning a QR uses a camera, which this computer can\'t do. To move a '
-          'config here, use "Import File Config". To send THIS computer\'s config '
+          'Scanning a QR uses a camera, which this device can\'t do. To move a '
+          'config here, use "Import File Config". To send THIS device\'s config '
           'to a phone, use "Export QR Config" and scan it with the phone\'s '
           'camera (its "Import QR Config").',
           style: TextStyle(color: c.textMuted, fontSize: 13, height: 1.4),

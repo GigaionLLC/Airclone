@@ -45,6 +45,8 @@ Future<void> main(List<String> args) async {
   // Android: resolve the real shared-storage root (multi-user aware) before
   // the location providers build. No-op elsewhere.
   await initAndroidStorageRoot();
+  // Android: TV or not, which decides the shell. No-op elsewhere.
+  await initAndroidIsTelevision();
   // iOS: resolve the app's Documents directory, which is the whole of "local"
   // there. Same reason as above - the location providers stay synchronous.
   await initIosDocumentsRoot();

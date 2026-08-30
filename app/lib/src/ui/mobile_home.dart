@@ -23,6 +23,7 @@ import 'settings_screen.dart';
 import 'stats_panel.dart';
 import 'tab_strip.dart';
 import 'theme/tokens.dart';
+import 'tv.dart';
 import 'touch.dart';
 
 /// The phone shell: bottom navigation over Files · Transfers · Settings.
@@ -83,6 +84,14 @@ class _MobileHomeScreenState extends ConsumerState<MobileHomeScreen> {
     // split is up: back collapses that first).
     final canPop =
         _tab == 0 && !hasSelection && (gated || (!browsing && !split));
+    // False on every phone and every other platform, so everything it gates
+    // below is unreachable off a television.
+    final tv = androidIsTelevision;
+    final Widget tabBody = switch (_tab) {
+      0 => const _MobileFiles(),
+      1 => const _MobileTransfers(),
+      _ => const _MobileSettings(),
+    };
     return PopScope(
       canPop: canPop,
       onPopInvokedWithResult: (didPop, _) {
@@ -126,11 +135,29 @@ class _MobileHomeScreenState extends ConsumerState<MobileHomeScreen> {
       },
       child: Scaffold(
         body: SafeArea(
-          child: switch (_tab) {
-            0 => const _MobileFiles(),
-            1 => const _MobileTransfers(),
-            _ => const _MobileSettings(),
-          },
+          child: tv
+              // A television runs this same shell, with different chrome: the
+              // tabs move to a side rail a remote can reach in one LEFT press,
+              // and the frame is inset out of the overscan region. See tv.dart.
+              ? TvFocusTheme(
+                  child: TvFocusOverlay(
+                    child: TvInitialFocus(
+                      child: Padding(
+                        padding: tvOverscan,
+                        child: Row(
+                          children: [
+                            TvNavRail(
+                              selected: _tab,
+                              onSelect: (i) => setState(() => _tab = i),
+                            ),
+                            Expanded(child: tabBody),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                )
+              : tabBody,
         ),
         floatingActionButton: fabVisible
             ? FloatingActionButton(
@@ -139,26 +166,29 @@ class _MobileHomeScreenState extends ConsumerState<MobileHomeScreen> {
                 child: const Icon(Icons.add),
               )
             : null,
-        bottomNavigationBar: NavigationBar(
-          selectedIndex: _tab,
-          onDestinationSelected: (i) => setState(() => _tab = i),
-          destinations: const [
-            NavigationDestination(
-              icon: Icon(Icons.folder_outlined),
-              selectedIcon: Icon(Icons.folder),
-              label: 'Files',
-            ),
-            NavigationDestination(
-              icon: Icon(Icons.swap_vert),
-              label: 'Transfers',
-            ),
-            NavigationDestination(
-              icon: Icon(Icons.settings_outlined),
-              selectedIcon: Icon(Icons.settings),
-              label: 'Settings',
-            ),
-          ],
-        ),
+        // Replaced by the side rail on a TV (see above).
+        bottomNavigationBar: tv
+            ? null
+            : NavigationBar(
+                selectedIndex: _tab,
+                onDestinationSelected: (i) => setState(() => _tab = i),
+                destinations: const [
+                  NavigationDestination(
+                    icon: Icon(Icons.folder_outlined),
+                    selectedIcon: Icon(Icons.folder),
+                    label: 'Files',
+                  ),
+                  NavigationDestination(
+                    icon: Icon(Icons.swap_vert),
+                    label: 'Transfers',
+                  ),
+                  NavigationDestination(
+                    icon: Icon(Icons.settings_outlined),
+                    selectedIcon: Icon(Icons.settings),
+                    label: 'Settings',
+                  ),
+                ],
+              ),
       ),
     );
   }
@@ -239,7 +269,7 @@ class _MobileLocations extends ConsumerWidget {
           ],
         ),
         if (needsAccess) const StorageAccessBanner(),
-        _header(c, 'This phone'),
+        _header(c, androidIsTelevision ? 'This TV' : 'This phone'),
         for (final d in drives) _tile(context, ref, d.remote, d.kind),
         for (final l in locations) _tile(context, ref, l.remote, l.kind),
         _header(

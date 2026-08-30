@@ -1,8 +1,10 @@
 package app.airclone.airclone
 
+import android.app.UiModeManager
 import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.content.res.Configuration
 import android.graphics.Bitmap
 import android.media.MediaMetadataRetriever
 import android.net.Uri
@@ -52,6 +54,11 @@ class MainActivity : FlutterActivity() {
                                     android.Manifest.permission.READ_EXTERNAL_STORAGE
                                 ) == PackageManager.PERMISSION_GRANTED
                         )
+                    // Running on a television? Decides which shell the UI
+                    // builds (see android_native.dart). Asked natively because
+                    // no Dart-visible signal distinguishes a TV from a tablet:
+                    // both are large, landscape and Android.
+                    "isTelevision" -> result.success(isTelevision())
                     // Which app installed us — Play Store, Amazon, F-Droid, or
                     // null/the package installer for a sideloaded APK. Dart maps
                     // this to an update channel so a store install is never shown
@@ -356,6 +363,19 @@ class MainActivity : FlutterActivity() {
     /// `adb install`, or a build sideloaded by a file manager that doesn't set
     /// itself as the installer). `getInstallerPackageName` was deprecated in
     /// API 30 in favour of `getInstallSourceInfo`, so both are used by level.
+    /// Whether this is a TV. Two independent signals because neither is
+    /// reliable alone: UI_MODE_TYPE_TELEVISION is what the platform reports at
+    /// runtime and is what emulators set, while FEATURE_LEANBACK is what Play
+    /// filters on and what some manufacturer boxes report instead. Either one
+    /// is enough to mean "no touchscreen, D-pad only".
+    private fun isTelevision(): Boolean {
+        val uiMode = getSystemService(UI_MODE_SERVICE) as? UiModeManager
+        if (uiMode?.currentModeType == Configuration.UI_MODE_TYPE_TELEVISION) {
+            return true
+        }
+        return packageManager.hasSystemFeature(PackageManager.FEATURE_LEANBACK)
+    }
+
     private fun installerPackageName(): String? = try {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             packageManager.getInstallSourceInfo(packageName).installingPackageName

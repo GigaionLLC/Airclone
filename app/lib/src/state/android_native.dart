@@ -9,6 +9,26 @@ import 'local_locations.dart';
 /// (see MainActivity.kt). Every call is a safe no-op off Android.
 const _channel = MethodChannel('airclone/native');
 
+/// Whether the app is running on an Android TV. Resolved once in main() before
+/// runApp, exactly like [androidStorageRoot] and for the same reason: the shell
+/// is chosen inside a synchronous build().
+///
+/// False on every other platform and false until [initAndroidIsTelevision]
+/// completes, so nothing can accidentally get the TV shell.
+bool androidIsTelevision = false;
+
+/// Asks Android whether this is a television (see MainActivity.kt).
+Future<void> initAndroidIsTelevision() async {
+  if (!Platform.isAndroid) return;
+  try {
+    androidIsTelevision =
+        await _channel.invokeMethod<bool>('isTelevision') ?? false;
+  } catch (_) {
+    // An old build without the method, or a channel failure. Staying false
+    // means a TV renders the existing touch shell - degraded, not broken.
+  }
+}
+
 /// Resolves the device's real shared-storage root (differs from
 /// /storage/emulated/0 for secondary users and work profiles). Called once in
 /// main() before runApp; keeps the location providers synchronous.

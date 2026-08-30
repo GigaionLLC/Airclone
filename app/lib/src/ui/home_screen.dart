@@ -631,7 +631,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     });
     // Phone-sized windows get the touch-first shell (bottom tabs, one pane).
     // The listeners above stay active for both shells.
-    if (MediaQuery.sizeOf(context).width < 700) {
+    //
+    // A TELEVISION takes that shell too, whatever its width. A 1080p TV reports
+    // 960dp and would otherwise land on the desktop shell below, whose primary
+    // verbs are right-click, hover and drag - none of which a D-pad remote can
+    // produce. The touch shell is the one that already works here: its
+    // single-tap-to-open maps exactly onto the remote's centre button, and
+    // isTouchPrimary is already true on Android, so no gesture rewiring is
+    // needed. TV-specific chrome (side rail, overscan, focus) lives inside it.
+    if (androidIsTelevision || MediaQuery.sizeOf(context).width < 700) {
       return const MobileHomeScreen();
     }
     return Scaffold(

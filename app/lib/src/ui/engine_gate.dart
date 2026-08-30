@@ -250,7 +250,9 @@ class _StorageAccessBannerState extends ConsumerState<StorageAccessBanner>
               const SizedBox(width: Space.x2),
               Expanded(
                 child: Text(
-                  'Allow file access to browse this phone\'s storage',
+                  // "this device", not "this phone": the same shell runs on
+                  // Android TV, where a set-top box is emphatically not a phone.
+                  'Allow file access to browse this device\'s storage',
                   style: TextStyle(color: c.text, fontSize: 12),
                 ),
               ),

@@ -6,6 +6,15 @@
          declared optional so the app still installs on camera-less devices. -->
     <uses-permission android:name="android.permission.CAMERA"/>
     <uses-feature android:name="android.hardware.camera" android:required="false"/>
+    <!-- ANDROID TV. Both declarations are required="false" DELIBERATELY, and
+         changing either to "true" is the one edit here that breaks the shipped
+         app: Play reads leanback:required="true" as "this is a TV-ONLY app" and
+         stops serving it to every phone and tablet it is installed on today. -->
+    <uses-feature android:name="android.software.leanback" android:required="false"/>
+    <!-- Android implicitly requires a touchscreen of every app that does not say
+         otherwise, which is the single reason a TV cannot see Airclone today.
+         Declaring it optional only ADDS eligible devices - it removes none. -->
+    <uses-feature android:name="android.hardware.touchscreen" android:required="false"/>
     <!-- Transfers keep running when the app is backgrounded: a dataSync
          foreground service holds the process (and the engine child) alive,
          with a progress notification (runtime-granted on Android 13+). -->
@@ -33,6 +42,7 @@
         android:label="airclone"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
+        android:banner="@drawable/tv_banner"
         android:allowBackup="false"
         android:networkSecurityConfig="@xml/network_security_config"
         android:requestLegacyExternalStorage="true">
@@ -56,6 +66,10 @@
             <intent-filter>
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
+                <!-- Puts the app in the Android TV launcher. Phones and tablets
+                     ignore a category they have no launcher for, so one activity
+                     serves both form factors and there is no second variant. -->
+                <category android:name="android.intent.category.LEANBACK_LAUNCHER"/>
             </intent-filter>
         </activity>
         <!-- "Open in another app": open_external.dart stages a cloud object in
