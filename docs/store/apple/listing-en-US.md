@@ -126,6 +126,8 @@ To try it without configuring a real cloud account: the sidebar's local folders 
 To try a cloud remote, use the + button beside "Cloud" and pick any provider; the app walks through that provider's normal setup.
 
 On code execution (guidelines 2.5.2 / 4.7): this build spawns no processes and downloads no code. The rclone engine is statically bundled and runs in-process, which is why mounting a cloud as a disk and archive create/extract are absent from this edition.
+
+On the com.apple.security.network.server entitlement (guideline 2.4.5): it is used only for an internal loopback bridge and nothing listens for connections from other devices. The embedded rclone library exposes a JSON-RPC interface and cannot hand raw file bytes to the app, so image previews, thumbnails, video and audio playback and the PDF viewer stream through a small HTTP endpoint inside the app's own process. It binds InternetAddress.loopbackIPv4 on an ephemeral port, is bound to 127.0.0.1 only, and each request carries a per-session Authorization token. App Sandbox requires this entitlement to call listen() at all, loopback included; without it the build has no previews, thumbnails, media playback or PDF viewer. rclone's own "serve" feature, which does expose a real network server, is deliberately disabled in this build and unreachable by the user.
 ```
 
 ⚠️ Do **not** mention the command console in these notes, and do not include it in a
