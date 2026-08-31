@@ -107,6 +107,16 @@ To try a cloud remote, use the + button beside "Cloud" and pick any provider; th
 On code execution (guidelines 2.5.2 / 4.7): this build spawns no processes and downloads no code. The rclone engine is compiled into the app as a static library and runs in-process, which is why mounting a cloud as a drive and archive create/extract are absent on iOS.
 
 Camera and Face ID: the camera is used only to scan a configuration QR code the user generates themselves, and Face ID only to unlock an encrypted rclone configuration stored on the device. Neither is required to use the app.
+
+WHAT THE APP DOES, AND FOR WHOM (guideline 2.1). Airclone browses, previews, transfers and organises files across more than 70 storage providers (Google Drive, Dropbox, OneDrive, S3, Backblaze B2, WebDAV, SFTP and others) through one interface. The problem it solves: people keep files across several unrelated cloud accounts with no single place to see or move them; the alternatives are single-provider apps or command-line tools. Audience: individuals and small teams using more than one provider - photographers, developers, researchers, anyone migrating between services.
+
+EXTERNAL SERVICES. rclone (MIT licence) is the transfer engine, compiled INTO the app as a static library and run in-process; nothing is downloaded or executed at runtime. Airclone is an independent companion to rclone and is not affiliated with, sponsored by, or endorsed by the rclone project. The only other external parties are the storage providers the user chooses to configure, contacted directly from the device with the user's own credentials. There are no analytics, no telemetry, no crash reporting, no advertising SDKs, no authentication service, no payment processor and no AI services. The app makes no request to any server we operate, because we operate none.
+
+REGIONAL DIFFERENCES. Features and content are identical in every region. France is excluded from availability purely for export-compliance administrative reasons (its separate encryption declaration) and this reflects no difference in the app.
+
+REGULATED INDUSTRY / THIRD-PARTY MATERIAL. The app operates in no regulated industry and provides no regulated service. The only third-party material is the rclone engine, used under its MIT licence, which permits binary redistribution; the licence and attribution ship in the app and the source is public at https://github.com/GigaionLLC/Airclone
+
+ACCOUNTS AND PURCHASES. There is no account registration, login or account deletion, no in-app purchase or subscription, and no user-generated content or social features.
 ```
 
 ⚠️ Do **not** mention the command console in these notes, and do not show it in a
