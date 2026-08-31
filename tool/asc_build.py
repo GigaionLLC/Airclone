@@ -95,6 +95,17 @@ EDITABLE = {
     "INVALID_BINARY",
 }
 
+# Editable, but only because something went WRONG. Apple or a reviewer pushed
+# back and the reason lives in Resolution Center, which the App Store Connect
+# API does not expose - so the most this tool can do is refuse to call it fine.
+# DEVELOPER_REJECTED is absent on purpose: that one is you withdrawing your own
+# submission, which is a normal thing to do.
+NEEDS_ATTENTION = {
+    "REJECTED",
+    "METADATA_REJECTED",
+    "INVALID_BINARY",
+}
+
 
 def token():
     def b64u(b):
@@ -243,7 +254,18 @@ def audit(ver):
     def row(name, ok, detail=""):
         rows.append((name, ok, detail))
 
-    row("version state", va["appStoreState"] in EDITABLE, va["appStoreState"])
+    # EDITABLE answers "can this version be worked on", and a REJECTED version
+    # very much can - you fix it and resubmit. But an AUDIT asks "is this ready
+    # to submit", and reporting REJECTED as OK is how a rejection reads like a
+    # clean bill of health. It printed exactly that for iOS 0.6.8: "version
+    # state  OK  REJECTED", directly above "No gaps."
+    state = va["appStoreState"]
+    row(
+        "version state",
+        state not in NEEDS_ATTENTION,
+        state + (" <- a reviewer pushed back; read Resolution Center"
+                 if state in NEEDS_ATTENTION else ""),
+    )
     # Copyright and the release type live on the VERSION, not the localization,
     # which is why an audit built around localization fields missed both. The
     # copyright was empty on a version that otherwise reported no gaps, and the
