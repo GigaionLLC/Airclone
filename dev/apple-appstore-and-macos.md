@@ -263,6 +263,76 @@ code signature plus the entitlement, not by the App Store.** An ad-hoc signature
 with `MacAppStore.entitlements` gives CI the same sandbox a customer gets. That
 workflow is also the only Swift compiler this project has.
 
+## 3. Rejections, and the exact click path to answer one
+
+Both platforms were rejected on the FIRST submission of 0.6.8, for entirely
+different reasons. Neither meant the app was broken. Expect this on a first
+submission from any new developer account.
+
+### The resubmit path is not where you look for it
+
+This cost real time, so it is written down precisely. On the submission page
+(*App Review -> the submission*), **"Resubmit to App Review" is greyed out** and
+stays greyed out no matter what you write in Resolution Center. The enabling
+action lives somewhere else:
+
+1. On the submission page, **Reply to App Review** — write the answer, Reply.
+   Sending this does NOT enable Resubmit.
+2. Go to the **version page** (*Distribution -> the platform version*, URL ends
+   `/version/inflight`). Its header has **Update Review**, which is enabled.
+   Press it. The item flips from *Rejected* to **Ready for Review**.
+3. NOW return to the submission page. **Resubmit to App Review** is enabled.
+   Press it. The submission becomes *Waiting for Review*.
+
+Read that order twice: the button that unblocks the submission page is on a
+different page, is called something else, and gives no hint that it is the
+prerequisite.
+
+### macOS — guideline 2.4.5, the network.server entitlement
+
+An automated scan reports `com.apple.security.network.server` with "no matching
+functionality". The scan is right that nothing outward-facing exists, and the
+entitlement is still required: the embedded rclone library speaks JSON-RPC and
+cannot hand raw bytes to the app, so previews, thumbnails, media playback and the
+PDF viewer stream over an HTTP endpoint bound to `127.0.0.1` on an ephemeral
+port. App Sandbox demands the entitlement to call `listen()` even on loopback.
+
+Do NOT remove the entitlement to make the warning go away — that silently
+removes every preview and playback feature from the MAS build. Reply with the
+justification, which is kept in the Notes block of
+`docs/store/apple/listing-en-US.md` so it ships with every future submission.
+Source of truth for the claim: `app/lib/src/rclone/librclone_object_server.dart`.
+
+### iOS — guideline 2.1, information needed
+
+A standard first-submission questionnaire, not a defect. Apple asks for seven
+things and asks that they live in **App Review Information -> Notes** for future
+submissions, not just in a reply. Six are answerable from the repo and are now
+permanently in the Notes block of `docs/store/apple/listing-ios-en-US.md`:
+what the app does and for whom, setup instructions, external services, regional
+consistency, the regulated-industry answer, and an explicit "no accounts, no
+purchases, no user-generated content" (those being the flows Apple asks to see
+demonstrated).
+
+The seventh cannot come from a repository: **a screen recording captured on a
+physical device**, starting at launch and walking the core flow. No amount of
+automation substitutes for it. Budget for it on any first submission.
+
+Push either Notes block with:
+
+```bash
+gh workflow run asc-version.yml -f platform=IOS -f mode=apply    -f notes=true -f attach=false -f copyright=false -f manual_release=false
+```
+
+`attach=false` matters — without it the run also re-points the build
+relationship, which is not what you want when only the text changed.
+
+### Volunteer the France exclusion
+
+France is deselected from availability for export-compliance reasons. Say so in
+the notes rather than leaving a reviewer to find an unexplained regional gap and
+draw their own conclusion.
+
 ## See also
 
 - Windows Store per-release runbook: `dev/windows-signing-and-store.md` §2.
