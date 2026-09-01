@@ -209,16 +209,35 @@ jobs:
           OUT="../artifacts/airclone-ios-walkthrough.mp4"
           xcrun simctl io "$PHONE" recordVideo --codec h264 --force "$OUT" &
           REC=$!
+
+          # Stop the recorder on ANY exit path. recordVideo only writes its moov
+          # atom on SIGINT, so a drive that hangs, fails, or gets cancelled
+          # otherwise leaves a 0-byte file that still looks like a result - which
+          # is exactly what one cancelled run produced.
+          stop_recording() {
+            kill -INT "$REC" 2>/dev/null
+            wait "$REC" 2>/dev/null
+          }
+          trap stop_recording EXIT INT TERM
+
           sleep 3
 
-          flutter drive             --driver=test_driver/integration_test.dart             --target=integration_test/store_screenshots_test.dart             -d "$PHONE" 2>&1 | tee /tmp/drive-record.log | tail -20
+          # Capped: this workflow has a documented history of the driver hanging
+          # (see the grid/gallery note in store_screenshots_test.dart). A hang
+          # must not burn the whole job and take the recording down with it.
+          timeout 900 flutter drive             --driver=test_driver/integration_test.dart             --target=integration_test/store_screenshots_test.dart             -d "$PHONE" 2>&1 | tee /tmp/drive-record.log | tail -20
+          rc=${PIPESTATUS[0]}
+          [ "$rc" = "124" ] && echo "::warning::the driver hit the 900s cap; recording still finalised"
 
           sleep 3
-          kill -INT "$REC" 2>/dev/null
-          wait "$REC" 2>/dev/null
+          stop_recording
+          trap - EXIT INT TERM
 
-          if [ ! -s "$OUT" ]; then
-            echo "::error::no video was produced"
+          # -s is not enough on its own: a cancelled recorder leaves the file
+          # present and zero-length. Require real bytes.
+          BYTES=$(wc -c < "$OUT" 2>/dev/null || echo 0)
+          if [ "$BYTES" -lt 100000 ]; then
+            echo "::error::video is $BYTES bytes - the recorder did not finalise it"
             exit 1
           fi
           # Say what it IS, not merely that a file exists - a zero-frame mp4 is
