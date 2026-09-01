@@ -26,11 +26,11 @@ on:
   workflow_dispatch:
     inputs:
       mode:
-        description: 'diagnose = list devices and sizes | capture = take the shots'
+        description: 'diagnose = list devices | capture = screenshots | record = a video walkthrough'
         required: true
         default: diagnose
         type: choice
-        options: [diagnose, capture]
+        options: [diagnose, capture, record]
       settle_seconds:
         description: 'How long to let the app settle before capturing'
         required: true
@@ -119,7 +119,7 @@ jobs:
           done
 
       - name: Seed demo content inside each app container
-        if: ${{ inputs.mode == 'capture' }}
+        if: ${{ inputs.mode == 'capture' || inputs.mode == 'record' }}
         # iOS has no arbitrary filesystem, so the demo tree lives in the app's own
         # Documents directory - which is exactly what the Locations sidebar shows
         # as "On My Device" - plus an rclone alias remote pointing at it. Both
@@ -187,6 +187,48 @@ jobs:
             ls -la "$C/Documents"
           done
 
+      - name: Record a video walkthrough
+        # For App Review guideline 2.1, which asks for a recording of the app's
+        # typical user flow.
+        #
+        # HONEST LIMIT: Apple asks for a recording captured on a PHYSICAL device.
+        # This is a simulator, and the reply that carries it must say so. A
+        # simulator cannot show real memory pressure, thermals or hardware
+        # performance, which is the substance of a 2.1 rejection - so this
+        # demonstrates the FLOW, and nothing more should be claimed for it.
+        #
+        # `simctl io recordVideo` writes until it receives SIGINT; killing it any
+        # harder leaves an unplayable file with no moov atom.
+        if: ${{ inputs.mode == 'record' }}
+        working-directory: app
+        env:
+          PHONE: ${{ steps.devices.outputs.phone }}
+        run: |
+          set +e
+          mkdir -p ../artifacts
+          OUT="../artifacts/airclone-ios-walkthrough.mp4"
+          xcrun simctl io "$PHONE" recordVideo --codec h264 --force "$OUT" &
+          REC=$!
+          sleep 3
+
+          flutter drive             --driver=test_driver/integration_test.dart             --target=integration_test/store_screenshots_test.dart             -d "$PHONE" 2>&1 | tee /tmp/drive-record.log | tail -20
+
+          sleep 3
+          kill -INT "$REC" 2>/dev/null
+          wait "$REC" 2>/dev/null
+
+          if [ ! -s "$OUT" ]; then
+            echo "::error::no video was produced"
+            exit 1
+          fi
+          # Say what it IS, not merely that a file exists - a zero-frame mp4 is
+          # still a file, and this project has shipped a screenshot of the wrong
+          # app because a check only asserted presence.
+          ls -la "$OUT"
+          if command -v ffprobe >/dev/null 2>&1; then
+            ffprobe -v error -show_entries format=duration,size               -show_entries stream=width,height,nb_frames "$OUT" || true
+          fi
+
       - name: Drive the app and capture the set
         # `flutter drive` runs the app on the simulator and the test taps its way
         # through, capturing at each stop. The alternative - cliclick against the
@@ -243,7 +285,7 @@ jobs:
         #
         # The `|| echo warning` on the launch is what hid it. A fallback that can
         # replace a good artifact with a worse one is not a safety net.
-        if: ${{ inputs.mode == 'capture' }}
+        if: ${{ inputs.mode == 'capture' || inputs.mode == 'record' }}
         env:
           PHONE: ${{ steps.devices.outputs.phone }}
           PAD: ${{ steps.devices.outputs.pad }}
