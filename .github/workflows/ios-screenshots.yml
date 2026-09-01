@@ -222,12 +222,29 @@ jobs:
 
           sleep 3
 
-          # Capped: this workflow has a documented history of the driver hanging
-          # (see the grid/gallery note in store_screenshots_test.dart). A hang
-          # must not burn the whole job and take the recording down with it.
-          timeout 900 flutter drive             --driver=test_driver/integration_test.dart             --target=integration_test/store_screenshots_test.dart             -d "$PHONE" 2>&1 | tee /tmp/drive-record.log | tail -20
-          rc=${PIPESTATUS[0]}
-          [ "$rc" = "124" ] && echo "::warning::the driver hit the 900s cap; recording still finalised"
+          # Capped, because this workflow has a documented history of the driver
+          # hanging (see the grid/gallery note in store_screenshots_test.dart).
+          #
+          # NOT `timeout` - macOS runners do not have it, and because this step
+          # runs under `set +e` the missing command failed silently, skipped the
+          # drive entirely, and left the recorder filming a static home screen
+          # for 100 minutes. A hand-rolled watchdog is portable.
+          #
+          # Output goes to a FILE, not a pipe: `timeout`-style kills leave
+          # orphaned grandchildren holding stdout open, and a `| tee` then blocks
+          # forever waiting for an EOF that never comes.
+          flutter drive             --driver=test_driver/integration_test.dart             --target=integration_test/store_screenshots_test.dart             -d "$PHONE" > /tmp/drive-record.log 2>&1 &
+          DRIVE=$!
+          DEADLINE=$((SECONDS + 900))
+          while kill -0 "$DRIVE" 2>/dev/null && [ "$SECONDS" -lt "$DEADLINE" ]; do
+            sleep 5
+          done
+          if kill -0 "$DRIVE" 2>/dev/null; then
+            echo "::warning::driver hit the 900s cap; recording still finalised"
+            kill -TERM "$DRIVE" 2>/dev/null
+          fi
+          wait "$DRIVE" 2>/dev/null
+          tail -25 /tmp/drive-record.log
 
           sleep 3
           stop_recording
