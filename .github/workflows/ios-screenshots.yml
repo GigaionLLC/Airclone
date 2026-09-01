@@ -327,5 +327,12 @@ jobs:
         if: always()
         with:
           name: ios-screenshots
-          path: artifacts/*.png
+          # NOT artifacts/*.png. The record mode writes an .mp4 here, and a glob
+          # that only matched PNGs left it on the runner while every step still
+          # reported success - the recording genuinely happened, it just never
+          # came back. Same lesson as the Windows signing gap: a green check is
+          # not the artifact.
+          path: |
+            artifacts/*.png
+            artifacts/*.mp4
           if-no-files-found: warn
