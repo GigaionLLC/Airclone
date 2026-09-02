@@ -122,6 +122,10 @@ ACCOUNTS AND PURCHASES. There is no account registration, login or account delet
 ⚠️ Do **not** mention the command console in these notes, and do not show it in a
 screenshot.
 
+## Related
+
+- [`review-replies.md`](review-replies.md) — the exact App Review reply texts that were sent, and why they are worded that way
+
 ## Screenshots
 
 Captured on simulators by

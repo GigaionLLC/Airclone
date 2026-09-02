@@ -333,6 +333,59 @@ France is deselected from availability for export-compliance reasons. Say so in
 the notes rather than leaving a reviewer to find an unexplained regional gap and
 draw their own conclusion.
 
+### Producing the screen recording without an iPhone
+
+`ios-screenshots.yml` has a **`record`** mode. It reuses the whole simulator rig
+(build, boot, seed demo media, install) and adds `simctl io recordVideo`:
+
+```bash
+gh workflow run ios-screenshots.yml -f mode=record -f settle_seconds=25
+```
+
+The raw artifact is ~7 minutes and **mostly the iOS springboard**, because the
+recorder starts before the app is built and installed. The app appears in the
+last ~60 seconds. Trim before sending anything to Apple:
+
+```bash
+# find where the app actually starts, then cut from just after it
+ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1 raw.mp4
+ffmpeg -ss 377 -i raw.mp4 -c:v libx264 -preset veryfast -crf 23     -movflags +faststart airclone-ios-walkthrough-trimmed.mp4
+```
+
+The trimmed result should be ~55s, ~765KB, 1320x2868. Extract a few frames and
+LOOK at them before sending — see below for why.
+
+### The recording rig failed four times, each differently
+
+Worth reading before trusting any capture pipeline here. Every failure passed
+the check written for the previous one:
+
+| # | Symptom | Cause |
+| :--- | :--- | :--- |
+| 1 | no video in the artifact | `upload-artifact` globbed `artifacts/*.png` |
+| 2 | video present, 0 bytes | `recordVideo` writes its moov atom only on SIGINT; a cancelled run skipped the kill |
+| 3 | video 100 minutes of a static screen | `timeout` **does not exist on macOS runners**; under `set +e` the line failed silently and `flutter drive` never ran |
+| 4 | video fine but 6 minutes of springboard | the recorder starts before the app is built |
+
+Fixes now in the workflow: the upload glob takes `*.mp4`, the recorder is
+stopped from an `EXIT/INT/TERM` trap, the driver is capped by a hand-rolled
+watchdog (background pid + deadline poll, not `timeout`) writing to a FILE not a
+pipe, and the step requires >=100KB rather than merely non-empty.
+
+**The generalisable rule: check the pixels, not the file.** Presence, size,
+dimensions and even a valid moov atom all passed on a video that was 100 minutes
+of a home screen. Only `ffprobe` duration and extracted frames caught it. This
+is the same failure as the springboard screenshot in `docs/store/apple/ios/`.
+
+### The reply wording is saved
+
+Do not re-derive it. `docs/store/apple/review-replies.md` holds the exact text
+sent for both platforms, with the reasoning for each choice — including why the
+simulator limitation goes in sentence two rather than at the end.
+
+Apple's reply box caps at **4,000 BYTES**, not characters; em-dashes are 3 bytes
+each, so measure with `wc -c`.
+
 ## See also
 
 - Windows Store per-release runbook: `dev/windows-signing-and-store.md` §2.
