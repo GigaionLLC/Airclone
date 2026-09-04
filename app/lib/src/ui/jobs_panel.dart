@@ -59,7 +59,12 @@ class JobsPanel extends ConsumerWidget {
                     itemCount: jobs.length,
                     separatorBuilder: (_, _) =>
                         Divider(height: 1, color: colors.border),
-                    itemBuilder: (_, i) => _JobRow(job: jobs[i]),
+                    // Keyed by job id: rows carry expansion state, and a
+                    // ListView reusing an element by INDEX would otherwise move
+                    // one job's "show every file" onto a different job when the
+                    // list reorders or a finished job is cleared.
+                    itemBuilder: (_, i) =>
+                        _JobRow(key: ValueKey(jobs[i].id), job: jobs[i]),
                   ),
           ),
         ],
@@ -91,12 +96,15 @@ class _Header extends ConsumerWidget {
       '$finished done',
     ].join(' · ');
 
+    // Vertically compact ON PURPOSE: this header plus the dock's tab strip is
+    // what [kMinJobsDockHeight] has to accommodate, and Material's default
+    // 40-48px button targets would eat the whole dock at its minimum.
     return Padding(
       padding: const EdgeInsets.fromLTRB(
         Space.x4,
+        Space.x2,
         Space.x3,
-        Space.x3,
-        Space.x3,
+        Space.x2,
       ),
       child: Row(
         children: [
@@ -115,10 +123,11 @@ class _Header extends ConsumerWidget {
             tooltip: paused
                 ? 'Resume queue'
                 : 'Pause queue (queued transfers wait; running ones finish)',
-            visualDensity: VisualDensity.compact,
             onPressed: () => ref.read(queuePausedProvider.notifier).toggle(),
             icon: Icon(paused ? Icons.play_arrow : Icons.pause, size: 18),
             color: paused ? colors.warning : colors.textMuted,
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints.tightFor(width: 32, height: 28),
           ),
           TextButton(
             onPressed: hasFinished
@@ -128,6 +137,8 @@ class _Header extends ConsumerWidget {
             style: TextButton.styleFrom(
               foregroundColor: colors.primary,
               disabledForegroundColor: colors.textFaint,
+              minimumSize: const Size(0, 28),
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
               padding: const EdgeInsets.symmetric(
                 horizontal: Space.x3,
                 vertical: Space.x1,
@@ -158,13 +169,25 @@ class _EmptyState extends StatelessWidget {
 }
 
 /// A single transfer line: type, source→dest, progress, sizes, speed, status.
-class _JobRow extends ConsumerWidget {
-  const _JobRow({required this.job});
+class _JobRow extends ConsumerStatefulWidget {
+  const _JobRow({super.key, required this.job});
 
   final Job job;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<_JobRow> createState() => _JobRowState();
+}
+
+class _JobRowState extends ConsumerState<_JobRow> {
+  /// How many in-flight files a collapsed row shows before the "+N more"
+  /// expander. Three keeps the default dock readable with several jobs in it.
+  static const int _collapsedFiles = 3;
+
+  bool _expanded = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final job = widget.job;
     final colors = AircloneTheme.of(context);
     final failed = job.status == JobStatus.failed;
     final barColor = failed ? colors.error : colors.primary;
@@ -217,9 +240,15 @@ class _JobRow extends ConsumerWidget {
                     valueColor: AlwaysStoppedAnimation<Color>(barColor),
                   ),
                 ),
-                // Per-file breakdown for a running multi-file job (capped).
+                // Per-file breakdown for a running multi-file job. Collapsed
+                // to [_collapsedFiles] with a TAPPABLE expander — the old
+                // "+N more" was plain text, so a job moving 16 files at once
+                // showed three of them and no way to see the rest.
                 if (job.isRunning && job.transferring.isNotEmpty) ...[
-                  for (final t in job.transferring.take(3))
+                  for (final t
+                      in _expanded
+                          ? job.transferring
+                          : job.transferring.take(_collapsedFiles))
                     Padding(
                       padding: const EdgeInsets.only(top: 3),
                       child: Row(
@@ -246,12 +275,24 @@ class _JobRow extends ConsumerWidget {
                         ],
                       ),
                     ),
-                  if (job.transferring.length > 3)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 3),
-                      child: Text(
-                        '+${job.transferring.length - 3} more',
-                        style: TextStyle(color: colors.textFaint, fontSize: 10),
+                  if (job.transferring.length > _collapsedFiles)
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: InkWell(
+                        onTap: () => setState(() => _expanded = !_expanded),
+                        child: Padding(
+                          padding: const EdgeInsets.only(top: 3, bottom: 1),
+                          child: Text(
+                            _expanded
+                                ? 'Show fewer files'
+                                : '+${job.transferring.length - _collapsedFiles}'
+                                      ' more — show all',
+                            style: TextStyle(
+                              color: colors.primary,
+                              fontSize: 10,
+                            ),
+                          ),
+                        ),
                       ),
                     ),
                 ],

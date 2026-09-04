@@ -14,9 +14,14 @@ const double kMinSplitRatio = 0.2;
 const double kMaxSplitRatio = 0.8;
 
 /// The bottom Transfers / Recent-activity dock can never be dragged shorter
-/// than this (its tab strip plus a couple of rows stay readable) nor taller
-/// than [kMaxJobsDockFraction] of the work area (the file panes must survive).
-const double kMinJobsDockHeight = 90;
+/// than this nor taller than [kMaxJobsDockFraction] of the work area (the file
+/// panes must survive).
+///
+/// The floor is not a taste call: it is the dock's 30px tab strip plus the
+/// Transfers panel's own header plus one job row. At the old 90 the panel's
+/// header alone did not fit, and dragging the dock to its minimum overflowed
+/// it — a debug-mode overflow stripe, and in release a header clipped mid-row.
+const double kMinJobsDockHeight = 140;
 const double kMaxJobsDockFraction = 0.8;
 
 /// Default dock height — what the dock was fixed at before it became

@@ -31,7 +31,6 @@ import '../state/remote_about.dart';
 import '../state/remotes_provider.dart';
 import '../state/scheduler_controller.dart';
 import '../state/serve_policy.dart';
-import '../state/stats_controller.dart';
 import 'add_remote_dialog.dart';
 import 'bandwidth_control.dart';
 import 'browser_pane.dart';
@@ -46,19 +45,17 @@ import 'format.dart';
 import 'home_view.dart';
 import 'native_drag.dart';
 import 'inspector_panel.dart';
-import 'jobs_panel.dart';
+import 'jobs_dock.dart';
 import 'mobile_home.dart';
 import 'mount_panel.dart';
 import 'pane_drag.dart';
 import 'pane_split.dart';
 import 'paste_action.dart';
 import 'quick_look.dart';
-import 'recent_activity_panel.dart';
 import 'search_dialog.dart';
 import 'serve_panel.dart';
 import 'settings_screen.dart';
 import 'shortcuts_dialog.dart';
-import 'stats_panel.dart';
 import 'tasks_panel.dart';
 import 'theme/tokens.dart';
 import 'touch.dart';
@@ -818,96 +815,37 @@ class _WorkArea extends ConsumerWidget {
           ref.watch(jobsDockHeightProvider),
           cons.maxHeight,
         );
+        // The tallest the shell will allow right now. Double-tapping the handle
+        // (and the dock's own chevron) toggles between this and the default —
+        // dragging works, but a divider is easy to miss, and a transfer list
+        // that needs to be twice as tall is exactly when nobody wants to hunt
+        // for one.
+        final tallest = clampJobsDockHeight(double.infinity, cons.maxHeight);
+        void toggleTall() => ref
+            .read(jobsDockHeightProvider.notifier)
+            .set(height >= tallest - 0.5 ? kDefaultJobsDockHeight : tallest);
         return Column(
           children: [
             Expanded(child: panes),
             ResizeHandle(
               axis: Axis.vertical,
+              tooltip: 'Drag to resize · double-click to expand',
+              onDoubleTap: toggleTall,
               // Dragging UP (negative dy) makes the dock taller.
               onDelta: (dy) => ref
                   .read(jobsDockHeightProvider.notifier)
                   .set(clampJobsDockHeight(height - dy, cons.maxHeight)),
             ),
-            SizedBox(height: height, child: const _JobsDock()),
+            SizedBox(
+              height: height,
+              child: JobsDock(
+                atMaxHeight: height >= tallest - 0.5,
+                onToggleHeight: toggleTall,
+              ),
+            ),
           ],
         );
       },
-    );
-  }
-}
-
-/// The bottom dock: a "Transfers" tab (live stats + jobs) and a "Recent
-/// activity" tab (completed-transfer history). Defaults to Transfers so the
-/// Airclone default look is unchanged.
-class _JobsDock extends ConsumerStatefulWidget {
-  const _JobsDock();
-  @override
-  ConsumerState<_JobsDock> createState() => _JobsDockState();
-}
-
-class _JobsDockState extends ConsumerState<_JobsDock> {
-  int _tab = 0;
-
-  @override
-  Widget build(BuildContext context) {
-    final c = AircloneTheme.of(context);
-    return Column(
-      children: [
-        SizedBox(
-          height: 30,
-          child: Row(
-            children: [
-              _tabButton(c, 0, 'Transfers'),
-              _tabButton(c, 1, 'Recent activity'),
-            ],
-          ),
-        ),
-        Divider(height: 1, color: c.border),
-        Expanded(
-          child: _tab == 0
-              ? Column(
-                  children: [
-                    if (ref.watch(statsProvider.select((s) => s.isActive)))
-                      const SizedBox(
-                        height: 100,
-                        child: Padding(
-                          padding: EdgeInsets.all(Space.x2),
-                          child: StatsPanel(),
-                        ),
-                      ),
-                    const Expanded(child: JobsPanel()),
-                  ],
-                )
-              : const RecentActivityPanel(),
-        ),
-      ],
-    );
-  }
-
-  Widget _tabButton(AircloneColors c, int index, String label) {
-    final on = _tab == index;
-    return InkWell(
-      onTap: () => setState(() => _tab = index),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: Space.x4),
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          border: Border(
-            bottom: BorderSide(
-              color: on ? c.primary : Colors.transparent,
-              width: 2,
-            ),
-          ),
-        ),
-        child: Text(
-          label,
-          style: TextStyle(
-            color: on ? c.primary : c.textMuted,
-            fontSize: 12,
-            fontWeight: on ? FontWeight.w600 : FontWeight.w400,
-          ),
-        ),
-      ),
     );
   }
 }

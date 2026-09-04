@@ -5,11 +5,32 @@ import '../state/stats_controller.dart';
 import 'theme/tokens.dart';
 
 /// Live transfer-statistics strip backed by [statsProvider] (`core/stats`).
-class StatsPanel extends ConsumerWidget {
+///
+/// Sizes itself to the in-flight file list, up to whatever maximum height its
+/// parent allows — the shell's dock gives it half the dock, so dragging the
+/// dock taller genuinely shows more files. Beyond that maximum it scrolls, with
+/// a visible scrollbar: rclone can have `--transfers` files moving at once and
+/// the strip must never silently hide the rest.
+class StatsPanel extends ConsumerStatefulWidget {
   const StatsPanel({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<StatsPanel> createState() => _StatsPanelState();
+}
+
+class _StatsPanelState extends ConsumerState<StatsPanel> {
+  // Owned (not the primary controller) so the scrollbar always has a position
+  // to attach to, whichever surface embeds the strip.
+  final _scroll = ScrollController();
+
+  @override
+  void dispose() {
+    _scroll.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final c = AircloneTheme.of(context);
     final stats = ref.watch(statsProvider);
 
@@ -28,12 +49,17 @@ class StatsPanel extends ConsumerWidget {
           if (stats.isActive) ...[
             const SizedBox(height: Space.x3),
             Flexible(
-              child: ListView.separated(
-                shrinkWrap: true,
-                itemCount: stats.transferring.length,
-                separatorBuilder: (_, _) => const SizedBox(height: Space.x2),
-                itemBuilder: (_, i) =>
-                    _TransferRow(item: stats.transferring[i]),
+              child: Scrollbar(
+                controller: _scroll,
+                child: ListView.separated(
+                  controller: _scroll,
+                  shrinkWrap: true,
+                  padding: const EdgeInsets.only(right: Space.x2),
+                  itemCount: stats.transferring.length,
+                  separatorBuilder: (_, _) => const SizedBox(height: Space.x2),
+                  itemBuilder: (_, i) =>
+                      _TransferRow(item: stats.transferring[i]),
+                ),
               ),
             ),
           ] else

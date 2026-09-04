@@ -86,40 +86,104 @@ class PaneResizeHandle extends ConsumerWidget {
 /// 1px centred line, reporting each drag as a pixel delta along [axis].
 /// [PaneResizeHandle] turns that delta into a split ratio; the bottom dock
 /// turns it into a height — the visuals and the hit-target stay identical.
-class ResizeHandle extends StatelessWidget {
-  const ResizeHandle({super.key, required this.axis, required this.onDelta});
+///
+/// The band LIGHTS UP under the pointer (and while being dragged). A 1px hair
+/// line is indistinguishable from the borders either side of it, and a divider
+/// nobody can see is a divider nobody drags: the transfers dock was reported as
+/// "compacted, and I couldn't resize it" while it had been resizable all along.
+/// The grab area is unchanged — only its visibility is.
+class ResizeHandle extends StatefulWidget {
+  const ResizeHandle({
+    super.key,
+    required this.axis,
+    required this.onDelta,
+    this.onDoubleTap,
+    this.tooltip,
+  });
 
   final Axis axis;
 
   /// Pixel movement along [axis] (positive = right / down).
   final ValueChanged<double> onDelta;
 
+  /// Optional shortcut for "give me all of it / put it back" — the dock uses it
+  /// to toggle between its default height and the tallest the shell allows.
+  final VoidCallback? onDoubleTap;
+
+  /// Optional hover hint naming what the handle resizes.
+  final String? tooltip;
+
+  @override
+  State<ResizeHandle> createState() => _ResizeHandleState();
+}
+
+class _ResizeHandleState extends State<ResizeHandle> {
+  bool _hover = false;
+  bool _dragging = false;
+
   @override
   Widget build(BuildContext context) {
     final c = AircloneTheme.of(context);
-    final horizontal = axis == Axis.horizontal;
+    final horizontal = widget.axis == Axis.horizontal;
+    final active = _hover || _dragging;
+    // Thicker AND accent-coloured when live, so the affordance reads at a
+    // glance instead of only through the cursor change (which touch never has).
+    final thickness = active ? 3.0 : 1.0;
+    final color = active ? c.primary : c.border;
 
-    // A ~8px grab band (comfortable for touch) with a 1px centred divider line.
     final line = horizontal
         ? SizedBox(
             width: 8,
-            child: Center(child: Container(width: 1, color: c.border)),
+            child: Center(
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 90),
+                width: thickness,
+                color: color,
+              ),
+            ),
           )
         : SizedBox(
             height: 8,
-            child: Center(child: Container(height: 1, color: c.border)),
+            child: Center(
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 90),
+                height: thickness,
+                color: color,
+              ),
+            ),
           );
 
-    return MouseRegion(
+    final Widget band = MouseRegion(
       cursor: horizontal
           ? SystemMouseCursors.resizeLeftRight
           : SystemMouseCursors.resizeUpDown,
+      onEnter: (_) => setState(() => _hover = true),
+      onExit: (_) => setState(() => _hover = false),
       child: GestureDetector(
         behavior: HitTestBehavior.translucent,
-        onHorizontalDragUpdate: horizontal ? (d) => onDelta(d.delta.dx) : null,
-        onVerticalDragUpdate: horizontal ? null : (d) => onDelta(d.delta.dy),
+        onDoubleTap: widget.onDoubleTap,
+        onHorizontalDragStart: horizontal
+            ? (_) => setState(() => _dragging = true)
+            : null,
+        onHorizontalDragEnd: horizontal
+            ? (_) => setState(() => _dragging = false)
+            : null,
+        onHorizontalDragUpdate: horizontal
+            ? (d) => widget.onDelta(d.delta.dx)
+            : null,
+        onVerticalDragStart: horizontal
+            ? null
+            : (_) => setState(() => _dragging = true),
+        onVerticalDragEnd: horizontal
+            ? null
+            : (_) => setState(() => _dragging = false),
+        onVerticalDragUpdate: horizontal
+            ? null
+            : (d) => widget.onDelta(d.delta.dy),
         child: line,
       ),
     );
+    final tip = widget.tooltip;
+    return tip == null ? band : Tooltip(message: tip, child: band);
   }
 }

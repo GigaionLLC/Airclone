@@ -51,6 +51,11 @@ directly **onto a folder row**, exactly like dragging into a folder in a native 
 - **Transfer / Job panel (bottom, dockable):** persistent. Live rows (type, source → dest, per-file
   progress, speed, ETA, status) with **Active / Scheduled / History** tabs (history searchable) and
   Stop / Stop-all / Clear-finished. The always-on observability surface.
+  **Resizable, and everything in it has to grow with it:** drag its top edge, double-click that
+  edge, or use the chevron in its tab strip. The live per-file strip (`StatsPanel`) takes up to half
+  the dock's height rather than a fixed box — a dock the user made taller that still shows three
+  in-flight files is the bug report "the transfers list is compacted … I couldn't resize it". A job
+  moving more files than its row shows offers a tappable expander, never a dead "+N more".
 - **Status bar (bottom, 24px):** Mount Manager + CLI buttons, engine-health dot; center aggregate
   (`↑ 12.4 MB/s · 3 jobs · ETA 2m`); right item-count (tabular-nums).
 

@@ -202,7 +202,7 @@ void main() {
     });
 
     test('a viewport too short for the minimum returns the minimum', () {
-      // max (0.8 * 100 = 80) < min (90) — must not invert the clamp range.
+      // max (0.8 * 100 = 80) < min — must not invert the clamp range.
       expect(clampJobsDockHeight(240, 100), kMinJobsDockHeight);
     });
 
