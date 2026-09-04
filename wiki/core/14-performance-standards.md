@@ -407,6 +407,27 @@ Off-screen thumbnail players obey the same reasoning from the other direction �
   `start()`. Skipped on Android, where `systemTemp` is not app-writable and the OS kills the process
   group anyway.
 
+**RULE — Drain BOTH `stdout` and `stderr` of every spawned child, on every build.**
+
+- **Why:** a pipe nobody reads blocks its **writer** once the buffer fills, and Dart creates a
+  child's pipes with a **1 KiB** buffer on Windows. rclone logs through Go's `log` package, which
+  holds one global mutex across the write, so a single blocked line stalls every goroutine that logs
+  next — **including the ones serving an OS mount**. The field symptom is severe and was reported by
+  a user: after a burst of transfers, Explorer wedges on the mounted drive and only recovers when
+  Airclone is killed (which closes the read end, unblocks the write, and takes `rcd` down with it).
+  A `if (kDebugMode)`-gated listener is NOT a drain — it leaves release builds, the only builds that
+  mount, holding the pipe shut.
+- **Enforced in:** `_drainChildOutput` in
+  [http_rclone_client.dart](../../app/lib/src/rclone/http_rclone_client.dart);
+  `proc.stdout.drain()` in [archive_service.dart](../../app/lib/src/state/archive_service.dart) and
+  [config_transfer_controller.dart](../../app/lib/src/state/config_transfer_controller.dart).
+- **Retention is a separate decision from draining.** Release builds keep only rclone's own
+  ERROR/CRITICAL lines (`isEngineFailureLine`), de-duplicated and capped at 100 a session, because at
+  `-vv`/`--dump` rclone echoes request headers carrying the rc credentials. The diagnostics ring
+  redacts at ingest as the second line of defence — see [Security](15-security.md).
+- **Check:** `grep -rn "Process.start" app/lib` — every spawn must consume both streams
+  unconditionally (a `forEach`/`listen` that keeps the data, or a `drain()` that discards it).
+
 **RULE — Use `Process.start` (not `Process.run`) wherever a timeout must be able to kill the child, and cap unbounded child output.**
 
 - **Why:** `Process.run` gives you nothing to kill, so a timeout orphans a child still holding the

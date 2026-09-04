@@ -6,8 +6,20 @@ import 'dart:math';
 import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:http/http.dart' as http;
 
+import '../state/diagnostics.dart';
 import 'rclone_client.dart';
 import 'windows_child_job.dart';
+
+/// Whether a line the `rcd` child wrote is worth RETAINING on a release build.
+///
+/// Every line is drained regardless — see [HttpRcloneClient._drainChildOutput],
+/// where draining is a deadlock fix, not a logging feature. This only decides
+/// what is kept: rclone's own severity prefix, because at high user verbosity
+/// (-vv / --dump) it echoes request headers carrying the rc credentials, and a
+/// bug report must never carry those. Kept a pure top-level function so it is
+/// unit-testable in isolation.
+bool isEngineFailureLine(String line) =>
+    line.contains('ERROR') || line.contains('CRITICAL');
 
 /// Desktop [RcloneClient]: spawns `rclone rcd` bound to loopback with per-session
 /// credentials, and drives it over HTTP. See `wiki/core/08-core-architecture.md` §3.
@@ -169,17 +181,62 @@ class HttpRcloneClient implements RcloneClient {
         }
       }),
     );
-    // Surface engine stderr for diagnostics — debug builds only. At high user
-    // verbosity (-vv / --dump) rclone can echo headers with the rc
-    // credentials, which must never reach a release device's persistent log.
-    if (kDebugMode) {
-      _process!.stderr.transform(utf8.decoder).listen((line) {
-        // ignore: avoid_print
-        print('[rclone] $line');
-      });
-    }
+    _loggedLines = 0;
+    _lastLoggedLine = null;
+    _drainChildOutput(watched);
 
     await _awaitReady();
+  }
+
+  /// Reads the `rcd` child's stdout AND stderr to end, always, on every build.
+  ///
+  /// This is not logging politeness, it is a deadlock fix. Dart creates a
+  /// child's stdout/stderr as pipes with a **1 KiB** buffer on Windows, and a
+  /// pipe nobody reads blocks its WRITER once that fills. rclone logs through
+  /// Go's `log` package, which holds one global mutex across the write, so a
+  /// single blocked line stalls every other goroutine that logs next —
+  /// including the ones serving an OS mount. That is the shape of the freeze
+  /// reported from the field: a burst of transfers, then Explorer wedged on the
+  /// mounted drive, recovering only when Airclone is killed (which closes the
+  /// read end, unblocks the write, and takes `rcd` down with it).
+  ///
+  /// Draining is free and removes the whole class of hang. What we do with the
+  /// drained lines stays conservative — see [_onEngineLine].
+  void _drainChildOutput(Process proc) {
+    for (final stream in <Stream<List<int>>>[proc.stdout, proc.stderr]) {
+      stream
+          .transform(const Utf8Decoder(allowMalformed: true))
+          .transform(const LineSplitter())
+          // A decode/read error must never stop the drain — the moment this
+          // subscription ends, the pipe starts filling again.
+          .listen(_onEngineLine, onError: (Object _) {}, cancelOnError: false);
+    }
+  }
+
+  /// At most this many engine lines per session reach the diagnostics ring. A
+  /// remote failing every request would otherwise fill it with one repeated
+  /// line and push out the context that makes a bug report readable.
+  static const int _maxLoggedLines = 100;
+  int _loggedLines = 0;
+  String? _lastLoggedLine;
+
+  /// Debug builds print every line. Release builds keep only rclone's own
+  /// ERROR/CRITICAL lines, de-duplicated and capped, because at high user
+  /// verbosity (-vv / --dump) rclone echoes request headers carrying the rc
+  /// credentials — those must never be retained. The ring redacts at ingest as
+  /// a second line of defence.
+  void _onEngineLine(String line) {
+    if (kDebugMode) {
+      // ignore: avoid_print
+      print('[rclone] $line');
+      return;
+    }
+    if (_loggedLines >= _maxLoggedLines) return;
+    if (!isEngineFailureLine(line)) return;
+    if (line == _lastLoggedLine) return;
+    _lastLoggedLine = line;
+    _loggedLines++;
+    logDiagnostic(DiagLevel.error, 'engine', line);
   }
 
   Future<void> _awaitReady() async {
@@ -218,6 +275,7 @@ class HttpRcloneClient implements RcloneClient {
           )
           .timeout(const Duration(seconds: 30));
     } on Object catch (e) {
+      _noteTransportFailure(method, e);
       throw RcloneException(method, 'transport error: $e');
     }
 
@@ -231,6 +289,32 @@ class HttpRcloneClient implements RcloneClient {
       throw RcloneException(method, msg, statusCode: res.statusCode);
     }
     return body;
+  }
+
+  DateTime? _lastTransportReport;
+
+  /// Leaves evidence when the engine stops answering, at most once a minute.
+  ///
+  /// A wedged `rcd` answers nothing, so every poller in the app times out in
+  /// turn and logging each would bury a report in identical lines. One entry a
+  /// minute is enough to separate "Airclone is slow" from "the engine stopped
+  /// answering" — which is exactly the question an OS-mount freeze raises, and
+  /// the one a user cannot answer from the outside. Silent during [quit], where
+  /// a refused connection is the expected outcome, not a symptom.
+  void _noteTransportFailure(String method, Object error) {
+    if (_quitting) return;
+    final now = DateTime.now();
+    final last = _lastTransportReport;
+    if (last != null && now.difference(last) < const Duration(minutes: 1)) {
+      return;
+    }
+    _lastTransportReport = now;
+    logDiagnostic(
+      DiagLevel.warning,
+      'engine',
+      'no answer from the engine for $method',
+      detail: '$error',
+    );
   }
 
   /// Runs an arbitrary rclone subcommand via `core/command` with returnType

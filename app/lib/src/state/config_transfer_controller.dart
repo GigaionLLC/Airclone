@@ -892,6 +892,10 @@ class ConfigTransferController {
     WindowsChildJob.adopt(proc.pid);
     final err = StringBuffer();
     final drainErr = proc.stderr.transform(utf8.decoder).forEach(err.write);
+    // stdout carries nothing we want, but an UNREAD pipe blocks its writer once
+    // the (1 KiB, on Windows) buffer fills — draining it is what stops a chatty
+    // run from wedging rclone mid-prompt.
+    unawaited(proc.stdout.drain<void>());
     final stdinText = cmd.stdin;
     if (stdinText != null) {
       proc.stdin.write(stdinText);
