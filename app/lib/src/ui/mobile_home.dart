@@ -11,16 +11,14 @@ import '../state/engine_controller.dart';
 import '../state/local_locations.dart';
 import '../state/pane_layout.dart';
 import '../state/remotes_provider.dart';
-import '../state/stats_controller.dart';
 import 'browser_pane.dart';
 import 'engine_gate.dart';
-import 'jobs_panel.dart';
+import 'jobs_dock.dart';
 import 'mobile_action_sheets.dart';
 import 'pane_split.dart';
 import 'recent_activity_panel.dart';
 import 'selection_actions.dart';
 import 'settings_screen.dart';
-import 'stats_panel.dart';
 import 'tab_strip.dart';
 import 'theme/tokens.dart';
 import 'tv.dart';
@@ -139,21 +137,24 @@ class _MobileHomeScreenState extends ConsumerState<MobileHomeScreen> {
               // A television runs this same shell, with different chrome: the
               // tabs move to a side rail a remote can reach in one LEFT press,
               // and the frame is inset out of the overscan region. See tv.dart.
-              ? TvFocusTheme(
-                  child: TvFocusOverlay(
-                    child: TvInitialFocus(
-                      child: Padding(
-                        padding: tvOverscan,
-                        child: Row(
-                          children: [
-                            TvNavRail(
-                              selected: _tab,
-                              onSelect: (i) => setState(() => _tab = i),
-                            ),
-                            Expanded(child: tabBody),
-                          ],
+              //
+              // The focus theme, the focus ring and the dialog focus seed are
+              // NOT here any more — they wrap the whole app from
+              // `MaterialApp.builder` (TvShell), because a dialog is a sibling
+              // route of this screen, not a descendant of it. What stays is the
+              // initial seed for THIS shell, which has to survive the engine
+              // gate coming down and so re-checks on every build.
+              ? TvInitialFocus(
+                  child: Padding(
+                    padding: tvOverscan,
+                    child: Row(
+                      children: [
+                        TvNavRail(
+                          selected: _tab,
+                          onSelect: (i) => setState(() => _tab = i),
                         ),
-                      ),
+                        Expanded(child: tabBody),
+                      ],
                     ),
                   ),
                 )
@@ -881,19 +882,10 @@ class _MobileTransfersState extends ConsumerState<_MobileTransfers> {
         Divider(height: 1, color: c.border),
         Expanded(
           child: _tab == 0
-              ? Column(
-                  children: [
-                    if (ref.watch(statsProvider.select((s) => s.isActive)))
-                      const SizedBox(
-                        height: 100,
-                        child: Padding(
-                          padding: EdgeInsets.all(Space.x2),
-                          child: StatsPanel(),
-                        ),
-                      ),
-                    const Expanded(child: JobsPanel()),
-                  ],
-                )
+              // Same body as the desktop dock — and the same fix: the live strip
+              // grows with the surface instead of sitting in a fixed box on a
+              // full-height phone tab.
+              ? const TransfersTabBody()
               : const RecentActivityPanel(),
         ),
       ],

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import 'theme/tokens.dart';
 
@@ -286,6 +287,10 @@ class _TvFocusOverlayState extends State<TvFocusOverlay> {
         return false;
       },
       child: Stack(
+        // Expand, not the default loose fit: this now wraps the NAVIGATOR, and
+        // a loosely-constrained Navigator would size itself to its children
+        // instead of the window.
+        fit: StackFit.expand,
         children: [
           widget.child,
           if (_rect != null)
@@ -304,4 +309,126 @@ class _TvFocusOverlayState extends State<TvFocusOverlay> {
       ),
     );
   }
+}
+
+/// Everything a television needs, wrapped around the **whole app**.
+///
+/// This is installed from `MaterialApp.builder`, which sits ABOVE the Navigator
+/// — and that placement is the fix, not a detail. The TV affordances used to
+/// wrap the home screen's `Scaffold` body, so every `showDialog` route (a
+/// separate entry in the Navigator's overlay, a SIBLING of the home screen, not
+/// a descendant) got none of them: no focus ring, no seeded focus, and the
+/// default Material focus wash that is invisible across a room. A user reported
+/// exactly that outcome — "I can select the config file and add passphrase but
+/// cannot navigate to click on the button Unlock ... same if I try to add a
+/// remote manually" — and both of those are dialogs.
+class TvShell extends StatelessWidget {
+  const TvShell({super.key, required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => TvFocusTheme(
+    child: TvFocusOverlay(
+      child: TvDpadEscape(child: TvFocusSeed(child: child)),
+    ),
+  );
+}
+
+/// Lets the D-pad LEAVE a text field.
+///
+/// Flutter binds a bare ArrowUp/ArrowDown to a text-editing intent on Android
+/// (`DefaultTextEditingShortcuts`), and `EditableText` enables that action
+/// whenever the selection is valid — which is always. So the key is CONSUMED to
+/// move the caret (on a single-line field, to the start or end of the text) and
+/// never reaches focus traversal. With a mouse or a touchscreen nobody notices;
+/// with a remote it is a trap with no exit, and it is why the passphrase field
+/// in "Import config" could be typed into but never escaped.
+///
+/// The escape hatch is [DirectionalFocusIntent.ignoreTextFields]: the text
+/// field's own `DirectionalFocusAction.forTextField()` honours a directional
+/// move when the intent explicitly says text fields are not exempt. Binding it
+/// here — inside `MaterialApp.builder`, therefore BELOW the app-level
+/// `DefaultTextEditingShortcuts` — wins the lookup, because key events bubble
+/// from the focused node outwards and the innermost binding matches first.
+///
+/// Vertical only, deliberately. LEFT/RIGHT stay with the caret so a typo in a
+/// passphrase is still fixable; UP/DOWN are what a remote uses to walk a form,
+/// and every dialog in this app stacks its fields and its buttons vertically.
+class TvDpadEscape extends StatelessWidget {
+  const TvDpadEscape({super.key, required this.child});
+
+  final Widget child;
+
+  static const Map<ShortcutActivator, Intent> _shortcuts =
+      <ShortcutActivator, Intent>{
+        SingleActivator(LogicalKeyboardKey.arrowUp): DirectionalFocusIntent(
+          TraversalDirection.up,
+          ignoreTextFields: false,
+        ),
+        SingleActivator(LogicalKeyboardKey.arrowDown): DirectionalFocusIntent(
+          TraversalDirection.down,
+          ignoreTextFields: false,
+        ),
+      };
+
+  @override
+  Widget build(BuildContext context) =>
+      Shortcuts(shortcuts: _shortcuts, child: child);
+}
+
+/// Seeds focus into whatever route just took it — dialogs included.
+///
+/// [TvInitialFocus] solves this for the home shell by owning a scope and
+/// re-checking on every build. A pushed route needs the same thing and cannot
+/// use that: `ModalRoute.didPush` makes the route's own [FocusScopeNode] the
+/// focused child, and a scope with no focused child of its own IS the primary
+/// focus. Directional traversal asks "what is nearest to the focused widget?",
+/// so with only a scope focused there is no origin and every arrow press is a
+/// no-op — a dialog that cannot be navigated at all, which is what a remote
+/// meets on any dialog whose first control isn't autofocused.
+///
+/// Watching [FocusManager] rather than the Navigator keeps this independent of
+/// how a route got on screen (dialog, bottom sheet, menu, push), and it settles
+/// on its own: seeding moves focus to a real widget, and a real widget is not a
+/// scope, so the next notification does nothing.
+class TvFocusSeed extends StatefulWidget {
+  const TvFocusSeed({super.key, required this.child});
+
+  final Widget child;
+
+  @override
+  State<TvFocusSeed> createState() => _TvFocusSeedState();
+}
+
+class _TvFocusSeedState extends State<TvFocusSeed> {
+  @override
+  void initState() {
+    super.initState();
+    FocusManager.instance.addListener(_schedule);
+    _schedule();
+  }
+
+  @override
+  void dispose() {
+    FocusManager.instance.removeListener(_schedule);
+    super.dispose();
+  }
+
+  // Post-frame: on the frame a route is pushed, the widgets to focus into have
+  // not been laid out yet, and traversal over a zero-size subtree finds nothing.
+  void _schedule() =>
+      WidgetsBinding.instance.addPostFrameCallback((_) => _seed());
+
+  void _seed() {
+    if (!mounted) return;
+    final focused = FocusManager.instance.primaryFocus;
+    // A real widget already holds focus — leave it alone. Only a bare scope
+    // (or nothing at all) is the dead end this exists to break.
+    if (focused is! FocusScopeNode) return;
+    focused.nextFocus();
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.child;
 }

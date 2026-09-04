@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../rclone/models/mount_info.dart';
+import '../state/android_native.dart';
 import '../state/diagnostics.dart';
 import '../state/engine_controller.dart';
 import '../state/mount_controller.dart';
@@ -15,6 +16,7 @@ import '../state/window_backdrop.dart';
 import 'close_with_mounts_dialog.dart';
 import 'home_screen.dart';
 import 'theme/app_theme.dart';
+import 'tv.dart';
 
 /// Application root: themes (mode driven by settings) + the home shell.
 class AircloneApp extends ConsumerStatefulWidget {
@@ -194,6 +196,17 @@ class _AircloneAppState extends ConsumerState<AircloneApp> {
       theme: withBackdrop(AppTheme.build(skin, Brightness.light)),
       darkTheme: withBackdrop(AppTheme.build(skin, Brightness.dark)),
       themeMode: mode,
+      // The television affordances go HERE, not around the home screen: builder
+      // wraps the Navigator, so dialogs and every other pushed route inherit
+      // them. Wrapping the home screen instead left every dialog without a
+      // focus ring or a seeded focus, which is what made "Import config" and
+      // "Add remote" impossible to finish with a remote. `androidIsTelevision`
+      // is resolved in main() before runApp and is false everywhere else, so no
+      // other platform sees any of this.
+      builder: (context, child) {
+        final app = child ?? const SizedBox.shrink();
+        return androidIsTelevision ? TvShell(child: app) : app;
+      },
       home: const HomeScreen(),
     );
   }

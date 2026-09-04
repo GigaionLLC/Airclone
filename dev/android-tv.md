@@ -108,6 +108,37 @@ The general rule for anything added to the TV shell: **prove focus is visible by
 screenshotting it, not by setting a theme colour and assuming.** An invisible
 focus ring and an absent one produce identical evidence.
 
+**Focus must reach DIALOGS, and it did not.** A user with a Google TV remote
+reported the app as unusable: "I can select the config file and add passphrase
+but cannot navigate to click on the button *Unlock*. Same kind of issue if I try
+to add a remote manually." Two independent traps, both outside the shell:
+
+- *The TV affordances wrapped the wrong thing.* `TvFocusTheme`, `TvFocusOverlay`
+  and the focus seed sat around `MobileHomeScreen`'s `Scaffold` body. A
+  `showDialog` route is a SIBLING entry in the Navigator's overlay, not a
+  descendant of that screen, so every dialog got none of them: no ring, no
+  seeded focus, and Material's ~10% focus wash, which is invisible across a
+  room. They now wrap the whole app from `MaterialApp.builder`, which sits above
+  the Navigator — see `TvShell`. `TvFocusSeed` is the route-agnostic half of
+  that: it watches `FocusManager` and, whenever a bare `FocusScopeNode` holds
+  primary focus (which is exactly the state a freshly pushed dialog leaves), it
+  seeds focus into the route's first control.
+- *A text field is a one-way door for a D-pad.* Flutter binds a bare
+  ArrowUp/ArrowDown to a text-editing intent on Android, and `EditableText`
+  enables that action whenever the selection is valid — always. The key is
+  consumed to move the caret and never reaches focus traversal, so the
+  passphrase field could be typed into and never left. `TvDpadEscape` rebinds
+  the two vertical arrows to `DirectionalFocusIntent(..., ignoreTextFields:
+  false)`, which the field's own `DirectionalFocusAction.forTextField()` honours.
+  It is installed inside `MaterialApp.builder`, therefore BELOW the app-level
+  `DefaultTextEditingShortcuts`, and key events bubble outwards from the focused
+  node, so the inner binding wins. LEFT/RIGHT are deliberately left to the caret
+  so a typo in a passphrase is still fixable.
+
+Both are covered by `app/test/tv_dpad_test.dart`, and each has a paired test of
+the UN-wrapped widget that demonstrates the trap — a refactor that drops a
+wrapper fails there instead of in a living room.
+
 ## Verifying it with a remote and nothing else
 
 ```bash
