@@ -4,6 +4,37 @@ All changes made by AI agents are tracked chronologically below (most recent fir
 
 ---
 
+## [2026-09-04] - v0.7.1 shipped, and the TV fixes verified with a remote
+
+**Agent:** Claude Opus 5 - `main`
+**Files Modified:** `app/pubspec.yaml` (0.7.1+119), `dev/releases/v0.7.1.md` (new),
+`dev/android-tv.md`
+**Database/API Changes:** Google Play **open testing (beta) now serves version code
+119** - Play's own API answered `beta [119] completed at 100%  v0.7.1`, which is the
+release job's verification step, not a green check. GitHub Release v0.7.1 published with
+11 assets (per-ABI + universal APKs, .aab, signed Windows zip/installer/MSIX, notarized
+macOS .dmg/.zip, Linux tarball). Production promotion deliberately NOT automatic.
+
+**Summary:** Tagged v0.7.1 with the three field-report fixes, after driving the reported
+flows on a real Android TV emulator (API 36, 1080p) with **D-pad keys only** - a mouse
+click in the emulator proves nothing, because it is an input a remote cannot produce.
+Confirmed frame by frame: an encrypted config's **Unlock** button reached by pressing
+DOWN from the passphrase field and activated (the literal bug reported), and "Add a
+remote" opened with a seeded focus ring, its search field left in one press, a storage
+type selected, and the form's primary button reached the same way. Both the modal
+bottom sheet and the dialog got a visible ring and a starting focus - the two things
+every dialog previously had none of.
+
+That run also turned up a gap that is NOT ours and NOT a regression: a stock Android TV
+image has **no document picker**, so `ACTION_OPEN_DOCUMENT` resolves to
+`com.android.tv.frameworkpackagestubs/.Stubs$DocumentsStub` and "Import File Config"
+silently does nothing on such a device. The reporter clearly has a file manager
+installed (they reached the passphrase step), so it is not their bug. Recorded in
+`dev/android-tv.md` and under "Known gap" in the release notes; making the app SAY so,
+and point at QR import, is queued separately.
+
+---
+
 ## [2026-09-03] - Three field reports: a mount freeze, a cramped transfers list, and a TV remote that could not press Unlock
 
 **Agent:** Claude Opus 5 - `main`

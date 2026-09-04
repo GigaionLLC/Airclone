@@ -139,6 +139,26 @@ Both are covered by `app/test/tv_dpad_test.dart`, and each has a paired test of
 the UN-wrapped widget that demonstrates the trap — a refactor that drops a
 wrapper fails there instead of in a living room.
 
+## A television has no file picker
+
+Verified 2026-09-04 on the `airclone_tv` AVD (`sdk_google_atv64_x86_64`, API 36)
+while confirming the focus fixes: pressing **Import File Config → Choose a
+file…** starts
+`com.android.tv.frameworkpackagestubs/.Stubs$DocumentsStub`, the framework's
+*stub* for an intent nothing on the device handles, which finishes immediately.
+A stock Android TV image ships no DocumentsUI at all, so `ACTION_OPEN_DOCUMENT`
+has nowhere to go and the button silently does nothing.
+
+This is a platform gap, not a focus bug, and it does not reproduce on TVs whose
+OEM ships a file manager — the user who reported the focus problem got as far as
+typing a passphrase, so theirs has one. **Import QR Config** needs no picker and
+is the path that always works on a television.
+
+Two things follow for anyone adding a feature here. Do not reach for a system
+picker on TV without a fallback; and when a picker returns nothing, remember
+that "the user cancelled" and "there was never a picker" look identical from
+Dart, which is why the button reads as broken rather than unavailable.
+
 ## Verifying it with a remote and nothing else
 
 ```bash
