@@ -4,6 +4,53 @@ All changes made by AI agents are tracked chronologically below (most recent fir
 
 ---
 
+## [2026-09-03] - Three field reports: a mount freeze, a cramped transfers list, and a TV remote that could not press Unlock
+
+**Agent:** Claude Opus 5 - `main`
+**Files Modified:** `app/lib/src/rclone/http_rclone_client.dart`,
+`app/lib/src/state/config_transfer_controller.dart`, `app/lib/src/state/pane_layout.dart`,
+`app/lib/src/ui/{tv,app,mobile_home,home_screen,jobs_dock,jobs_panel,stats_panel,pane_split}.dart`
+(`jobs_dock.dart` is new), `app/test/{tv_dpad,transfers_panel,engine_log}_test.dart` (new),
+`wiki/core/{05-app-structure,14-performance-standards}.md`, `dev/android-tv.md`
+**Database/API Changes:** None
+**Summary:** Three reports, three different causes.
+
+**The Windows mount freeze is ours, and it is a pipe.** `rcd`'s stderr was only read
+`if (kDebugMode)` and its stdout was never read at all. An unread pipe blocks its WRITER once the
+buffer fills, and Dart's Windows pipes hold **1 KiB**; rclone logs under Go's one global `log` mutex,
+so a single blocked line stalls every goroutine that logs next - including the ones serving an OS
+mount. That is exactly the reported shape: a burst of transfers, Explorer wedged on the mounted
+drive, recovering only when Airclone is killed (which closes the read end and takes `rcd` with it).
+Release builds - the only builds that mount - were the ones holding the pipe shut. Both streams are
+now drained unconditionally; retention stayed conservative (ERROR/CRITICAL only, de-duplicated,
+100 a session) because `-vv` echoes the rc credentials. `config_transfer_controller` had the same
+unread stdout. A timed-out RC call now also leaves one diagnostics line a minute, so a future freeze
+can be told apart from "Airclone is slow" from the outside.
+
+**"The transfers list is compacted and I couldn't resize it" was a fixed 100px box.** The dock HAS
+been resizable since v0.6; what did not resize was the live per-file strip inside it, pinned at 100px
+while the job list underneath took every pixel a drag added. It now takes half the surface and
+scrolls, shared by the desktop dock and the phone/TV tab (`TransfersTabBody`), the divider lights up
+under the pointer, double-clicking it or the new chevron toggles tall/default, and a job moving more
+files than its row shows has a tappable expander instead of a dead "+N more". Pulling `JobsDock` out
+of `home_screen.dart` made the real dock testable, which immediately found a pre-existing overflow:
+`kMinJobsDockHeight` was 90, less than the panel header it had to hold. Now 140, with a compacted
+header to match.
+
+**The Google TV remote could not reach a dialog at all**, for two independent reasons. The TV focus
+theme, ring and seed wrapped the home screen's `Scaffold` body - but a `showDialog` route is a
+SIBLING in the Navigator's overlay, not a descendant, so every dialog had no ring, no seeded focus,
+and Material's invisible-across-a-room wash. They now wrap the whole app from `MaterialApp.builder`
+(`TvShell`), with `TvFocusSeed` seeding whichever route just took focus. Separately, Flutter binds a
+bare ArrowUp/ArrowDown to a text-editing intent on Android and `EditableText` enables it whenever the
+selection is valid - always - so the passphrase field consumed the key to move its caret and the
+D-pad could never leave it. `TvDpadEscape` rebinds the two vertical arrows to
+`DirectionalFocusIntent(ignoreTextFields: false)`, which the field's own action honours. Every trap
+has a paired test of the UN-wrapped widget, so a refactor that drops a wrapper fails in CI rather
+than in a living room. analyze/test/format green (707 tests).
+
+---
+
 ## [2026-08-29] - Airclone submitted to the Mac App Store and the iOS App Store
 
 **Agent:** Claude Opus 5 - `main`
