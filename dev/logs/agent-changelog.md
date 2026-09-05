@@ -4,6 +4,32 @@ All changes made by AI agents are tracked chronologically below (most recent fir
 
 ---
 
+## [2026-09-05] - v0.7.2 shipped (mount tuning)
+
+**Agent:** Claude Opus 5 - `main`
+**Files Modified:** `app/pubspec.yaml` (0.7.2+120), `dev/releases/v0.7.2.md` (new)
+**Database/API Changes:** Google Play open testing (beta) now serves version code **120** -
+Play's own API answered `beta [120] completed at 100%  v0.7.2`. GitHub Release v0.7.2 published
+with 11 assets. Production promotion remains manual.
+
+**Summary:** Tagged the mount-tuning work. CI was green on the exact commit before the tag rather
+than after it, and all four platform jobs passed.
+
+The release notes are deliberately split between what was established and what was not. The mount
+settings are **verified** - each read back off a running engine via `vfs/stats` and confirmed to
+have arrived - because rclone silently ignores an option key it does not recognise, so "no error"
+proves nothing. The **improvement is not measured**: no before/after timing, no percentage claimed,
+and the notes say so in their own section rather than implying a win the release cannot show. The
+measurement genuinely could not be done here - it needs a real cloud remote with a live upload, and
+a local-to-local mount has no network to contend for - so it stays open rather than being faked.
+Users are told plainly that if a mount still stalls, that is worth reporting, because it would mean
+the cause is elsewhere.
+
+Also surfaced rather than buried: the new disk cache is **per mount**, so three mounted drives can
+use three times the 10 GiB cap.
+
+---
+
 ## [2026-09-04] - Mount tuning: good defaults, and one place to change them
 
 **Agent:** Claude Opus 5 - `main`
