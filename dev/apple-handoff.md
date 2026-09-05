@@ -13,7 +13,7 @@ IDs, key paths and account state live in the encrypted vault
 | Version 0.6.8 | **READY_FOR_SALE** | **READY_FOR_SALE** |
 | Version 0.7.4 | **does not exist yet** | **does not exist yet** |
 | Build 122 uploaded | ✅ `UPLOAD SUCCEEDED` (UUID 799e7838…) | ✅ `UPLOAD SUCCEEDED` (UUID db0a8c14…) |
-| Build 122 **registered** VALID | ⛔ unverified — see below | ⛔ unverified — see below |
+| Build 122 **registered** VALID | ✅ confirmed 2026-09-05 | ✅ confirmed 2026-09-05 |
 
 **The next action is a human one, and nothing can proceed without it: create the
 0.7.4 version record for each platform** in App Store Connect (+ Version or
@@ -22,12 +22,19 @@ record — it only picks an existing editable one — so both `asc-version.yml`
 report runs stopped with `no editable <PLATFORM> version - refusing to touch one
 in review`, which is the guard working, not a failure.
 
-**Verifying the builds registered is blocked by the same thing.** `main()` calls
-`pick_version()` before anything else, so the build listing in `pick_build()` is
-unreachable until a version exists. That matters more than it sounds: builds 117
-and 118 were both accepted at upload and then **died silently** without ever
-registering. "UPLOAD SUCCEEDED" is not evidence that Apple has a usable build. A
-`mode=builds` that lists builds without needing a version would close this gap.
+**Verifying the builds registered used to be blocked by the same thing** — and
+is not any more. `main()` called `pick_version()` before anything else, so the
+build listing was unreachable until a version existed, which is precisely the
+window right after an upload where a build can die silently (macOS 117 and 118
+both did). `asc-version.yml -f mode=builds` now reaches `pick_build()` directly
+and needs no version record. First use, immediately:
+
+    builds visible to this key: 5
+      build 122    IOS       VALID   expired=False  2026-09-05T12:57:12
+      build 122    MAC_OS    VALID   expired=False  2026-09-05T12:55:59
+
+So both 0.7.4 uploads are real and attachable. `UPLOAD SUCCEEDED` still is not
+evidence on its own — this is.
 
 ### iOS SIGNING: `secrets` DOES NOT WORK — use `ephemeral` (established 2026-09-05)
 
