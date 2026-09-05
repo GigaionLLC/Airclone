@@ -6,7 +6,50 @@ IDs, key paths and account state live in the encrypted vault
 (`python tool/vault.py unlock`, then
 `dev/vault/notes/apple-appstore-setup-record.md`).
 
-## State (2026-08-29): BOTH PLATFORMS SUBMITTED
+## State (2026-09-05): 0.6.8 IS LIVE · 0.7.4 BUILDS UPLOADED, VERSIONS NOT YET CREATED
+
+| | macOS | iOS |
+| :--- | :--- | :--- |
+| Version 0.6.8 | **READY_FOR_SALE** | **READY_FOR_SALE** |
+| Version 0.7.4 | **does not exist yet** | **does not exist yet** |
+| Build 122 uploaded | ✅ `UPLOAD SUCCEEDED` (UUID 799e7838…) | ✅ `UPLOAD SUCCEEDED` (UUID db0a8c14…) |
+| Build 122 **registered** VALID | ⛔ unverified — see below | ⛔ unverified — see below |
+
+**The next action is a human one, and nothing can proceed without it: create the
+0.7.4 version record for each platform** in App Store Connect (+ Version or
+Platform). `tool/asc_build.py` deliberately never POSTs an `appStoreVersions`
+record — it only picks an existing editable one — so both `asc-version.yml`
+report runs stopped with `no editable <PLATFORM> version - refusing to touch one
+in review`, which is the guard working, not a failure.
+
+**Verifying the builds registered is blocked by the same thing.** `main()` calls
+`pick_version()` before anything else, so the build listing in `pick_build()` is
+unreachable until a version exists. That matters more than it sounds: builds 117
+and 118 were both accepted at upload and then **died silently** without ever
+registering. "UPLOAD SUCCEEDED" is not evidence that Apple has a usable build. A
+`mode=builds` that lists builds without needing a version would close this gap.
+
+### iOS SIGNING: `secrets` DOES NOT WORK — use `ephemeral` (established 2026-09-05)
+
+`ios-release.yml -f signing=secrets` fails in seconds with
+`missing: APPLE_IOS_DIST_P12_BASE64(secret) APPLE_IOS_PROVISIONING_PROFILE_BASE64(secret)`.
+Those secrets **do not exist and never did**. The org has `APPLE_MAS_*` (Mac App
+Store) and `APPLE_DEVELOPER_ID_*` (notarised direct download) only — confirmed
+against `gh secret list --org GigaionLLC`. So build 118 must also have gone out
+on `ephemeral`, which is where the retained certificate in the note below came
+from. The refusal is cheap and happens before any build work, so the wrong
+choice costs a minute, not a build number.
+
+**Outstanding iOS distribution certificates — BOTH need revoking by hand once
+the version they signed is live.** Apple caps these (typically 3), and every
+`ephemeral` run mints another without revoking, by design:
+
+| Certificate | Signed | Revoke when |
+| :--- | :--- | :--- |
+| `YQF53PS6AW` | 0.6.8 build 118 | **NOW — 0.6.8 is live** |
+| `3NWQMKV4UB` | 0.7.4 build 122 | once 0.7.4 is live |
+
+## Previously (2026-08-29): BOTH PLATFORMS SUBMITTED
 
 | | macOS | iOS |
 | :--- | :--- | :--- |

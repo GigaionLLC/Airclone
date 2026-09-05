@@ -4,6 +4,43 @@ All changes made by AI agents are tracked chronologically below (most recent fir
 
 ---
 
+## [2026-09-05] - rclone 1.75.1 security update, two diagnostics fixes, v0.7.3 + v0.7.4 shipped to every store
+
+**Agent:** Claude Opus 5 - `main`
+**Files Modified:** `.github/workflows/release.yml`, `dev/android/build-rclone.ps1`,
+`dev/desktop/build-librclone.{ps1,sh}`, `app/lib/src/rclone/http_rclone_client.dart`,
+`app/test/{engine_log,rc_retry}_test.dart`, `app/pubspec.yaml`,
+`dev/releases/v0.7.{3,4}.md` (new), `dev/apple-handoff.md`
+**Database/API Changes:** Play open testing serves **121** (v0.7.3) then **122** (v0.7.4), both
+confirmed by Play's own API. Microsoft Store submission **1152921505701820202** STAGED, not
+submitted. App Store Connect: build 122 uploaded for **both** iOS and macOS.
+
+**Summary:** rclone 1.75.1 landed as a SECURITY release and several advisories hit surfaces we
+ship - archive zip-slip (we ship archive extract), local symlink escapes and a panic on a Range read
+past a symlink's end (previews ARE Range reads), listing entries escaping the root, and headers
+leaking across hosts on redirect. Plus two `accounting` memory leaks specific to a long-running rcd
+with stats groups, which is exactly our engine. All four pin sites moved together. Verified against
+a real binary first, per the standing rule in that pin comment: SHA-256 matched upstream, Range
+serving still answers 206, `config/create` still demands `parameters`, and the v0.7.2 mount options
+still reshape. The MSIX was then unpacked and its bundled rclone.exe RUN - v1.75.1 - because three
+Windows releases once shipped with no rclone at all behind a green log.
+
+v0.7.4 carries two fixes that came out of ONE user diagnostics report, the first time that log has
+paid for itself. An `operations/about` refusal from crypt-over-S3 was sitting at the top of a
+problem report wearing the word ERROR while being entirely correct behaviour; capability probes we
+make on our own initiative are now filtered out, matched on METHOD NAME so it survives rclone
+rewording and cannot swallow a failure the user actually asked for. And a dropped keep-alive socket
+is now retried once - read-only methods only, allowlist fails closed, timeouts excluded because a
+timeout means the engine is still working. A recovered blip is still recorded, at info, with its own
+rate-limit budget: going silent would have destroyed the evidence this fix was built from.
+
+**Apple is blocked on a human and the doc now says so loudly.** 0.6.8 is READY_FOR_SALE on both
+platforms and no 0.7.4 version record exists; `asc_build.py` never creates one. Also established:
+`signing=secrets` for iOS CANNOT work - those secrets do not exist in the org and never did - so
+`ephemeral` is the only path, and it retains a certificate each run. Two are now outstanding.
+
+---
+
 ## [2026-09-05] - v0.7.2 shipped (mount tuning)
 
 **Agent:** Claude Opus 5 - `main`
