@@ -95,10 +95,16 @@ ephemeral ones are already outstanding:
 the version they signed is live.** Apple caps these (typically 3), and every
 `ephemeral` run mints another without revoking, by design:
 
-| Certificate | Signed | Revoke when |
+| Certificate | Signed | State |
 | :--- | :--- | :--- |
-| `YQF53PS6AW` | 0.6.8 build 118 | **NOW — 0.6.8 is live** |
-| `3NWQMKV4UB` | 0.7.4 build 122 | once 0.7.4 is live |
+| `YQF53PS6AW` | 0.6.8 build 118 | ✅ **revoked 2026-09-05** (0.6.8 was live) |
+| `3NWQMKV4UB` | 0.7.4 build 122 | ⛔ **do not revoke** until 0.7.4 is live |
+
+Revoking no longer needs a machine with the `.p8` on it: CI already holds the key
+as an org secret, so `apple-revoke-cert.yml` does one id at a time, with the id
+typed twice and checked before the key is even written to disk. A live app is
+unaffected by revoking the certificate that signed it; a build still in review is
+not — which is why `3NWQMKV4UB` stays until 0.7.4 ships.
 
 ## Previously (2026-08-29): BOTH PLATFORMS SUBMITTED
 
