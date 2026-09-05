@@ -40,6 +40,50 @@ on `ephemeral`, which is where the retained certificate in the note below came
 from. The refusal is cheap and happens before any build work, so the wrong
 choice costs a minute, not a build number.
 
+### SWITCHING iOS OFF EPHEMERAL — the runbook (prepared 2026-09-05)
+
+Ephemeral was a deliberate security posture ("no distribution private key ever
+leaves the runner"), and it was coherent while the cert was revoked at the end of
+every run. That premise is gone: revoking after an upload is what produced the
+build-117 INVALID BINARY, so the lane now retains. We therefore pay a
+long-lived certificate's operational cost — a slot consumed per release and a
+manual revoke each time — while the private key is still discarded, so the
+retained certificate is useless to us AND to an attacker. Worst of both.
+
+Storing one is also not a new exposure in kind: the org already holds
+`APPLE_MAS_APP_P12_BASE64` and `APPLE_MAS_INSTALLER_P12_BASE64`, the same class
+of material for macOS.
+
+**Nothing in this repo needs changing.** `ios-release.yml` already defaults to
+`signing: secrets`, and `tool/asc_ios_signing.py` was written for exactly this —
+it emits pre-base64'd files and prints the `gh secret set` lines, reading from
+files so no secret ever reaches a transcript. It has simply never been run.
+
+**Blocked on one thing only: the `.p8`**, which lives in Proton Drive under
+`DeveloperFiles/Apple-StoreConnect-API-Files/` (outside this repo, by design, and
+Apple only lets it be downloaded once). No machine here can mint an iOS identity
+without it. The stored `dev/secrets/apple-csr/distribution.p12` does NOT help —
+it is a `3rd Party Mac Developer Application` certificate, Mac App Store only.
+
+Order matters, because Apple caps distribution certificates per team and two
+ephemeral ones are already outstanding:
+
+1. **Revoke `YQF53PS6AW` first.** 0.6.8 is live, so it is safe, and it frees a
+   slot for the mint below. Skipping this risks the mint failing at the cap.
+2. Fetch the `.p8`, then:
+   ```
+   python tool/asc_ios_signing.py <key.p8> <keyid> <issuerid> --apply --force-new
+   ```
+   `--force-new` is required: the existing certificates' private keys were
+   discarded by the ephemeral runs, so none of them can be reused.
+3. Run the three `gh secret set` lines the script prints (org scope, visibility
+   all). They read from files — do not paste values.
+4. Prove it before relying on it:
+   `gh workflow run ios-release.yml --ref main -f mode=validate -f signing=secrets`
+5. From then on the default path works with no flag. Revoke `3NWQMKV4UB` once
+   0.7.4 is live, and after that no certificate is ever minted again — only an
+   annual rotation when the cert and profile expire (both 1 year).
+
 **Outstanding iOS distribution certificates — BOTH need revoking by hand once
 the version they signed is live.** Apple caps these (typically 3), and every
 `ephemeral` run mints another without revoking, by design:
