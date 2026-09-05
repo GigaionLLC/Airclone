@@ -38,6 +38,9 @@ Options:
                           write nothing. The point is to find a missing field
                           from one command rather than from a rejection.
   --apply                 actually send it. Without this nothing is written.
+  --builds                just list the builds Apple has registered, and stop.
+                          Works with no editable version, which is exactly when
+                          you need it: right after an upload.
 
 Everything printed is ASCII: GitHub's Windows runners give Python a cp1252
 stdout and a stray arrow aborts the process mid-run (AGENT.md rule 12).
@@ -70,6 +73,14 @@ APPLY = "--apply" in ARGV
 SET_NOTES = "--notes" in ARGV
 ATTACH = "--no-attach" not in ARGV
 AUDIT = "--audit" in ARGV
+# List the builds Apple has registered, WITHOUT needing an editable version.
+# main() otherwise calls pick_version() first, which exits when the only
+# versions are in review or live - so right after an upload, when "did it
+# actually register?" is the one question worth asking, there was no way to
+# ask it. That is not academic: builds 117 and 118 were both accepted at
+# upload and then died silently without ever registering, and "UPLOAD
+# SUCCEEDED" looked identical both times.
+BUILDS = "--builds" in ARGV
 SET_COPYRIGHT = "--copyright" in ARGV
 MANUAL_RELEASE = "--manual-release" in ARGV
 
@@ -342,6 +353,12 @@ def audit(ver):
 
 
 def main():
+    if BUILDS:
+        # Deliberately before pick_version(): the whole point is to work when no
+        # editable version exists yet. pick_build() already prints the listing
+        # and, outside --apply, returns quietly when nothing is attachable.
+        pick_build()
+        return
     ver = pick_version()
     va = ver["attributes"]
     print("%s version %s  state=%s"
