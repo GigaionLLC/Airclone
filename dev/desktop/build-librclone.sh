@@ -16,7 +16,7 @@
 # Usage: dev/desktop/build-librclone.sh [-o OUT_DIR] [-v RCLONE_VERSION]
 set -euo pipefail
 
-RCLONE_VERSION="v1.75.0"
+RCLONE_VERSION="v1.75.1"
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 OUT_DIR=""
 

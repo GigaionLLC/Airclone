@@ -13,7 +13,7 @@
 #
 # Usage: powershell -File dev\desktop\build-librclone.ps1 [-OutDir <dir>] [-Gcc <path>]
 param(
-    [string]$RcloneVersion = 'v1.75.0',
+    [string]$RcloneVersion = 'v1.75.1',
     [string]$OutDir = "$(Split-Path (Split-Path $PSScriptRoot -Parent) -Parent)\app\windows\librclone",
     [string]$Gcc = ''
 )

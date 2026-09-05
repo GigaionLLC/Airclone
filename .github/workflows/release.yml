@@ -27,17 +27,37 @@ env:
   # Store MSIX (windows job), built into librclone, and built as the Android
   # jniLib (android job). Keep in sync with dev/android/build-rclone.ps1 +
   # dev/desktop/build-librclone.sh — ci.yml greps this line and enforces it.
-  # v1.75.0 (2026-07-31). Carries forward the v1.74.4 security patch (CVEs in
-  # serve s3 / serve webdav / local-backend symlink escape — all surfaces
-  # Airclone ships). No breaking changes in the 1.74 -> 1.75 changelog; the two
-  # rc entries that touch our surface ("allow setting rc config and filter
-  # options as flat parameters", "serve rc accepts nested as well as flat
-  # options") are ADDITIVE. Verified against a real v1.75.0 binary before
-  # bumping: `--rc-serve` still answers Range with 206 + Content-Range (the
-  # preview/thumbnail path), and `config/create` still requires the
-  # `parameters` key on every call including continue steps (the regression
-  # that cost a Store certification cycle — see AddRemoteController.answer).
-  RCLONE_VERSION: v1.75.0
+  # v1.75.1 (2026-09-04). A SECURITY release, and several advisories land on
+  # surfaces Airclone actually ships:
+  #   * archive: zip-slip path traversal in untrusted zips, plus entries that
+  #     escape the listed directory (GHSA-66hp-wgxq-6f5q). We ship archive
+  #     create/extract/list, so this is our feature and our users.
+  #   * local: dir metadata and btime escaping the root through a planted
+  #     symlink (GHSA-f8g7-2xjc-7mfh), and a panic on a Range request past the
+  #     end of a symlink (GHSA-p6m2-r3w9-mpxw) — we serve objects over the
+  #     loopback rc for previews, which is exactly a Range read.
+  #   * fs: directory listing entries that escape the root (GHSA-3vxh-3pcx-9m8q,
+  #     GHSA-38xv-hf3p-h7mq). Listing is the core operation.
+  #   * http/fshttp/rest: configured headers leaking to other hosts or over
+  #     plaintext on redirect (GHSA-486v-q2wf-fp2r).
+  #   * Go CVEs via x/crypto (CVE-2026-56854/56855/78662), x/image
+  #     (CVE-2026-46603) and go1.26.6.
+  # Non-security, but ours: `config: redact env var config values in logs` (we
+  # pass RCLONE_CONFIG_PASS by env), two `accounting` memory leaks specific to a
+  # LONG-RUNNING rcd with stats groups (which is precisely our engine), and a
+  # large family of "truncated/corrupted file when the source ends early" fixes
+  # across backends plus `operations: fix silent truncation of streaming
+  # uploads`.
+  # NOTE: rclone now requires go1.26 to build — the librclone/android jobs use
+  # setup-go `stable`, which satisfies it.
+  # Verified against a real v1.75.1 binary before bumping (SHA256 checked
+  # against upstream SHA256SUMS): `--rc-serve` still answers Range with 206 +
+  # Content-Range and the right bytes (the preview/thumbnail path);
+  # `config/create` still requires the `parameters` key (the regression that
+  # cost a Store certification cycle — see AddRemoteController.answer); and the
+  # v0.7.2 mount options still reshape — every one read back off vfs/stats
+  # unchanged, which matters because 1.75.1 touched the VFS heavily.
+  RCLONE_VERSION: v1.75.1
 
 # ── The Flutter version is PINNED everywhere below. Bump it deliberately. ─────
 # `channel: stable` is a moving target. On 2026-08-15 it moved to 3.47.0 in the
