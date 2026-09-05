@@ -28,6 +28,9 @@ import '../state/jobs_controller.dart';
 import '../state/local_locations.dart';
 import '../state/open_external.dart';
 import '../state/os_integration.dart';
+import '../rclone/models/mount_options.dart';
+import '../state/mount_defaults.dart';
+import '../state/mount_policy.dart';
 import '../state/remotes_provider.dart';
 import '../state/settings_controller.dart';
 import '../state/skin.dart';
@@ -37,6 +40,7 @@ import 'config_export_dialog.dart';
 import 'config_import_dialog.dart';
 import 'dialog_body.dart';
 import 'external_backup_dialogs.dart';
+import 'mount_options_editor.dart';
 import 'offline_qr_dialog.dart';
 import 'scan_from_desktop_sheet.dart';
 import 'theme/tokens.dart';
@@ -145,6 +149,15 @@ class SettingsContent extends ConsumerWidget {
         const SizedBox(height: Space.x5),
         const _GroupHeader('Config'),
         const _ConfigSection(),
+        // Mounts: only where mounting exists at all. mountEnabledProvider is
+        // false on a Mac App Store build (FUSE is impossible under the App
+        // Sandbox), and there is nothing to configure on a platform that cannot
+        // mount, so the whole group hides rather than offering dead controls.
+        if (desktop && ref.watch(mountEnabledProvider)) ...[
+          const SizedBox(height: Space.x5),
+          const _GroupHeader('Mounts'),
+          const _MountDefaultsSection(),
+        ],
         const SizedBox(height: Space.x5),
         const _GroupHeader('Storage & updates'),
         _CacheSection(),
@@ -162,6 +175,70 @@ class SettingsContent extends ConsumerWidget {
 }
 
 /// A small all-caps label that groups the settings sections below it.
+/// Settings → Mounts: what a NEW mount starts from.
+///
+/// The same [MountOptionsEditor] the mount dialog uses, bound to the persisted
+/// defaults instead of to one mount's transient copy. Sharing the widget is the
+/// point: two editors would eventually disagree about what an option is called
+/// or which values it offers.
+///
+/// The subtitle is not decoration. rclone fixes a VFS's options AT MOUNT TIME
+/// and exposes no RC to change them afterwards, so editing here genuinely does
+/// nothing to a drive that is already mounted — better to say so than to let a
+/// user conclude the setting is broken.
+class _MountDefaultsSection extends ConsumerWidget {
+  const _MountDefaultsSection();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final c = AircloneTheme.of(context);
+    final defaults = ref.watch(mountDefaultsProvider);
+    final atShipped = defaults == MountOptions.defaults;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                'Defaults for new mounts',
+                style: TextStyle(
+                  color: c.text,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+            if (!atShipped)
+              TextButton(
+                onPressed: () =>
+                    ref.read(mountDefaultsProvider.notifier).reset(),
+                style: TextButton.styleFrom(
+                  foregroundColor: c.primary,
+                  minimumSize: const Size(0, 28),
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  padding: const EdgeInsets.symmetric(horizontal: Space.x2),
+                ),
+                child: const Text('Restore recommended'),
+              ),
+          ],
+        ),
+        const SizedBox(height: 2),
+        Text(
+          'Changing these does not affect a mount that is already running - '
+          'unmount and mount it again to apply them.',
+          style: TextStyle(color: c.textFaint, fontSize: 11),
+        ),
+        const SizedBox(height: Space.x3),
+        MountOptionsEditor(
+          value: defaults,
+          onChanged: (v) => ref.read(mountDefaultsProvider.notifier).set(v),
+        ),
+      ],
+    );
+  }
+}
+
 class _GroupHeader extends StatelessWidget {
   const _GroupHeader(this.label);
   final String label;

@@ -407,6 +407,35 @@ Off-screen thumbnail players obey the same reasoning from the other direction �
   `start()`. Skipped on Android, where `systemTemp` is not app-writable and the OS kills the process
   group anyway.
 
+**RULE — An OS mount's READ path is tuned deliberately; never ship rclone's stock VFS defaults.**
+
+- **Why:** a mount served stock defaults stalls a desktop file manager the moment it uploads. Three
+  of them compound: `--vfs-cache-mode writes` means (rclone's words) *"files opened for read only
+  are still read directly from the remote"*, so every thumbnail is an uncached network read EVERY
+  time; `--vfs-read-chunk-size` is 128Mi with no doubling limit, so reading a thumbnail's first few
+  KB starts a 128 MiB request; and `--attr-timeout` is 1s, so Explorer re-stats an already-busy VFS
+  constantly. Reported from the field as "when something is uploading from the mount, Explorer won't
+  load other folders or thumbnails". **`--transfers` is NOT the lever** — the VFS writeback queue
+  already runs that many uploads at once, so raising it makes the contention worse.
+- **Enforced in:** [mount_options.dart](../../app/lib/src/rclone/models/mount_options.dart) — the
+  single value object, its defaults, and the one mapping to `vfsOpt`/`mountOpt`. `MountController`
+  has no option knowledge of its own.
+
+**RULE — An unknown `vfsOpt` / `mountOpt` key is SILENTLY DROPPED, so verify mount options by reading them back.**
+
+- **Why:** rclone reshapes those objects by marshalling JSON into a Go struct, and `encoding/json`
+  ignores fields it does not recognise. **Demonstrated, not assumed** (2026-09-04, rclone v1.75.0):
+  mounting with a misspelled `ChunkSizee` returned `{"mountPoint": "Z:"}` — a clean success, no
+  warning, the option quietly ignored. A typo therefore ships as a no-op that looks exactly like it
+  worked, which is Rule 9 in miniature.
+- **How to verify:** `vfs/stats` returns the live VFS's `opt` in rclone's own units (ns for
+  durations, bytes for sizes) — read it back and compare. Mount options are not in there, so check
+  those the other way round: a bad VALUE is rejected (`Reshape failed to Unmarshal: … Go struct
+  field Options.NetworkMode of type bool`), which an ignored key could never do.
+- **Enforced in:** `app/test/mount_options_test.dart` pins every key and value shape; the live
+  read-back is recorded in [`dev/plans/mount-tuning-plan.md`](../../dev/plans/mount-tuning-plan.md)
+  Phase 8.
+
 **RULE — Drain BOTH `stdout` and `stderr` of every spawned child, on every build.**
 
 - **Why:** a pipe nobody reads blocks its **writer** once the buffer fills, and Dart creates a

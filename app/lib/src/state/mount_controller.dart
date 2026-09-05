@@ -1,8 +1,10 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../rclone/models/mount_info.dart';
+import '../rclone/models/mount_options.dart';
 import '../rclone/rclone_client.dart';
 import 'engine_controller.dart';
 import 'mount_policy.dart';
@@ -48,13 +50,18 @@ class MountController extends Notifier<List<MountInfo>> {
     }
   }
 
-  /// Mounts [fs] at [mountPoint] (`*` = auto-assign a free drive letter). VFS
-  /// cache mode defaults to writes (usable). Returns the actual mount point.
-  /// Never sets a shared cache dir — rclone picks a per-mount one (no corruption).
+  /// Mounts [fs] at [mountPoint] (`*` = auto-assign a free drive letter),
+  /// tuned by [options] (defaults to [MountOptions.defaults] when omitted).
+  /// Returns the actual mount point. Never sets a shared cache dir — rclone
+  /// picks a per-mount one (no corruption).
+  ///
+  /// rclone fixes a VFS's options AT MOUNT TIME and offers no RC to change them
+  /// afterwards, which is why the UI tells the user that editing the defaults
+  /// leaves a running mount alone.
   Future<String> mount({
     required String fs,
     required String mountPoint,
-    String cacheMode = 'writes',
+    MountOptions options = MountOptions.defaults,
   }) async {
     if (!ref.read(mountEnabledProvider)) {
       throw RcloneException('mount/mount', 'Mounting is disabled by policy.');
@@ -66,7 +73,8 @@ class MountController extends Notifier<List<MountInfo>> {
     final res = await client.rpc('mount/mount', {
       'fs': fs,
       'mountPoint': mountPoint,
-      'vfsOpt': {'CacheMode': cacheModeValue(cacheMode)},
+      'vfsOpt': options.toVfsOpt(),
+      'mountOpt': options.toMountOpt(windows: Platform.isWindows),
     });
     await _poll();
     return (res['mountPoint'] as String?) ?? mountPoint;

@@ -6,6 +6,7 @@ import '../rclone/models/remote.dart';
 import '../state/add_remote_controller.dart';
 import '../state/providers_provider.dart';
 import 'dialog_body.dart';
+import 'disclosure.dart';
 import 'theme/tokens.dart';
 
 Future<void> showAddRemoteDialog(BuildContext context) =>
@@ -346,7 +347,8 @@ class _AddRemoteDialogState extends ConsumerState<AddRemoteDialog> {
               for (final o in p.standardOptions)
                 _optionField(c, state, o, ctrl),
               if (p.advancedOptions.isNotEmpty)
-                _AdvancedSection(
+                Disclosure(
+                  label: 'Advanced',
                   expanded: state.showAdvanced,
                   onToggle: ctrl.toggleAdvanced,
                   children: [
@@ -677,52 +679,6 @@ class _QuestionTextAnswerState extends State<_QuestionTextAnswer> {
           onPressed: () => widget.onSubmit(_c.text),
           child: const Text('Continue'),
         ),
-      ],
-    );
-  }
-}
-
-class _AdvancedSection extends StatelessWidget {
-  const _AdvancedSection({
-    required this.expanded,
-    required this.onToggle,
-    required this.children,
-  });
-  final bool expanded;
-  final VoidCallback onToggle;
-  final List<Widget> children;
-
-  @override
-  Widget build(BuildContext context) {
-    final c = AircloneTheme.of(context);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        InkWell(
-          onTap: onToggle,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: Space.x2),
-            child: Row(
-              children: [
-                Icon(
-                  expanded ? Icons.expand_less : Icons.expand_more,
-                  size: 18,
-                  color: c.textMuted,
-                ),
-                const SizedBox(width: Space.x1),
-                Text(
-                  'Advanced',
-                  style: TextStyle(
-                    color: c.textMuted,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-        if (expanded) ...children,
       ],
     );
   }

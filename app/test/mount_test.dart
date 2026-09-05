@@ -1,4 +1,5 @@
 import 'package:airclone/src/rclone/models/mount_info.dart';
+import 'package:airclone/src/rclone/models/mount_options.dart';
 import 'package:airclone/src/rclone/rclone_client.dart';
 import 'package:airclone/src/state/engine_controller.dart';
 import 'package:airclone/src/state/mount_controller.dart';
@@ -66,7 +67,7 @@ void main() {
   });
 
   test(
-    'mount sends fs/mountPoint + numeric CacheMode; returns actual point',
+    'mount sends fs/mountPoint + the tuned options; returns actual point',
     () async {
       final client = _CapturingClient()
         ..onRpc = (m, _) =>
@@ -74,13 +75,24 @@ void main() {
       final c = _container(client);
       final point = await c
           .read(mountControllerProvider.notifier)
-          .mount(fs: 'gdrive:Photos', mountPoint: '*', cacheMode: 'full');
+          .mount(
+            fs: 'gdrive:Photos',
+            mountPoint: '*',
+            options: MountOptions.defaults.copyWith(cacheMaxSize: '3Gi'),
+          );
       expect(point, 'Y:');
       final call = client.calls.firstWhere((c) => c.method == 'mount/mount');
       expect(call.params!['fs'], 'gdrive:Photos');
       expect(call.params!['mountPoint'], '*');
+      // The whole option set now goes over, not just the cache mode - an option
+      // rclone does not recognise is silently dropped, so what we SEND is pinned
+      // here and mount_options_test.dart pins the exact key names.
       final vfs = call.params!['vfsOpt'] as Map<String, dynamic>;
-      expect(vfs['CacheMode'], 3); // full
+      expect(vfs['CacheMode'], 3); // full, the new default
+      expect(vfs['CacheMaxSize'], '3Gi');
+      expect(vfs['ChunkSize'], '32Mi');
+      expect(call.params!['mountOpt'], isA<Map<String, dynamic>>());
+      expect((call.params!['mountOpt'] as Map)['AttrTimeout'], '5s');
     },
   );
 

@@ -3,7 +3,7 @@
 ## 📊 State Dashboard
 | Metric | Value |
 | :--- | :--- |
-| **Status** | `PROPOSED` |
+| **Status** | `IMPLEMENTED — perf not yet measured` |
 | **Version** | `v1.0.0` |
 | **Active Persona** | `Architect` |
 | **Last Updated** | 2026-09-04 |
@@ -198,7 +198,7 @@
     numbers into the release notes rather than claiming an improvement.
 
 ## 5️⃣ Phase 5: Product Owner Review
-* **Status:** `PENDING`
+* **Status:** `DONE`
 * **Findings:**
   - [✅] **Vision & Scope** — the OS mount is explicitly the *secondary*
     convenience surface (`wiki/features/feat-file-browser.md`); this makes it
@@ -214,7 +214,7 @@
     and changeable in Settings *and* at mount time behind a disclosure.
 
 ## 6️⃣ Phase 6: Senior Dev Hygiene Review
-* **Status:** `PENDING`
+* **Status:** `DONE — _AdvancedSection promoted to ui/disclosure.dart, private copy deleted`
 * **Findings:**
   - [⚠️] **DRY Scan** — `_AdvancedSection` already exists privately in
     `add_remote_dialog.dart`. Promote it to `ui/disclosure.dart` and delete the
@@ -233,24 +233,56 @@
     do not swallow.
 
 ## 7️⃣ Phase 7: Implementation Checklist (Execution)
-- `[ ]` `models/mount_options.dart` + unit tests (wire format first — everything
-  else depends on it being right).
-- `[ ]` `state/mount_defaults.dart` + persistence tests.
-- `[ ]` `mount_controller.mount()` takes `MountOptions`.
-- `[ ]` `ui/disclosure.dart`; migrate `add_remote_dialog.dart` onto it.
-- `[ ]` `ui/mount_options_editor.dart`.
-- `[ ]` Mount dialog: summary line + disclosure + reset.
-- `[ ]` Settings: MOUNTS section behind `mountEnabledProvider`.
-- `[ ]` Live read-back against a real `rcd`; record what was actually observed.
-- `[ ]` Docs: `wiki/core/14-performance-standards.md` (why the mount read path
-  is tuned), `dev/logs/agent-changelog.md`, release notes.
+- `[x]` `models/mount_options.dart` + unit tests (wire format first).
+- `[x]` `state/mount_defaults.dart` + persistence test.
+- `[x]` `mount_controller.mount()` takes `MountOptions`.
+- `[x]` `ui/disclosure.dart`; `add_remote_dialog.dart` migrated, private copy deleted.
+- `[x]` `ui/mount_options_editor.dart`.
+- `[x]` Mount dialog: summary line + disclosure + reset.
+- `[x]` Settings: Mounts section behind `mountEnabledProvider`.
+- `[x]` Live read-back against a real `rcd` (Phase 8).
+- `[x]` Docs: `wiki/core/14-performance-standards.md`, `dev/logs/agent-changelog.md`.
+- `[ ]` Before/after measurement, then release notes with the real numbers.
+- `[ ]` The Settings section's `mountEnabledProvider` gate is covered by
+  inspection, not a test — pumping `SettingsContent` pulls in a large provider
+  surface (secure storage, package info, prefs) and was not worth standing up
+  for a one-line guard. Worth doing if that harness ever exists for other
+  reasons.
 
 ## 8️⃣ Phase 8: Verification Dashboard
-* **Verification Status:** `PENDING`
+* **Verification Status:** `OPTIONS VERIFIED · PERFORMANCE NOT YET MEASURED`
 * **Report:**
-  - `[ ]` Test suite runs clean
-  - `[ ]` Options confirmed to have taken effect on a live engine (not merely sent)
-  - `[ ]` Before/after measured on one real mount with an upload running
+  - `[x]` Test suite runs clean — 724 tests, `flutter analyze` clean, format clean.
+  - `[x]` **Options confirmed to have taken effect on a live engine**, not merely
+    sent. Against a real `rcd` (rclone v1.75.0, WinFsp present — `mount/types`
+    reported `cmount`), mounted with the exact object `MountOptions.defaults`
+    produces, then read back with `vfs/stats`, which returns the VFS's live
+    `opt`. Every value arrived, in rclone's own units:
+
+    | Sent | `vfs/stats` read back | = |
+    | :--- | :--- | :--- |
+    | `CacheMode: 3` | `3` | full |
+    | `CacheMaxSize: "10Gi"` | `10737418240` | 10 GiB |
+    | `CacheMaxAge: "24h"` | `86400000000000` | 24h (ns) |
+    | `ChunkSize: "32Mi"` | `33554432` | 32 MiB |
+    | `ChunkSizeLimit: "1Gi"` | `1073741824` | 1 GiB |
+    | `DirCacheTime: "5m"` | `300000000000` | 5m (ns) |
+    | `FastFingerprint: true` | `true` | — |
+
+  - `[x]` **The silent-drop hazard is real, and now demonstrated.** Mounting with
+    a deliberately misspelled `ChunkSizee` returned `{"mountPoint": "Z:"}` — a
+    clean success, no warning, the option ignored. That is why the wire format
+    is pinned by unit test rather than trusted.
+  - `[x]` `AttrTimeout` and `NetworkMode` are confirmed REAL `mountOpt` keys —
+    `vfs/stats` does not report mount options, so they were verified the other
+    way round: a bad value is REJECTED (`Reshape failed to Unmarshal: … Go
+    struct field Options.NetworkMode of type bool`), which an ignored key could
+    never do.
+  - `[ ]` **Before/after measured on one real mount with an upload running.**
+    NOT DONE. The options demonstrably take effect; that they make Explorer
+    usable during an upload is still reasoning from rclone's documented
+    behaviour, not a measurement. No performance claim should ship until this
+    is filled in.
 
 ## 9️⃣ Phase 9: User Verification
 * **Status:** `PENDING`

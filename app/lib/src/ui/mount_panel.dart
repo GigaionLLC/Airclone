@@ -1,12 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../rclone/models/mount_info.dart';
+import '../rclone/models/mount_options.dart';
 import '../rclone/rclone_client.dart';
 import '../state/mount_controller.dart';
+import '../state/mount_defaults.dart';
 import '../state/mount_policy.dart';
 import '../state/remotes_provider.dart';
 import 'dialog_body.dart';
+import 'disclosure.dart';
+import 'mount_options_editor.dart';
 import 'theme/tokens.dart';
 
 /// Opens the Mount manager (mount remotes as drives + list/unmount running ones).
@@ -23,9 +26,15 @@ class _MountDialogState extends ConsumerState<_MountDialog> {
   final _subdir = TextEditingController();
   String? _remote;
   String _drive = '*'; // auto
-  String _cacheMode = 'writes';
   String? _error;
   bool _starting = false;
+
+  /// This mount's options, seeded from the saved defaults on first build and
+  /// edited in place afterwards. Deliberately NOT written back: a tweak for one
+  /// mount must not silently redefine what every later mount gets. The header
+  /// says when the two differ, and offers a reset.
+  MountOptions? _options;
+  bool _showOptions = false;
 
   /// Inline outcome of the last cache-refresh click (a SnackBar would render
   /// behind this dialog's modal barrier and be easy to miss).
@@ -48,7 +57,7 @@ class _MountDialogState extends ConsumerState<_MountDialog> {
     try {
       await ref
           .read(mountControllerProvider.notifier)
-          .mount(fs: fs, mountPoint: _drive, cacheMode: _cacheMode);
+          .mount(fs: fs, mountPoint: _drive, options: _effectiveOptions);
       if (mounted) setState(() => _starting = false);
     } catch (e) {
       if (mounted) {
@@ -190,29 +199,9 @@ class _MountDialogState extends ConsumerState<_MountDialog> {
               ),
             ),
           ),
-          const SizedBox(width: Space.x3),
-          Expanded(
-            child: _field(
-              c,
-              'Cache mode',
-              DropdownButtonFormField<String>(
-                initialValue: _cacheMode,
-                isExpanded: true,
-                dropdownColor: c.surfaceRaised,
-                decoration: _dec(c, ''),
-                items: [
-                  for (final m in mountCacheModes)
-                    DropdownMenuItem(
-                      value: m,
-                      child: Text(m == 'writes' ? 'writes (recommended)' : m),
-                    ),
-                ],
-                onChanged: (v) => setState(() => _cacheMode = v ?? _cacheMode),
-              ),
-            ),
-          ),
         ],
       ),
+      _optionsDisclosure(c),
       if (_error != null) ...[
         const SizedBox(height: Space.x2),
         Text(_error!, style: TextStyle(color: c.error, fontSize: 12)),
@@ -233,6 +222,58 @@ class _MountDialogState extends ConsumerState<_MountDialog> {
         ),
       ),
     ];
+  }
+
+  /// The options this mount will actually start with: the saved defaults until
+  /// the user touches something in the disclosure.
+  MountOptions get _effectiveOptions =>
+      _options ?? ref.read(mountDefaultsProvider);
+
+  /// The tuning, folded away behind a line that doubles as its own summary.
+  ///
+  /// A bare "Advanced" header would make a user open the section just to learn
+  /// what they are about to get. Showing the state on the collapsed row means
+  /// the common case - glance, mount - never expands anything, and the "(N
+  /// changed)" suffix is what stops the two places these options live (here and
+  /// Settings) from becoming confusing: the dialog always says whether you are
+  /// looking at your defaults or at a deviation from them.
+  Widget _optionsDisclosure(AircloneColors c) {
+    final defaults = ref.watch(mountDefaultsProvider);
+    final options = _options ?? defaults;
+    final changed = options.changedFrom(defaults);
+    return Disclosure(
+      label: 'Tuning',
+      expanded: _showOptions,
+      onToggle: () => setState(() => _showOptions = !_showOptions),
+      summary: changed == 0
+          ? options.summary
+          : '${options.summary}  ($changed changed)',
+      trailing: changed == 0
+          ? null
+          : TextButton(
+              onPressed: () => setState(() => _options = null),
+              style: TextButton.styleFrom(
+                foregroundColor: c.primary,
+                minimumSize: const Size(0, 28),
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                padding: const EdgeInsets.symmetric(horizontal: Space.x2),
+              ),
+              child: const Text('Reset to defaults'),
+            ),
+      children: [
+        const SizedBox(height: Space.x2),
+        MountOptionsEditor(
+          value: options,
+          onChanged: (v) => setState(() => _options = v),
+        ),
+        Text(
+          'Applies to this mount only. Change what new mounts start with in '
+          'Settings.',
+          style: TextStyle(color: c.textFaint, fontSize: 11),
+        ),
+        const SizedBox(height: Space.x3),
+      ],
+    );
   }
 
   Widget _winfspBanner(AircloneColors c) => Container(

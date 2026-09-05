@@ -4,6 +4,46 @@ All changes made by AI agents are tracked chronologically below (most recent fir
 
 ---
 
+## [2026-09-04] - Mount tuning: good defaults, and one place to change them
+
+**Agent:** Claude Opus 5 - `main`
+**Files Modified:** `app/lib/src/rclone/models/mount_options.dart` (new),
+`app/lib/src/state/mount_defaults.dart` (new), `app/lib/src/ui/{disclosure,mount_options_editor}.dart`
+(new), `app/lib/src/state/mount_controller.dart`, `app/lib/src/ui/{mount_panel,settings_screen,
+add_remote_dialog}.dart`, `app/test/{mount_options,mount_options_ui,mount}_test.dart`,
+`wiki/core/14-performance-standards.md`, `dev/plans/mount-tuning-plan.md`
+**Database/API Changes:** `mount/mount` now carries the full `vfsOpt` set plus a `mountOpt`, where it
+previously sent only `vfsOpt.CacheMode`.
+
+**Summary:** "When something is uploading from the mount, Explorer won't load other folders or
+thumbnails — is it because we didn't set reasonable parallel transfers?" The direction was right and
+the lever was not. `--transfers` would make it WORSE: the VFS writeback queue already runs that many
+uploads at once. The stall is on the READ side, and we were sending rclone exactly one option and
+taking stock defaults for the rest. `--vfs-cache-mode writes` means, in rclone's own words, "files
+opened for read only are still read directly from the remote" - so every thumbnail was an uncached
+network read, every time; `--vfs-read-chunk-size` is 128Mi with no doubling limit, so reading a
+thumbnail's first few KB started a 128 MiB request; `--attr-timeout` is 1s.
+
+Now `full` with a 10Gi/24h cap, 32Mi chunks doubling to 1Gi, a 5s attr timeout and fast
+fingerprinting - every knob behind ONE editor widget used in two places. Settings holds the defaults
+for new mounts; the mount dialog holds a transient copy behind a disclosure whose collapsed line
+doubles as the summary ("Cache: full · 10Gi · 24h") and says "(N changed)" with a reset when it
+deviates. That is what keeps two places to set a thing from being confusing. `_AdvancedSection` was
+promoted out of `add_remote_dialog.dart` to `ui/disclosure.dart` rather than copied.
+
+**The verification is the part worth remembering.** rclone reshapes `vfsOpt`/`mountOpt` through
+`encoding/json`, so an unknown key is SILENTLY DROPPED - mounting with a misspelled `ChunkSizee`
+returns a clean `{"mountPoint": "Z:"}`, no warning, option ignored. Proven, not assumed. So the
+options were read back off a live `rcd` via `vfs/stats` and every one had arrived in rclone's own
+units (`CacheMaxSize` 10737418240, `ChunkSize` 33554432, `CacheMaxAge` 86400000000000ns). Mount
+options are not in `vfs/stats`, so `AttrTimeout`/`NetworkMode` were confirmed the other way round: a
+bad value is REJECTED naming the Go struct field, which an ignored key could never do. Both rules
+are now in the performance standards. **Still outstanding, and deliberately not claimed:** a
+before/after measurement on a real mount with an upload running. The options demonstrably take
+effect; that they fix the stall is still reasoning from rclone's documented behaviour.
+
+---
+
 ## [2026-09-04] - v0.7.1 shipped, and the TV fixes verified with a remote
 
 **Agent:** Claude Opus 5 - `main`
