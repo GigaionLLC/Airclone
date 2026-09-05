@@ -10,16 +10,130 @@ import '../state/diagnostics.dart';
 import 'rclone_client.dart';
 import 'windows_child_job.dart';
 
+/// RC methods Airclone calls on its OWN initiative to find out what a backend
+/// can do — never because the user asked for anything.
+///
+/// Both callers already swallow a failure and degrade honestly
+/// (`remote_about.dart` shows no storage totals, `remote_features.dart` hides
+/// capability-gated actions), so an error from one is a NORMAL outcome for a
+/// backend that lacks the feature, not a fault.
+const Set<String> _capabilityProbeMethods = {
+  'operations/about',
+  'operations/fsinfo',
+};
+
 /// Whether a line the `rcd` child wrote is worth RETAINING on a release build.
 ///
 /// Every line is drained regardless — see [HttpRcloneClient._drainChildOutput],
 /// where draining is a deadlock fix, not a logging feature. This only decides
 /// what is kept: rclone's own severity prefix, because at high user verbosity
 /// (-vv / --dump) it echoes request headers carrying the rc credentials, and a
-/// bug report must never carry those. Kept a pure top-level function so it is
+/// bug report must never carry those.
+///
+/// Capability probes are then filtered back OUT. A real report from the field
+/// opened with:
+///
+///     ERROR : rc: "operations/about": error: Encrypted drive 'X:' doesn't
+///     support about
+///
+/// which is simply what crypt-over-S3 says when asked for a quota it has no
+/// concept of — working as designed, already handled, and the first thing the
+/// reader of that report had to dismiss. A problem report exists to make a real
+/// problem findable, so an expected outcome must not sit at the top of it
+/// wearing the word ERROR.
+///
+/// Matched on the METHOD NAME rather than on the message ("doesn't support"),
+/// deliberately, on both sides: it survives rclone rewording the sentence, and
+/// it cannot swallow the same wording when it describes something the USER
+/// asked for and did not get. Kept a pure top-level function so it is
 /// unit-testable in isolation.
-bool isEngineFailureLine(String line) =>
-    line.contains('ERROR') || line.contains('CRITICAL');
+bool isEngineFailureLine(String line) {
+  if (!line.contains('ERROR') && !line.contains('CRITICAL')) return false;
+  for (final probe in _capabilityProbeMethods) {
+    if (line.contains('rc: "$probe"')) return false;
+  }
+  return true;
+}
+
+/// RC methods that are safe to send a SECOND time.
+///
+/// A dropped keep-alive socket fails before any response byte arrives, so the
+/// request most likely never ran — but "most likely" is not a good enough
+/// reason to repeat a call that moves data. This is therefore an allowlist of
+/// methods that only READ: repeating one can, at worst, waste a round trip.
+///
+/// Everything that copies, deletes, mounts, writes config or starts a job is
+/// deliberately absent. A doubled `operations/copyfile` is a far worse outcome
+/// than an error the caller can see and retry deliberately.
+bool isRetryableRcMethod(String method) => _readOnlyRcMethods.contains(method);
+
+const Set<String> _readOnlyRcMethods = {
+  'core/version',
+  'core/stats',
+  'core/transferred',
+  'core/memstats',
+  'core/group-list',
+  'config/listremotes',
+  'config/get',
+  'config/dump',
+  'config/providers',
+  'operations/list',
+  'operations/about',
+  'operations/fsinfo',
+  'operations/stat',
+  'mount/listmounts',
+  'mount/types',
+  'vfs/stats',
+  'job/status',
+  'job/list',
+  'options/get',
+  'rc/list',
+};
+
+/// Runs [send], and on a CONNECTION-level failure retries it exactly once when
+/// [method] is safe to repeat.
+///
+/// The failure this exists for was reported from the field as a single line:
+///
+///     ClientException: Connection closed before full header was received
+///
+/// — a keep-alive socket that died before the response started. It self-healed
+/// on the next 1 Hz stats poll, which is precisely why it is worth handling:
+/// the same race on a call the USER made surfaces as a failed listing or a
+/// failed copy, with no poller to quietly try again a second later.
+///
+/// A [TimeoutException] is NOT retried. A timeout means the engine took the
+/// request and did not answer in 30s; sending a second copy piles work onto an
+/// engine already struggling, which is the opposite of help.
+///
+/// [onTransportFailure] is told what happened either way — `recovered: true`
+/// when the retry rescued it — so a self-healing blip and a real outage are
+/// distinguishable in a bug report instead of looking identical.
+Future<T> sendWithConnectionRetry<T>(
+  String method,
+  Future<T> Function() send, {
+  void Function(Object error, {required bool recovered})? onTransportFailure,
+}) async {
+  try {
+    return await send();
+  } on TimeoutException catch (e) {
+    onTransportFailure?.call(e, recovered: false);
+    rethrow;
+  } on Object catch (e) {
+    if (!isRetryableRcMethod(method)) {
+      onTransportFailure?.call(e, recovered: false);
+      rethrow;
+    }
+    try {
+      final out = await send();
+      onTransportFailure?.call(e, recovered: true);
+      return out;
+    } on Object catch (e2) {
+      onTransportFailure?.call(e2, recovered: false);
+      rethrow;
+    }
+  }
+}
 
 /// Desktop [RcloneClient]: spawns `rclone rcd` bound to loopback with per-session
 /// credentials, and drives it over HTTP. See `wiki/core/08-core-architecture.md` §3.
@@ -264,18 +378,22 @@ class HttpRcloneClient implements RcloneClient {
     }
     http.Response res;
     try {
-      res = await _client
-          .post(
-            _uri(method),
-            headers: {
-              'Authorization': _authHeader!,
-              'Content-Type': 'application/json',
-            },
-            body: jsonEncode(params ?? const {}),
-          )
-          .timeout(const Duration(seconds: 30));
+      res = await sendWithConnectionRetry(
+        method,
+        () => _client
+            .post(
+              _uri(method),
+              headers: {
+                'Authorization': _authHeader!,
+                'Content-Type': 'application/json',
+              },
+              body: jsonEncode(params ?? const {}),
+            )
+            .timeout(const Duration(seconds: 30)),
+        onTransportFailure: (e, {required recovered}) =>
+            _noteTransportFailure(method, e, recovered: recovered),
+      );
     } on Object catch (e) {
-      _noteTransportFailure(method, e);
       throw RcloneException(method, 'transport error: $e');
     }
 
@@ -291,28 +409,52 @@ class HttpRcloneClient implements RcloneClient {
     return body;
   }
 
-  DateTime? _lastTransportReport;
+  // Rate limits kept SEPARATE by severity on purpose: a recovered blip must
+  // never be able to spend the minute's budget and silence a real outage that
+  // happens seconds later.
+  DateTime? _lastRecoveredReport;
+  DateTime? _lastFailureReport;
 
-  /// Leaves evidence when the engine stops answering, at most once a minute.
+  /// Leaves evidence when the engine misbehaves, at most once a minute each for
+  /// a recovered blip and a real failure.
   ///
-  /// A wedged `rcd` answers nothing, so every poller in the app times out in
-  /// turn and logging each would bury a report in identical lines. One entry a
-  /// minute is enough to separate "Airclone is slow" from "the engine stopped
-  /// answering" — which is exactly the question an OS-mount freeze raises, and
-  /// the one a user cannot answer from the outside. Silent during [quit], where
-  /// a refused connection is the expected outcome, not a symptom.
-  void _noteTransportFailure(String method, Object error) {
+  /// A wedged `rcd` answers nothing, so every poller in the app fails in turn
+  /// and logging each would bury a report in identical lines. One entry a minute
+  /// is enough to separate "Airclone is slow" from "the engine stopped
+  /// answering" — exactly the question an OS-mount freeze raises, and the one a
+  /// user cannot answer from the outside.
+  ///
+  /// A RECOVERED blip is recorded too, at [DiagLevel.info], and that is a
+  /// deliberate choice rather than noise. The retry it describes exists BECAUSE
+  /// one such blip was recorded in the field and could be reasoned about; going
+  /// silent now would fix the symptom and destroy the only evidence that a
+  /// device is dropping connections at all. Info is what this file already
+  /// reserves for "context that makes the errors readable".
+  ///
+  /// Silent during [quit], where a refused connection is the expected outcome,
+  /// not a symptom.
+  void _noteTransportFailure(
+    String method,
+    Object error, {
+    required bool recovered,
+  }) {
     if (_quitting) return;
     final now = DateTime.now();
-    final last = _lastTransportReport;
+    final last = recovered ? _lastRecoveredReport : _lastFailureReport;
     if (last != null && now.difference(last) < const Duration(minutes: 1)) {
       return;
     }
-    _lastTransportReport = now;
+    if (recovered) {
+      _lastRecoveredReport = now;
+    } else {
+      _lastFailureReport = now;
+    }
     logDiagnostic(
-      DiagLevel.warning,
+      recovered ? DiagLevel.info : DiagLevel.warning,
       'engine',
-      'no answer from the engine for $method',
+      recovered
+          ? 'engine dropped a connection on $method; the retry succeeded'
+          : 'no answer from the engine for $method',
       detail: '$error',
     );
   }

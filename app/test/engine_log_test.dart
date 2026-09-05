@@ -38,6 +38,42 @@ void main() {
     });
   });
 
+  group('capability probes are not failures', () {
+    // The line that opened a real field report. crypt-over-S3 has no concept of
+    // a quota, `remote_about.dart` already catches it and shows no totals - so
+    // this is working as designed, and it was the first thing the reader of
+    // that report had to dismiss.
+    const aboutProbe =
+        '2026/09/05 11:34:52 ERROR : rc: "operations/about": error: '
+        "Encrypted drive 'S3-PX1:' doesn't support about";
+
+    test('an rc error from a probe we make ourselves is dropped', () {
+      expect(isEngineFailureLine(aboutProbe), isFalse);
+      expect(
+        isEngineFailureLine(
+          'ERROR : rc: "operations/fsinfo": error: not supported',
+        ),
+        isFalse,
+      );
+    });
+
+    test('the same wording is KEPT when it is not a probe', () {
+      // Matched on the method name, not the message, precisely so that a user
+      // who asked for something and did not get it still leaves evidence.
+      expect(
+        isEngineFailureLine(
+          'ERROR : rc: "operations/purge": error: '
+          "remote doesn't support purge",
+        ),
+        isTrue,
+      );
+      expect(
+        isEngineFailureLine("ERROR : big.iso: doesn't support about"),
+        isTrue,
+      );
+    });
+  });
+
   test('a kept line still loses its credentials on the way in', () {
     // Belt and braces: the filter is not the privacy boundary, ingest-time
     // redaction is. A -vv run echoes the rc credentials on an error line.
