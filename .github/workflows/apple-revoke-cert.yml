@@ -1,0 +1,99 @@
+name: Revoke an Apple certificate
+
+# Revokes ONE Apple certificate by id, and nothing else.
+#
+# Its own workflow rather than a flag on ios-release.yml, because this is a rare,
+# deliberate, IRREVERSIBLE action and it should not sit one wrong dropdown away
+# from a build. The ephemeral iOS signing flow mints a distribution certificate
+# per release and deliberately does not revoke it (a submitted build needs its
+# certificate to stay valid), so they accumulate against Apple's per-team cap and
+# have to be cleared by hand once the version they signed is live. This is that
+# hand.
+#
+# ⚠️ NEVER revoke the certificate under a build that is submitted but not yet
+# live. That is not a theory: the first iOS submission came back INVALID BINARY
+# minutes after Add for Review, with its signing certificate revoked. A live app
+# is unaffected by revoking the certificate that signed it; a build still in
+# review is not.
+#
+# Which id signed what is tracked in dev/apple-handoff.md.
+
+on:
+  workflow_dispatch:
+    inputs:
+      certificate_id:
+        description: 'Certificate id to revoke (e.g. YQF53PS6AW) - see dev/apple-handoff.md'
+        required: true
+        type: string
+      confirm_certificate_id:
+        description: 'Type the SAME id again. They must match, or nothing happens.'
+        required: true
+        type: string
+      reason:
+        description: 'Why, for the run log (e.g. "0.6.8 is live")'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  revoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Refuse without credentials
+        env:
+          HAS_KEY: ${{ secrets.APPSTORE_API_PRIVATE_KEY != '' }}
+        run: |
+          if [ "$HAS_KEY" != "true" ]; then
+            echo "::error::missing APPSTORE_API_PRIVATE_KEY (org secret)"
+            exit 1
+          fi
+
+      # Double entry, checked BEFORE the key is ever written to disk. A typo
+      # here costs a re-run; a typo that reached the API would cost a release.
+      - name: Refuse unless both ids match
+        env:
+          ID: ${{ inputs.certificate_id }}
+          CONFIRM: ${{ inputs.confirm_certificate_id }}
+        run: |
+          set -euo pipefail
+          if [ "$ID" != "$CONFIRM" ]; then
+            echo "::error::'$ID' != '$CONFIRM' - nothing revoked"
+            exit 1
+          fi
+          echo "about to revoke $ID"
+          echo "reason: ${{ inputs.reason }}"
+          echo
+          echo "Reminder: a LIVE app is unaffected by this. A build still in"
+          echo "review is NOT - revoking its certificate invalidates it."
+
+      - uses: actions/setup-python@v6
+        with: { python-version: '3.12' }
+
+      - name: Install dependencies
+        run: pip install --quiet cryptography
+
+      - name: Revoke
+        env:
+          P8: ${{ secrets.APPSTORE_API_PRIVATE_KEY }}
+          KEY_ID: ${{ vars.APPSTORE_API_KEY_ID }}
+          ISSUER: ${{ secrets.APPSTORE_ISSUER_ID }}
+        run: |
+          set -euo pipefail
+          umask 077
+          printf '%s' "$P8" > key.p8
+          python tool/asc_ios_signing.py key.p8 "$KEY_ID" "$ISSUER" \
+            --revoke "${{ inputs.certificate_id }}"
+
+      - name: Shred the key
+        if: always()
+        run: rm -f key.p8
+
+      - name: What to do now
+        if: success()
+        run: |
+          echo "Revoked. Update the certificate table in dev/apple-handoff.md so"
+          echo "the next person does not go looking for one that is already gone."
