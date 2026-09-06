@@ -6,14 +6,41 @@ IDs, key paths and account state live in the encrypted vault
 (`python tool/vault.py unlock`, then
 `dev/vault/notes/apple-appstore-setup-record.md`).
 
-## State (2026-09-05): 0.6.8 IS LIVE · 0.7.4 BUILDS UPLOADED, VERSIONS NOT YET CREATED
+## State (2026-09-06): 0.7.5 SUBMITTED ON BOTH PLATFORMS, ENTIRELY FROM CI
 
 | | macOS | iOS |
 | :--- | :--- | :--- |
 | Version 0.6.8 | **READY_FOR_SALE** | **READY_FOR_SALE** |
-| Version 0.7.5 | **PREPARE_FOR_SUBMISSION** | **PREPARE_FOR_SUBMISSION** |
+| Version 0.7.5 | **WAITING_FOR_REVIEW** | **WAITING_FOR_REVIEW** |
 | Build 123 attached | ✅ | ✅ |
 | 0.7.5 audit | ✅ **no gaps** | ✅ **no gaps** |
+| Submitted | `f144ba7c…` 15:56:47Z | `22150b3e…` 15:56:24Z |
+
+Both went through `asc-submit-review.yml -f mode=submit -f confirm_version=0.7.5`
+— no console, no local key. Export compliance answered in `Info.plist`, listing
+refreshed from the repo docs by the same run, audited, then submitted. What is
+still human: pressing **release** after approval (`releaseType` stays MANUAL).
+
+### `whatsNew` is required, per-VERSION, and the audit used to miss it
+
+Apple refused both 0.7.5 submissions with *"English (U.S.) — What's New in This
+Version — This field is required"*, minutes after a dry-run of the submit
+workflow had printed **"No gaps"**. Two independent holes: `asc_listing.py` never
+sent the field, and the audit never checked it.
+
+It is the one listing field that does **not** carry forward — description and
+keywords persist across versions, this one starts empty on every release. Apple
+accepts the same generic line the other two stores get
+(`docs/store/store-release-notes.txt`), so there is nothing to write per release.
+
+`asc-submit-review.yml` now refreshes the listing from the docs before it audits,
+pinned with `--version` to the string the operator confirmed. That pin closed a
+second hazard found while wiring it: `asc_listing.py` took the FIRST version the
+API returned for a platform, and iOS lists 0.7.5 **and** 0.6.8 — every previous
+run was ordering luck. It also now refuses a version that is not editable.
+
+**The lesson worth keeping: an audit that misses a blocker is worse than no
+audit.** It is a green light for a wall.
 
 0.7.4 was never submitted, so it was RENAMED to 0.7.5 rather than created anew —
 Apple allows one editable version per platform, and `--create-version` says so
@@ -147,9 +174,10 @@ ephemeral ones are already outstanding:
    all). They read from files — do not paste values.
 4. Prove it before relying on it:
    `gh workflow run ios-release.yml --ref main -f mode=validate -f signing=secrets`
-5. From then on the default path works with no flag. Revoke `3NWQMKV4UB` once
-   0.7.4 is live, and after that no certificate is ever minted again — only an
-   annual rotation when the cert and profile expire (both 1 year).
+5. From then on the default path works with no flag. `3NWQMKV4UB` is still
+   outstanding — see the certificate table below for why its revoke condition
+   changed — and after that no certificate is ever minted again, only an annual
+   rotation when the cert and profile expire (both 1 year).
 
 **Outstanding iOS distribution certificates — BOTH need revoking by hand once
 the version they signed is live.** Apple caps these (typically 3), and every
@@ -158,14 +186,27 @@ the version they signed is live.** Apple caps these (typically 3), and every
 | Certificate | Signed | State |
 | :--- | :--- | :--- |
 | `YQF53PS6AW` | 0.6.8 build 118 | ✅ **revoked 2026-09-05** (0.6.8 was live) |
-| `3NWQMKV4UB` | 0.7.4 build 122 | ⛔ **do not revoke** until 0.7.4 is live |
+| `3NWQMKV4UB` | 0.7.4 build 122 | ⛔ **do not revoke** while 0.7.5 is in review — see below |
 | `YDG7JN3B33` | the STORED identity, all future releases | ⛔ **never revoke** while it is in the secrets |
 
 Revoking no longer needs a machine with the `.p8` on it: CI already holds the key
 as an org secret, so `apple-revoke-cert.yml` does one id at a time, with the id
 typed twice and checked before the key is even written to disk. A live app is
 unaffected by revoking the certificate that signed it; a build still in review is
-not — which is why `3NWQMKV4UB` stays until 0.7.4 ships.
+not.
+
+⚠️ **The old condition on `3NWQMKV4UB` — "until 0.7.4 is live" — can never be
+met.** 0.7.4 was renamed to 0.7.5 rather than shipped, and 0.7.5 carries build
+**123**, not the 122 this certificate signed. So 122 is attached to nothing and
+will never ship, which reads like "safe to revoke now".
+
+**Do not act on that reasoning while 0.7.5 is in review.** The cost of being
+wrong is not symmetric: revoking early is what returned INVALID BINARY on the
+first iOS submission, minutes after Add for Review, and it cannot be undone —
+whereas waiting costs nothing but a slot against a cap that is not currently
+full. Revisit once 0.7.5 is **live on both platforms**, and revoke only after
+confirming with `asc_ios_signing.py --list-certs` which id signs the shipped
+build.
 
 ## Previously (2026-08-29): BOTH PLATFORMS SUBMITTED
 
