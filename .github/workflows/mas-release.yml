@@ -186,17 +186,27 @@ jobs:
           #
           # Unlike CODE_SIGN_ENTITLEMENTS, applying this to every target is fine:
           # it is an identity name, not a path resolved per project directory.
+          # ARCHIVE UNSIGNED. This used to archive with CODE_SIGN_STYLE=Automatic
+          # and "CODE_SIGN_IDENTITY=Apple Development", which made
+          # -allowProvisioningUpdates MINT a development certificate on every
+          # single run and never revoke it. Ten accumulated between 2026-08-20
+          # and 2026-09-06, roughly one per release, until the account hit
+          # Apple's cap and this lane failed with "Your account has reached the
+          # maximum number of certificates" - a failure with no relation to
+          # anything that had changed.
+          #
+          # None of them was ever needed. The NEXT step re-signs the whole app -
+          # every plugin bundle, every framework, and the app itself - with the
+          # stored "3rd Party Mac Developer Application" identity and the MAS
+          # entitlements, so the archive signature is overwritten before export
+          # and never reaches the shipped artifact. The certificate existed only
+          # to satisfy `xcodebuild archive`, and an unsigned archive satisfies it
+          # without minting anything. Same flow the iOS lane uses.
           xcodebuild -workspace macos/Runner.xcworkspace \
             -scheme Runner \
             -configuration Release \
             -archivePath "$RUNNER_TEMP/Airclone.xcarchive" \
-            -allowProvisioningUpdates \
-            -authenticationKeyPath "$HOME/.appstoreconnect/private_keys/AuthKey_${KEY_ID}.p8" \
-            -authenticationKeyID "$KEY_ID" \
-            -authenticationKeyIssuerID "$ISSUER" \
-            CODE_SIGN_STYLE=Automatic \
-            DEVELOPMENT_TEAM="$TEAM_ID" \
-            "CODE_SIGN_IDENTITY=Apple Development" \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
             archive
           echo "--- what the archive was actually signed with ---"
           codesign -dv --verbose=2 \
