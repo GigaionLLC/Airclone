@@ -1,0 +1,103 @@
+name: Submit to App Review (Apple)
+
+# Adds an App Store version to review. This is the point of no return: once a
+# version is in review, changing it means withdrawing the submission.
+#
+# Its own workflow rather than a mode on asc-version.yml, for the same reason
+# apple-revoke-cert.yml is separate — an irreversible action should not sit one
+# wrong dropdown away from a routine one.
+#
+# It does NOT release the app. releaseType stays MANUAL, so an approved version
+# waits for a human to press release. That separation is deliberate: approval and
+# publication being the same event is how a version ships before anyone looks at
+# it, and it was found silently set that way once already.
+#
+# Export compliance is NOT asked here. It is answered declaratively by
+# ITSAppUsesNonExemptEncryption in Info.plist — see dev/plans/apple-appstore-plan.md.
+
+on:
+  workflow_dispatch:
+    inputs:
+      platform:
+        description: 'Which platform to submit'
+        required: true
+        default: IOS
+        type: choice
+        options: [IOS, MAC_OS]
+      mode:
+        description: 'dry-run = audit and show what would be submitted | submit = send it to Apple'
+        required: true
+        default: dry-run
+        type: choice
+        options: [dry-run, submit]
+      confirm_version:
+        description: 'submit only: type the version string exactly (e.g. 0.7.5)'
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  submit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Refuse without credentials
+        env:
+          HAS_KEY: ${{ secrets.APPSTORE_API_PRIVATE_KEY != '' }}
+        run: |
+          if [ "$HAS_KEY" != "true" ]; then
+            echo "::error::missing APPSTORE_API_PRIVATE_KEY (org secret)"
+            exit 1
+          fi
+
+      # Checked before the key is ever written to disk. A dry-run needs no
+      # confirmation; a submit does, and it has to match what is actually there.
+      - name: Refuse a submit without a matching version
+        if: ${{ inputs.mode == 'submit' }}
+        run: |
+          set -euo pipefail
+          if [ -z "${{ inputs.confirm_version }}" ]; then
+            echo "::error::mode=submit needs confirm_version (the exact version string)"
+            exit 1
+          fi
+          echo "will submit ${{ inputs.platform }} version ${{ inputs.confirm_version }}"
+
+      - uses: actions/setup-python@v6
+        with: { python-version: '3.12' }
+
+      - name: Install dependencies
+        run: pip install --quiet cryptography
+
+      - name: Submit
+        env:
+          P8: ${{ secrets.APPSTORE_API_PRIVATE_KEY }}
+          KEY_ID: ${{ vars.APPSTORE_API_KEY_ID }}
+          ISSUER: ${{ secrets.APPSTORE_ISSUER_ID }}
+          APPLE_REVIEW_CONTACT: ${{ secrets.APPLE_REVIEW_CONTACT }}
+        run: |
+          set -euo pipefail
+          umask 077
+          printf '%s' "$P8" > key.p8
+          ARGS="--submit-for-review"
+          if [ "${{ inputs.mode }}" = "submit" ]; then
+            # --version pins it to the string the operator typed, so a submit
+            # cannot land on a different version than the one they confirmed.
+            ARGS="$ARGS --apply --version ${{ inputs.confirm_version }}"
+          fi
+          python tool/asc_build.py key.p8 "$KEY_ID" "$ISSUER" 6790176897 \
+            --platform ${{ inputs.platform }} $ARGS
+
+      - name: Shred the key
+        if: always()
+        run: rm -f key.p8
+
+      - name: What happens next
+        if: ${{ success() && inputs.mode == 'submit' }}
+        run: |
+          echo "In review. Apple emails the outcome, usually within 48 hours."
+          echo "On approval NOTHING ships by itself - releaseType is MANUAL, so"
+          echo "someone presses release. On rejection the reason is in Resolution"
+          echo "Center, which the API cannot read."

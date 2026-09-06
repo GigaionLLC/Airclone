@@ -40,6 +40,8 @@ Options:
   --apply                 actually send it. Without this nothing is written.
   --builds                just list the builds Apple has registered, and stop.
   --create-version X.Y.Z  create the version record itself (releaseType MANUAL).
+  --submit-for-review     add the version to review. Refuses on any audit gap.
+                          Needs --apply. This is the point of no return.
   --create-encryption-declaration --france yes|no
                           create the App Encryption Declaration that an
                           export-compliance answer of YES requires.
@@ -114,6 +116,7 @@ MANUAL_RELEASE = "--manual-release" in ARGV
 # availableOnFrenchStore, is a commercial decision with a legal tail (yes means
 # Apple requires an ANSSI declaration, uploaded and approved before shipping) and
 # so has to be passed in explicitly. It is never defaulted.
+SUBMIT_FOR_REVIEW = "--submit-for-review" in ARGV
 CREATE_DECLARATION = "--create-encryption-declaration" in ARGV
 FRANCE = (ARGV[ARGV.index("--france") + 1] if "--france" in ARGV else None)
 EXPORT_COMPLIANCE = (ARGV[ARGV.index("--export-compliance") + 1]
@@ -436,6 +439,93 @@ def audit(ver):
         print("remains is human: Add for")
         print("Review, and 'Manually release this version'.")
     return bad
+    return bad
+
+
+def submit_for_review():
+    """Add the editable version to review - the point of no return.
+
+    Gated on the audit rather than on the caller's confidence. Everything the
+    audit checks is something Apple refuses a submission for, so submitting with
+    a known gap only converts a fixable problem into a rejection and a lost
+    review cycle. It has caught an empty copyright and a releaseType silently set
+    to AFTER_APPROVAL before.
+    """
+    ver = pick_version()
+    va = ver["attributes"]
+    print("%s version %s  state=%s"
+          % (PLATFORM, va["versionString"], va["appStoreState"]))
+    if va["appStoreState"] in NEEDS_ATTENTION:
+        print("This version is editable only because something went WRONG "
+              "(%s)." % va["appStoreState"])
+        print("The reason lives in Resolution Center, which the API cannot read.")
+        sys.exit(1)
+
+    gaps = audit(ver)
+    if gaps:
+        print()
+        print("REFUSING to submit with %d open gap(s)." % gaps)
+        sys.exit(1)
+
+    # Reuse an in-flight submission for this platform rather than making a
+    # second one; Apple treats them as a queue and two is confusing at best.
+    subs = call("GET", "/v1/reviewSubmissions?filter[app]=%s&limit=50" % APP)
+    live = [x for x in (subs or {}).get("data", [])
+            if x["attributes"].get("platform") == PLATFORM
+            and x["attributes"].get("state") not in ("COMPLETE", "CANCELING")]
+    print()
+    if not APPLY:
+        print("dry run - nothing submitted. Pass --apply to send it to Apple.")
+        return
+
+    if live:
+        sub_id = live[0]["id"]
+        print("reusing review submission %s (state=%s)"
+              % (sub_id, live[0]["attributes"].get("state")))
+    else:
+        r = call("POST", "/v1/reviewSubmissions", {
+            "data": {
+                "type": "reviewSubmissions",
+                "attributes": {"platform": PLATFORM},
+                "relationships": {"app": {"data": {"type": "apps", "id": APP}}},
+            },
+        })
+        if not r:
+            sys.exit(1)
+        sub_id = r["data"]["id"]
+        print("created review submission %s" % sub_id)
+
+    r = call("POST", "/v1/reviewSubmissionItems", {
+        "data": {
+            "type": "reviewSubmissionItems",
+            "relationships": {
+                "reviewSubmission": {
+                    "data": {"type": "reviewSubmissions", "id": sub_id}},
+                "appStoreVersion": {
+                    "data": {"type": "appStoreVersions", "id": ver["id"]}},
+            },
+        },
+    })
+    if not r:
+        sys.exit(1)
+    print("added version %s to the submission" % va["versionString"])
+
+    r = call("PATCH", "/v1/reviewSubmissions/%s" % sub_id,
+             {"data": {"id": sub_id, "type": "reviewSubmissions",
+                       "attributes": {"submitted": True}}})
+    if not r:
+        sys.exit(1)
+    # Read it back: a submitted flag that did not take is the difference between
+    # "in review" and "sitting there while you think it is".
+    back = call("GET", "/v1/reviewSubmissions/%s" % sub_id)
+    a = ((back or {}).get("data") or {}).get("attributes", {})
+    print()
+    print("state=%s  submittedDate=%s"
+          % (a.get("state"), a.get("submittedDate") or "NOT SUBMITTED"))
+    if not a.get("submittedDate"):
+        print("::error::Apple did not record a submittedDate - not submitted.")
+        sys.exit(1)
+    print("SUBMITTED. Releasing is still manual (releaseType MANUAL).")
 
 
 def create_encryption_declaration():
@@ -586,6 +676,9 @@ def create_version(version_string):
 
 
 def main():
+    if SUBMIT_FOR_REVIEW:
+        submit_for_review()
+        return
     if CREATE_DECLARATION:
         create_encryption_declaration()
         return
