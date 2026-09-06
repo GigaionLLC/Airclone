@@ -34,6 +34,11 @@ on:
         description: 'submit only: type the version string exactly (e.g. 0.7.5)'
         required: false
         type: string
+      refresh_listing:
+        description: 'Re-push the listing text from the repo docs before auditing'
+        required: true
+        default: true
+        type: boolean
 
 permissions:
   contents: read
@@ -70,6 +75,32 @@ jobs:
 
       - name: Install dependencies
         run: pip install --quiet cryptography
+
+      # The repo docs are the source of truth for listing copy, so the version
+      # about to be submitted is refreshed from them first. This is not tidiness:
+      # whatsNew is REQUIRED on every update and is per-VERSION, so it starts
+      # empty on each release and does not carry forward. 0.7.5 was refused by
+      # App Store Connect for exactly that, after a dry-run of this very workflow
+      # reported "No gaps".
+      #
+      # --version pins it to the string the operator typed, so the notes cannot
+      # land on a different version than the one being submitted. In dry-run it
+      # reports only, so a dry-run still changes nothing.
+      - name: Refresh the listing from the repo
+        if: ${{ inputs.refresh_listing }}
+        env:
+          P8: ${{ secrets.APPSTORE_API_PRIVATE_KEY }}
+          KEY_ID: ${{ vars.APPSTORE_API_KEY_ID }}
+          ISSUER: ${{ secrets.APPSTORE_ISSUER_ID }}
+        run: |
+          set -euo pipefail
+          umask 077
+          printf '%s' "$P8" > key.p8
+          ARGS=""
+          if [ "${{ inputs.mode }}" = "submit" ]; then
+            ARGS="--apply --version ${{ inputs.confirm_version }}"
+          fi
+          python tool/asc_listing.py key.p8 "$KEY_ID" "$ISSUER" 6790176897             --platform ${{ inputs.platform }} $ARGS
 
       - name: Submit
         env:

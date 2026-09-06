@@ -11,6 +11,7 @@ Usage:
 
 Options:
   --platform MAC_OS|IOS   which version's localization to write (default MAC_OS)
+  --version X.Y.Z         pin the target version (default: first one Apple lists)
   --apply                 actually send it
 
 Without --apply it prints what it WOULD send and changes nothing. The iOS copy is
@@ -30,6 +31,12 @@ KEY, KID, ISS, APP = sys.argv[1:5]
 ARGV = sys.argv[5:]
 APPLY = "--apply" in ARGV
 PLATFORM = ARGV[ARGV.index("--platform") + 1] if "--platform" in ARGV else "MAC_OS"
+# Pin the target version by string. Without it this takes the FIRST version the
+# API happens to return for the platform, which may be one already in review or
+# already live. A caller that has confirmed a version - asc-submit-review.yml
+# types it twice - must be able to say which one, or the notes can land on a
+# different version than the one submitted.
+WANT = (ARGV[ARGV.index("--version") + 1] if "--version" in ARGV else None)
 DOC = ("docs/store/apple/listing-ios-en-US.md" if PLATFORM == "IOS"
        else "docs/store/apple/listing-en-US.md")
 LIMITS = {"description": 4000, "keywords": 100, "promotionalText": 170,
@@ -107,9 +114,28 @@ if over:
 vs = call("GET", "/v1/apps/%s/appStoreVersions?limit=200" % APP)
 if not vs:
     sys.exit(1)
-ver = next((v for v in vs["data"] if v["attributes"]["platform"] == PLATFORM), None)
+cands = [v for v in vs["data"] if v["attributes"]["platform"] == PLATFORM]
+if WANT:
+    ver = next((v for v in cands
+                if v["attributes"]["versionString"] == WANT), None)
+    if not ver:
+        sys.exit("no %s version %s (have: %s)"
+                 % (PLATFORM, WANT,
+                    ", ".join(v["attributes"]["versionString"]
+                              for v in cands) or "none"))
+else:
+    ver = cands[0] if cands else None
 if not ver:
     sys.exit("no %s version found" % PLATFORM)
+# Apple accepts listing edits only while a version is editable. Writing to one
+# that is live or in review fails late, or edits something nobody meant to
+# touch - so refuse before any PATCH goes out rather than after.
+EDITABLE = ("PREPARE_FOR_SUBMISSION", "DEVELOPER_REJECTED", "REJECTED",
+            "METADATA_REJECTED", "INVALID_BINARY")
+_state = ver["attributes"]["appStoreState"]
+if APPLY and _state not in EDITABLE:
+    sys.exit("refusing: %s %s is %s, not editable"
+             % (PLATFORM, ver["attributes"]["versionString"], _state))
 print("%s %s (%s)" % (PLATFORM, ver["attributes"]["versionString"],
                       ver["attributes"]["appStoreState"]))
 
