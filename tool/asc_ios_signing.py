@@ -21,6 +21,9 @@ What it does, in order:
 Usage:
   python tool/asc_ios_signing.py <key.p8> <keyid> <issuerid> [--apply]
   python tool/asc_ios_signing.py <key.p8> <keyid> <issuerid> --revoke <cert-id>
+  python tool/asc_ios_signing.py <key.p8> <keyid> <issuerid> --apply --profile-only
+      resume after a partial run: rebuild the profile (and the p12 files)
+      against the certificate in cert-id.txt, minting nothing new.
 
 `--revoke` exists for the EPHEMERAL flow: a CI job creates a certificate, uses it
 within that one job, and revokes it on the way out, so no long-lived distribution
@@ -67,6 +70,17 @@ OUT_OVERRIDE = (sys.argv[sys.argv.index("--out-dir") + 1]
 # existing certificate would pair our new key with someone else's certificate and
 # produce an identity codesign rejects. --force-new says "mint one for this key".
 FORCE_NEW = "--force-new" in sys.argv
+# Resume after a PARTIAL run. Apple 500d on POST /v1/profiles once, after the
+# stale profile had already been deleted and the new certificate minted - which
+# left an account with a certificate and no profile, and no safe way to re-run:
+# --force-new would mint a THIRD certificate against Apple's per-team cap, and
+# plain --apply would pair our freshly generated private key with whichever
+# certificate happened to sort first, producing a p12 that cannot sign anything.
+# --profile-only reuses the certificate recorded in cert-id.txt (or --cert-id)
+# and rebuilds everything downstream of it.
+PROFILE_ONLY = "--profile-only" in sys.argv
+CERT_ID_OVERRIDE = (sys.argv[sys.argv.index("--cert-id") + 1]
+                    if "--cert-id" in sys.argv else None)
 BUNDLE_ID = "com.gigaionllc.airclone"
 PROFILE_NAME = "Airclone iOS App Store"
 OUT = os.path.join("dev", "secrets", "apple-ios")
@@ -216,7 +230,18 @@ def main():
     csr = open(csr_path).read()
 
     cert_id = None
-    if ios_certs and not FORCE_NEW:
+    if PROFILE_ONLY:
+        # Named explicitly rather than guessed: with more than one DISTRIBUTION
+        # certificate on the account, "the first one" is exactly the wrong answer.
+        cert_id = CERT_ID_OVERRIDE
+        if not cert_id:
+            cert_id = open(os.path.join(OUT, "cert-id.txt")).read().strip()
+        got = call("GET", "/v1/certificates/%s" % cert_id)
+        if not got:
+            sys.exit("cannot read certificate %s" % cert_id)
+        content = got["data"]["attributes"]["certificateContent"]
+        print("== reusing certificate %s (profile-only) ==" % cert_id)
+    elif ios_certs and not FORCE_NEW:
         print("== reusing the existing distribution certificate ==")
         cert_id = ios_certs[0]["id"]
         content = ios_certs[0]["attributes"]["certificateContent"]
