@@ -395,6 +395,31 @@ def audit(ver):
             purl = e["attributes"]["privacyPolicyUrl"]
     row("privacy policy URL", bool(purl), purl or "EMPTY")
 
+    # Export compliance is answered declaratively by ITSAppUsesNonExemptEncryption
+    # in Info.plist, and that answer is only correct while France stays excluded:
+    # Apple refuses to create an App Encryption Declaration unless the app uses
+    # proprietary cryptography, or third-party cryptography AND is sold in France.
+    # Adding France therefore turns the shipped key into a FALSE declaration, and
+    # nothing about the build would change to say so. Check it here, where
+    # somebody is already asking whether this version can ship.
+    fr_available = None
+    av = call("GET", "/v1/apps/%s/appAvailabilityV2" % APP)
+    if (av or {}).get("data"):
+        terr = call("GET", "/v2/appAvailabilities/%s/territoryAvailabilities"
+                           "?limit=200&include=territory" % av["data"]["id"])
+        for t in (terr or {}).get("data", []):
+            tid = ((t.get("relationships") or {}).get("territory") or {})
+            if (tid.get("data") or {}).get("id") == "FRA":
+                fr_available = bool(t["attributes"].get("available"))
+    if fr_available is None:
+        rows.append(("french store", True, "could not read - check by hand"))
+    else:
+        rows.append((
+            "french store", not fr_available,
+            "excluded, so the exempt export answer holds" if not fr_available
+            else "AVAILABLE - ITSAppUsesNonExemptEncryption=false is now a FALSE "
+                 "declaration, see dev/plans/apple-appstore-plan.md"))
+
     print()
     print("== submission audit: %s %s ==" % (PLATFORM, va["versionString"]))
     bad = 0
@@ -407,7 +432,8 @@ def audit(ver):
         print("%d gap(s). Apple will refuse the submission until they are closed."
               % bad)
     else:
-        print("No gaps. What remains is human: export compliance, Add for")
+        print("No gaps. Export compliance is answered in Info.plist. What")
+        print("remains is human: Add for")
         print("Review, and 'Manually release this version'.")
     return bad
 

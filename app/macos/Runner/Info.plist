@@ -33,5 +33,19 @@
 	<string>MainMenu</string>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
+	<!-- Export compliance, answered here so Apple never asks per build.
+	     FALSE means "does not use NON-EXEMPT encryption" - not "uses no
+	     encryption". Airclone does encrypt: rclone's crypt backend, the config
+	     passphrase, Argon2id, and TLS from the statically linked engine. All of
+	     it is published, standard cryptography, which is exempt.
+	     Apple itself enforces the boundary: POST /v1/appEncryptionDeclarations
+	     is REFUSED unless the app uses proprietary cryptography, or uses
+	     third-party cryptography AND is sold in France. Neither is true here, so
+	     there is no declaration to make and the use is exempt.
+	     THIS DEPENDS ON FRANCE STAYING EXCLUDED. Adding the French store makes a
+	     declaration required and this key a false statement - see
+	     dev/plans/apple-appstore-plan.md before changing availability. -->
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 </dict>
 </plist>

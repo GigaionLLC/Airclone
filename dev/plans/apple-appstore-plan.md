@@ -267,6 +267,26 @@ own, the "HTTPS only" and "only Apple's OS crypto" exemptions are both false, an
 it is mass-market **5D992** — which carries an annual self-classification report
 to BIS.
 
+**RESOLVED 2026-09-06: it is automated, and the answer is `false`.**
+`ITSAppUsesNonExemptEncryption=false` is now set in both `Info.plist` files, so
+Apple never asks per build on either platform. `false` means "does not use
+NON-EXEMPT encryption" — not "uses no encryption". Airclone does encrypt; all of
+it is published, standard cryptography, which is exempt.
+
+Apple itself draws the line, and that is what settled it: `POST
+/v1/appEncryptionDeclarations` is REFUSED unless the app uses proprietary
+cryptography, or uses third-party cryptography **and** is sold in France. Neither
+is true here (confirmed: 174 of 175 territories available, France excluded), so
+there is no declaration to make — which is Apple saying the use is exempt. The
+`no` on builds 117/118/119 was therefore right all along, and this plan's earlier
+claim that it was "very likely wrong" was the error.
+
+**The answer holds only while France stays excluded.** Adding the French store
+makes a declaration required and turns the shipped key into a false statement,
+with nothing about the build to say so. `asc-version.yml -f mode=audit` now
+checks French availability on every run and fails the audit if it is ever
+enabled.
+
 **Automating it turned out not to be a boolean, and the discovery is worth
 keeping.** `usesNonExemptEncryption` lives on the build and can be PATCHed, so
 answering **no** is trivially automatable — which is exactly what builds 117, 118
@@ -318,7 +338,9 @@ Two legitimate routes, and the choice is commercial rather than technical:
 - **file first**, upload the receipt, wait for Apple's approval, and get back the
   `ITSEncryptionExportComplianceCode` for `Info.plist`.
 
-**`ITSAppUsesNonExemptEncryption` is deliberately NOT set — this one is yours.**
+**SUPERSEDED 2026-09-06 — `ITSAppUsesNonExemptEncryption` IS now set, to `false`, on both platforms. The paragraph below is kept for its reasoning, but its conclusion was wrong; see the DECIDED section at the top.**
+
+**~~`ITSAppUsesNonExemptEncryption` is deliberately NOT set — this one is yours.~~**
 Setting it to `false` would be a US export-control declaration made by a machine
 on the LLC's behalf, and it would very likely be *wrong*: Airclone encrypts the
 user's rclone config with a passphrase, which is data confidentiality, not the
