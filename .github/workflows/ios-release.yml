@@ -418,9 +418,17 @@ jobs:
       - name: What happens next
         if: ${{ inputs.mode == 'upload' }}
         run: |
-          echo "The ephemeral signing certificate was NOT revoked - a submitted"
-          echo "build needs it to stay valid. Revoke it by hand once the version"
-          echo "is live: certificate id was $EPHEMERAL_CERT_ID"
+          # Only ephemeral runs mint anything. With signing=secrets the stored
+          # identity is reused and EPHEMERAL_CERT_ID is empty, which printed the
+          # whole revoke-it-by-hand paragraph followed by a blank id.
+          if [ -n "${EPHEMERAL_CERT_ID:-}" ]; then
+            echo "The ephemeral signing certificate was NOT revoked - a submitted"
+            echo "build needs it to stay valid. Revoke it by hand once the version"
+            echo "is live: certificate id was $EPHEMERAL_CERT_ID"
+          else
+            echo "Signed with the STORED identity - nothing was minted, nothing"
+            echo "to revoke."
+          fi
           echo "Uploaded. Processing takes a few minutes, then it appears in TestFlight."
           echo "NOTHING is submitted. Export compliance is asked on the build itself -"
           echo "ITSAppUsesNonExemptEncryption is deliberately absent from Info.plist so"

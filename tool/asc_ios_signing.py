@@ -79,6 +79,13 @@ FORCE_NEW = "--force-new" in sys.argv
 # --profile-only reuses the certificate recorded in cert-id.txt (or --cert-id)
 # and rebuilds everything downstream of it.
 PROFILE_ONLY = "--profile-only" in sys.argv
+# List EVERY certificate, not just the distribution ones survey() shows.
+# Apple caps certificates per type, and automatic signing mints a
+# development certificate on the fly for each archive - so the cap fills
+# with certificates nobody chose to create and the failure surfaces far
+# away, as "No signing certificate Mac Development found" in the middle of
+# a build. Fixing it needs ids, which nothing here printed.
+LIST_CERTS = "--list-certs" in sys.argv
 CERT_ID_OVERRIDE = (sys.argv[sys.argv.index("--cert-id") + 1]
                     if "--cert-id" in sys.argv else None)
 BUNDLE_ID = "com.gigaionllc.airclone"
@@ -139,6 +146,22 @@ def run(*args, **kw):
     return p.stdout
 
 
+def list_certs():
+    certs = call("GET", "/v1/certificates?limit=200") or {"data": []}
+    rows = sorted(certs["data"],
+                  key=lambda c: (c["attributes"].get("certificateType") or "",
+                                 c["attributes"].get("expirationDate") or ""))
+    print("%d certificate(s) on the account" % len(rows))
+    for c in rows:
+        a = c["attributes"]
+        print("  %-12s %-22s %-34s expires %s"
+              % (c["id"], a.get("certificateType"), (a.get("name") or "")[:34],
+                 (a.get("expirationDate") or "")[:10]))
+    print()
+    print("Revoke with .github/workflows/apple-revoke-cert.yml, one id at a time.")
+    print("NEVER revoke one signing a build that is submitted but not yet live.")
+
+
 def survey():
     """What already exists. Run first, so --apply never duplicates a resource."""
     print("== what the account already has ==")
@@ -181,6 +204,9 @@ def bundle_resource_id():
 
 
 def main():
+    if LIST_CERTS:
+        list_certs()
+        return
     if REVOKE:
         # DELETE on a certificate is how the API revokes it. Narrow on purpose:
         # this id and nothing else.
