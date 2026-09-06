@@ -220,9 +220,9 @@ jobs:
           # the only way to tell "not linked" from "linked then stripped", and
           # they scroll past in a successful build.
           exec > >(tee -a ../artifacts/ios-archive.log) 2>&1
-          # Unsigned archive for dry-run AND for automatic signing. On iOS an
-          # "Apple Development" archive needs an iOS App Development profile, and
-          # generating one requires a REGISTERED DEVICE:
+          # Unsigned archive for EVERYTHING except the `automatic` experiment. On
+          # iOS an "Apple Development" archive needs an iOS App Development
+          # profile, and generating one requires a REGISTERED DEVICE:
           #
           #   error: Your team has no devices from which to generate a
           #   provisioning profile.
@@ -231,7 +231,15 @@ jobs:
           # have this constraint, which is why the Mac lane archives as
           # Apple Development and this one cannot. -exportArchive re-signs
           # anyway, so archiving unsigned loses nothing.
-          if [ "$MODE" = "dry-run" ] || [ "${{ inputs.signing }}" != "secrets" ]; then
+          #
+          # This condition used to send `secrets` down the signed branch - into
+          # the very failure the paragraph above describes. It was never caught
+          # because the iOS signing secrets did not exist until 2026-09-05, so
+          # the branch had never once run. The first real `secrets` run hit
+          # "your team has no devices" and "No profiles ... iOS App Development"
+          # exactly as predicted. A comment describing a closed path is not the
+          # same as a guard against taking it.
+          if [ "$MODE" = "dry-run" ] || [ "${{ inputs.signing }}" != "automatic" ]; then
             # No identity, no Apple call. CODE_SIGNING_ALLOWED=NO is what makes
             # an unsigned archive legal; the point of this mode is the LINK.
             xcodebuild -workspace ios/Runner.xcworkspace \
@@ -241,11 +249,12 @@ jobs:
               CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
               archive
           else
-            # "Apple Development" at archive time, distribution applied later by
-            # -exportArchive. Naming Distribution here conflicts with automatic
-            # signing; omitting it entirely hands control back to the project's
-            # own "-" and produces an ad-hoc signature. Both were learned on the
-            # Mac lane.
+            # ONLY `automatic`, which exists to answer one question: can
+            # -allowProvisioningUpdates mint an iOS DISTRIBUTION identity with an
+            # App Manager key? It is expected to fail at the device check above;
+            # the run is the evidence. `secrets` and `ephemeral` both archive
+            # unsigned and let -exportArchive apply the distribution identity
+            # from the keychain.
             xcodebuild -workspace ios/Runner.xcworkspace \
               -scheme Runner -configuration Release \
               -destination 'generic/platform=iOS' \
