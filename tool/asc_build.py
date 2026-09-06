@@ -235,11 +235,16 @@ def pick_build():
         pv = (rel.get("data") or {}).get("id")
         rows.append((b["id"], a.get("version"), a.get("processingState"),
                      a.get("expired"), (a.get("uploadedDate") or "")[:19],
-                     plat_of.get(pv, "?")))
+                     plat_of.get(pv, "?"), a.get("usesNonExemptEncryption")))
     print("recent builds:")
     for r in rows[:8]:
-        print("  build %-6s %-9s %-12s expired=%-5s %s"
-              % (r[1], r[5], r[2], r[3], r[4]))
+        # usesNonExemptEncryption is the EXPORT COMPLIANCE answer, carried on the
+        # build. None means Apple has not been told yet and will ask before the
+        # build can be submitted. Printed because "what did we answer last time"
+        # is otherwise only discoverable by clicking through App Store Connect.
+        enc = {True: "yes", False: "no", None: "UNANSWERED"}.get(r[6], str(r[6]))
+        print("  build %-6s %-9s %-12s expired=%-5s %s  export=%s"
+              % (r[1], r[5], r[2], r[3], r[4], enc))
     # Platform matters: attaching an iOS build to a macOS version is rejected,
     # and both platforms of one release carry the same build number.
     usable = [r for r in rows
