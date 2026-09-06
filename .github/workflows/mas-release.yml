@@ -17,8 +17,9 @@ name: Mac App Store (build + upload)
 #   APPSTORE_API_KEY_ID      org variable
 #   APPSTORE_API_PRIVATE_KEY org secret  (.p8 contents)
 #   APPLE_TEAM_ID            org secret  (already present for the Developer ID lane)
-# Signing identities are created ON DEMAND by -allowProvisioningUpdates using
-# that key, so no certificate has to be minted by hand and no .p12 is stored.
+# Signing uses the STORED App Store certificates (APPLE_MAS_* secrets). Nothing
+# is minted on demand: the lane archives unsigned and signs with those, which
+# is what stopped it creating a throwaway certificate on every run.
 
 on:
   workflow_dispatch:
@@ -153,11 +154,10 @@ jobs:
         # killed by the sandbox.
         run: flutter build macos --release --dart-define=AIRCLONE_MAS=true${{ inputs.build_number && format(' --build-number={0}', inputs.build_number) || '' }}
 
-      - name: Archive with automatic signing
-        # -allowProvisioningUpdates lets Xcode create the Apple Distribution and
-        # Mac Installer Distribution certificates and the provisioning profile on
-        # demand, authenticated by the ASC key. That is why this repo stores no
-        # .p12 for App Store signing, unlike the Developer ID lane in release.yml.
+      - name: Archive (unsigned)
+        # Unsigned on purpose - see the block below. The App Store identities are
+        # the stored APPLE_MAS_* certificates, imported into a job keychain above
+        # and applied by the re-sign and export steps.
         env:
           ISSUER: ${{ secrets.APPSTORE_ISSUER_ID }}
           KEY_ID: ${{ vars.APPSTORE_API_KEY_ID }}
@@ -314,14 +314,14 @@ jobs:
           </plist>
           PLIST
           echo "--- export options ---"; cat "$RUNNER_TEMP/export.plist"
+          # No -allowProvisioningUpdates and no API key here either. The export
+          # plist names the certificates AND the profile explicitly with
+          # signingStyle manual, so there is nothing for Xcode to create - and
+          # leaving the flag on left a second path that could still mint one.
           xcodebuild -exportArchive \
             -archivePath "$RUNNER_TEMP/Airclone.xcarchive" \
             -exportPath "$RUNNER_TEMP/export" \
-            -exportOptionsPlist "$RUNNER_TEMP/export.plist" \
-            -allowProvisioningUpdates \
-            -authenticationKeyPath "$HOME/.appstoreconnect/private_keys/AuthKey_${KEY_ID}.p8" \
-            -authenticationKeyID "$KEY_ID" \
-            -authenticationKeyIssuerID "$ISSUER"
+            -exportOptionsPlist "$RUNNER_TEMP/export.plist"
           ls -lh "$RUNNER_TEMP/export"
 
       - uses: actions/upload-artifact@v6

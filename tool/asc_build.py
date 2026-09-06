@@ -40,6 +40,9 @@ Options:
   --apply                 actually send it. Without this nothing is written.
   --builds                just list the builds Apple has registered, and stop.
   --create-version X.Y.Z  create the version record itself (releaseType MANUAL).
+  --create-encryption-declaration --france yes|no
+                          create the App Encryption Declaration that an
+                          export-compliance answer of YES requires.
   --export-compliance yes|no
                           answer the US export-control question on the build.
                           Airclone's settled answer is YES (mass-market 5D992).
@@ -102,6 +105,17 @@ MANUAL_RELEASE = "--manual-release" in ARGV
 # which makes it mass-market 5D992 - see dev/plans/apple-appstore-plan.md.
 # Kept an explicit flag, never implied by --apply: it is a legal statement
 # and it should be visible in the command that makes it.
+# Create the App Encryption Declaration - the resource that makes an export
+# compliance answer of YES possible at all. Without one, PATCHing
+# usesNonExemptEncryption=true is accepted, echoed back, and stored as nothing.
+#
+# Four of its five required fields are settled by the analysis in
+# dev/plans/apple-appstore-plan.md and are hard-coded below. The fifth,
+# availableOnFrenchStore, is a commercial decision with a legal tail (yes means
+# Apple requires an ANSSI declaration, uploaded and approved before shipping) and
+# so has to be passed in explicitly. It is never defaulted.
+CREATE_DECLARATION = "--create-encryption-declaration" in ARGV
+FRANCE = (ARGV[ARGV.index("--france") + 1] if "--france" in ARGV else None)
 EXPORT_COMPLIANCE = (ARGV[ARGV.index("--export-compliance") + 1]
                      if "--export-compliance" in ARGV else None)
 
@@ -398,6 +412,90 @@ def audit(ver):
     return bad
 
 
+def create_encryption_declaration():
+    """POST an App Encryption Declaration.
+
+    Airclone implements standard confidentiality encryption of its own, so the
+    "HTTPS only" and "only Apple's OS crypto" exemptions are both false and the
+    honest answer to Apple's export question is YES. That answer is impossible to
+    record without one of these.
+    """
+    if FRANCE not in ("yes", "no"):
+        sys.exit("--france yes|no is required and is never defaulted: YES makes "
+                 "Apple require an ANSSI declaration approved before shipping.")
+    france = FRANCE == "yes"
+
+    existing = call("GET",
+                    "/v1/appEncryptionDeclarations?filter[app]=%s&limit=20" % APP)
+    for d in (existing or {}).get("data", []):
+        a = d["attributes"]
+        print("declaration %s already exists, state=%s"
+              % (d["id"], a.get("appEncryptionDeclarationState")))
+        return
+
+    attrs = {
+        # Every algorithm Airclone uses is a published standard - rclone's crypt
+        # backend, the config encryption, the notes vault, Argon2id for the
+        # offline QR - so nothing here is proprietary.
+        "containsProprietaryCryptography": False,
+        # TRUE: the engine is statically linked Go and brings its own TLS and
+        # ciphers rather than calling Apple's Security framework.
+        "containsThirdPartyCryptography": True,
+        "availableOnFrenchStore": france,
+        # Apple caps this at 300 characters.
+        "appDescription":
+            "Standard, published cryptography for data confidentiality: TLS "
+            "from the statically linked rclone engine rather than the OS, "
+            "rclone's crypt backend for encrypted remotes (NaCl secretbox / "
+            "AES), passphrase encryption of the user's own config file, and "
+            "Argon2id key derivation. No proprietary algorithms.",
+    }
+    # Apple REFUSES to create a declaration unless proprietary cryptography is
+    # involved, or third-party cryptography AND French availability both are:
+    #
+    #   Cannot create appEncryptionDeclarations unless either
+    #   containsProprietaryCryptography is True or containsThirdPartyCryptography
+    #   and availableOnFrenchStore are both True
+    #
+    # So for an app using only standard algorithms and NOT sold in France, there
+    # is no declaration to make - which is Apple saying the use is exempt. The
+    # export answer for that app is usesNonExemptEncryption=false, and that IS a
+    # plain boolean this tool can set. Say so instead of forwarding a 409.
+    if not attrs["containsProprietaryCryptography"] and not france:
+        print()
+        print("Apple will refuse this: a declaration exists for proprietary")
+        print("cryptography, or for third-party cryptography sold in France.")
+        print("Neither applies here, which means the encryption is EXEMPT and")
+        print("there is nothing to declare. Use:")
+        print("  --export-compliance no")
+        print("See dev/plans/apple-appstore-plan.md.")
+        sys.exit(1)
+    print("app encryption declaration to create:")
+    for k, v in attrs.items():
+        print("  %-32s %s" % (k, v if not isinstance(v, str) else v[:60] + "..."))
+    if not france:
+        print()
+        print("  availableOnFrenchStore=false. Verified consistent: the app's")
+        print("  territory availability already excludes France.")
+    if not APPLY:
+        print()
+        print("dry run - nothing sent. Pass --apply to write.")
+        return
+    r = call("POST", "/v1/appEncryptionDeclarations", {
+        "data": {
+            "type": "appEncryptionDeclarations",
+            "attributes": attrs,
+            "relationships": {"app": {"data": {"type": "apps", "id": APP}}},
+        },
+    })
+    if not r:
+        sys.exit(1)
+    a = r["data"]["attributes"]
+    print()
+    print("created declaration %s  state=%s"
+          % (r["data"]["id"], a.get("appEncryptionDeclarationState")))
+
+
 def create_version(version_string):
     """POST a new appStoreVersion. There was no way to do this before.
 
@@ -462,6 +560,9 @@ def create_version(version_string):
 
 
 def main():
+    if CREATE_DECLARATION:
+        create_encryption_declaration()
+        return
     if CREATE_VERSION:
         create_version(CREATE_VERSION)
         return

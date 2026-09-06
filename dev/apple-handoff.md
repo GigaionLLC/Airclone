@@ -11,8 +11,30 @@ IDs, key paths and account state live in the encrypted vault
 | | macOS | iOS |
 | :--- | :--- | :--- |
 | Version 0.6.8 | **READY_FOR_SALE** | **READY_FOR_SALE** |
-| Version 0.7.4 | **PREPARE_FOR_SUBMISSION** | **PREPARE_FOR_SUBMISSION** |
-| 0.7.4 audit | ✅ **no gaps** | ✅ **no gaps** |
+| Version 0.7.5 | **PREPARE_FOR_SUBMISSION** | **PREPARE_FOR_SUBMISSION** |
+| Build 123 attached | ✅ | ✅ |
+| 0.7.5 audit | ✅ **no gaps** | ✅ **no gaps** |
+
+0.7.4 was never submitted, so it was RENAMED to 0.7.5 rather than created anew —
+Apple allows one editable version per platform, and `--create-version` says so
+and refuses rather than failing at the API.
+
+### The lanes minted a certificate per run, and nobody noticed for three weeks
+
+Both Apple lanes archived with `CODE_SIGN_STYLE=Automatic` +
+`CODE_SIGN_IDENTITY=Apple Development`, so `-allowProvisioningUpdates` minted a
+**development certificate on every run** and never revoked it. Ten accumulated
+between 2026-08-20 and 2026-09-06 until the account hit Apple's cap, and the
+macOS lane then failed with *"Your account has reached the maximum number of
+certificates"* — a failure with no relation to anything that had changed, which
+is exactly why it read as sudden.
+
+None of them was ever needed. Both lanes re-sign or re-export with the real
+distribution identity afterwards, so the archive's signature never reaches the
+shipped artifact. Both now archive UNSIGNED and mint nothing.
+
+`asc_ios_signing.py --list-certs` prints every certificate with its id and type —
+without it, a cap cannot even be diagnosed, let alone cleared.
 | Build 122 uploaded | ✅ `UPLOAD SUCCEEDED` (UUID 799e7838…) | ✅ `UPLOAD SUCCEEDED` (UUID db0a8c14…) |
 | Build 122 **registered** VALID | ✅ confirmed 2026-09-05 | ✅ confirmed 2026-09-05 |
 
