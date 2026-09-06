@@ -39,6 +39,8 @@ Options:
                           from one command rather than from a rejection.
   --apply                 actually send it. Without this nothing is written.
   --builds                just list the builds Apple has registered, and stop.
+  --create-version X.Y.Z  create the version record itself (releaseType MANUAL).
+                          Needs --apply, like everything else that writes.
                           Works with no editable version, which is exactly when
                           you need it: right after an upload.
 
@@ -81,6 +83,11 @@ AUDIT = "--audit" in ARGV
 # upload and then died silently without ever registering, and "UPLOAD
 # SUCCEEDED" looked identical both times.
 BUILDS = "--builds" in ARGV
+# Create the version record itself. Apple allows exactly ONE editable version
+# per platform, so this refuses when one already exists rather than making a
+# mess that has to be deleted by hand.
+CREATE_VERSION = (ARGV[ARGV.index("--create-version") + 1]
+                  if "--create-version" in ARGV else None)
 SET_COPYRIGHT = "--copyright" in ARGV
 MANUAL_RELEASE = "--manual-release" in ARGV
 
@@ -352,7 +359,73 @@ def audit(ver):
     return bad
 
 
+def create_version(version_string):
+    """POST a new appStoreVersion. There was no way to do this before.
+
+    Every other mode starts at pick_version(), which finds an EDITABLE version or
+    exits - so the moment the only versions were live or in review, the whole tool
+    was blocked behind a human clicking "+ Version or Platform" in App Store
+    Connect. The API has always allowed this; the tool simply never asked.
+
+    releaseType is set to MANUAL at creation rather than patched afterwards.
+    AFTER_APPROVAL makes approval and publication the same event, and it was found
+    silently set that way once, AFTER an audit had twice reported no gaps.
+    """
+    vs = call("GET", "/v1/apps/%s/appStoreVersions?limit=200" % APP)
+    if vs is None:
+        sys.exit(1)
+    mine = [v for v in vs["data"] if v["attributes"]["platform"] == PLATFORM]
+    for v in mine:
+        a = v["attributes"]
+        if a["versionString"] == version_string:
+            print("%s version %s already exists, state=%s - nothing to do"
+                  % (PLATFORM, version_string, a["appStoreState"]))
+            return
+    editable = [v for v in mine if v["attributes"]["appStoreState"] in EDITABLE]
+    if editable:
+        # Apple permits one editable version per platform. Creating a second is
+        # rejected, and asking for it usually means the intent was to RENAME the
+        # one already sitting there.
+        a = editable[0]["attributes"]
+        print("%s already has an editable version %s (%s)."
+              % (PLATFORM, a["versionString"], a["appStoreState"]))
+        print("Apple allows only one. Rename it instead:")
+        print("  --set-version %s" % version_string)
+        sys.exit(1)
+
+    print("%s: would create version %s, releaseType MANUAL" % (PLATFORM, version_string))
+    if not APPLY:
+        print()
+        print("dry run - nothing sent. Pass --apply to write.")
+        return
+    r = call("POST", "/v1/appStoreVersions", {
+        "data": {
+            "type": "appStoreVersions",
+            "attributes": {
+                "platform": PLATFORM,
+                "versionString": version_string,
+                "releaseType": "MANUAL",
+            },
+            "relationships": {
+                "app": {"data": {"type": "apps", "id": APP}},
+            },
+        },
+    })
+    if not r:
+        sys.exit(1)
+    a = r["data"]["attributes"]
+    print("created %s version %s  state=%s  releaseType=%s"
+          % (PLATFORM, a["versionString"], a["appStoreState"], a.get("releaseType")))
+    print()
+    print("Next: attach the build and set the notes, then audit:")
+    print("  mode=apply   (attaches the newest VALID build)")
+    print("  mode=audit   (what Apple will still refuse)")
+
+
 def main():
+    if CREATE_VERSION:
+        create_version(CREATE_VERSION)
+        return
     if BUILDS:
         # Deliberately before pick_version(): the whole point is to work when no
         # editable version exists yet. pick_build() already prints the listing

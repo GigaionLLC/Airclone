@@ -23,11 +23,11 @@ on:
         type: choice
         options: [MAC_OS, IOS]
       mode:
-        description: 'report = what it would do | apply = write it | audit = is it submittable? | builds = did the upload register?'
+        description: 'report | apply = write it | audit = is it submittable? | builds = did the upload register? | create = make the version record'
         required: true
         default: report
         type: choice
-        options: [report, apply, audit, builds]
+        options: [report, apply, audit, builds, create]
       copyright:
         description: 'Set the copyright from the listing document'
         required: true
@@ -114,6 +114,15 @@ jobs:
           # It needs no editable version, so it works in the window right after an
           # upload - which is the window where a build can die silently.
           if [ "${{ inputs.mode }}" = "builds" ]; then ARGS="$ARGS --builds"; fi
+          # create: makes the appStoreVersion record itself, which every other
+          # mode needs to exist before it can do anything. Takes the version
+          # string from the `version` input, and writes only with --apply.
+          if [ "${{ inputs.mode }}" = "create" ]; then
+            if [ -z "${{ inputs.version }}" ]; then
+              echo "::error::mode=create needs the version input (e.g. 0.7.4)"; exit 1
+            fi
+            ARGS="$ARGS --create-version ${{ inputs.version }} --apply"
+          fi
           if [ "${{ inputs.copyright }}" = "true" ]; then ARGS="$ARGS --copyright"; fi
           if [ "${{ inputs.manual_release }}" = "true" ]; then ARGS="$ARGS --manual-release"; fi
           if [ "${{ inputs.notes }}" = "true" ]; then ARGS="$ARGS --notes"; fi

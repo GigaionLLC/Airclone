@@ -11,16 +11,23 @@ IDs, key paths and account state live in the encrypted vault
 | | macOS | iOS |
 | :--- | :--- | :--- |
 | Version 0.6.8 | **READY_FOR_SALE** | **READY_FOR_SALE** |
-| Version 0.7.4 | **does not exist yet** | **does not exist yet** |
+| Version 0.7.4 | **PREPARE_FOR_SUBMISSION** | **PREPARE_FOR_SUBMISSION** |
+| 0.7.4 audit | ✅ **no gaps** | ✅ **no gaps** |
 | Build 122 uploaded | ✅ `UPLOAD SUCCEEDED` (UUID 799e7838…) | ✅ `UPLOAD SUCCEEDED` (UUID db0a8c14…) |
 | Build 122 **registered** VALID | ✅ confirmed 2026-09-05 | ✅ confirmed 2026-09-05 |
 
-**The next action is a human one, and nothing can proceed without it: create the
-0.7.4 version record for each platform** in App Store Connect (+ Version or
-Platform). `tool/asc_build.py` deliberately never POSTs an `appStoreVersions`
-record — it only picks an existing editable one — so both `asc-version.yml`
-report runs stopped with `no editable <PLATFORM> version - refusing to touch one
-in review`, which is the guard working, not a failure.
+**Creating the version record is no longer a human step.** It used to be:
+`asc_build.py` only ever picked an existing editable version, so the whole tool
+sat behind someone clicking "+ Version or Platform". The API always allowed it —
+the tool simply never asked. `--create-version X.Y.Z` (workflow `mode=create`)
+POSTs it with `releaseType: MANUAL` set at creation rather than patched
+afterwards, and refuses when an editable version already exists, because Apple
+allows exactly one per platform and the intent in that case is almost always a
+rename.
+
+0.7.4 was created that way on both platforms, then had build 122 attached,
+review notes, copyright and the full listing text applied. **Both audits now
+report no gaps.**
 
 **Verifying the builds registered used to be blocked by the same thing** — and
 is not any more. `main()` called `pick_version()` before anything else, so the
