@@ -32,7 +32,8 @@ APPLY = "--apply" in ARGV
 PLATFORM = ARGV[ARGV.index("--platform") + 1] if "--platform" in ARGV else "MAC_OS"
 DOC = ("docs/store/apple/listing-ios-en-US.md" if PLATFORM == "IOS"
        else "docs/store/apple/listing-en-US.md")
-LIMITS = {"description": 4000, "keywords": 100, "promotionalText": 170}
+LIMITS = {"description": 4000, "keywords": 100, "promotionalText": 170,
+          "whatsNew": 4000}
 
 
 def token():
@@ -87,6 +88,16 @@ fields = {
                        else "## Keywords"),
     "promotionalText": fenced(doc, "## Promotional text"),
     "supportUrl": "https://github.com/GigaionLLC/Airclone",
+    # REQUIRED by Apple on every update, and the one field that is per-version
+    # rather than per-listing. Deliberately the SAME generic line the other two
+    # stores get - docs/store/store-release-notes.md explains why, and names the
+    # App Store among them, though nothing had ever sent it here.
+    #
+    # Apple refuses the submission without it: "English (U.S.) - What's New in
+    # This Version - This field is required". Renaming a version does not carry
+    # it over, so it has to be written for each one.
+    "whatsNew": io.open("docs/store/store-release-notes.txt",
+                        encoding="utf-8").read().strip(),
 }
 
 over = [k for k, m in LIMITS.items() if len(fields[k]) > m]

@@ -359,7 +359,14 @@ def audit(ver):
                 if l["attributes"]["locale"] == "en-US"), None)
     if loc:
         a = loc["attributes"]
-        for f in ("description", "keywords", "promotionalText", "supportUrl"):
+        # whatsNew is REQUIRED on an update and was missing from this list, so
+        # the audit reported "no gaps" on a version App Store Connect refused
+        # with "English (U.S.) - What's New in This Version - This field is
+        # required". An audit that misses a blocker is worse than no audit: it
+        # is a green light for a wall. It is per-VERSION, not per-listing, so
+        # renaming a version does not carry it over.
+        for f in ("description", "keywords", "promotionalText", "supportUrl",
+                  "whatsNew"):
             v = a.get(f) or ""
             row(f, bool(v), "%d chars" % len(v) if v else "EMPTY")
         sets = call("GET",
