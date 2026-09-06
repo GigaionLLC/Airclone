@@ -64,7 +64,9 @@ distribution certificate and provisioning profile from the org secrets `APPLE_IO
 `APPLE_IOS_P12_PASSWORD` and `APPLE_IOS_PROVISIONING_PROFILE_BASE64`; **both expire 2027-09-05**, which
 is worth a diary entry because expiry breaks the lane with an error that looks like nothing changed.
 Both Apple lanes archive **unsigned** (`CODE_SIGNING_ALLOWED=NO`) and apply the distribution identity
-at export, so the archive's signature never matters. Surplus certificates are revoked one at a time by
+at export, so the archive's signature never matters — everywhere except `ios-release.yml`'s
+`signing=automatic`, an experiment kept only because Apple's error strings for it are worth having
+written down. Nothing ships that way. Surplus certificates are revoked one at a time by
 [`apple-revoke-cert.yml`](../../.github/workflows/apple-revoke-cert.yml) — **never while the build they
 signed is submitted but not yet live**, which produces an INVALID BINARY. Which certificate signed which build is tracked in
 [`dev/apple-handoff.md`](../../dev/apple-handoff.md), in the clear — a certificate id is not a

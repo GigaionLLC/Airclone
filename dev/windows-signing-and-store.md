@@ -440,7 +440,7 @@ makes `stage` the only supported route: [`dev/msstore-ci-setup.md`](msstore-ci-s
 | Package/Identity Name | `GigaionLLC.AircloneCloudFileManager` |
 | Publisher (`CN=<GUID>`) | in repo variable `MSIX_PUBLISHER` — **never commit the GUID** |
 | Reserved app names | only the full title so far; "Airclone" alone is NOT reserved, so the Start-menu tile carries the full title unless it is reserved too |
-| Store ID | set — the value lives in org variable `STORE_APP_ID` (public in the Store URL once published, but kept out of the tree by convention) |
+| Store ID | set — org variable `STORE_APP_ID`. Not a secret (it is in the public Store URL), and it is also the `--app-id` default in `tool/store_submit.py` |
 | Seller ID | set — the value lives in org secret `STORE_SELLER_ID` |
 
 **v0.6.0 upload (2026-08-08) — rejected 4×, all identity, all from never replacing the

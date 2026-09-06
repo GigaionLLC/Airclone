@@ -5,9 +5,10 @@ Five shots, all exactly **1280×800**, captured on a GitHub `macos-latest` runne
 Nobody on this project owns a Mac.
 
 **This directory is the set.** `tool/asc_screenshots.py --device mac` uploads whatever
-is in it, and the path `docs/store/apple/mac/store-ready` is **hard-coded** in that
-script — moving or renaming the folder breaks the uploader rather than producing an
-error anyone would read as "the folder moved". This file, not the listing doc, is the
+is in it, and the path `docs/store/apple/mac/store-ready` is the built-in default in that
+script — `--dir` can override it, but nothing in the release path passes one, so moving
+or renaming the folder breaks the uploader rather than producing an error anyone would
+read as "the folder moved". This file, not the listing doc, is the
 source of truth for what ships.
 
 | File | Shows |
