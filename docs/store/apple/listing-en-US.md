@@ -1,8 +1,29 @@
 # Mac App Store — listing details (English, United States)
 
-Paste-ready copy for App Store Connect → macOS version. The iOS copy is a
-separate document — [`listing-ios-en-US.md`](listing-ios-en-US.md) — because the
-iOS build is a different shape of app, not this one in a smaller window.
+⚠️ **This file is MACHINE-READ.** [`tool/asc_listing.py`](../../../tool/asc_listing.py) sends
+its copy straight to App Store Connect, driven by
+[`asc-listing.yml`](../../../.github/workflows/asc-listing.yml) and again by
+[`asc-submit-review.yml`](../../../.github/workflows/asc-submit-review.yml)
+immediately before every submission. Editing this file changes the **live**
+listing on the next run. Four structural rules follow from how it is parsed:
+
+- The headings `Description`, `Promotional text` and `Keywords` are load-bearing.
+  Do not rename them.
+- Each field is **the first fenced block after its heading**, so never let another
+  code fence come between a heading and the block it owns.
+- The parser matches the *first occurrence of the literal heading text anywhere in
+  the file*, so writing one of those heading strings in prose above its real
+  heading silently re-anchors the field to the wrong fence. That is why this
+  warning names them without their `##` prefix, and why the keyword marker below
+  is quoted rather than reproduced.
+- **Keywords are the exception, and the dangerous one.** This doc keeps a
+  *rejected* keyword alternative for the record and it sits **first**, so the
+  parser anchors on the bold `Use this one` marker rather than on the heading.
+  Delete or reword that marker and the next run silently ships the rejected set,
+  third-party trademarks and all.
+
+The iOS copy is a separate document — [`listing-ios-en-US.md`](listing-ios-en-US.md) —
+because the iOS build is a different shape of app, not this one in a smaller window.
 
 **Decisions taken 2026-08-21** (both were flagged as judgement calls; either is one
 edit to reverse):
@@ -56,7 +77,7 @@ It is built on rclone, the open-source engine that can move and sync files acros
 
 WHAT YOU CAN DO
 • Browse every cloud like a local folder. Your Mac's folders and all of your cloud remotes sit side by side, with familiar rows, previews and right-click actions.
-• Move and copy between clouds directly. Send a file from one cloud to another — the transfer runs as a background job you can watch, pause or cancel.
+• Move and copy between clouds directly. Send a file from one cloud to another — the transfer runs as a background job you can watch or cancel, and you can pause the queue so nothing new starts.
 • Sync and back up folders. Mirror, copy, move or two-way sync, with a dry-run preview that shows exactly what will change before anything happens.
 • See your photos and videos. Image and video thumbnails load right in the app for any remote, cached on your Mac.
 • Stay in control. Nothing is overwritten silently — every collision asks first: skip, replace, or keep both.
@@ -96,10 +117,13 @@ description — a trademark in the keyword field is the highest-risk placement.
 
 ## URLs
 
-**Version: 0.6.8** — set in App Store Connect to match the app, rather than the
-placeholder 1.0 the record was created with. Apple requires the submitted version
-and the build's CFBundleShortVersionString to agree, and three stores disagreeing
-about what version Airclone is would be worse than a modest-looking number.
+**No version number is pinned here** — it is a per-release fact and this doc cannot
+track it. The version record must equal `app/pubspec.yaml`'s version: Apple requires
+the submitted version and the build's `CFBundleShortVersionString` to agree, and
+three stores disagreeing about what version Airclone is would be worse than a
+modest-looking number. The record is created by `tool/asc_build.py --create-version
+X.Y.Z` (releaseType MANUAL) and pinned at submit time by `asc-submit-review.yml`'s
+`confirm_version`.
 
 | Field | Value |
 | :--- | :--- |
@@ -135,16 +159,14 @@ screenshot.
 
 ## Screenshots — Mac, 1280×800 / 1440×900 / 2560×1600 / 2880×1800
 
-Ship 5–6. Captured automatically on a CI Mac — see
-[`mac/store-ready/MANIFEST.md`](mac/store-ready/MANIFEST.md) for what is banked so
-far and how the exact dimensions are achieved.
+Captured automatically on a CI Mac and uploaded from `mac/store-ready/` by
+`tool/asc_screenshots.py`. **What ships is whatever is in that directory**, so
+[`mac/store-ready/MANIFEST.md`](mac/store-ready/MANIFEST.md) is the single source of
+truth for the set — what is banked, how the exact dimensions are achieved, and which
+shots are still worth adding. Do not keep a second wish-list here; the two would
+disagree within a release.
 
-1. Dual-pane explorer — cloud on one side, local on the other (hero)
-2. Photo gallery grid with real thumbnails
-3. A transfer in flight, jobs dock showing speed and ETA
-4. Add-remote wizard, provider picker open
-5. Media preview open
-6. Home view with the native macOS skin
+Two constraints on any shot, which belong with the copy rather than with the rig:
 
 ⚠️ **Use the restocked real media** from `D:\AircloneDemo` — Google rejected a
 screenshot from this project as *"placeholder images or stock photos"* when it

@@ -1,6 +1,15 @@
 # Command Console plan: a first-class in-GUI rclone command surface
 
-**Status:** proposed (design). **Pinned rclone:** `v1.75.0`.
+**Status:** SHIPPED. The console landed in **v0.2.0-beta.3** (desktop pane, allowlist, secret
+redaction, streaming output), gained the fail-closed argv→RC translator in **v0.2.0-beta.5**
+(`state/console/console_rc_translate.dart`), and was refined through **v0.3.0** (focus fix,
+always-visible entry point) and **v0.3.1** (↑/↓ history recall, full remote list in autocomplete,
+and the console on Android). Code: [`ui/console_pane.dart`](../../app/lib/src/ui/console_pane.dart)
+and [`state/console/`](../../app/lib/src/state/console/).
+**Pinned rclone:** whatever `RCLONE_VERSION` says in
+[`.github/workflows/release.yml`](../../.github/workflows/release.yml) — the value that actually
+builds the artifact, annotated there with why each bump happened. Restating it in a plan header only
+produces a copy that goes stale, and on a security release that matters.
 **Owner interface:** [`RcloneClient`](../../app/lib/src/rclone/rclone_client.dart) — the ONE seam.
 **Reuses:** [`JobsController`](../../app/lib/src/state/jobs_controller.dart) queue · [`PaneSplit`/`PaneTabStrip`](../../app/lib/src/ui) · [`parseEngineFlags`](../../app/lib/src/state/engine_flags.dart) · [`advanced_mode.dart`](../../app/lib/src/state/advanced_mode.dart)
 

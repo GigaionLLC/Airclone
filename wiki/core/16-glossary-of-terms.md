@@ -20,23 +20,26 @@ string, so the vocabulary stays consistent everywhere.
 | **Backend / Provider** | A storage type rclone supports (S3, Google Drive, Dropbox, SFTP, WebDAV, local disk, …). |
 | **Remote** | A user-configured instance of a backend (credentials + options), e.g. `gdrive:` or `s3-backups:`. Stored in `rclone.conf`. |
 | **`rclone.conf`** | rclone's config file listing all remotes. Airclone manages it **only** through the RC `/config/*` API — never by hand. May be encrypted with a config password. |
-| **RC / Remote Control API** | rclone's JSON-over-HTTP control surface, served by `rclone rcd`. Method + params in, JSON out. Airclone's desktop transport. |
+| **RC / Remote Control API** | rclone's JSON-over-HTTP control surface, served by `rclone rcd`. Method + params in, JSON out. Airclone's transport on desktop **and Android**. |
 | **`rclone rcd`** | The rclone remote-control daemon — a long-lived process exposing the RC API on a local address. |
-| **librclone** | rclone compiled as a C shared library (`librclone.so/.dll/.dylib`) exposing `RcloneRPC(method, input)` — the **same** method surface as the RC API, but **in-process** (no spawned binary). Airclone's mobile transport. |
+| **librclone** | rclone compiled as a C shared library (`librclone.so/.dll/.dylib`) exposing `RcloneRPC(method, input)` — the **same** method surface as the RC API, but **in-process** (no spawned binary). Airclone's transport on iOS and in the Mac App Store build; see [08](08-core-architecture.md) §3 for which engine runs where. |
 | **gomobile** | Go's mobile binding toolchain (`golang.org/x/mobile`) that packages Go (incl. librclone) as an Android `.aar` / iOS `.xcframework`. |
-| **RcloneClient** | Airclone's internal interface that both transports (desktop daemon, mobile in-process) implement, so the UI is engine-agnostic. |
+| **RcloneClient** | Airclone's internal interface that both transports (the spawned `rcd` daemon, the in-process library) implement, so the UI is engine-agnostic. |
 | **Job** | An asynchronous rclone operation (`_async:true`) with an id, status, and progress — the unit shown in the transfer/job manager. |
 | **Copy / Move / Sync** | Transfer operations. **Sync** makes the destination match the source (it **deletes** extra files at the destination) — always confirm. |
 | **Bisync** | rclone's true **two-way** sync that reconciles changes on both sides. |
 | **Mount** | Presenting a remote as a local drive/folder via FUSE (WinFsp on Windows, macFUSE on macOS, FUSE3 on Linux). Desktop only. |
 | **VFS** | rclone's Virtual File System layer used by mount/serve, with cache modes (off / minimal / writes / full). |
 | **Serve** | Exposing a remote over a network protocol (`rclone serve webdav|sftp|http|ftp|nfs|dlna`). |
-| **DocumentsProvider** | Android's Storage Access Framework mechanism that lets an app expose storage to the system Files UI and other apps. Airclone's way to make a remote "appear" on Android without a real FUSE mount. |
-| **File Provider** | iOS/macOS app-extension equivalent of DocumentsProvider — surfaces a remote in the Files app. |
+| **DocumentsProvider** | Android's Storage Access Framework mechanism that lets an app expose storage to the system Files UI and other apps. The intended way to make a remote "appear" on Android without a real FUSE mount — **designed, not built**. |
+| **File Provider** | iOS/macOS app-extension equivalent of DocumentsProvider — would surface a remote in the Files app. Also **designed, not built**. |
 | **SAF** | Storage Access Framework — Android's API family for cross-app document access (backs DocumentsProvider). |
 | **Crypt** | An rclone backend that transparently encrypts/decrypts another remote's contents. |
 | **Public link** | A shareable URL to a file/folder, where the backend supports it (`/operations/publiclink`). |
 | **Bandwidth limit (bwlimit)** | A live cap on transfer speed, settable globally/per-schedule (`/core/bwlimit`). |
+| **Leanback / Android TV** | Android's television profile. `android.software.leanback` is the feature Play filters TV apps on; Airclone declares it `required="false"` so the one bundle installs on phones too. Airclone detects a TV at runtime and wraps the phone shell in `TvShell` — see [05](05-app-structure.md) §📺. |
+| **D-pad** | The five-key directional pad on a TV remote. It moves focus by *directional traversal* — "what is nearest, in this direction, to whatever holds focus now?" — which is why focus must never be nowhere and why the focus ring is the cursor. |
+| **Overscan** | The edge of the picture a television crops, by an amount no app can query. Airclone insets the whole TV frame by `tvOverscan` (48×27dp, Google's 5% guidance at 1080p). |
 | **Headless mode** | Running the engine/UI as a web server (e.g. on a NAS/VPS) with no local desktop GUI. |
 
 ## 🏢 Enterprise Terms

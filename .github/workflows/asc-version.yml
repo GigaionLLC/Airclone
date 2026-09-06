@@ -1,17 +1,19 @@
 name: App Store Connect (attach build + review notes)
 
-# The two steps between "a build finished uploading" and "a human presses Add for
-# Review": attach the build to a version, and set the App Review notes from
+# The two steps between "a build finished uploading" and "the version goes to
+# review": attach the build to a version, and set the App Review notes from
 # docs/store/apple/listing-en-US.md.
 #
 # Runs on ubuntu, not macOS - these are plain REST calls, and there is no reason
 # to spend a Mac on them.
 #
-# It CANNOT submit. There is no code path in tool/asc_build.py that adds a
-# version to review, and there is no export-compliance answer here either:
-# usesNonExemptEncryption is a US export-control declaration about the LLC, and
-# Airclone encrypts the user's config with a passphrase, so "no" would probably
-# be false. A human answers that one. See AGENT.md rules 10-13.
+# This workflow does not submit - asc-submit-review.yml does, and it makes you
+# name the exact version before it will. Export compliance needs no call from
+# here either: it is answered declaratively by ITSAppUsesNonExemptEncryption in
+# app/ios/Runner/Info.plist and app/macos/Runner/Info.plist, so Apple never asks
+# per build. That answer holds only while France stays out of availability,
+# which is why mode=audit carries a "french store" row - see the "Export
+# compliance: SETTLED" section of dev/plans/apple-appstore-plan.md.
 
 on:
   workflow_dispatch:
@@ -99,11 +101,22 @@ jobs:
           # the whole PATCH without one. It is personal data, so it lives in a
           # secret and is never written to this repo or printed.
           APPLE_REVIEW_CONTACT: ${{ secrets.APPLE_REVIEW_CONTACT }}
+          # The three free-form inputs, passed as environment rather than
+          # interpolated into the script below. `${{ }}` splices the dispatch
+          # value into the shell verbatim, so a version string of
+          # `0.7.5"; curl ... | sh; #` would run. Every other input on this
+          # workflow is a choice or a boolean and cannot carry a payload.
+          VERSION: ${{ inputs.version }}
+          BUILD: ${{ inputs.build }}
+          SET_VERSION: ${{ inputs.set_version }}
         run: |
           set -euo pipefail
           umask 077
           printf '%s' "$P8" > key.p8
           ARGS=""
+          # Positional parameters carry the values that came from env, so they
+          # stay one argument each however they are punctuated.
+          set --
           # `if`, not `[ ... ] && ARGS=...`: a false test makes the whole line
           # return 1, and this block runs under errexit (GitHub invokes every
           # `run:` as `bash -e {0}`), so the step would die on the first input
@@ -118,22 +131,28 @@ jobs:
           # mode needs to exist before it can do anything. Takes the version
           # string from the `version` input, and writes only with --apply.
           if [ "${{ inputs.mode }}" = "create" ]; then
-            if [ -z "${{ inputs.version }}" ]; then
+            if [ -z "$VERSION" ]; then
               echo "::error::mode=create needs the version input (e.g. 0.7.4)"; exit 1
             fi
-            ARGS="$ARGS --create-version ${{ inputs.version }} --apply"
+            # NOTE: create is the one mode with no dry run. --apply is appended
+            # here unconditionally, so dispatching it POSTs a real
+            # appStoreVersion record. asc_build.py refuses when an editable
+            # version already exists, which is the only guard.
+            ARGS="$ARGS --apply"; set -- "$@" --create-version "$VERSION"
           fi
           if [ "${{ inputs.copyright }}" = "true" ]; then ARGS="$ARGS --copyright"; fi
           if [ "${{ inputs.manual_release }}" = "true" ]; then ARGS="$ARGS --manual-release"; fi
           if [ "${{ inputs.notes }}" = "true" ]; then ARGS="$ARGS --notes"; fi
           if [ "${{ inputs.attach }}" = "false" ]; then ARGS="$ARGS --no-attach"; fi
-          if [ -n "${{ inputs.version }}" ]; then ARGS="$ARGS --version ${{ inputs.version }}"; fi
-          if [ -n "${{ inputs.build }}" ]; then ARGS="$ARGS --build ${{ inputs.build }}"; fi
-          if [ -n "${{ inputs.set_version }}" ]; then ARGS="$ARGS --set-version ${{ inputs.set_version }}"; fi
+          if [ -n "$VERSION" ] && [ "${{ inputs.mode }}" != "create" ]; then
+            set -- "$@" --version "$VERSION"
+          fi
+          if [ -n "$BUILD" ]; then set -- "$@" --build "$BUILD"; fi
+          if [ -n "$SET_VERSION" ]; then set -- "$@" --set-version "$SET_VERSION"; fi
           # 6790176897 is the App Store Connect app id for Airclone. It is not a
           # secret - it is in every public App Store URL for the app.
           python tool/asc_build.py key.p8 "$KEY_ID" "$ISSUER" 6790176897 \
-            --platform ${{ inputs.platform }} $ARGS
+            --platform ${{ inputs.platform }} $ARGS "$@"
 
       - name: Shred the key
         if: always()

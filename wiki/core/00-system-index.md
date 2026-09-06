@@ -16,14 +16,19 @@ which document owns it, and you need the one file to open next rather than a fol
 
 ```mermaid
 graph TD
-    UI["UI Layer<br/>(cross-platform views: desktop + mobile)"] --> State["App / State Layer"]
+    UI["UI Layer<br/>(desktop · mobile · television)"] --> State["App / State Layer"]
     State --> RC["RcloneClient interface<br/>(one JSON method surface)"]
-    RC -->|desktop| RCD["spawned rclone rcd<br/>+ RC HTTP API"]
-    RC -->|mobile| LIB["in-process librclone / gomobile"]
+    RC -->|"desktop + Android"| RCD["spawned rclone rcd<br/>+ RC HTTP API on loopback"]
+    RC -->|"iOS + Mac App Store"| LIB["in-process librclone<br/>(dart:ffi)"]
     RCD --> ENG["rclone engine<br/>(70+ cloud backends)"]
     LIB --> ENG
-    ENG --> OS["OS integration<br/>(FUSE mount · Android DocumentsProvider · iOS File Provider)"]
+    ENG --> OS["OS integration<br/>(FUSE mount · serve · open in another app)"]
 ```
+
+Android spawns the bundled binary exactly as desktop does; only iOS and the Mac App Store build run
+the engine in-process. The rule and its short-circuit live in
+[08-core-architecture.md](08-core-architecture.md) §3 and
+[10-external-integrations.md](10-external-integrations.md) §1.2 — do not restate it elsewhere.
 
 The seam in the middle — one `RcloneClient` interface, two transports — is the load-bearing decision
 of the whole project: [08-core-architecture.md](08-core-architecture.md).
@@ -63,7 +68,7 @@ of the whole project: [08-core-architecture.md](08-core-architecture.md).
 | [00-system-index.md](00-system-index.md) | Master router and architecture flow. |
 | [01-vision-north-star.md](01-vision-north-star.md) | Strategic vision, value proposition, magic moment. |
 | [02-product-context.md](02-product-context.md) | Personas, domain workflows, competitive landscape, roadmap. |
-| [03-user-journey.md](03-user-journey.md) | Per-platform UI tour (Win/macOS/Linux/Android/iOS) with wireframes + feature matrix. |
+| [03-user-journey.md](03-user-journey.md) | Per-platform UI tour (Win/macOS/Linux/Android/Android TV/iOS) with wireframes + feature matrix. |
 | [04-directory-structure.md](04-directory-structure.md) | Physical folder map and location rules. |
 | [05-app-structure.md](05-app-structure.md) | App shell, navigation, layouts, global wrappers. |
 | [06-design-system.md](06-design-system.md) | Color tokens, typography, spacing, components. |

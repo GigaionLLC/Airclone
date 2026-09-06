@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Upload Mac App Store screenshots from docs/store/apple/mac/store-ready/.
+"""Upload App Store screenshots - Mac, iPhone or iPad - from docs/store/apple/.
 
 Apple's screenshot upload is a three-step dance, not a POST:
   1. reserve  - POST /v1/appScreenshots with the file name and size; Apple replies

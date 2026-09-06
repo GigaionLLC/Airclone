@@ -195,8 +195,15 @@ So the split is:
 | Automated | Human, in the Console |
 | :--- | :--- |
 | manifest, banners, TV shell, D-pad verification | opt in to the Android TV form factor |
-| bundle upload (`promote-play.yml`) | answer the TV declaration |
-| `tvBanner` + `tvScreenshots` upload (`tool/play_images.py`) | submit for TV review |
+| bundle build + upload to open testing (`release.yml` android job, on a `v*` tag) | answer the TV declaration |
+| `tvBanner` + `tvScreenshots` upload (`play-images.yml` → `tool/play_images.py`) | submit for TV review |
+
+The TV-supporting bundle reaches users in two moves, and confusing them
+changes what production serves: **`release.yml` uploads** it to open testing on
+the tag, and **`promote-play.yml` promotes** that same version code to
+production later. The promote workflow cannot upload anything - Play rejects a
+version code it has already seen, so promotion is a metadata edit on the build
+that is already up there.
 
 ### The Console flow, as actually done (v0.7.0, 2026-08-30)
 
@@ -226,7 +233,18 @@ Uploading the images needs the service account to hold **Manage store
 presence**. Without it `edits.commit` returns a bare 403 *after* the upload step
 reports success - the images sit in an edit that is then discarded, so nothing
 lands and nothing breaks. Granting it also grants edit access to pricing and
-distribution, so weigh that against uploading by hand.
+distribution, so weigh that against uploading by hand. The full grant list, and
+the rest of the credential, is `dev/play-ci-setup.md` §5.
+
+Send them from **Actions -> *Play Store listing images* -> Run workflow**:
+`type=tvScreenshots`, `dir=docs/store/play/tv`, `replace=true`, `mode=report`
+first, then re-run with `mode=apply`. Same again with `type=tvBanner`,
+`dir=docs/store/play/tv-banner`. `replace` is not optional: Play APPENDS an
+uploaded image to a set, so a second run without it leaves duplicates.
+
+The workflow is just a wrapper that supplies the key from the repo secret and
+shreds it afterwards. The same thing locally, for anyone who still holds a key
+on disk (`play-ci-setup.md` §6 tells you to delete it):
 
 ```bash
 # TV screenshots (16:9, 1280x720 minimum). --replace because Play APPENDS.
@@ -237,5 +255,7 @@ python tool/play_images.py --package com.gigaionllc.airclone \
 ## See also
 
 - `dev/google-play-store.md` — the per-release Play runbook
+- `dev/play-ci-setup.md` — the service-account credential every Play lane here
+  uses, and the four grants it needs
 - `dev/android/tv-dpad-probe.sh` — the D-pad rig
 - `app/lib/src/ui/tv.dart` — every TV-only widget, in one file

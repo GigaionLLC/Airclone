@@ -56,6 +56,7 @@ Three examples already in this repo, each worth imitating:
 | What you learned | It goes here | Shape |
 | :--- | :--- | :--- |
 | A user-visible change shipping under a tag | [`dev/releases/<tag>.md`](../../dev/releases/) | Prose in the user's language. CI publishes it verbatim (§4). |
+| Store-facing release copy (the line users see in a store listing) | [`docs/store/store-release-notes.txt`](../../docs/store/store-release-notes.txt) | One generic line under 500 bytes, reused every release. Apple's `whatsNew` is per-version and starts empty each time; Microsoft's field is **cloned** from the previous submission, so it is edited by hand. [`docs/store/README.md`](../../docs/store/README.md) owns the per-store detail. |
 | What you, the agent, changed this session | [`dev/logs/agent-changelog.md`](../../dev/logs/agent-changelog.md) | The block template in [`AGENT.md`](../../AGENT.md); newest entry at the **top**. |
 | A rule the code must keep obeying — concurrency budget, ordering/race invariant, retry policy | [14-performance-standards.md](14-performance-standards.md) | Invariant + the failure that motivated it. |
 | A secrets, permissions, or trust-boundary rule | [15-security.md](15-security.md) | Rule + threat it closes. |
@@ -88,14 +89,13 @@ The distinction that matters: **`wiki/` is rewritten to stay true; `dev/` is app
 honest.** Never put a dated log entry into the wiki, and never explain the architecture inside a
 release note.
 
-**The logs drift; the release notes cannot.** At the time of writing, the newest entry in
-`agent-changelog.md` is dated 2026-07-15 and the highest row in
-[`version-history.md`](../../dev/logs/version-history.md) is `v0.1.0-beta.1`, while `dev/releases/`
-runs to `v0.6.1` — because CI reads the per-tag note and warns loudly when it is missing, whereas
-nothing enforces the two logs. Treat the logs as context, not as a complete history; if you find one
-behind, add your own entry at the top rather than reconstructing months you did not do.
-(`agent-changelog.md` also carries an inherited `<!-- New entries go above this line -->` comment that
-is no longer at the top of the file — the operative rule is most-recent-first at the top.)
+**The logs drift; the release notes cannot.** The per-tag note is the only one of the three with a
+mechanism behind it: `release.yml` reads `dev/releases/<tag>.md` and warns loudly when it is missing,
+whereas nothing at all enforces [`agent-changelog.md`](../../dev/logs/agent-changelog.md) or
+[`version-history.md`](../../dev/logs/version-history.md). Treat those two as context, not as a
+complete history — and if you find one behind, add your own entry at the top rather than
+reconstructing months you did not do. Do not "fix" the gap by writing a dated snapshot of how far
+behind they were into this page; §3 is precisely the rule that forbids it.
 
 ---
 
@@ -107,7 +107,7 @@ a build input rather than decoration:
 | Step | Behaviour | Consequence for how you write |
 | :--- | :--- | :--- |
 | `release` job | Creates the GitHub Release with `--notes-file dev/releases/<tag>.md`. Missing file → falls back to `--generate-notes` **with a warning**. Tags containing `alpha`/`beta`/`rc` are marked pre-release. | Write the note **before** pushing the tag; the file name must match the tag exactly. |
-| Android job | Derives the Play "what's new" from the **same file**: drops every line beginning with `#`, `|`, or `---`, deletes blanks, and takes the first **480 characters**. | The opening prose must stand alone as a store blurb. A note that starts with a table or nothing but headings distils to something useless. |
+| Android job | Copies [`docs/store/store-release-notes.txt`](../../docs/store/store-release-notes.txt) — a fixed, deliberately generic line, the **same text every release** — to `distribution/whatsnew/whatsnew-en-US`, and **fails the build** above 500 bytes because Play truncates silently past that. | Store copy is not derived from your release note. It used to be (headings stripped, cut at 480 characters), and every store update therefore shipped a mid-sentence fragment written for a different audience. Write the release note purely for the GitHub Release; edit the store line only when the store line should change. |
 
 ---
 

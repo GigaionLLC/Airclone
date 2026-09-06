@@ -70,8 +70,10 @@ Measure with `wc -c`.
 
 ## iOS — guideline 2.1, information needed (new app submission)
 
-**Outcome: pending at the time of writing.** Submitted with a SIMULATOR
-recording, because no physical iOS hardware was available.
+**Outcome: accepted.** iOS 0.6.8 went READY_FOR_SALE with this reply and a
+**simulator** recording — Apple asked for physical hardware and accepted the
+simulator capture plus the gated-flows argument below. 0.7.5 was submitted
+afterwards with no device work of any kind.
 
 The full text is the Notes block of `listing-ios-en-US.md` plus the section 1
 preamble below. Everything except item 1 is already in App Review Information,
@@ -110,7 +112,9 @@ so a future reply can point there instead of restating it.
 - **No apology and no excuses.** One sentence on the limit, then an offer to
   supply more.
 
-Apple asked for the recording to be from a physical device. This answer may not
-satisfy that. If it comes back rejected, the fix is ten minutes with any
-borrowed iPhone, or a real-device cloud farm (BrowserStack App Live, AWS Device
-Farm) — both are physical hardware and both can record.
+Apple asked for the recording to be from a physical device and this answer did not
+give them one, so it is worth saying plainly that it worked anyway — **do not spend
+money on hardware pre-emptively.** If a future submission *does* come back rejected
+on this point, the fix is ten minutes with any borrowed iPhone, or a real-device
+cloud farm (BrowserStack App Live, AWS Device Farm); both are physical hardware and
+both can record.

@@ -3,11 +3,13 @@ name: iOS App Store (build + upload)
 # Builds the iOS App Store archive and uploads it to App Store Connect, where it
 # becomes a TestFlight build.
 #
-# Same shape as mas-release.yml and for the same reason: DISPATCH-ONLY, and it
-# submits nothing. A human attaches the build to a version and presses "Add for
-# Review". On the Microsoft Store a machine was once allowed to commit a
-# submission and published this app at $0, unstoppable once started - see
-# AGENT.md rules 10-13.
+# Same shape as mas-release.yml and for the same reason: DISPATCH-ONLY. This lane
+# uploads and nothing else. Attaching the build is asc-version.yml, submitting is
+# asc-submit-review.yml (which refuses unless you name the exact version), and the gate
+# that stays human is pressing release - releaseType is MANUAL, so an approved
+# version never publishes itself. That last gate is the one that matters: on the
+# Microsoft Store a machine was once allowed to commit a submission and published
+# this app at $0, unstoppable once started - see AGENT.md rules 10-13.
 #
 # Two things are EASIER here than on macOS, both because the engine is a static
 # archive rather than a dylib:
@@ -430,9 +432,12 @@ jobs:
             echo "to revoke."
           fi
           echo "Uploaded. Processing takes a few minutes, then it appears in TestFlight."
-          echo "NOTHING is submitted. Export compliance is asked on the build itself -"
-          echo "ITSAppUsesNonExemptEncryption is deliberately absent from Info.plist so"
-          echo "a human answers it. See dev/plans/apple-appstore-plan.md Gate C2."
+          echo "NOTHING is submitted here: asc-version.yml attaches the build and sets"
+          echo "the notes, and asc-submit-review.yml presses Add for Review."
+          echo "Export compliance is already answered - ITSAppUsesNonExemptEncryption=false"
+          echo "ships in Info.plist, so there is nothing to click. That answer is valid"
+          echo "only while France stays out of availability; asc_build.py's audit checks"
+          echo "it. See 'Export compliance: SETTLED' in dev/plans/apple-appstore-plan.md."
           echo "https://appstoreconnect.apple.com/apps/6790176897/testflight/ios"
 
       - name: Revoke the ephemeral certificate

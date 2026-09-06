@@ -19,13 +19,19 @@ The master router and architecture flow — how modules and data stores interact
 What Airclone is, who it's for, and the magic moment. Read before proposing features.
 
 ### 3. 🎨 Building or editing UI? Read [`wiki/core/06-design-system.md`](wiki/core/06-design-system.md) **FIRST.**
-Do not guess CSS classes, colors, or component styles. Airclone uses a strict token-based design
-system (see also [`DESIGN.md`](DESIGN.md)).
+Do not guess colors, spacing, or component styles. Airclone uses a strict token-based design system,
+and the tokens are Dart, not CSS: `Space`, `Radii` and `AircloneTheme.of(context)` from
+`app/lib/src/ui/theme/tokens.dart`, under four OS skins × light/dark. [`DESIGN.md`](DESIGN.md) is the
+one-page reference for both.
 
 ### 4. 🧱 Architecture & rclone integration: [`wiki/core/08-core-architecture.md`](wiki/core/08-core-architecture.md)
-The single most important decision in this project is **how we drive the rclone engine** (spawned
-`rclone rcd` + RC HTTP API on desktop vs. in-process `librclone`/gomobile on mobile) behind one
-`RcloneClient` interface. Read this before touching anything that talks to rclone.
+The single most important decision in this project is **how we drive the rclone engine** behind one
+`RcloneClient` interface. There are three cases, not two: desktop spawns `rclone rcd` and talks to the
+RC HTTP API; Android runs its bundled rclone binary as a jniLib, spawned as a loopback `rcd`; iOS and
+the Mac App Store build — neither of which may spawn a subprocess — link `librclone` in-process over
+`dart:ffi`, which desktop can also opt into. One function decides, `_resolveEngineMode` in
+`app/lib/src/state/engine_controller.dart`; the doc above owns the explanation. Read it before
+touching anything that talks to rclone.
 
 ### 5. 💾 Application state: [`wiki/core/07-state-context.md`](wiki/core/07-state-context.md)
 Store shapes, contexts, and data models.
@@ -50,7 +56,7 @@ Store shapes, contexts, and data models.
 | Anything that reads file **content**, spawns a process, or polls | [Performance & Reliability Standards](wiki/core/14-performance-standards.md) | [External Integrations](wiki/core/10-external-integrations.md) |
 | Native / platform build work (Android jniLibs, librclone, FUSE, channels) | [External Integrations](wiki/core/10-external-integrations.md) | [dev hub](dev/README.md) → `dev/android/`, `dev/desktop/` |
 | Cutting a release | [dev hub](dev/README.md) (Release checklist) | [`dev/releases/`](dev/releases/) — notes must exist **before** the tag |
-| Submitting to a store (Microsoft / Play / Apple) | [Store submissions index](docs/store/README.md) | [Windows](dev/windows-signing-and-store.md) · [Play](dev/google-play-store.md) · [Apple/macOS](dev/apple-appstore-and-macos.md) |
+| Submitting to a store (Microsoft / Play / Apple) | [Store submissions index](docs/store/README.md) | [Windows](dev/windows-signing-and-store.md) · [Play](dev/google-play-store.md) · [Apple/macOS runbook](dev/apple-appstore-and-macos.md) + [Apple current state & traps](dev/apple-handoff.md) |
 | Writing, moving, or removing a doc | [Docs Blueprint](wiki/core/17-docs-blueprint.md) | [Knowledge Capture](wiki/core/18-knowledge-capture.md) |
 | Checking roadmap / parked items | [Backlog Index](dev/backlog/backlog-index.md) | [Feature Backlog](dev/backlog/feature-backlog.md) |
 
@@ -58,12 +64,19 @@ Store shapes, contexts, and data models.
 > under **`reference/`**, which is **gitignored** and must never be committed. Read it for ideas, but
 > keep external-project names out of committed files — cite our own docs in committed code.
 
-> **🔐 Real account values:** store publisher identity, signing profiles, release hosting and other
-> per-developer identifiers live in **[`dev/secrets/dev-profile.env`](dev/secrets/README.md)**, which
-> is **gitignored**. Read it when you genuinely need a real value, but **never copy a PRIVATE or
-> SECRET value into a committed file, commit message, doc or store listing** — refer to it by key
-> name (`MSIX_PUBLISHER`), never by value. That file belongs to one builder; if you cloned this repo
-> it will not exist, and that is expected — copy `dev-profile.example.env` and fill in your own.
+> **🔐 Real account values** live in two places, and never in a committed doc:
+> - **[`dev/secrets/dev-profile.env`](dev/secrets/README.md)** — store publisher identity, signing
+>   profiles, release hosting and other per-developer identifiers. **Gitignored**: it belongs to one
+>   builder, so on a fresh clone it will not exist, and that is expected — copy
+>   `dev-profile.example.env` and fill in your own.
+> - **[`dev/vault/vault.enc`](dev/vault/README.md)** — encrypted and **committed on purpose**, opened
+>   with `python tool/vault.py unlock` into the gitignored `dev/vault/notes/`. It holds the Apple /
+>   App Store Connect as-built record and the App Review contact, so unlike the file above it survives
+>   a clone.
+>
+> Read either when you genuinely need a real value, but **never copy a PRIVATE or SECRET value into a
+> committed file, commit message, doc or store listing** — refer to it by key name (`MSIX_PUBLISHER`),
+> never by value.
 
 ---
 
@@ -132,6 +145,14 @@ Store shapes, contexts, and data models.
     submission showed $0; both observations were correct, and the difference was *stage vs commit*.
     Concluding "the earlier alarm was a false positive" without isolating that variable is what
     published the app for free. A contradiction is evidence of a missing variable, not of a mistake.
+14. **A green audit is only evidence for the checks it actually performs.** Rule 9 distrusts a step
+    that reports success; this one distrusts the *checker*. Apple refused both 0.7.5 submissions for a
+    missing per-version `whatsNew` minutes after a dry run of the submit workflow printed **"No
+    gaps"** — one hole on each side: the listing script never sent the field, and the audit never
+    looked for it. When an external system refuses something your audit passed, the audit is part of
+    the defect: **add the missing check in the same change as the fix**, or the next release spends
+    another submission cycle learning it again. Account:
+    [`dev/apple-handoff.md`](dev/apple-handoff.md).
 
 ## ✅ Mandatory Wrap-Up Protocol
 Whenever a task or feature is complete — including when the user says "wrap up", "we're done", "ship

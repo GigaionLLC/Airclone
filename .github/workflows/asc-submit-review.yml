@@ -92,15 +92,19 @@ jobs:
           P8: ${{ secrets.APPSTORE_API_PRIVATE_KEY }}
           KEY_ID: ${{ vars.APPSTORE_API_KEY_ID }}
           ISSUER: ${{ secrets.APPSTORE_ISSUER_ID }}
+          CONFIRM: ${{ inputs.confirm_version }}
         run: |
           set -euo pipefail
           umask 077
           printf '%s' "$P8" > key.p8
-          ARGS=""
+          # CONFIRM comes through `env:` and is quoted: it is the only free-form
+          # input here and it reaches a shell twice. See asc-listing.yml.
           if [ "${{ inputs.mode }}" = "submit" ]; then
-            ARGS="--apply --version ${{ inputs.confirm_version }}"
+            set -- --apply --version "$CONFIRM"
+          else
+            set --
           fi
-          python tool/asc_listing.py key.p8 "$KEY_ID" "$ISSUER" 6790176897             --platform ${{ inputs.platform }} $ARGS
+          python tool/asc_listing.py key.p8 "$KEY_ID" "$ISSUER" 6790176897             --platform ${{ inputs.platform }} "$@"
 
       - name: Submit
         env:
@@ -108,18 +112,20 @@ jobs:
           KEY_ID: ${{ vars.APPSTORE_API_KEY_ID }}
           ISSUER: ${{ secrets.APPSTORE_ISSUER_ID }}
           APPLE_REVIEW_CONTACT: ${{ secrets.APPLE_REVIEW_CONTACT }}
+          CONFIRM: ${{ inputs.confirm_version }}
         run: |
           set -euo pipefail
           umask 077
           printf '%s' "$P8" > key.p8
-          ARGS="--submit-for-review"
           if [ "${{ inputs.mode }}" = "submit" ]; then
             # --version pins it to the string the operator typed, so a submit
             # cannot land on a different version than the one they confirmed.
-            ARGS="$ARGS --apply --version ${{ inputs.confirm_version }}"
+            set -- --submit-for-review --apply --version "$CONFIRM"
+          else
+            set -- --submit-for-review
           fi
           python tool/asc_build.py key.p8 "$KEY_ID" "$ISSUER" 6790176897 \
-            --platform ${{ inputs.platform }} $ARGS
+            --platform ${{ inputs.platform }} "$@"
 
       - name: Shred the key
         if: always()

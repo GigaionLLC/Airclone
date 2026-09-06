@@ -8,9 +8,15 @@ description: "The single source of truth for Airclone's visual design — tokens
 
 # 🎨 Design System
 
-The single source of truth for visual design. **Components reference only semantic tokens, never raw
-hex.** All semantic tokens have light and dark values. Token naming follows the convention
-`--color-*`, `--text-*`, `--space-*`, `--radius-*`, `--elevation-*`.
+The single source of truth for visual design *intent*. **Components reference only semantic tokens,
+never raw hex**, and all semantic colours have light and dark values.
+
+**The tokens are Dart, and [`ui/theme/tokens.dart`](../../app/lib/src/ui/theme/tokens.dart) is the
+implementation this page describes** — `Space.x1…x8` (there is no `x7`), `Radii.sm/md/lg/full`, and
+`AircloneTheme.of(context)`, a `ThemeExtension` returning the `AircloneColors` palette, which most of
+the UI already reads. The `--color-*` / `--space-*` names below are the *semantic vocabulary* the code
+mirrors, not identifiers you can type; take the value from `tokens.dart`, and add it there first if it
+is missing.
 
 **When to read this:** before you write or change any UI — a screen, dialog, row, button, chip or
 status indicator — and any time you are about to pick a colour, size, spacing, radius or focus
@@ -58,8 +64,24 @@ to happen" explainer. No emoji in product UI.
 | `--color-diff-only-b` | "Only in dest" | `#7C5CFC` | `#A48BFF` |
 | `--color-overlay` | Modal scrim | `rgba(16,18,22,.45)` | `rgba(0,0,0,.6)` |
 
+`AircloneColors` carries the first nineteen of these as named fields (`surface`, `surfaceRaised`,
+`surfaceSunken`, `border`, `borderStrong`, `text`, `textMuted`, `textFaint`, `primary`,
+`primaryHover`, `onPrimary`, `secondary`, `success`, `successBg`, `warning`, `warningBg`, `error`,
+`errorBg`, `info`). The last three — the two diff colours and the scrim — are **design intent with no
+token behind them yet**; they reuse `info` and `secondary` by value. Add the field before citing one.
+
 **Diff/status legend** (reused identically in the sync dialog and Compare view): match = `--color-success`,
 changed = `--color-warning`, only-in-source = `--color-diff-only-a`, only-in-dest = `--color-diff-only-b`.
+
+### Skins
+
+The palette is not the whole visual identity. A **skin** — `enum Skin { airclone, windows, macos,
+gnome }` — selects the per-OS axes the real file managers actually differ on (`SkinTokens`: font
+family + fallbacks, body size, row height, `VisualDensity`, selection radius, row dividers), on top of
+the same light/dark palette. A new install defaults to `Skin.forHost()`, so the app reads like the
+file manager the user already knows — Windows Explorer, macOS Finder, GNOME Files; Android and iOS get
+the brand look, since the phone shell has its own Material grammar. A persisted choice always wins
+(`skinProvider` in [07-state-context.md](07-state-context.md)).
 
 ## 🔠 Typography Scale
 
@@ -81,11 +103,12 @@ System stack: `-apple-system, "Segoe UI", Roboto, "Inter", sans-serif`. Monospac
 
 ## 🔳 Spacing, Radius & Elevation
 
-4px base spacing scale: `--space-1` 4 · `--space-2` 8 · `--space-3` 12 · `--space-4` 16 ·
-`--space-5` 24 · `--space-6` 32 · `--space-8` 48 (`--space-0` = 0).
+4px base spacing scale, shipped as `Space`: `x1` 4 · `x2` 8 · `x3` 12 · `x4` 16 · `x5` 24 · `x6` 32 ·
+`x8` 48. **There is no `x7`** — the jump from 32 to 48 is deliberate, so do not add one to fill the
+gap.
 
-Radius: `--radius-sm` 4px · `--radius-md` 8px (cards, buttons) · `--radius-lg` 12px (mobile cards,
-modals) · `--radius-full` 999px (chips, toggles).
+Radius, shipped as `Radii`: `sm` 4px · `md` 8px (cards, buttons) · `lg` 12px (mobile cards, modals) ·
+`full` 999px (chips, toggles).
 
 | Elevation | Light | Dark | Use |
 | :--- | :--- | :--- | :--- |
@@ -94,14 +117,20 @@ modals) · `--radius-full` 999px (chips, toggles).
 | `--elevation-2` | `0 4px 12px rgba(20,22,28,.10)` | `0 4px 12px rgba(0,0,0,.5)` | Popovers, dropdowns |
 | `--elevation-3` | `0 12px 32px rgba(20,22,28,.16)` | `0 12px 32px rgba(0,0,0,.6)` | Modals, drag-ghost |
 
+The typography scale and this elevation ramp are **design intent, not tokens**: `tokens.dart` has no
+type-scale or elevation constants, and the app expresses type through `SkinTokens.bodySize` plus
+Material's own text theme, and depth through Material surfaces. Treat the tables above as the target
+if you formalise either — not as identifiers to cite.
+
 ## 🧩 Key Components
 
 See the [Components Index](../components/components-index.md) for the full catalog. Anchors:
 
 - **Remote card** — `--surface-raised`, `--radius-md`, `--elevation-1`, padding `--space-3`. Provider
   icon (28px) + name (`--text-body-strong`) + connection dot (`--color-success` up / `--color-error`
-  down) + storage bar (4px track, `--color-primary` fill) + muted usage label. Mobile adds a
-  **"Show in Files"** toggle row.
+  down) + storage bar (4px track, `--color-primary` fill) + muted usage label. The mobile design adds
+  a **"Show in Files"** toggle row, for the day that bridge exists — see
+  [02-product-context.md](02-product-context.md).
 - **File row** — 36px desktop / 56px mobile. Leading type icon/thumbnail, name (`--text-body`,
   truncates), trailing meta (size + modified, `--text-meta` mono tabular). Hover `--surface-sunken`;
   selected = `--color-primary` 12%-alpha bg + left accent bar; status-glyph slot for transfer state.
@@ -131,9 +160,15 @@ See the [Components Index](../components/components-index.md) for the full catal
 - **Motion & themes:** respect `prefers-reduced-motion` and `prefers-color-scheme` (with manual
   override). All meaning survives in monochrome/high-contrast.
 
-**Responsive breakpoints:** ≥1100px full dual-pane + sidebar + docked job panel · 820–1100px sidebar
-collapses to icon rail · <820px folds to single-pane + bottom-sheet job panel · mobile (<600px)
-single-pane browser + bottom nav, no dual pane/mount, full-screen dialog sheets.
+**There is exactly one shell breakpoint: 700px.** `MediaQuery.sizeOf(context).width < 700` — or
+`androidIsTelevision`, regardless of width — selects `MobileHomeScreen`; everything else gets the
+desktop shell, which therefore also runs on Android tablets. Inside the desktop shell the sidebar,
+the second pane and the inspector are **user toggles, not width rules**, each with its own provider,
+so a narrow desktop window keeps whatever the user chose rather than rearranging itself. One further
+layout constant exists and is not a shell rule: an *adaptive* pane split stacks the two panes below
+600px of main-axis width instead of placing them side by side
+([`pane_layout.dart`](../../app/lib/src/state/pane_layout.dart)). Cite
+[`home_screen.dart`](../../app/lib/src/ui/home_screen.dart) before adding any other number.
 
 > The same domain/RC client and component primitives back both form factors — only the layout shell
 > and navigation model differ. See [05-app-structure.md](05-app-structure.md) for the layouts and

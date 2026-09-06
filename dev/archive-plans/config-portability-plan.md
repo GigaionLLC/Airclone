@@ -1,15 +1,25 @@
 ---
 type: "plan"
 name: "Config Portability & Unlock Plan"
-status: "planned"
-description: "Config path control, import/export (encrypted by default), desktop→phone QR/LAN handoff, and biometric unlock — the serverless profile-sync on-ramp."
+status: "shipped"
+description: "Config path control, import/export (encrypted by default), desktop→phone config handoff, and biometric unlock — the serverless profile-sync on-ramp. Shipped; §5's LAN transport was later removed in favour of the offline QR."
 ---
 
 # 🔑 Config Portability & Unlock
 
+**Status: SHIPPED.** The whole batch landed in **v0.2.0-beta.1** — config-path override, backups,
+import/export, LAN handoff and biometric unlock all ship in that release
+(`state/config_io.dart`, `state/config_backups.dart`, `ui/config_import_dialog.dart`,
+`ui/config_export_dialog.dart`, `state/biometric_unlock.dart`). Two things then diverged from the
+design below: the offline "whole config in the QR" fallback grew into the primary transport across
+**v0.2.0-beta.3** (single QR) and **v0.3.2 / v0.3.3** (multi-QR chunking and animated export), and
+the §5 LAN pairing transport was **deleted** — see the note on §5. Section
+numbers here are load-bearing: `state/offline_qr.dart` cites "§5" and `state/config_io.dart` /
+`state/config_transfer_controller.dart` cite "§3/§4", so renumber nothing.
+
 User ask (2026-07-09, expanded): config-path control, import/export (conf/JSON), encrypted-config
 support with an OS-vault/biometric unlock, and QR transfer desktop→phone. This is the on-ramp to the
-serverless [profile-sync vision](cross-platform-architecture-plan.md) — everything here works with
+serverless [profile-sync vision](../plans/cross-platform-architecture-plan.md) — everything here works with
 zero servers and zero Airclone accounts.
 
 ## Already in place (don't rebuild)
@@ -68,6 +78,18 @@ rclone's own config encryption for the ACTIVE config — the launch password gat
 (step 6) biometric release all keep working against a natively-encrypted rclone.conf.
 
 ### 5. Send to phone (QR/LAN handoff with pairing code) — the flagship
+
+> **SUPERSEDED — this transport shipped in v0.2.0-beta.1 and was then removed.**
+> [`config-transfer-simplify-plan.md`](config-transfer-simplify-plan.md) collapsed config transfer to
+> four actions and deleted the LAN half outright: `pairing_sender.dart`, `pairing_receiver.dart`,
+> `pairing_protocol.dart` and `send_to_phone_dialog.dart` are gone (`state/offline_qr.dart` keeps the
+> four survivors it needed — base45 and the unlock-code generator — and says so in a comment). What
+> replaced it is the offline QR: the whole config, gzipped and sealed with the Argon2id/AES-256-GCM
+> export envelope, carried *in* the code rather than fetched over Wi-Fi, split across numbered chunks
+> when it is too big for one. The premise below — "a whole config does NOT fit in a QR" — is what
+> that work disproved. The section is kept because the two-channel/pinned-TLS threat analysis is the
+> reasoning behind the surviving out-of-band unlock code, and because its number is cited from code.
+
 A whole config does NOT fit in a QR (OAuth tokens; QR v40 ≈ 2.9 KB), and a key embedded in the QR
 dies to a single photo/screen-share capture. Design (v2, pairing-code model — user-proposed
 direction, hardened):
@@ -131,6 +153,5 @@ and `--config` override interaction with the headless runner (it must honor the 
 
 ## Deliberately not doing
 
-- QR-animating the full config (multi-part QR) — LAN handoff covers it with less failure surface.
 - Cloud-relay transfer — violates the no-phone-home principle; the user's own LAN/remote is the
   channel (profile-sync's encrypted-blob-on-own-remote remains the roadmap for cross-network sync).

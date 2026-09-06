@@ -1,21 +1,20 @@
 #!/usr/bin/env python3
 """Attach an uploaded build to an App Store version, and set the review notes.
 
-The steps between "a build finished uploading" and "a human presses Add for
-Review". All plain App Store Connect API calls, and all the kind of retyping that
+The steps between "a build finished uploading" and "the version goes to
+review". All plain App Store Connect API calls, and all the kind of retyping that
 lets the console drift from the doc that justifies it - the review notes in
 particular carry a constraint that already cost this project review cycles
 elsewhere (never point a reviewer at the command console), so this reads them
 from the listing document and refuses if they mention it.
 
-What it deliberately does NOT do:
-
-  * export compliance. `usesNonExemptEncryption` is a US export-control
-    declaration about the LLC, and Airclone encrypts the user's rclone config
-    with a passphrase, so "no" would probably be false. A human answers it.
-  * submit. Adding a version to review is the one action AGENT.md rules 10-13
-    exist for: a machine once committed a store submission and published this
-    app at $0. There is no code path here that can do it.
+It can also SUBMIT (--submit-for-review) and answer export compliance
+(--export-compliance), both only under --apply and both described below. Neither
+is the day-to-day path: submission goes through asc-submit-review.yml, which
+requires a human to name the exact version first, and export compliance is already
+answered declaratively by ITSAppUsesNonExemptEncryption=false in both Info.plist
+files. The gate that stays human is pressing release - --create-version and
+--manual-release both set releaseType MANUAL, so an approved version waits.
 
 Usage:
   python tool/asc_build.py <key.p8> <keyid> <issuerid> <appid> [options]
@@ -41,13 +40,21 @@ Options:
   --builds                just list the builds Apple has registered, and stop.
   --create-version X.Y.Z  create the version record itself (releaseType MANUAL).
   --submit-for-review     add the version to review. Refuses on any audit gap.
-                          Needs --apply. This is the point of no return.
+                          Needs --apply. This is the point of no return, and
+                          asc-submit-review.yml is its only caller.
   --create-encryption-declaration --france yes|no
                           create the App Encryption Declaration that an
                           export-compliance answer of YES requires.
   --export-compliance yes|no
-                          answer the US export-control question on the build.
-                          Airclone's settled answer is YES (mass-market 5D992).
+                          answer the US export-control question on a build
+                          directly. NOT the normal path: the shipped answer is
+                          the declarative ITSAppUsesNonExemptEncryption=false in
+                          app/ios|macos/Runner/Info.plist, valid only while
+                          France is excluded (the audit's "french store" row
+                          guards it). Use this flag only if that key is removed
+                          or France is added, and then the answer becomes YES
+                          (mass-market 5D992), which needs
+                          --create-encryption-declaration first.
                           Needs --apply, like everything else that writes.
                           Works with no editable version, which is exactly when
                           you need it: right after an upload.
@@ -98,15 +105,12 @@ CREATE_VERSION = (ARGV[ARGV.index("--create-version") + 1]
                   if "--create-version" in ARGV else None)
 SET_COPYRIGHT = "--copyright" in ARGV
 MANUAL_RELEASE = "--manual-release" in ARGV
-# The US export-control declaration, carried on the BUILD rather than the
-# version. Airclone's settled answer is YES: it implements standard
-# confidentiality encryption of its own (rclone crypt, config encryption,
-# the vault, Argon2id for offline QR, and Go's own TLS because the engine is
-# statically linked and never calls Apple's Security framework). The
-# "HTTPS only" and "only Apple's OS crypto" exemptions are both false here,
-# which makes it mass-market 5D992 - see dev/plans/apple-appstore-plan.md.
-# Kept an explicit flag, never implied by --apply: it is a legal statement
-# and it should be visible in the command that makes it.
+# Add the version to review - the same act as pressing "Add for Review" in the
+# console. Gated on the audit and on --apply, and reached only through
+# asc-submit-review.yml, which requires the operator to name the exact version;
+# that string is passed here as --version, so the notes it refreshes and the
+# version it submits cannot be different ones.
+SUBMIT_FOR_REVIEW = "--submit-for-review" in ARGV
 # Create the App Encryption Declaration - the resource that makes an export
 # compliance answer of YES possible at all. Without one, PATCHing
 # usesNonExemptEncryption=true is accepted, echoed back, and stored as nothing.
@@ -116,9 +120,20 @@ MANUAL_RELEASE = "--manual-release" in ARGV
 # availableOnFrenchStore, is a commercial decision with a legal tail (yes means
 # Apple requires an ANSSI declaration, uploaded and approved before shipping) and
 # so has to be passed in explicitly. It is never defaulted.
-SUBMIT_FOR_REVIEW = "--submit-for-review" in ARGV
 CREATE_DECLARATION = "--create-encryption-declaration" in ARGV
 FRANCE = (ARGV[ARGV.index("--france") + 1] if "--france" in ARGV else None)
+# The US export-control declaration, carried on the BUILD rather than the
+# version - and NOT how this app answers it. The shipped answer is the
+# declarative ITSAppUsesNonExemptEncryption=false in both Info.plist files, so
+# Apple never asks per build. Apple itself drew that line: it refuses to create
+# an App Encryption Declaration unless the app uses proprietary cryptography, or
+# third-party cryptography AND is sold in France. Airclone is neither, which is
+# Apple saying the use is exempt. It holds only while France stays excluded - the
+# audit's "french store" row watches exactly that. If the plist key is ever
+# removed, or France is added, the answer becomes YES (mass-market 5D992) and
+# needs an App Encryption Declaration to attach to first.
+# Kept an explicit flag, never implied by --apply: it is a legal statement
+# and it should be visible in the command that makes it.
 EXPORT_COMPLIANCE = (ARGV[ARGV.index("--export-compliance") + 1]
                      if "--export-compliance" in ARGV else None)
 

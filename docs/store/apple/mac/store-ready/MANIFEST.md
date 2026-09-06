@@ -4,6 +4,12 @@ Five shots, all exactly **1280×800**, captured on a GitHub `macos-latest` runne
 [`mas-screenshots.yml`](../../../../../.github/workflows/mas-screenshots.yml).
 Nobody on this project owns a Mac.
 
+**This directory is the set.** `tool/asc_screenshots.py --device mac` uploads whatever
+is in it, and the path `docs/store/apple/mac/store-ready` is **hard-coded** in that
+script — moving or renaming the folder breaks the uploader rather than producing an
+error anyone would read as "the folder moved". This file, not the listing doc, is the
+source of truth for what ships.
+
 | File | Shows |
 | :--- | :--- |
 | `01-home-1280x800.png` | Home view — Demo Cloud in the sidebar and as a tile, engine running |
@@ -59,6 +65,8 @@ assumed from the home layout.
 
 ## Still worth adding
 
-A transfer in flight showing speed and ETA, and the add-remote wizard with the
-provider picker open. Both need more UI driving; the five above are enough to
-submit with.
+A transfer in flight showing speed and ETA; the add-remote wizard with the provider
+picker open; the split view with two folders side by side; and a media preview open.
+All four need more UI driving than the five
+above, which are enough to submit with — the reason they are listed here rather than
+in the listing doc is that a wish-list in two places disagrees within a release.

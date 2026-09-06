@@ -12,7 +12,9 @@ the shape is nearly identical).
 
 > **This repo is public.** Every account-specific value below is a `<placeholder>`. Never commit the
 > tenant id, client id, client secret, Seller ID, Store ID, or the publisher GUID. Real values live
-> in GitHub secrets/variables and private notes — nowhere else.
+> in GitHub secrets/variables and private notes — nowhere else. A *published* product's Store ID is
+> public in its Store URL, so it is not a secret — but it stays out of the tree anyway, because a
+> rule with one memorised exception is a rule that gets broken by the next person.
 
 ---
 
@@ -21,19 +23,23 @@ the shape is nearly identical).
 | Piece | Effect |
 | :--- | :--- |
 | Entra (Azure AD) app registration + client secret | the identity CI authenticates as |
-| That app added in **Partner Center** with the **Manager** role | what lets the identity touch *this* Store account |
+| That app added in **Partner Center** with the **Developer** role (§3 — *not* Manager) | what lets the identity touch *this* Store account |
 | `STORE_*` secrets + `STORE_APP_ID` variable | how CI receives it |
 | [`submit-msstore.yml`](../.github/workflows/submit-msstore.yml) | the button that submits, run from the Actions tab |
 
-**Submission is deliberately NOT automatic.** A tag builds, signs and attaches `airclone.msix` to
-the GitHub release; a human then runs *Submit to Microsoft Store* against that tag. This mirrors
+**Submission is deliberately NOT automatic.** A tag builds and attaches `airclone.msix` to the
+GitHub release — **unsigned by design**, because Partner Center signs the package; the executables
+*inside* it (`airclone.exe`, `rclone.exe`) are Azure-signed. A human then runs *Submit to Microsoft
+Store* against that tag. This mirrors
 [`promote-play.yml`](../.github/workflows/promote-play.yml), and matters more here than on Play:
 Microsoft certification takes **days**, and a bad submission burns a review cycle — this app has
 already lost cycles to package-identity rejections (v0.6.0, 4×) and policy 10.2.5.
 
 The workflow downloads the MSIX **from the release** rather than rebuilding, so what gets certified
-is the exact signed package that was tested, and it refuses a missing or zero-byte package before
-Partner Center ever sees it.
+is the exact package that was tested, and it refuses a missing or zero-byte package before Partner
+Center ever sees it. Unsigned also buys a repair: a package whose identity is wrong can be corrected
+with `makeappx unpack` / `pack` instead of rebuilt — see
+[`windows-signing-and-store.md`](windows-signing-and-store.md) §2c.
 
 > The old `STORE_PUBLISH_ENABLED` master switch is **retired**. It existed to keep an
 > automatic-on-tag submission dormant; with submission behind a manual dispatch there is nothing to
@@ -124,20 +130,15 @@ az ad app credential reset --id <appId> --years 2   # prints the secret ONCE
 ```
 
 > **Gotcha — `AADSTS530035: Access has been blocked by security defaults`.** A tenant with Security
-> Defaults enabled (the Microsoft-managed baseline) requires a fresh interactive, MFA-backed token
-> for Graph admin operations like creating an app registration. A cached `az` session that works
-> fine for other commands will fail here. Re-authenticate with the Graph scope:
+> Defaults enabled (the Microsoft-managed baseline) refuses this Graph admin operation from a cached
+> `az` session. The remedy is **not** more device-code flags — Security Defaults blocks the
+> *device-code flow itself*. [`dev/microsoft-account-setup.md`](microsoft-account-setup.md) §5 owns
+> the answer and the fallback that actually worked here (plain `az login`; then, when this tenant
+> refused that too, the Entra portal UI).
 >
-> ```powershell
-> az login --use-device-code --tenant <tenant-id> --scope "https://graph.microsoft.com//.default"
-> ```
->
-> `--use-device-code` matters when the machine is locked or headless: it prints a short code to enter
-> at <https://login.microsoft.com/device> from **any** device, including a phone.
->
-> **The code is short-lived** — it polls for roughly 15 minutes and then exits 1 with
-> `AADSTS70016: ... Authorization is pending`, which reads like a failure but only means nobody
-> entered it in time. Start the command when you are actually at a browser, not in advance.
+> Wherever you do use a device code, **it is short-lived** — it polls for roughly 15 minutes and then
+> exits 1 with `AADSTS70016: ... Authorization is pending`, which reads like a failure but only means
+> nobody entered it in time. Start the command when you are actually at a browser, not in advance.
 
 ### 1a. The secret expires — there is no "never"
 
@@ -333,10 +334,18 @@ missing.
 ## 5. What CI runs ✅
 
 [`submit-msstore.yml`](../.github/workflows/submit-msstore.yml), by hand from the Actions tab. It
-downloads the signed MSIX from the chosen release, checks its package identity, then runs
-[`tool/store_submit.py`](../tool/store_submit.py) — with `--commit` only when *Dry run* is unchecked.
+downloads the MSIX from the chosen release, checks its package identity, then runs
+[`tool/store_submit.py`](../tool/store_submit.py). There is no dry-run checkbox — a three-way `mode`
+input decides how far it goes:
 
-The script walks the REST flow, each step depending on the last:
+| `mode` | What it does |
+| :--- | :--- |
+| **`dry-run`** (default) | authenticates and reads the app's real state — pending submission, last published submission, both pricing blocks — and **creates nothing** |
+| **`stage`** | `--stage`: uploads the package and leaves an editable draft. **The only supported route for this product** (§0) |
+| **`submit`** | `--commit`: full automatic submission — refused by `store_submit.py` while the product is on the advanced pricing model, and forbidden by AGENT.md rule 10. Do not reach for it |
+
+The script walks the REST flow, each step depending on the last. `--stage` runs it as far as the
+upload and stops; the last two rows belong to `--commit` alone:
 
 | Step | Why it matters |
 | :--- | :--- |
@@ -345,8 +354,8 @@ The script walks the REST flow, each step depending on the last:
 | `POST /submissions` | clones the last published submission — listing copy, screenshots, age rating and **pricing** carry over untouched |
 | `PUT /submissions/{id}` | old packages → `PendingDelete`, new one → `PendingUpload` |
 | `PUT` the zip to the SAS URL | `x-ms-blob-type: BlockBlob` |
-| `POST /commit` | hands it to certification |
-| `GET /status`, bounded poll | catches an immediate rejection; certification itself takes **days**, so polling to completion is pointless |
+| `POST /commit` (`--commit` only) | hands it to certification |
+| `GET /status`, bounded poll (`--commit` only) | catches an immediate rejection; certification itself takes **days**, so polling to completion is pointless |
 
 ### Driving Partner Center without losing your work
 
@@ -373,10 +382,17 @@ discoverable"** (direct link only), so it never appeared in Store search or brow
 listing-level setting living in the same module, unrelated to any release, and it silently caps
 discovery. Worth confirming whenever *Pricing and availability* is open.
 
-### Superseding a release that is still in review
+### Superseding whatever is pending — the routine case, and the expensive one
 
 **A pending submission blocks a new one**, and the script refuses rather than clearing it, because it
 may be a listing edit somebody made by hand. `delete_pending: true` overrides that deliberately.
+
+**Expect to use it on most releases.** The Store allows exactly **one** pending submission of any
+kind, and we stage far more releases than we submit — so the draft the previous stage left behind is
+usually still sitting in that slot, and the next `mode: stage` refuses until it is cleared. Throwing
+away an uncommitted draft costs nothing. Throwing away one that a human has already **submitted**
+costs its place in the review queue, so run a dry run first (§6) and read the status before setting
+the flag: the two cases look identical from the outside and only the status tells them apart.
 
 Microsoft review takes days, so a newer build *will* sometimes be ready while an older one is still
 in certification. It must not have to wait: run the workflow with **`delete_pending: true`** and it
@@ -405,10 +421,26 @@ rest** — fix one, resubmit, wait days, discover the next. That is how v0.6.0 b
 
 ## 6. Verification ✅
 
-First green dry run: **2026-08-17**, `submit-msstore.yml` against `v0.6.7`. Verified by reading the
-log, not by the green check (AGENT.md §9) — `airclone.msix` downloaded at 98,156,524 bytes,
-`reconfigure` passed its own auth test, and `msstore apps list` returned the real listing with
-ProductId matching `STORE_APP_ID`.
+**How to read the current state: run a dry run.** Nothing in this repo is a live mirror of the Store,
+and any "current state" written into a doc is wrong by the next submission. `submit-msstore.yml` with
+`mode: dry-run` (any tag) authenticates for real, creates nothing, and prints what is true at that
+moment — `app: <name> (<STORE_APP_ID>)`, any pending submission with its id and status,
+`last published submission: <id>`, the pricing readback for the last-published and pending
+submissions, and finally `DRY RUN — authenticated, app reachable, no submission created.` Do this
+before every `delete_pending`, and before believing anything about what is live.
+
+What was staged for a given release is recorded per release, submission ids included, in
+[`dev/logs/agent-changelog.md`](logs/agent-changelog.md) — a dated log, which is where a fact like
+that belongs. What happened to it *after* staging is not recorded anywhere and should not be: a
+submission moves through certification on Microsoft's schedule, so any sentence in a doc claiming a
+current state is wrong within days. Run the dry run and read it from the API.
+
+First green dry run: **2026-08-17** (CLI era), `submit-msstore.yml` against `v0.6.7`. Verified by
+reading the log, not by the green check (AGENT.md §9) — `airclone.msix` downloaded at 98,156,524
+bytes, `reconfigure` passed its own auth test, and `msstore apps list` returned the real listing with
+ProductId matching `STORE_APP_ID`. That lane no longer exists: the CLI was replaced by
+[`tool/store_submit.py`](../tool/store_submit.py) (§0), so a green run today looks like the dry-run
+output above, not like `apps list`.
 
 **Two independent faults had to be fixed, and each masked the other:**
 
@@ -429,10 +461,10 @@ secret cannot be inspected, so rotate that last rather than first.
 
 - **Security Defaults blocks app registration from a cached token** (step 1) — the error names
   Graph, not the Store, which makes it look unrelated.
-- **`az login` may be refused entirely.** On this tenant both `az login --use-device-code` and the
-  scoped variant returned *"Your sign-in was successful but you don't have permission to access this
-  resource"* — the sign-in works, the resource is refused. The whole of step 1 was therefore done in
-  the **Entra portal UI** instead, which worked first time. If the CLI fights you, stop fighting it.
+- **`az login` may be refused entirely**, and step 1 was therefore done in the **Entra portal UI**,
+  which worked first time. [`microsoft-account-setup.md`](microsoft-account-setup.md) §5 owns that
+  one and the `AADSTS530035` above it — both sign-in failures are written up together there, because
+  they are told apart only by which of them you hit first.
 - **Partner Center has two identities.** *Account settings → User management* refuses the Microsoft
   account you browse with and demands "Sign in with Microsoft Entra ID" — the work account. Expect a
   second sign-in specifically for the user-management pages.

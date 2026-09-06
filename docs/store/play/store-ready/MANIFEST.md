@@ -35,6 +35,38 @@ identical framing.
 | Feature graphic | `feature-1024x500.png` | 1024x500 | - |
 | App icon | `icon-512.png` | 512x512 | - |
 
+## How to get them there
+
+Not through the Console's "Add assets" button — it opens a native file dialog, which
+nothing but a human sitting at that machine can drive. Use Actions → **Play Store
+listing images** ([`play-images.yml`](../../../../.github/workflows/play-images.yml)),
+which needs no local credentials, once per image type:
+
+| `type` | `dir` |
+| :--- | :--- |
+| `phoneScreenshots` | `docs/store/play/store-ready/phone` |
+| `sevenInchScreenshots` | `docs/store/play/store-ready/tablet-7in` |
+| `tenInchScreenshots` | `docs/store/play/store-ready/tablet-10in` |
+
+`featureGraphic` and `icon` are **single-image** slots, and `feature-1024x500.png` and
+`icon-512.png` both sit loose in this folder — the uploader sends *every* image in the
+directory you name, so pointing either slot at `store-ready/` would send both. Give
+each its own directory first, or upload those two in the Console.
+
+Three rules, all cheap to get wrong:
+
+- **`replace: true`.** Play *appends* an uploaded image to the set rather than
+  overwriting it, so a second run without it leaves duplicates in the listing.
+- **`mode: report` first, then `apply`.** Report shows exactly what would be sent and
+  changes nothing.
+- **One run per slot.** The uploader takes a directory, not a manifest, and sends
+  every `.png`/`.jpg` in it — in sorted order — to the one slot you named.
+
+It writes **images only** — it cannot touch the listing text, attach a build or
+publish — and Play holds the uploaded set as a **draft** until someone reviews and
+sends it. `tool/play_images.py` is the same thing locally, if you have the service
+account key.
+
 ## Play requirements these satisfy
 
 - **Phone:** PNG/JPEG - min 2, max 8 - 16:9 or 9:16 - each side 320-3840 px - <= 8 MB.

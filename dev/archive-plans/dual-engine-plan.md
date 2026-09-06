@@ -1,13 +1,24 @@
 # Dual-engine plan: in-process `librclone` alongside spawned `rcd`
 
-**Status:** in progress (Phase 0 spike). **Pinned rclone:** `v1.75.0`.
+**Status:** SHIPPED — all five phases. The desktop in-process engine ships from v0.2.0-beta.1
+(`EngineMode` switch in Settings, `librclone` built and bundled by CI on all three desktops); the
+iOS engine is statically linked and reached `ready` on a simulator on 2026-08-28, and iOS/MAS
+builds have been through App Store review since.
+**Pinned rclone:** whatever `RCLONE_VERSION` says in
+[`.github/workflows/release.yml`](../../.github/workflows/release.yml) — that is the value that
+actually builds the artifact, and it carries a comment explaining each bump. Do not restate it here;
+a second copy only goes stale, and this one is security-relevant.
 **Owner interface:** [`RcloneClient`](../../app/lib/src/rclone/rclone_client.dart) — the ONE seam.
 
 ## Why
 
-Today the engine is always a **spawned `rclone rcd`** subprocess driven over loopback
+*(Written before the work; the present tense below describes the pre-v0.2.0-beta.1 world.)*
+
+The engine was always a **spawned `rclone rcd`** subprocess driven over loopback
 HTTP ([`HttpRcloneClient`](../../app/lib/src/rclone/http_rclone_client.dart)) — on
 desktop directly, on Android via a bundled `librclone.so` exec'd as a subprocess.
+That is still the desktop default; what follows is why a second engine had to exist
+beside it.
 
 Two forces need a second engine that runs rclone **in-process** via `dart:ffi`:
 
@@ -193,10 +204,35 @@ dummy-module/`go get`/env-snapshot pattern, targeting the librclone package as
     resolves `Contents/Frameworks/librclone.dylib` on macOS, `<exeDir>/lib…` elsewhere.
   - CI: `release.yml` builds librclone before each `flutter build` (setup-go +
     egor-tensin/setup-mingw on Windows). `ci.yml` pin-staleness check extended to the
-    new scripts. **NOT yet run in CI** — verify with a `workflow_dispatch` before a
-    tagged release depends on it (mac/linux bundling is unverifiable locally).
+    new scripts. **Verified in CI since:** `release.yml` runs a dedicated `librclone`
+    matrix job (windows/macos/ubuntu) on every tagged release, isolated from the
+    Flutter build so a stray gcc can't hijack Windows' MSVC toolchain, uploading with
+    `if-no-files-found: error`; the platform jobs declare `needs: librclone`. A leg
+    that fails means that platform ships binary-engine-only, by design.
   - Artifacts gitignored (`app/{windows,macos,linux}/librclone/`).
-- **Phase 5 — iOS/MAS:** `gomobile bind` xcframework; MAS entitlements/signing; forced library.
+- **Phase 5 — iOS/MAS ✅ DONE (2026-08-28; iOS and MAS have both been through App Store review
+  since).** `gomobile bind` was the wrong guess — upstream's gomobile binding is Android-only. What
+  actually works, recorded in [`dev/ios/build-librclone-ios.sh`](../../dev/ios/build-librclone-ios.sh)
+  and [`.github/workflows/librclone-ios.yml`](../../.github/workflows/librclone-ios.yml):
+  - **`-buildmode=c-archive`, one slice at a time.** `c-shared` is not supported on iOS, so the
+    engine links statically into the app binary and Dart resolves it with
+    `DynamicLibrary.process()`, never `open()`.
+  - **A trimmed wrapper package** ([`dev/ios/librclone_ios.go`](../../dev/ios/librclone_ios.go))
+    importing only `backend/all`, `fs/operations` and `fs/sync`. Stock `librclone` is unusable here
+    because `cmd/mount2` is real on `ios/amd64`; `fs/sync` is not optional (it is what `sync/copy`
+    and `sync/move` need). `storj.io/common` needs a module `replace` — its `go:linkname` into the
+    runtime breaks the c-archive relink.
+  - **Dead-strip roots are mandatory.** The Xcode target links with `-force_load` plus
+    `-Wl,-u,_RcloneInitialize|_RcloneFinalize|_RcloneRPC|_RcloneFreeString`; without them the linker
+    drops an engine nothing statically references. Go does not apply its own `//go:cgo_ldflag`
+    directives for c-archive either, so the target must link CoreFoundation, Security and libresolv
+    by hand.
+  - **The simulator archive must be fat (arm64 + x86_64).** `flutter build ios --simulator` always
+    emits both, and `-force_load` of an archive missing an architecture is only a *warning* — the
+    slice silently contains no engine. Give each target its own `GOCACHE` for the same class of
+    reason (golang/go#57442 poisons a shared one with device-tagged artifacts).
+  - MAS entitlements and signing are not covered here; they live in
+    [`apple-appstore-plan.md`](../plans/apple-appstore-plan.md).
 
 ## Unit-testable vs integration-only
 
@@ -206,7 +242,14 @@ dummy-module/`go get`/env-snapshot pattern, targeting the librclone package as
 - **Integration (native lib present):** the FFI round-trip, `start/quit`, a real
   `objectRef` fetch. Gated so CI without the lib skips them.
 
-## Open questions to resolve in the spike
+## Open questions the spike was run to answer
+
+Historical, and all three are answered in the shipped code. Phase 0 settled the first two directly:
+all four exports resolve and struct-return-by-value marshals, so no cgo shim was needed. The third
+split in two — the config *path* is set with the `config/setpath` RC method
+(`librclone_ffi.dart`), while the config *password* does need a process env write, so
+`_setProcessEnv` resolves `setenv`/`_putenv_s` through `DynamicLibrary.process()` and carries the
+CRT-snapshot caveat in its own comment.
 
 - Exact librclone package import path + `RcloneRPCResult` field order (inspect module).
 - Does Dart FFI struct-return-by-value work cleanly for `{char*, int}` here, or do we

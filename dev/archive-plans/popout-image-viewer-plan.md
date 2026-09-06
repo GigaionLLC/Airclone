@@ -1,11 +1,16 @@
 ---
 type: "plan"
 name: "Pop-out Image Viewer (desktop)"
-status: "planned"
+status: "shipped"
 description: "Separate, independently-resizable OS windows per image (multi-window) with their own zoom — desktop only, via desktop_multi_window 0.3.x."
 ---
 
 # 🪟 Pop-out Image Viewer (desktop)
+
+**Status: SHIPPED in v0.2.0-beta.1**, image-only MVP as designed —
+[`ui/popout_image_app.dart`](../../app/lib/src/ui/popout_image_app.dart) behind the `main(args)`
+branch, with `desktop_multi_window: ^0.3.0` in `app/pubspec.yaml`. Video and PDF pop-outs are still
+deferred for the reason given under "Notes / risks".
 
 User ask: on desktop, pop an image out into its own OS window — resize freely, zoom independently,
 open several at once, all decoupled from the main Airclone window.

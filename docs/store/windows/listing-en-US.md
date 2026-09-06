@@ -5,6 +5,15 @@ is **paid**, so this copy does NOT claim the app is free / no-paywall. Windows-
 desktop-focused (no mobile/enterprise details). Includes the rclone non-affiliation
 line to avoid trademark/impersonation rejections.
 
+⚠️ **Nothing in this repo pushes this text.** `tool/store_submit.py` creates a
+submission by cloning the last published one — listing copy, screenshots, age rating
+and pricing all carry over untouched, and only the packages change. Editing this file
+therefore changes nothing in the Store until someone pastes the block into Partner
+Center. **Pending paste as of 2026-09-06:** the transfers bullet no longer claims a
+running transfer can be paused — only the *queue* can be
+(`jobs_panel.dart`: *"queued transfers wait; running ones finish"*) — and the
+"What's new" block below was rewritten.
+
 > **DO NOT reorder the first two lines of the Description.** Store policy
 > **10.2.4.1** requires any dependency on non-integrated software to be disclosed
 > *within the first two lines*, and certification failed us on 2026-07-29 for an
@@ -25,7 +34,7 @@ rclone is a powerful open-source tool that can move and sync files across 70+ cl
 
 WHAT YOU CAN DO
 • Browse every cloud like a local folder. Your PC's storage and all of your cloud remotes appear side by side in one window, with familiar rows, previews, and right-click actions.
-• Move and copy files between clouds. Send a file straight from one cloud to another — the transfer runs as a background job you can watch, pause, or cancel.
+• Move and copy files between clouds. Send a file straight from one cloud to another — the transfer runs as a background job you can watch or cancel, and you can pause the queue so nothing new starts.
 • Sync and back up folders. Mirror, copy, move, or two-way sync, with a dry-run preview that shows exactly what will change before anything happens.
 • See your photos and videos. Image and video thumbnails load right in the app for any remote, cached on your device.
 • Work faster with power tools. A built-in rclone command console plus archive create and extract are a click away.
@@ -43,10 +52,23 @@ Uninstalling removes Airclone completely. The uninstaller also offers to delete 
 
 ## What's new in this version
 
-<!-- Update this per release before pasting — see dev/windows-signing-and-store.md §2 Step D. Text below is for v0.5.7. -->
+**The Microsoft Store is the deliberate exception to the generic release-notes policy**
+([`../store-release-notes.md`](../store-release-notes.md)). Play and the App Store are
+fed the same one-liner from `store-release-notes.txt` by machine; nothing feeds this
+field. `tool/store_submit.py` creates each submission by **cloning the last published
+one**, so this text carries the *previous* release's copy forward untouched and looks
+correct in Partner Center while being a release out of date.
+
+So: **rewrite the block below for the version being submitted, then paste it into
+Partner Center by hand** — every release, before pressing Submit. See
+`dev/windows-signing-and-store.md` §2 Step D. If there is nothing worth writing, paste
+the generic line from `store-release-notes.txt` rather than leaving the last one in
+place.
 
 ```
-First release of Airclone on the Microsoft Store. Browse, transfer, and sync files across 70+ cloud storage services from one clean desktop app — the full rclone engine and the Visual C++ runtime are built in, so there's no command line and nothing else to install. This build also fixes setting up a remote when the provider asks a follow-up question, makes uninstalling completely clean, and shuts the rclone engine down the moment you close the window.
+Browse, transfer, and sync files across 70+ cloud storage services from one clean desktop app — the full rclone engine and the Visual C++ runtime are built in, so there's no command line and nothing else to install.
+
+Full release notes: https://github.com/GigaionLLC/Airclone/releases
 ```
 
 ## Short description (<= 270 chars)

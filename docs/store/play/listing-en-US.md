@@ -4,6 +4,28 @@ Paste-ready copy for the Play Console "Create default store listing" form.
 Feature-first so it matches the screenshots; includes an rclone non-affiliation
 line to avoid trademark/impersonation rejections.
 
+⚠️ **Nothing pushes this text.** [`play-images.yml`](../../../.github/workflows/play-images.yml)
+writes **images only** — it cannot change a word of the listing. Editing this file
+therefore does not change the live listing; someone has to paste the block into
+Play Console → Store listing. Assume the live text is whatever was last pasted, not
+what is written here, and re-paste after any correction.
+
+**Two corrections were made here on 2026-09-06 and are almost certainly still wrong
+in the live listing until someone pastes:**
+
+- A *FOR TEAMS AND IT* paragraph claiming MDM configuration, policy controls and
+  local audit logging. None of the three exists — there is no `app_restrictions` /
+  `RestrictionsManager` integration in the Android app and no audit log anywhere;
+  `mount_policy.dart` and `serve_policy.dart` are internal build-flavour gates with a
+  managed-config *seam* and no managed-config *source*. Only the keychain half was
+  real, and it survives below as SECRETS STAY IN THE OS. This is precisely the class
+  of claim that earns an "Unusable Feature" finding — `hardening-audit-2026-07-15.md`
+  H-17 cited this paragraph by line number. Do not restore the enterprise story until
+  H-17's capability matrix exists and marks those features available.
+- "watch, pause, or cancel" a transfer. The only pause control pauses the **queue**
+  (`jobs_panel.dart`: *"queued transfers wait; running ones finish"*); a running
+  transfer cannot be paused.
+
 ---
 
 ## App name  (max 30 chars)
@@ -40,7 +62,8 @@ WHAT YOU CAN DO
 • Browse every cloud like a local folder. Your phone's storage and all of your cloud
   remotes appear side by side in one simple list, with the same rows and gestures.
 • Move and copy files between clouds. Send a file straight from one cloud to another —
-  the transfer runs as a background job you can watch, pause, or cancel.
+  the transfer runs as a background job you can watch or cancel, and you can pause the
+  queue so nothing new starts.
 • Sync and back up folders. Mirror, copy, move, or two-way sync, with a dry-run preview
   that shows exactly what will change before anything happens.
 • See your photos and videos. Image and video thumbnails load right in the app for any
@@ -64,9 +87,9 @@ The full rclone engine ships inside the app, so there is nothing else to install
 Airclone is an independent companion to rclone and is not affiliated with, sponsored by,
 or endorsed by the rclone project.
 
-FOR TEAMS AND IT (OPTIONAL)
-Airclone can also be deployed and managed by IT — MDM configuration, policy controls,
-OS-keychain secret storage, and local audit logging — all without phoning home.
+SECRETS STAY IN THE OS
+If you let Airclone remember an encrypted rclone configuration's password, it goes into your device's
+own credential store — never into a file of ours, and never off the device. Nothing phones home.
 ```
 
 ---
@@ -84,4 +107,13 @@ OS-keychain secret storage, and local audit logging — all without phoning home
       placeholder images. The backing has to be webdav (the emulator reaches a host
       `rclone serve webdav`), so the remotes are now named for something that type is plausible
       for: **Home-NAS**, **Studio-Drive**, **Archive-Backups**. All 14 screenshots re-shot.
-- [ ] Resubmit via "Update default store listing" → replace assets → Save.
+- [x] Assets are uploaded from this repo, not through the Console's "Add assets"
+      button (which opens a native file dialog nothing but a human at that machine can
+      drive). Run Actions → **Play Store listing images**
+      ([`play-images.yml`](../../../.github/workflows/play-images.yml)), one run per
+      image type, with `replace: true` — Play **appends** otherwise and leaves
+      duplicates — and `mode: report` before `mode: apply`. Slot-to-folder pairs are in
+      [`store-ready/MANIFEST.md`](store-ready/MANIFEST.md).
+- [ ] Send the draft. The workflow writes **images only** and Play holds the change as
+      a draft until someone reviews and sends it — and the text above still has to be
+      pasted into the Console by hand.

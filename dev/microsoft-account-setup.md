@@ -17,9 +17,11 @@ detail lives in siblings and is not repeated here:
 > Seller ID, the publisher GUID and the D-U-N-S are **not committable**. They live in GitHub
 > secrets/variables and private notes. Nothing here should ever be filled in with a real value.
 
-**Cost: nothing.** Entra ID Free needs no subscription, associating a tenant is free, and the Partner
-Center developer account was a one-off company registration. The Azure subscription exists only to
-host code signing. No step in this document requires adding a payment method.
+**Cost: nothing in THIS document.** Entra ID Free needs no subscription, associating a tenant is
+free, and the Partner Center company account is itself free. No step here requires adding a payment
+method. The one paid item on the Microsoft side sits in a sibling: the Azure subscription exists only
+to host **Azure Artifact Signing** (~$10/month plus per-use signing) — see
+[`windows-signing-and-store.md`](windows-signing-and-store.md) §1.
 
 ---
 
@@ -73,17 +75,31 @@ Order matters — several steps are impossible until an earlier one exists.
 1. **Entra tenant** (workforce). If you already have one from an Azure subscription, use it. Do not
    create a second; two tenants with similar names is the trap that produced most of §5.
 2. **Native admin user** in that tenant — `you@<tenant>.onmicrosoft.com`, Global Administrator. Do
-   this even if your MSA is already a guest: the guest cannot do steps 6 and 7.
+   this even if your MSA is already a guest: the guest cannot do steps 7 and 8.
 3. **Custom domain** (optional) — verify `yourcompany.com` in that tenant via DNS TXT.
 4. **Partner Center account** — company registration at partner.microsoft.com. Needs a D-U-N-S and
    business verification (days, not minutes). Signed in with the MSA.
-5. **App registrations** — one per job (§3).
-6. **Associate the tenant with Partner Center** — *Account settings → Tenants*. **Do this before
+5. **Azure Artifact Signing** — create the signing account, submit **Identity validation** (which
+   needs the `Artifact Signing Identity Verifier` role on your own user, and takes **days** of
+   Microsoft review), then create the **Public Trust** certificate profile — its create form will
+   not offer a validation that is still In Progress, so this cannot be hurried later. Start it
+   alongside step 4: those two are the multi-day waits on the Microsoft side, and this is the one
+   step that costs money. Detail: [`windows-signing-and-store.md`](windows-signing-and-store.md) §1.
+6. **App registrations** — one per job (§3).
+7. **Associate the tenant with Partner Center** — *Account settings → Tenants*. **Do this before
    anything else in Partner Center**, because app grants are impossible without it (§4).
-7. **Grant the CI app a role** — *Account settings → User management → Microsoft Entra applications*
+8. **Grant the CI app a role** — *Account settings → User management → Microsoft Entra applications*
    (§4).
-8. **GitHub secrets and variables** (§6).
-9. **Prove it** — dry-run the workflows before trusting anything (§7).
+9. **Reserve the product — as a PACKAGED reservation** — then copy *Product management → Product
+   identity* into `MSIX_IDENTITY_NAME` / `MSIX_PUBLISHER` / `MSIX_DISPLAY_NAME`, and the Store ID
+   into `STORE_APP_ID`. Four of the values step 11 asks for do not exist until this is done
+   ([`windows-signing-and-store.md`](windows-signing-and-store.md) §§2b–2c).
+10. **Create the FIRST submission by hand** — listing copy, screenshots, age rating, privacy-policy
+    URL, notes for certification. The submission API only *updates* an app that already has a
+    completed submission, so no amount of automation gets you the first one
+    ([`msstore-ci-setup.md`](msstore-ci-setup.md) §0).
+11. **GitHub secrets and variables** (§6).
+12. **Prove it** — dry-run the workflows before trusting anything (§7).
 
 ---
 
@@ -166,6 +182,23 @@ is refused, which reads like a permissions problem. **Use plain `az login`** (au
 in a browser); it is permitted. A device code also only polls ~15 minutes before exiting with
 `AADSTS70016 Authorization is pending`, which looks like failure but means nobody typed it in time.
 
+**And `az login` itself may be refused.** On this tenant both variants below answered *"Your sign-in
+was successful but you don't have permission to access this resource"* — the sign-in works, the
+resource is refused. The app registration was then created in the **Entra portal UI**, which worked
+first time. If the CLI fights you here, stop fighting it; nothing in this setup requires the CLI.
+
+The two variants, recorded because neither is guessable. The **doubled slash** in the scope is not a
+typo — `az` treats `.default` after a single slash as a path segment and the token comes back for the
+wrong audience:
+
+```
+az login --tenant <tenant-id>
+az login --use-device-code --tenant <tenant-id> --scope "https://graph.microsoft.com//.default"
+```
+
+A device code is entered at `https://login.microsoft.com/device` and polls for roughly 15 minutes
+before exiting `AADSTS70016`.
+
 **`AADSTS90002: Tenant <id> not found` is about your session, not your resources.** After deleting a
 tenant, a portal tab still pinned to it fails this way. It is *not* evidence that anything was
 destroyed. Sign in again against the surviving tenant before concluding anything — this error
@@ -218,8 +251,14 @@ nothing in the names records which directory that was. Write it down somewhere p
 Both publishing lanes have a dry run that authenticates for real and changes nothing. Use them:
 
 ```bash
-gh workflow run submit-msstore.yml --repo <org>/<repo> -f tag=<tag> -f dry_run=true
+gh workflow run submit-msstore.yml --repo <org>/<repo> -f tag=<tag> -f mode=dry-run
 ```
+
+`mode` is a three-way choice, not a checkbox: `dry-run` (the default — authenticates, reads the app's
+real state, creates nothing), `stage` (uploads the package and leaves a draft for a human to submit
+in Partner Center) and `submit`. **Never `submit`** for this product — committing through the API
+republishes it at $0; that is AGENT.md rule 10, and the account of how it happened is in
+[`msstore-ci-setup.md`](msstore-ci-setup.md) §0.
 
 And read the log rather than the green tick — this repo has shipped three Windows releases with no
 bundled rclone because `continue-on-error` hid a failure (AGENT.md §9).

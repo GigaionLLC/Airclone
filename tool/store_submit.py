@@ -10,7 +10,8 @@ refuses to update a **paid** product —
 certificates. That restriction lives in the CLI, not in the Store: the REST API
 underneath handles paid products fine. See dev/msstore-ci-setup.md.
 
-The flow the API requires, in order (each step depends on the previous one):
+The flow the API requires, in order (each step depends on the previous one).
+Steps 1-5 are what --stage runs; 6 and 7 belong to --commit alone:
 
     1. token          client-credentials against the devcenter resource
     2. GET app        read state; refuse if a submission is already pending
@@ -20,14 +21,31 @@ The flow the API requires, in order (each step depends on the previous one):
     6. POST commit        hands it to certification
     7. GET status         bounded poll, only to catch an immediate rejection
 
-Nothing is created unless --commit is passed. The default is a dry run that
-authenticates and reports the app's real state, because a bad submission costs a
-review cycle measured in days.
+Three modes, and only the middle one is the route this product uses:
+
+  * default   a dry run. It authenticates and reports the app's real state and
+              creates nothing, because a bad submission costs a review cycle
+              measured in days.
+  * --stage   THE supported route. Creates the submission, uploads the package
+              and stops, leaving an editable draft for a human to check and send
+              with Partner Center's "Submit for certification" - which re-derives
+              the price from the pricing module.
+  * --commit  REFUSED for this product, by the advanced-pricing guard below.
+              Committing through the API sets an advanced-pricing app's price to
+              0, which is how this app once published at $0, unstoppable once
+              started. The guard refuses before creating anything, so a refusal
+              leaves no draft behind. Do not remove it - AGENT.md rule 10 makes
+              stage the only supported route.
+
+Because step 3 CLONES the last published submission, the Store listing's release
+notes carry forward from the previous version instead of coming from the repo.
+Google Play and Apple both read docs/store/store-release-notes.txt; Microsoft is
+the deliberate exception, and its notes are edited by hand in Partner Center.
 
 Run from CI (see .github/workflows/submit-msstore.yml) or locally:
 
     STORE_TENANT_ID=... STORE_CLIENT_ID=... STORE_CLIENT_SECRET=... \\
-    python tool/store_submit.py --app-id 9PJ6LRTS2B8X --package airclone.msix
+    python tool/store_submit.py --app-id 9PJ6LRTS2B8X --package airclone.msix --stage
 """
 
 from __future__ import annotations
@@ -259,7 +277,9 @@ def main() -> int:
             print(f"  trialPeriod            = {pricing.get('trialPeriod')}")
             print(f"  marketSpecificPricings = {markets}")
         print("\nDRY RUN — authenticated, app reachable, no submission created.")
-        print("Re-run with --commit to submit for certification.")
+        print("Re-run with --stage to upload it as a draft, then press Submit in")
+        print("Partner Center. --commit is refused for this product - see the")
+        print("module docstring and AGENT.md rule 10.")
         return 0
 
     # ── 3. Create ───────────────────────────────────────────────────────────

@@ -19,7 +19,7 @@ Airclone has **exactly four** outward seams. Nothing else in the app reaches out
 | # | Seam | Owner | Section |
 | :--- | :--- | :--- | :--- |
 | 1 | **`RcloneClient`** — the one engine abstraction (JSON RC in/out + a byte reference) | [`rclone/`](../../app/lib/src/rclone/) | [§1](#1--rcloneclient--the-one-engine-seam) · [§2](#2--rc-method-catalogue) |
-| 2 | **`airclone/native`** — the single app-defined MethodChannel (Android only) | [`MainActivity.kt`](../../app/android/app/src/main/kotlin/app/airclone/airclone/MainActivity.kt) | [§3](#3--platform-channels) |
+| 2 | **`airclone/native`** — the single app-defined MethodChannel name, with two native handlers | [`MainActivity.kt`](../../app/android/app/src/main/kotlin/app/airclone/airclone/MainActivity.kt) (Android) · [`SecurityScopedBookmarks.swift`](../../app/macos/Runner/SecurityScopedBookmarks.swift) (Mac App Store) | [§3](#3--platform-channels) |
 | 3 | **Bundled native code** — rclone, librclone, libmpv, PDFium, a Rust crate | CI + build scripts | [§4](#4--bundled-native-code) |
 | 4 | **OS integration** — mount, serve, drag, hand-off, credential vault, biometrics | [`state/`](../../app/lib/src/state/) + plugins | [§5](#5--os-integration-surfaces) |
 
@@ -84,7 +84,13 @@ rclone rcd <user extraArgs…> --rc-addr 127.0.0.1:<free port> --rc-user airclon
 - `RCLONE_CONFIG_PASS` travels via **env only**, never argv.
 - Orphan containment: `WindowsChildJob.adopt(pid)` on spawn, plus a PID marker at
   `<systemTemp>/airclone_rcd.pid` reaped on the next launch (skipped on Android).
-- Child stderr is echoed only under `kDebugMode` — at `-vv`/`--dump` rclone can echo the rc credentials.
+- **Both** `stdout` and `stderr` are drained unconditionally, on every build — that is a pipe-deadlock
+  fix, not a logging feature ([14-performance-standards.md §6](14-performance-standards.md)).
+  **Retention is the separate decision:** debug prints every line, while a release build keeps only
+  rclone's own `ERROR`/`CRITICAL` lines (at `-vv`/`--dump` rclone echoes request headers carrying the
+  rc credentials), minus the `operations/about` + `operations/fsinfo` capability probes, de-duplicated
+  and capped at 100 a session, into the diagnostics ring. `isEngineFailureLine` is a pure top-level
+  function so that rule is unit-testable on its own.
 
 **librclone C ABI**, confirmed in-tree against rclone v1.74.4's `librclone/librclone.go`
 ([`librclone_ffi.dart#L12`](../../app/lib/src/rclone/librclone_ffi.dart#L12)):
@@ -101,13 +107,20 @@ feeds the pure, unit-tested `resolveEngineMode()` in
 | Input | Value today |
 | :--- | :--- |
 | `Platform.isAndroid` | **Short-circuits to `EngineMode.binary` before the setting is read** — engine choice is desktop-only. |
-| `subprocessAllowed` | Hardcoded `true`; the iOS / Mac App Store constraint lands with those targets. |
+| `subprocessAllowed` | `subprocessAllowedHere` from [`build_flavor.dart`](../../app/lib/src/state/build_flavor.dart) — **false** in a Mac App Store build (`flutter build macos --dart-define=AIRCLONE_MAS=true`) and on iOS, true everywhere else. `kMacAppStoreBuild` is a `bool.fromEnvironment` compile-time constant, so the spawn path is const-folded and tree-shaken **out of** a store binary rather than merely unused in it. |
 | `libraryAvailable` | `File(defaultLibrclonePath()).existsSync()` |
 | `binaryAvailable` | `RcloneEngine.findExisting() != null` |
 
 Resolution rules: `!subprocessAllowed` → always `inProcess`; an explicit `inProcess` is honoured when
 the library exists, else falls back to `binary`; `auto` prefers the binary but picks the library when
 no binary exists and one is bundled.
+
+The same flag drives two more features from
+[`native_actions_policy.dart`](../../app/lib/src/state/native_actions_policy.dart): **reveal in file
+manager** and **archive create/extract/list**, both of which spawn a process, are hidden rather than
+left to fail — a dead action is a store rejection. Deliberately **not** gated: *open with the default
+app* (`url_launcher` / NSWorkspace, not a spawn, and sandbox-legal for a file the user granted) and
+*copy path*.
 
 ### 1.3 Locating and provisioning the binary
 
@@ -199,6 +212,14 @@ per-method options.
 `operations/uploadfile` is **never called** — it needs a multipart HTTP request. Uploads go through
 the `local` backend via `sync/copy` / `operations/copyfile`.
 
+**The destination picker only reaches the engine on its second step.** Its first step — choosing
+*where* to browse — is sourced from `remotesProvider` **plus** `drivesProvider` and
+`userLocationsProvider`: the same LOCATIONS / DISKS / CLOUD sections as the sidebar, and the two local
+ones need no engine at all. It used to list remotes alone, which meant a local disk was impossible to pick as a
+destination: "Copy to…" could not reach the drive sitting two inches away in the sidebar. Only
+descending into a folder calls `operations/list`, and only that step can report "Engine not ready".
+[`destination_picker.dart`](../../app/lib/src/ui/destination_picker.dart).
+
 ### `sync/*`, `job/*`, `core/*`
 
 | Method | What it is used for | Call sites |
@@ -221,7 +242,7 @@ the `local` backend via `sync/copy` / `operations/copyfile`.
 | :--- | :--- | :--- |
 | `mount/types` | Which mount implementations the engine supports. **Empty on Windows means WinFsp is not installed** — the UI then guides the user to it | [`mount_controller.dart#L16`](../../app/lib/src/state/mount_controller.dart#L16) |
 | `mount/listmounts` | Source of truth for active mounts, polled every 2 s; nothing is persisted, so mounts never auto-resurrect | [`mount_controller.dart#L41`](../../app/lib/src/state/mount_controller.dart#L41) · [`app.dart#L116`](../../app/lib/src/ui/app.dart#L116) |
-| `mount/mount` | Mount `fs` at a mount point (`*` = auto-assign a drive letter); `vfsOpt.CacheMode` defaults to `writes`; never sets a shared cache dir | [`mount_controller.dart#L66`](../../app/lib/src/state/mount_controller.dart#L66) |
+| `mount/mount` | Mount `fs` at a mount point (`*` = auto-assign a drive letter). The whole `vfsOpt` / `mountOpt` payload comes from [`MountOptions`](../../app/lib/src/rclone/models/mount_options.dart) — cache mode **`full`** by default, plus cache size and age, read chunk size + growth limit, dir-cache time, fast-fingerprint, attr-timeout, and Windows-only network mode; `MountController` has no option knowledge of its own. Still never sets a shared cache dir (rclone picks a per-mount one). Keys are rclone's **Go field names**, and an unrecognised one is silently dropped — the rule and the verification method are [14 §6](14-performance-standards.md) | [`mount_controller.dart#L66`](../../app/lib/src/state/mount_controller.dart#L66) · [`mount_defaults.dart`](../../app/lib/src/state/mount_defaults.dart) |
 | `mount/unmount` · `mount/unmountall` | Unmount one / all. `unmountAllForExit()` runs **before** the engine stops — rclone serves every mount from the `rcd` process, so stopping the engine first strands the mount point | [`mount_controller.dart#L109`](../../app/lib/src/state/mount_controller.dart#L109), `#L120`, `#L143` |
 | `vfs/refresh` | Freshen a mount's directory cache without remounting | [`mount_controller.dart#L92`](../../app/lib/src/state/mount_controller.dart#L92) |
 | `serve/types` | Engine-supported protocols, intersected with the curated set `http, webdav, ftp, sftp, dlna` | [`serve_controller.dart#L21`](../../app/lib/src/state/serve_controller.dart#L21) |
@@ -233,9 +254,14 @@ the `local` backend via `sync/copy` / `operations/copyfile`.
 
 ## 3. 📱 Platform channels
 
-There is **exactly one** app-defined platform channel: **`airclone/native`**, handled only in
-Android's [`MainActivity.kt`](../../app/android/app/src/main/kotlin/app/airclone/airclone/MainActivity.kt).
-Every Dart caller is `Platform`-guarded; there is no iOS, Windows, macOS or Linux handler.
+There is **exactly one** app-defined channel **name** — `airclone/native` — with **two** native
+handlers behind it: Android's
+[`MainActivity.kt`](../../app/android/app/src/main/kotlin/app/airclone/airclone/MainActivity.kt) and
+macOS's [`SecurityScopedBookmarks.swift`](../../app/macos/Runner/SecurityScopedBookmarks.swift). The
+two method sets are disjoint, and every Dart caller is `Platform`-guarded, so one name is safe. There
+is no iOS, Windows or Linux handler.
+
+### 3.1 Android — `MainActivity.kt`
 
 | Method | Returns / does | Dart caller |
 | :--- | :--- | :--- |
@@ -249,6 +275,7 @@ Every Dart caller is `Platform`-guarded; there is no iOS, Windows, macOS or Linu
 | `startTransferService` | Starts **or updates** the `dataSync` foreground service notification (same call does both) | [`android_transfer_service.dart#L55`](../../app/lib/src/state/android_transfer_service.dart#L55) |
 | `stopTransferService` | Stops it | [`android_transfer_service.dart#L36`](../../app/lib/src/state/android_transfer_service.dart#L36) |
 | `requestNotificationPermission` | Tiramisu+ `POST_NOTIFICATIONS` request | [`android_transfer_service.dart#L50`](../../app/lib/src/state/android_transfer_service.dart#L50) |
+| `isTelevision` | Whether this is a TV. Two independent signals, because neither is reliable alone: `UI_MODE_TYPE_TELEVISION` (what the platform reports at runtime, and what emulators set) **or** `FEATURE_LEANBACK` (what Play filters on, and what some manufacturer boxes report instead) | [`android_native.dart#L24`](../../app/lib/src/state/android_native.dart#L24) — called from `initAndroidIsTelevision()` in [`main.dart`](../../app/lib/main.dart) **before `runApp`**, because the shell is chosen inside a synchronous `build()`. A channel failure leaves it `false`, i.e. the touch shell: degraded, not broken |
 
 Native-side notes worth knowing before you touch this file:
 
@@ -279,6 +306,19 @@ Native-side notes worth knowing before you touch this file:
 - `startForegroundService` is wrapped in a `try/catch`: Android 12+ forbids starting a foreground
   service from the background, so a transfer kicked off while backgrounded runs without the
   keep-alive instead of crashing.
+
+### 3.2 macOS — `SecurityScopedBookmarks.swift`
+
+Only the **sandboxed Mac App Store** build needs these; the DMG runs unsandboxed and can read a path
+forever, so `bookmarksRequired` is `Platform.isMacOS && kMacAppStoreBuild` and every function is a
+safe no-op elsewhere. Dart side:
+[`mac_bookmarks.dart`](../../app/lib/src/state/mac_bookmarks.dart).
+
+| Method | Returns / does |
+| :--- | :--- |
+| `grantFolder` | Runs the `NSOpenPanel` natively and returns the picked path **plus** base64 bookmark data. It cannot be `file_selector`: that returns a bare `String`, so the `NSURL` carrying the sandbox extension never reaches Dart and the grant dies with the process. |
+| `resolveBookmark` | Turns stored bookmark data back into a usable URL, reporting `isStale` — macOS asking for it to be re-created and re-persisted. Still works right now, so it is not an error; ignoring it is how a saved Location quietly stops working after an OS update. |
+| `startAccess` · `stopAccess` | Begin / end access. **Must run on the same native `NSURL` instance**, which is why the Swift side caches by bookmark string rather than re-resolving — stopping on an equal-looking URL silently fails to release, and the OS ceiling on simultaneously-held resources is real (low thousands). Grants are therefore held per Location, never per file. |
 
 Everything else that crosses into native code does so through a **pub plugin's own** channel
 (`path_provider`, `flutter_secure_storage`, `local_auth`, `url_launcher`, `package_info_plus`,

@@ -89,10 +89,10 @@ thumbnails lazily only for the visible window.
 
 | View | Status | Notes | Priority |
 | :--- | :--- | :--- | :--- |
-| **List** | ✅ have | Virtualized table (Name/Size/Modified/Type). Refine: adjacent selected rows merge into one rounded block, alternating bg, drop-target affordance. | P0 |
-| **Grid / icons** | build | Row-virtualized (column count from width). Card = thumbnail box (icon→thumb crossfade) + centered name pill + optional size. Grid-size/gap sliders, size-scaled corner radius. | **P1 (first)** |
-| **Media / gallery** | build | Square-cropped tiles, ~1px gap, fill width; date grouping with sticky floating date header; video duration badge. Reuses grid thumbnails. | P2 |
-| **Columns (Miller)** | build | Cascading columns: select a folder → append a column; ←/→ traverse, ↑/↓ within; per-pane column stack. The strongest "native" signal. | P3 |
+| **List** | ✅ have | Virtualized table (Name/Size/Modified/Type). Refine: adjacent selected rows merge into one rounded block, alternating bg, drop-target affordance. | P0 (refinements only) |
+| **Grid / icons** | ✅ have | Row-virtualized (column count from width). Card = thumbnail box (icon→thumb crossfade) + centered name pill + optional size. Grid-size/gap sliders, size-scaled corner radius. [`file_grid.dart`](../../app/lib/src/ui/file_grid.dart). | — |
+| **Media / gallery** | ✅ have | Square-cropped tiles, ~1px gap, fill width; date grouping with sticky floating date header; video duration badge. Reuses grid thumbnails. [`media_gallery.dart`](../../app/lib/src/ui/media_gallery.dart). | — |
+| **Columns (Miller)** | build | Cascading columns: select a folder → append a column; ←/→ traverse, ↑/↓ within; per-pane column stack. The strongest "native" signal. **The only unbuilt row** — `enum ViewMode { list, grid, media }` in [`browser_controller.dart`](../../app/lib/src/state/browser_controller.dart) has no fourth member. | P3 |
 
 We deliberately skip disk-usage treemap / "knowledge" views — niche, high effort, not core to a cloud
 browser.
@@ -102,22 +102,38 @@ browser.
 The single highest-leverage feature for making *remote feel local*. We already hold an authenticated
 [`objectRef`](08-core-architecture.md) and run `rclone rcd`.
 
-> **Default: thumbnails OFF.** To respect metered / per-GET backends (e.g. S3), the grid/media views
-> render kind-icons only by default — **zero network beyond the listing**. A prominent one-click
-> **Thumbnails** toggle in the top-bar view-settings turns them on for richer, faster scrolling
-> previews; the preference is remembered **per remote**. When enabled, generation stays strictly
-> visible-window-only and immutably cached, so cost is bounded and a re-scroll is free.
+> **Default: thumbnails ON, with a per-remote opt-OUT.** Local folders are always on — there is no
+> bandwidth to spend. Cloud remotes are on too, because an explorer that shows grey rectangles by
+> default does not feel local, which is the whole point of the feature. The metered / per-GET concern
+> (S3 and friends) is real, and it is what the opt-out exists for: the **Thumbnails** toggle disables
+> previews for one remote and persists the set of disabled `fs` strings under the `thumb_disabled`
+> preference. Generation stays strictly visible-window-only and the cache is keyed on content
+> identity, so cost is bounded and a re-scroll is free.
+>
+> [`thumbnail_prefs.dart`](../../app/lib/src/state/thumbnail_prefs.dart) is the owner —
+> `thumbnailsOn(remote, disabled)`. [07-state-context.md](07-state-context.md) carries the provider.
 
-1. **Local thumbnail service** — a tiny loopback HTTP endpoint answering `GET /thumb?ref=…&size=256`;
-   Flutter renders thumbnails as cached network images against it.
-2. **Generate on demand, visible-window only** — images: ranged read → decode → downscale to WebP
-   256/512px; video: one keyframe via ffmpeg; PDF/docs: first page where a renderer exists, else
-   icon + extension badge.
-3. **Cache immutably, keyed by content identity** — key = `(remote, path, modTime, size)`; write WebP
-   to disk; serve `Cache-Control: immutable`. Never regenerate / re-download on an unchanged key.
-4. **Progressive UI** — kind-icon instant; thumbnail fades in on decode (~100ms); a persistent
-   `(ref,size)` load cache so scrolling back never re-flashes; size-appropriate variant selection to
-   limit cloud bandwidth.
+It is a **service, not an endpoint.** The design above began as a loopback `GET /thumb?ref=…&size=256`
+server; what shipped is
+[`ThumbnailService`](../../app/lib/src/state/thumbnail_service.dart), which generates in-process:
+
+1. **Two gates, video first** — a general concurrency gate for everything and a stricter one for video
+   keyframes, always acquired in that order, because a keyframe capture spins a whole libmpv `Player`
+   that competes with the one the user is watching. Android is the exception and captures natively
+   through `MediaMetadataRetriever` instead. There is no `ffmpeg` anywhere in the app.
+2. **Cache on identity, sealed on disk** — the key is `sha1('fs|path|modTime|size|px')`
+   (`thumbCacheKey`), so a change to mod-time or size invalidates the entry automatically. Blobs are
+   AES-GCM sealed via `CacheCrypto`; with memory-only mode on, nothing touches disk at all.
+3. **Failures are classified, not retried blindly** — bytes that download fine but will not decode are
+   recorded in a session-scoped negative cache and only a forced rebuild clears them, while a capture
+   that merely *failed* stays retryable. A frame with no picture in it is treated as a failure and
+   never cached.
+4. **Progressive UI** — kind-icon instant, thumbnail fades in on decode; pre-warm runs in bounded
+   batches rather than one `Future.wait` over the listing.
+
+The exact slot counts, timeouts, batch sizes and retry backoffs are budgets, not design — they live in
+[14-performance-standards.md §2](14-performance-standards.md), which also carries the incident behind
+each one. Do not restate a number here.
 
 **Quick Look (Space)** reuses our existing preview renderers (image/text/md/pdf/video/audio), streams
 bytes via byte-range (`rclone serve http` / RC) so media is seekable without a full download, with

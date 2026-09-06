@@ -25,12 +25,32 @@ Usage:
       resume after a partial run: rebuild the profile (and the p12 files)
       against the certificate in cert-id.txt, minting nothing new.
 
-`--revoke` exists for the EPHEMERAL flow: a CI job creates a certificate, uses it
-within that one job, and revokes it on the way out, so no long-lived distribution
-private key is stored anywhere. It revokes exactly the id it is given and never
-searches for one to clean up - Apple's certificate `name` is derived from the
-team, so an ephemeral certificate is indistinguishable from one a human made by
-hand, and guessing wrong would revoke something somebody depends on.
+Options:
+  --list-certs      print EVERY certificate on the team, with id and type. Run
+                    this before any revoke: it is the only thing that prints the
+                    ids, and the survey shows the distribution ones only.
+  --cert-id <id>    which certificate --profile-only should build against,
+                    overriding cert-id.txt.
+  --force-new       mint a new certificate instead of reusing one. It counts
+                    against Apple's per-team cap, so it is never the default.
+  --out-dir <path>  where the p12, the profile and cert-id.txt land. Defaults to
+                    dev/secrets/apple-ios/.
+
+`--revoke` takes exactly the id it is given and never searches for one to clean
+up - Apple's certificate `name` is derived from the team, so a throwaway
+certificate is indistinguishable from one a human made by hand, and guessing
+wrong would revoke something somebody depends on.
+
+Two callers. apple-revoke-cert.yml clears one certificate by id once the version
+it signed is LIVE. ios-release.yml's ephemeral branch revokes on the way out of a
+dry-run or validate run and NEVER after an upload: a build in review needs its
+certificate to stay valid, and a revoked one is the obvious suspect behind the
+first iOS submission coming back INVALID BINARY minutes after Add for Review.
+
+`signing=ephemeral` is no longer the default path, so the property this once had
+- that no long-lived distribution private key is stored anywhere - now holds only
+for ephemeral runs. ios-release.yml signs with a STORED identity, and that p12
+lives in an org secret.
 
 Without --apply it reports what already exists and what it WOULD create, and
 touches nothing. Output lands in dev/secrets/apple-ios/ (gitignored).

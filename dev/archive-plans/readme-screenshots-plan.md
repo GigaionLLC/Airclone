@@ -1,11 +1,15 @@
 ---
 type: "plan"
 name: "README Screenshots Plan"
-status: "planned"
-description: "Shot list, README markup, and capture workflow for adding screenshots to the README."
+status: "shipped"
+description: "Shot list, README markup, and capture workflow for adding screenshots to the README. Shipped 2026-07-09 with v0.1.0-beta.1 — see the Status section at the foot of this file."
 ---
 
 # 📸 README Screenshots Plan
+
+**Status: SHIPPED 2026-07-09, alongside v0.1.0-beta.1.** The nine finals are in `docs/screenshots/`
+and wired into the README; the full account, including what was captured instead of the original
+shot list and what is still missing, is the Status section at the foot of this file.
 
 Goal: make the README *show* the product. 8 shots max, each tied to a headline feature; hero at the
 top, gallery after the feature bullets, phone shots in their own subsection. Assets live in

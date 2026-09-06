@@ -2,14 +2,15 @@ name: Mac App Store (build + upload)
 
 # Builds the Mac App Store package and uploads it to App Store Connect.
 #
-# Deliberately DISPATCH-ONLY, and deliberately NOT a submission. It puts a build
-# in App Store Connect; a human then attaches it to a version and presses
-# "Add for Review", and chooses "Manually release this version" so even an
-# approved build waits. Three gates, and a machine holds none of them.
+# Deliberately DISPATCH-ONLY: it puts a build in App Store Connect and does
+# nothing else. Attaching that build to a version is asc-version.yml, submitting
+# is asc-submit-review.yml (which refuses unless you name the exact version), and the gate
+# that stays human is pressing release - releaseType is MANUAL, so approval and
+# publication remain separate events no matter what CI does.
 #
-# That shape is not caution for its own sake. On the Microsoft Store a machine
-# was allowed to commit a submission and published the app at $0 - unstoppable
-# once it started. See AGENT.md rules 10-13.
+# That last gate is not caution for its own sake. On the Microsoft Store a
+# machine was allowed to commit a submission and published the app at $0 -
+# unstoppable once it started. See AGENT.md rules 10-13.
 #
 # Prerequisites (one-time, see dev/plans/apple-appstore-plan.md Gate B):
 #   APPSTORE_ISSUER_ID       org SECRET  (a variable is not masked, and this one
@@ -361,10 +362,10 @@ jobs:
         if: ${{ inputs.mode == 'upload' }}
         run: |
           echo "Uploaded. Processing in App Store Connect takes a few minutes."
-          echo "NOTHING is submitted: attach the build to the macOS version, fill"
-          echo "the review notes, press 'Add for Review', and set"
-          echo "'Manually release this version' so approval and publication stay"
-          echo "separate events."
+          echo "NOTHING is submitted here. Next: asc-version.yml mode=apply attaches"
+          echo "the build and sets the notes, mode=audit says what Apple would still"
+          echo "refuse, and asc-submit-review.yml presses 'Add for Review'. Release"
+          echo "type stays MANUAL, so approval and publication remain separate events."
           echo "https://appstoreconnect.apple.com/apps/6790176897/distribution/macos/version/inflight"
 
       - name: Shred the API key and the keychain

@@ -10,7 +10,11 @@ and at least 1280x720, so these need no scaling or padding.
 | `02-focus.png` | the focus ring on a list row — the one thing a TV review checks |
 | `03-browsing.png` | a real folder listing with names, sizes and modified times |
 
-Upload them with:
+Upload them from Actions → **Play Store listing images**
+([`play-images.yml`](../../../../.github/workflows/play-images.yml)) with
+`type: tvScreenshots`, `dir: docs/store/play/tv`, `replace: true`, and `mode: report`
+before `apply`. That route needs no local credentials. The same thing locally, if you
+have the service-account key:
 
 ```bash
 python tool/play_images.py --package com.gigaionllc.airclone \
@@ -18,7 +22,8 @@ python tool/play_images.py --package com.gigaionllc.airclone \
 ```
 
 `--replace` matters: Play APPENDS an uploaded image to the set rather than
-overwriting it, so a second run without it leaves duplicates in the listing.
+overwriting it, so a second run without it leaves duplicates in the listing. Either
+route writes images only, and Play holds the change as a draft until someone sends it.
 
 ## What is deliberately not here
 

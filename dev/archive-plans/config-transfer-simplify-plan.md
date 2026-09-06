@@ -1,5 +1,17 @@
 # Config import/export → 4 actions + QR bug fixes
 
+**Status: SHIPPED in v0.4.0.** All three bugs were fixed and the LAN sweep is complete —
+`pairing_sender.dart`, `pairing_receiver.dart`, `pairing_protocol.dart` and
+`send_to_phone_dialog.dart` are deleted, with `state/offline_qr.dart` carrying the four survivors —
+and the density constants below are the live values (`kOfflineQrMaxPayloadChars` 700,
+`kOfflineQrChunkChars` 600, `kMaxOfflineQrChunks` 40). Risk 3 was resolved in favour of shipping:
+QR export works on phones too. One decision was later reversed: bug 3's desktop QR-*image* decoder
+was fixed here, then **deleted in v0.5.0** along with `zxing2` and `image`. A computer has no camera
+to point at a phone, so importing a QR there always meant picking a screenshot of one — a path that
+never earned two dependencies when the file wizard already moves a config between two computers. QR
+import is phone-camera only now. Read what follows as the reasoning that produced those changes, not
+as work outstanding.
+
 Source: 5-agent deep-dive (workflow `wr0nyc045`, 2026-07-12). Target UI:
 
 ```
@@ -46,11 +58,13 @@ renders null. `qr_flutter` always encodes byte mode, so the base45/alphanumeric/
   string-concatenate, never render→camera). Add a scannability-guard test: every
   emitted payload ≤ ~700 chars (≤ ~v20).
 
-### 3. Desktop image decoder leaks alpha into luminance (LOW–MEDIUM)
-`qr_image_decode.dart` reads pixels `ChannelOrder.abgr` → on little-endian packs
-`0xRRGGBBAA`, but zxing2 expects `0xAARRGGBB`, so it averages (G,B,alpha) — a black
-module comes out at luminance ~63, halving contrast. Crisp screenshots still decode;
-noisy photos suffer. **Fix:** `ChannelOrder.bgra` (→ `0xAARRGGBB`).
+### 3. Desktop image decoder leaks alpha into luminance (LOW–MEDIUM) — fixed in v0.4.0, then moot
+`qr_image_decode.dart` read pixels `ChannelOrder.abgr` → on little-endian packs
+`0xRRGGBBAA`, but zxing2 expects `0xAARRGGBB`, so it averaged (G,B,alpha) — a black
+module came out at luminance ~63, halving contrast. Crisp screenshots still decoded;
+noisy photos suffered. Fixed to `ChannelOrder.bgra` in v0.4.0. The whole desktop
+image-decode path was then removed in v0.5.0 (see the status note), so
+`qr_image_decode.dart`, `zxing2` and `image` no longer exist — do not go looking for them.
 
 ---
 
@@ -79,10 +93,12 @@ Then repoint importers: `offline_qr.dart:11`, `offline_qr_dialog.dart:10`,
   `showOfflineQrDialog` for mobile (see Risk 3).
 - `ui/mobile_action_sheets.dart` — keep the QR-import tile; relabel to "Import QR Config".
 - `ui/config_import_dialog.dart` — reword the stale "Send to phone" strings (foreign
-  branch now only means "not an Airclone Offline QR"). Do NOT split the dialog (keep the
-  blended file+QR-image wizard; "Import QR Config" opens it into its QR-image pick).
+  branch now only means "not an Airclone Offline QR"). Do NOT split the dialog.
+  *(As built, and after the v0.5.0 removal below: on a phone "Import QR Config" opens the camera
+  scanner; on desktop there is no QR import at all, and the dialog is the file wizard.)*
 - `pubspec.yaml` — remove `basic_utils` (`pointycastle` auto-drops from the lock). KEEP
-  `mobile_scanner`, `qr_flutter`, `zxing2`, `image`, `qr`. Fix their now-stale comments.
+  `mobile_scanner`, `qr_flutter`, `qr`. Fix their now-stale comments. *(`zxing2` and `image` were
+  kept here and then dropped in v0.5.0 with the desktop QR-image decoder.)*
 
 ### Tests
 - Delete `pairing_sender_test.dart`, `pairing_receiver_test.dart`.

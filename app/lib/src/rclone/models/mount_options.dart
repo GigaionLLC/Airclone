@@ -29,7 +29,7 @@ import 'mount_info.dart';
 /// `encoding/json` DROPS keys it does not recognise. A typo'd option name is
 /// therefore accepted, ignored, and looks exactly like success. Unit tests over
 /// [toVfsOpt] and [toMountOpt] are the guard against that; see also the live
-/// read-back in `dev/plans/mount-tuning-plan.md`.
+/// read-back in `dev/archive-plans/mount-tuning-plan.md`.
 @immutable
 class MountOptions {
   const MountOptions({

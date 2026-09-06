@@ -4,7 +4,15 @@ Companion to `dev/windows-signing-and-store.md` and `dev/google-play-store.md`. 
 things live under "Apple":
 
 1. **macOS direct download — LIVE.** Developer-ID signed + notarized DMG/zip on GitHub Releases.
-2. **Apple App Store (Mac App Store / iOS) — FUTURE**, blocked on the in-process **librclone** engine.
+2. **Apple App Store (Mac App Store / iOS) — LIVE.** 0.6.8 is for sale on both platforms and 0.7.5
+   was submitted from CI on 2026-09-06. The in-process **librclone** engine that once blocked this
+   is done and shipping.
+
+This file is the **runbook** — the steps, the secrets, and the things that are true every release.
+The two neighbours it does not duplicate: `dev/apple-handoff.md` holds the current state and the
+signing-identity ledger (which certificate signed which build, and when each expires), and
+`dev/plans/apple-appstore-plan.md` holds the from-nothing account, legal and signing setup plus the
+reasoning behind each decision.
 
 ## 1. macOS direct download (LIVE — not a store)
 
@@ -18,11 +26,12 @@ passes Gatekeeper via Developer-ID signing + Apple notarization, with no sandbox
 | Hardening | Hardened Runtime **ON**, App Sandbox **OFF**, `Release.entitlements` |
 | Notarization | best-effort + **bounded** (`.github/scripts/notarize.sh`: `NOTARY_TIMEOUT=20m`, `NOTARY_RETRIES=2`; never a naked `--wait`) |
 | Artifacts | signed **zip** (always) + **DMG** (only if notarize succeeded) |
-| Secrets (org-level) | `APPLE_DEVELOPER_ID_APPLICATION_P12_BASE64`, `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, `APPLE_TEAM_ID` |
+| Secrets (org-level) | `APPLE_DEVELOPER_ID_APPLICATION_P12_BASE64`, `APPLE_DEVELOPER_ID_APPLICATION_P12_PASSWORD`, `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, `APPLE_TEAM_ID` |
 
 **CI behavior (`release.yml` `macos` job):**
 - **Hard gate:** a tag push **fails the job** if the signing-cert secret is absent — never ships an
-  unsigned "release."
+  unsigned "release." The gate tests only the base64 blob, so a missing
+  `APPLE_DEVELOPER_ID_APPLICATION_P12_PASSWORD` gets past it and fails later at `security import`.
 - The signed zip is uploaded **before** notarization is attempted, so an Apple notary outage/timeout
   can never block a release. On notarize success the zip is re-stapled + re-uploaded (`--clobber`) and
   the DMG gets its own notarize+staple pass.
@@ -35,63 +44,129 @@ release.
 
 ## 2. Apple App Store — per-release runbook (macOS **and** iOS)
 
-**Rewritten 2026-08-28.** Both platforms build, sign and upload from CI, and a
-whole submission's metadata is pushed from this repo. Real IDs, the App Review
-contact and the delivery history live in the encrypted vault
+Both platforms build, sign, upload **and submit** from CI, and a whole
+submission's metadata is pushed from this repo. The only human act left in the
+console is pressing **Release** after approval. Real IDs, the App Review contact
+and the delivery history live in the encrypted vault
 (`python tool/vault.py unlock`) — never here.
 
 ### The order that works
 
-Every tool defaults to a dry run; nothing writes without `mode=apply`. Substitute
-`-f platform=IOS` for the iOS pass, and run the screenshot step twice there
-(`-f device=iphone` **and** `-f device=ipad` — Apple wants one set per display
-type, not one set holding both sizes).
+Every tool defaults to a dry run; nothing writes without `mode=apply` (or
+`mode=submit` on the review lane) — with one exception: **`mode=create` has no
+dry run.** It appends `--apply` unconditionally, so dispatching it POSTs a real
+version record. The only guard is that `asc_build.py` refuses when an editable
+version already exists. Substitute `-f platform=IOS` for the iOS pass,
+and run the screenshot step twice there (`-f device=iphone` **and**
+`-f device=ipad` — Apple wants one set per display type, not one set holding both
+sizes).
 
 | # | Step | Command |
 | :-- | :--- | :--- |
-| 1 | Listing copy | `asc-listing.yml -f platform=MAC_OS -f what=text -f mode=apply` |
+| 0 | Create the version record | `asc-version.yml -f platform=MAC_OS -f mode=create -f version=0.7.6` |
+| 1 | Listing copy **and the release notes** | `asc-listing.yml -f platform=MAC_OS -f what=text -f mode=apply` |
 | 2 | Screenshots | `asc-listing.yml -f platform=MAC_OS -f what=screenshots -f device=mac -f replace=true -f mode=apply` |
-| 3 | Build + upload | `mas-release.yml -f mode=upload` (iOS: `ios-release.yml -f mode=upload -f signing=ephemeral`) |
-| 4 | Wait for processing | `asc-version.yml -f platform=MAC_OS -f mode=report` until a `VALID` build of the RIGHT platform appears |
+| 3 | Build + upload | `mas-release.yml -f mode=upload` (iOS: `ios-release.yml -f mode=upload`) |
+| 4 | Did the upload register? | `asc-version.yml -f platform=MAC_OS -f mode=builds` until a `VALID` build of the RIGHT platform appears |
 | 5 | Attach + notes + copyright + release type | `asc-version.yml -f platform=MAC_OS -f mode=apply -f notes=true -f copyright=true -f manual_release=true` |
 | 6 | **Check it is actually submittable** | `asc-version.yml -f platform=MAC_OS -f mode=audit` — must print *No gaps* |
-| 7 | **Human, in the console:** export compliance, then *Add for Review* | see below |
+| 7 | Submit to review | `asc-submit-review.yml -f platform=MAC_OS -f mode=dry-run`, then `-f mode=submit -f confirm_version=0.7.6` |
+| 8 | **Human, in the console:** press *Release* after approval | `releaseType` is MANUAL, so nothing ships by itself |
+
+**Step 0** POSTs the `appStoreVersion` record with `releaseType: MANUAL` set at
+creation rather than patched afterwards. It **refuses when an editable version
+already exists**, because Apple allows exactly one per platform and the intent in
+that case is almost always a rename — `-f set_version=0.7.6` does that instead.
+This used to be the one step that sat behind someone clicking "+ Version or
+Platform"; the API always allowed it, the tool simply never asked.
+
+**Step 1 runs every release, even when the copy has not changed.** The listing
+carries `whatsNew`, Apple requires it on every update, and it is per-*version* —
+it starts empty each time. Pass `-f version=X.Y.Z`: without it the tool takes the
+**first** version the API returns for the platform, which may be one already in
+review or already live (iOS currently lists two). It refuses a version that is
+not editable rather than writing to the wrong one. A submit is safe either way,
+because step 7 re-pushes the listing pinned to the version you confirmed.
+
+**Step 4 uses `mode=builds`, not `mode=report`**, because it routes straight to
+`pick_build()` and needs no version record. That matters precisely in the window
+after an upload where a build can die silently having printed `UPLOAD SUCCEEDED`
+— macOS builds 117 and 118 both did. `mode=report` lists builds too, but only
+once an editable version exists, and it aborts with *no editable version*
+otherwise.
 
 **Step 6 is not optional.** The audit twice reported "no gaps" on a version whose
 release type was `AFTER_APPROVAL` and whose copyright was empty, because those
-live on the *version* and it was only checking *localization* fields. It checks
-both now — but the habit that catches the next one is running it and reading it,
-not trusting that it covered everything.
+live on the *version* and it was only checking *localization* fields. It later
+printed "No gaps" on a version App Store Connect refused for a missing
+`whatsNew`. It checks all of that now — but the habit that catches the next one is
+running it and reading it, not trusting that it covered everything.
+
+**Step 7 is the point of no return**, which is why it is its own workflow rather
+than a dropdown on the routine one. `mode=submit` needs `confirm_version` typed
+exactly, it refreshes the listing from the repo docs pinned to that version, it
+re-audits, and it refuses on any gap. It does not release: `releaseType` stays
+MANUAL.
 
 `-f replace=true` on screenshots matters: Apple does **not** overwrite by
 filename, it adds a second asset, so re-uploading an improved set without it
 leaves the old shots on the product page beside the new ones.
 
-### Export compliance, click by click
+### What the store lanes read
 
-Build → **Manage** beside *Missing Compliance*. Two questions:
+Names only — no value from any of these is ever written into this repo. The
+`.p8`, the p12s and the review contact live in the vault and in the org secret
+store.
 
-1. **"Standard encryption algorithms instead of, or in addition to, using or
-   accessing the encryption within Apple's operating system"** — the second
-   option. rclone `crypt`, the config encryption, the vault and Go's own TLS are
-   all the app's own implementations; the engine never calls Apple's Security
-   framework. Nothing is proprietary, so it is not option 1 or 3, and the app
-   plainly encrypts, so it is not option 4.
-2. **"Is your app going to be available for distribution in France?"** → **No**.
+| Secret / variable | Used by | What |
+| :--- | :--- | :--- |
+| `APPSTORE_API_PRIVATE_KEY` (secret) | every Apple lane | the `.p8` App Store Connect team key, download-once |
+| `APPSTORE_ISSUER_ID` (**secret**, not a variable) | every Apple lane | a variable is not masked, and this one appeared verbatim in a public CI log |
+| `APPSTORE_API_KEY_ID` (var) | every Apple lane | the key id — genuinely low sensitivity |
+| `APPLE_TEAM_ID` (secret) | both store lanes, notarization | shared with the Developer ID lane |
+| `APPLE_REVIEW_CONTACT` (secret) | `asc-version.yml`, `asc-submit-review.yml` | JSON; personal data, so it goes to Apple and nowhere else |
+| `APPLE_MAS_APP_P12_BASE64`, `APPLE_MAS_INSTALLER_P12_BASE64`, `APPLE_MAS_P12_PASSWORD`, `APPLE_MAS_PROVISIONING_PROFILE_BASE64` | `mas-release.yml` | the `3rd Party Mac Developer` application + installer identities and the MAS profile |
+| `APPLE_IOS_DIST_P12_BASE64`, `APPLE_IOS_P12_PASSWORD`, `APPLE_IOS_PROVISIONING_PROFILE_BASE64` | `ios-release.yml` | the Apple Distribution identity and the *Airclone iOS App Store* profile |
+| `APPLE_IOS_PROFILE_NAME` (var, optional) | `ios-release.yml` | only if the profile is not named `Airclone iOS App Store` |
 
-**The France answer has a prerequisite.** Answering No is only truthful if France
-is actually deselected in *Pricing and Availability* — do that first and save it.
-Answering **Yes** instead requires an uploaded **ANSSI declaration**, approved by
-Apple before the build can ship, which is an external queue on a first
-submission. Availability is independent of the binary, so France can be added
-back in any later version with no rebuild.
+### Export compliance: answered in `Info.plist`, and the France precondition
+
+**Apple no longer asks.** `ITSAppUsesNonExemptEncryption` is set to **`false`** in
+both `app/ios/Runner/Info.plist` and `app/macos/Runner/Info.plist`, so no build
+arrives with *Missing Compliance* and `asc-submit-review.yml` does not ask
+either. The old Build → **Manage** click path is history; it is only worth
+knowing if the key is ever removed.
+
+`false` means "does not use *non-exempt* encryption" — not "uses no encryption".
+Airclone plainly encrypts (rclone `crypt`, config encryption, the vault, and Go's
+own TLS, because the engine is statically linked and never calls Apple's Security
+framework), but all of it is published, standard cryptography. Apple itself drew
+the line: it **refuses** to create an App Encryption Declaration for an app with
+no proprietary crypto that is not sold in France, which is Apple saying the use
+is exempt.
+
+**Standing constraint: France must remain deselected in *Pricing and
+Availability*.** The shipped key is a legal declaration, and it is truthful only
+while France is excluded — adding the French store makes it a false statement
+with nothing about the build to signal it. `asc-version.yml -f mode=audit` has a
+"french store" row that reads territory availability on every run and fails the
+audit if France is ever enabled. Adding France legitimately means an uploaded
+**ANSSI declaration**, approved by Apple before the build can ship, *and*
+flipping the key. Availability is independent of the binary, so adding France
+later costs no rebuild — it costs a declaration.
+
+[`plans/apple-appstore-plan.md`](plans/apple-appstore-plan.md) owns this decision
+and holds the question-by-question analysis under "Export compliance, the
+original analysis" — which is what a human would work from if the key were
+removed or France added. Do not re-derive it from the old console instruction,
+which named an answer Apple refuses to record for this app.
 
 ### If you swap the build after submitting
 
-Attaching a different build sends the version back to `PREPARE_FOR_SUBMISSION`
-and the new build arrives with **its own** *Missing Compliance* — answer it
-again. The header button then reads **Update Review** rather than *Add for
-Review*, and the submission page shows *Unresolved Issues* with a
+Attaching a different build sends the version back to `PREPARE_FOR_SUBMISSION`.
+Export compliance needs no second answer — the `Info.plist` key covers the new
+build too — but the header button then reads **Update Review** rather than *Add
+for Review*, and the submission page shows *Unresolved Issues* with a
 **Resubmit to App Review** button. Press that; the first button only re-opens the
 draft.
 
@@ -114,8 +189,19 @@ draft.
   prefers a contact already on another platform's version.
 - **The privacy-policy URL is app-level**, not per-version, and a submission is
   refused without it. `asc_listing.py` checks it on every run.
+- **`whatsNew` is required on every update, and it is per-VERSION.** Description
+  and keywords persist across versions; the release notes start empty every time
+  and never carry forward — a rename does not carry them either. They come from
+  `docs/store/store-release-notes.txt`, the same line Play and the Microsoft
+  Store get, so there is nothing to write per release. Push them with
+  `asc_listing.py --version <the version being submitted>`: unpinned, the tool
+  takes the first version the API returns, and iOS lists 0.7.5 **and** 0.6.8 at
+  once, so every earlier run was ordering luck. `asc-submit-review.yml` pins it
+  for you. The lesson that generalises: **an audit that misses a blocker is worse
+  than no audit** — Apple refused both 0.7.5 submissions minutes after a dry run
+  printed *No gaps*.
 
-### iOS signing: mint per run (and see the revoke rule below)
+### iOS signing: a STORED identity (since 2026-09-05)
 
 Two automatic routes were tried and **both are dead ends** — do not retry them:
 
@@ -124,15 +210,32 @@ Two automatic routes were tried and **both are dead ends** — do not retry them
 | archive as `Apple Development`, automatic signing | *"Your team has no devices from which to generate a provisioning profile"* — iOS development profiles need a **registered device**; macOS ones do not |
 | archive unsigned, export with automatic signing | *"Cloud signing permission error"*, *"No signing certificate 'iOS Distribution' found"* — the same wall macOS hit |
 
-So `ios-release.yml -f signing=ephemeral` mints a distribution certificate through
-the **Certificates API** (which an App Manager key can do, unlike cloud signing),
-uses it inside that one job, and revokes it afterwards **except after an
-upload** - see "Do not revoke the signing certificate after an upload". No distribution
-private key is stored anywhere. Two details that matter: the profile is rebuilt
-each time, because a surviving profile references the revoked certificate and
-cannot sign; and `--revoke` takes an explicit id and never hunts for stale
-certificates, since Apple derives a certificate's name from the team and guessing
-would revoke something a human created.
+That table is why a stored identity exists at all. `ios-release.yml` defaults to
+`signing=secrets` and that is **the** path: a distribution certificate and the
+*Airclone iOS App Store* profile live in the org secrets
+`APPLE_IOS_DIST_P12_BASE64`, `APPLE_IOS_P12_PASSWORD` and
+`APPLE_IOS_PROVISIONING_PROFILE_BASE64`, get imported into a job-scoped keychain
+(the runner's login keychain is locked, and a locked keychain reports *0 valid
+identities found* with no error of its own), and the lane archives **unsigned**
+and lets `-exportArchive` apply the identity. Nothing is minted and nothing needs
+revoking. **Both expire 2027-09-05** — the ledger of which id signed which build,
+and the rotation recipe, are in [`apple-handoff.md`](apple-handoff.md), which is
+also the file `apple-revoke-cert.yml` points a maintainer at.
+
+`signing=ephemeral` is the **superseded** path and is still selectable, which
+makes it a trap: it mints a distribution certificate per run through the
+**Certificates API** (which an App Manager key can do, unlike cloud signing) and
+deliberately does not revoke it after an `upload`, so every run consumes a slot
+against Apple's per-team cap and leaves a hand revoke owing. Do not pass it. It
+is worth keeping only for the day the stored p12 lapses and one has to be minted
+again: the profile must be rebuilt with the certificate, because a surviving
+profile references the old one and cannot sign, and `--revoke` takes an explicit
+id and never hunts for stale certificates, since Apple derives a certificate's
+name from the team and guessing would revoke something a human created.
+
+`signing=automatic` is a retained experiment, not a route — it exists to answer
+whether `-allowProvisioningUpdates` can mint an iOS *distribution* identity with
+an App Manager key, and it is expected to fail at the device check.
 
 ### `VERIFY SUCCEEDED` does not mean the build will process
 
@@ -180,35 +283,15 @@ simulator app is a host process and can read host paths, so that survives any
 number of reinstalls. Content is still copied into each container as well,
 because that is what *On My Device* legitimately shows.
 
-### Do not revoke the signing certificate after an upload
+### Never revoke a certificate under a build in review
 
-`ios-release.yml -f signing=ephemeral` mints a distribution certificate per run
-and revokes it on the way out. That is right for `dry-run` and `validate`, where
-nothing produced is kept — and **wrong for `upload`**.
-
-The first iOS submission came back **Invalid Binary** within minutes of
-*Add for Review*, with the certificate that signed it already revoked. Apple
-accepts the upload and processes the build to `VALID` regardless, so nothing
-complains until submission. The lane now skips the revoke step for `upload` and
-prints the certificate id so it can be revoked by hand once the version is live.
-
-A leftover certificate is a tidiness problem. A revoked one underneath a
-submitted build is a blocked release.
-
-### Export compliance
-
-Airclone implements standard confidentiality encryption of its own — rclone
-`crypt`, config encryption, the vault, and Go's own TLS, because the engine is
-statically linked and never calls Apple's Security framework. The "HTTPS only"
-and "Apple's OS crypto only" exemptions are therefore **false**, and
-`ITSAppUsesNonExemptEncryption` is deliberately absent from `Info.plist` so a
-human answers it rather than a build claiming something untrue.
-
-**Answering "yes" to *available in France*** makes Apple require an uploaded
-**ANSSI declaration**, approved before shipping. Answering no removes the
-requirement, and availability is independent of the binary — shipping without
-France and adding it in a later version costs no rebuild. The full reasoning is in
-[`plans/apple-appstore-plan.md`](plans/apple-appstore-plan.md).
+A leftover certificate is a tidiness problem; a revoked one underneath a
+submitted build is a blocked release — the first iOS submission came back
+**Invalid Binary** minutes after *Add for Review* for exactly that. So: never
+revoke the certificate under a build that is submitted but not yet live. The
+ledger of outstanding ids and their conditions is in
+[`apple-handoff.md`](apple-handoff.md), and `apple-revoke-cert.yml` does one id
+at a time with the id typed twice.
 
 ### What the MAS build is, and is not
 
@@ -314,9 +397,12 @@ consistency, the regulated-industry answer, and an explicit "no accounts, no
 purchases, no user-generated content" (those being the flows Apple asks to see
 demonstrated).
 
-The seventh cannot come from a repository: **a screen recording captured on a
-physical device**, starting at launch and walking the core flow. No amount of
-automation substitutes for it. Budget for it on any first submission.
+The seventh is **a screen recording**, starting at launch and walking the core
+flow, and Apple asks for one captured on a physical device. Nobody here owns one,
+so 0.6.8 went out with a **simulator** recording and a first sentence saying so
+plainly — and it was accepted; the version is live on iOS. That is a precedent,
+not a rule, so budget for the possibility of a real device on any future first
+submission. The rig that produced it is below.
 
 Push either Notes block with:
 
@@ -388,6 +474,9 @@ each, so measure with `wc -c`.
 
 ## See also
 
+- Current state, the signing-identity ledger and the rotation recipe: `dev/apple-handoff.md`.
+- From-nothing account, legal and signing setup, and why each thing was decided:
+  `dev/plans/apple-appstore-plan.md`.
 - Windows Store per-release runbook: `dev/windows-signing-and-store.md` §2.
 - Google Play per-release runbook: `dev/google-play-store.md`.
 - Index + pricing policy + pre-submission truth audit: `docs/store/README.md`.

@@ -13,6 +13,23 @@ name: Release
 # macOS builds are Developer ID signed + notarized (secrets APPLE_*, org-level).
 # The signed zip is published BEFORE notarization so an Apple notary outage or
 # timeout can never block a release — the stapled zip/DMG then replace/join it.
+#
+# A tag does more than fill a GitHub Release, and both of these are easy to miss:
+#
+#   * it PUBLISHES to Google Play open testing. The android job uploads the AAB
+#     with `tracks: beta, status: completed` whenever PLAY_SERVICE_ACCOUNT_JSON is
+#     set (without it, both Play steps skip silently), then hard-fails the run via
+#     tool/play_tracks.py --expect if Play is not actually serving that version
+#     code. There is no pre-release gate: an `-rc` tag reaches open testing too.
+#     Production is the separate, manual promote-play.yml.
+#   * it builds the Microsoft Store MSIX, with the package identity injected from
+#     repo variables, and attaches it to the release. That path is
+#     continue-on-error end to end, so a missing MSIX does not fail the run —
+#     verify the ASSET, not the green check (`continue-on-error` is what hid an
+#     rclone-less build across v0.5.0-v0.5.2). Submitting it is the separate,
+#     manual submit-msstore.yml, and the only route that works for this product
+#     is mode=stage: tool/store_submit.py refuses --commit on an advanced-pricing
+#     product, because committing through the API sets the price to 0.
 
 on:
   push:
@@ -70,7 +87,12 @@ env:
 # a reformat — and verified across all four platforms before landing. Treat the
 # next bump the same way: change this pin on a branch, run this workflow with
 # workflow_dispatch (builds artifacts, publishes nothing), and only then merge.
-# Keep docker-compose.yml on the same version, or local checks disagree with CI.
+# docker-compose.yml deliberately does NOT track this pin - it runs
+# `flutter:stable`, which lags it. That is fine for a quick analyze/test, but
+# never run `dart format` from the container: an older formatter rewrites files
+# this gate then rejects, which is exactly how the v0.6.3 release broke. The
+# native SDK on the dev machine is the one to keep at this pin. docker-compose.yml
+# owns that rule and states it in full.
 defaults:
   run:
     working-directory: app

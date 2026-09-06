@@ -3,10 +3,10 @@
 ## 📊 State Dashboard
 | Metric | Value |
 | :--- | :--- |
-| **Status** | `IN PROGRESS` (Phase 1 → alpha.7, Phase 2 → alpha.8) |
+| **Status** | `IN PROGRESS` — Phase 1 → alpha.7, Phase 2 → alpha.8, Phase 5 → alpha.84; Phases 0, 3 and 4 still open |
 | **Version** | `v1.0.0` |
 | **Active Persona** | `Architect` |
-| **Last Updated** | 2026-06-28 |
+| **Last Updated** | 2026-09-06 |
 
 ---
 
@@ -119,9 +119,15 @@
 - `[~]` Phase 0 — Foundation (grid virtualization + per-pane view state landed; token/motion/streamed-listing groundwork still pending)
 - `[x]` Phase 1 — Grid + Thumbnails (alpha.7: grid view, icon system, per-remote disk-cached thumbnails, density slider)
 - `[x]` Phase 2 — Inspector + Media + Quick Look (alpha.8: inspector rail + Ctrl+I, media gallery view, Quick Look on Space with ←/→ nav)
-- `[ ]` Phase 3 — Navigation & power-user
-- `[ ]` Phase 4 — Columns + native chrome + transactions
-- `[ ]` Phase 5 — Mobile touch explorer
+- `[~]` Phase 3 — Navigation & power-user (the morphing PathBar shipped as `ui/path_bar.dart`; the
+  rest of the phase — Finder-grade selection, the top-bar priority overflow, per-pane state — has
+  not been re-audited against the code, so treat the remaining items as unknown, not as absent)
+- `[ ]` Phase 4 — Columns + native chrome + transactions (the Miller-columns view is definitively
+  unbuilt: `state/browser_controller.dart` is `enum ViewMode { list, grid, media }`, with no
+  `columns` member. The other three items are unaudited)
+- `[x]` Phase 5 — Mobile touch explorer (alpha.84: phone shell with bottom nav and touch grammar —
+  `ui/mobile_home.dart`; long-press and `+` bottom sheets in `ui/mobile_action_sheets.dart` plus
+  pull-to-refresh in v0.3.4)
 
 ## 8️⃣ Phase 8: Verification Dashboard
 * **Verification Status:** `PENDING`

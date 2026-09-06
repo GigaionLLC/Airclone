@@ -8,13 +8,15 @@ description: "The application shell, navigation models, and screen layouts for d
 
 # 🏗️ App Structure & Layouts
 
-Airclone is **one product in two form factors**. The same domain models, `RcloneClient`, and
-component primitives back both; only the layout shell and navigation model differ. Mobile is **not** a
-shrunken desktop — it drops the dual pane and adds system-storage integration.
+Airclone is **one product in two layouts and three input models**. The same domain models,
+`RcloneClient`, and component primitives back all of them; only the shell and the navigation model
+differ. Mobile is **not** a shrunken desktop — it drops the dual pane; and a television is the mobile
+shell wrapped for a five-key remote, not a fourth design.
 
 **When to read this:** you are adding or moving a surface in the app shell — a toolbar verb, a
 sidebar entry, a pane or tab, the job panel, a bottom-nav tab or the FAB — and need to know where it
-belongs on desktop versus mobile, and which form factor the change must not break.
+belongs on desktop versus mobile versus a television, and which form factor the change must not
+break.
 
 ---
 
@@ -48,9 +50,13 @@ directly **onto a folder row**, exactly like dragging into a folder in a native 
   sortable columns (Name / Size / Modified / Status), and a per-pane filter box. Panes/tabs retarget
   to any remote — Drive left, S3 right, cloud-to-cloud in one drag. A single-pane toggle exists for
   small windows; either pane can split into more tabs rather than forcing a second window.
-- **Transfer / Job panel (bottom, dockable):** persistent. Live rows (type, source → dest, per-file
-  progress, speed, ETA, status) with **Active / Scheduled / History** tabs (history searchable) and
-  Stop / Stop-all / Clear-finished. The always-on observability surface.
+- **Transfer / Job panel (bottom, dockable):** persistent, and the always-on observability surface.
+  Two tabs, not three: **Transfers** (the live per-file strip over the job list — type, source → dest,
+  per-file progress, speed, ETA, status, with Stop / Stop-all / Clear-finished) and **Recent
+  activity**, which reads `core/transferred` from the engine rather than keeping a history of its own.
+  There is no search. *Scheduled* work is not a dock tab — saved transfers live in the Tasks dialog,
+  backed by `tasksProvider` and run by `schedulerProvider`. See
+  [jobs_dock.dart](../../app/lib/src/ui/jobs_dock.dart).
   **Resizable, and everything in it has to grow with it:** drag its top edge, double-click that
   edge, or use the chevron in its tab strip. The live per-file strip (`StatsPanel`) takes up to half
   the dock's height rather than a fixed box — a dock the user made taller that still shows three
@@ -75,7 +81,7 @@ directly **onto a folder row**, exactly like dragging into a folder in a native 
 │ 💽 Local C:  │ │ 🖼 hero.png     8.4MB 2h   │  │                                  │ │
 │ 💽 SD card   │ │                           │  │       (drag A→B = copy)          │ │
 ├──────────────┴───┴───────────────────────────┴──┴──────────────────────────────────┤
-│ JOBS  [Active] Scheduled  History                                   [Stop All] [⌫] │
+│ [Transfers] Recent activity                                    ⌃ [Stop All] [⌫]    │
 │ ▸ Copy  gdrive:/Q1/hero.png → s3:backups/2026   ▓▓▓▓▓▓░░  73%  8.4MB/s  ETA 0:03   │
 │ ▸ Sync  Local C:/Photos → onedrive:/Photos      ▓▓░░░░░░  18%  2.1MB/s  ETA 4:21   │
 ├────────────────────────────────────────────────────────────────────────────────────┤
@@ -130,11 +136,16 @@ always present and opens the color-coded Compare diff; destructive mirrors requi
 via cron→prose, last/next run, run/pause/edit). The editor offers Interval or Time builders with an
 advanced raw-cron field and an optional **"watch a local folder"** (debounced FS watcher) trigger.
 
-**Mount Manager** (a *secondary convenience*, not the primary file-work surface) lists active/saved
-mounts (source, mount point, VFS cache mode, status) with a mount dialog (drive-letter/path, cache
-mode default `writes`, cache dir/size/age, read-only, auto-mount, network-drive/volume-name behind
-Advanced) and a **FUSE driver guard** that detects WinFsp/macFUSE/FUSE3 and offers one-click install
-instead of a cryptic error. Mount exists so a remote is reachable *inside other apps*; for uploading
+**Mount Manager** (a *secondary convenience*, not the primary file-work surface) lists active mounts
+(source, mount point, status) with a mount dialog whose options come from the shared
+`MountOptionsEditor` — the same widget Settings uses to edit the persisted defaults, so the two can
+never drift. Its fields are cache mode, cache size, keep-cached-for, directory cache, read chunk,
+chunk-grows-to, attribute cache, fast change detection and (Windows only) mount-as-a-network-drive.
+The defaults and the reasoning behind each are owned by
+[14-performance-standards.md §6](14-performance-standards.md) and
+[`mount_options.dart`](../../app/lib/src/rclone/models/mount_options.dart); do not repeat a value
+here. The dialog also carries a **FUSE driver guard** that detects WinFsp/macFUSE/FUSE3 and offers
+one-click install instead of a cryptic error. Mount exists so a remote is reachable *inside other apps*; for uploading
 and moving files, the in-app explorer is faster (it avoids the VFS cache), and the UI gently nudges
 users there for heavy file work.
 
@@ -147,16 +158,24 @@ illustrated and instructive.
 
 ## 📱 Mobile — Touch-First Browser + System Storage
 
-Single-pane, touch-first. The headline feature is **system integration**: remotes appear in the
-phone's own Files app (Android `DocumentsProvider` / iOS File Provider). No dual pane, no FUSE mount.
+Single-pane, touch-first. No dual pane, no FUSE mount. The shell is chosen by **width**, not by
+platform: `< 700px` (or a television) gets `MobileHomeScreen`, so an Android tablet in landscape runs
+the desktop shell — see [06-design-system.md](06-design-system.md) for the one real breakpoint.
 
-**Bottom nav (4 tabs):** **Remotes** (home) · **Files** (active browser) · **Transfers** (live +
-scheduled + history) · **Settings**. A context-aware floating **+** (add remote on Remotes; upload on
-Files).
+The intended headline feature is **system integration**: remotes appearing in the phone's own Files
+app via an Android `DocumentsProvider` / iOS File Provider, toggled per remote. **Neither bridge is
+built** — there is no `DocumentsProvider` in `app/android/` and no File Provider target in
+`app/ios/`, so the "Show in Files" toggle and its secondary line ("Available in Files app" / "Not
+shown in system files") are design, not shipped UI.
+[02-product-context.md](02-product-context.md) owns that status; the wireframe below is a sketch of
+the intended shell and shows the toggle for that reason.
 
-**Remote cards** are large tap targets with a prominent per-remote **"Show in Files" toggle** — on =
-registers that remote as a root in the system file explorer (SAF root / File Provider domain), with a
-secondary line ("Available in Files app" / "Not shown in system files").
+**Bottom nav:** **Remotes** (home) · **Files** (active browser) · **Transfers** · **Settings**, with a
+context-aware floating **+** (add remote on Remotes; upload on Files) that opens a bottom sheet rather
+than a dropdown.
+
+**Remote cards** are large tap targets carrying the provider icon, name, connection dot and storage
+bar.
 
 **Touch browser:** full-width 56px rows, horizontally-scrolling breadcrumb, long-press multi-select →
 contextual action bar (Copy, Move, Download, Share link, Delete), `+` FAB upload (background job with
@@ -190,14 +209,70 @@ runs (WorkManager / BGTaskScheduler) are best-effort. Live, user-initiated trans
 
 ---
 
+## 📺 Television — the mobile shell, wrapped
+
+Android TV and Google TV run the **same APK and the same `MobileHomeScreen`**, wrapped in `TvShell`.
+It is a wrapper rather than a third layout on purpose: a television is a phone-shaped, single-pane
+browser operated with a five-key remote, so what changes is *input*, not structure. Everything TV-
+specific lives in one file, [`ui/tv.dart`](../../app/lib/src/ui/tv.dart), so the affordances can be
+audited against Google's TV requirements in one read rather than chased through `if (tv)` branches.
+
+**INVARIANT — every TV branch gates on `androidIsTelevision`, and nothing in `tv.dart` may run off a
+television.** That flag is a plain `bool` resolved once by `initAndroidIsTelevision()` in `main()`
+**before `runApp`** — the shell is chosen inside a synchronous `build()`, so it cannot be a future.
+It is `false` on every other platform *and* until that call returns, so a channel failure degrades a
+TV to the touch shell instead of handing a phone the TV one.
+[`android_native.dart`](../../app/lib/src/state/android_native.dart) ·
+[`home_screen.dart`](../../app/lib/src/ui/home_screen.dart) (`androidIsTelevision || width < 700`) ·
+[`app.dart`](../../app/lib/src/ui/app.dart) (the `TvShell` wrap, width-independent).
+
+**INVARIANT — Airclone draws the focus ring itself, once, from outside the widget tree.** With no
+pointer the ring *is* the cursor. Material's default focus overlay is a ~10% wash designed for
+someone whose finger is already on the control, and across a room it reads as nothing; worse, several
+widgets this app is built from decline to draw one at all — `NavigationRail` ignores
+`ThemeData.focusColor` outright, and file rows rendered nothing while focus was demonstrably
+travelling through them (pressing centre after two arrow presses activated a different tab, while the
+screenshots either side were byte-identical). Setting a theme colour and assuming it took looks
+exactly like success, which is the trap. The **refuted alternative** was to chase it widget by
+widget: that re-opens the question on every screen added afterwards. `TvFocusOverlay` instead tracks
+`FocusManager` and paints one ring over whatever holds focus, re-measuring post-frame and on every
+scroll notification, so a screen written later is covered without knowing it exists.
+
+`TvShell` composes four things, and the placement of the wrap is itself the fix — it is installed
+from `MaterialApp.builder`, **above the Navigator**, because a `showDialog` route is a sibling of the
+home screen and not a descendant. Wrapping the home `Scaffold` gave dialogs none of this, and the
+field report was exactly that: a passphrase could be typed but Unlock could never be reached.
+
+| Part | What it does |
+| :--- | :--- |
+| `TvFocusTheme` | Raises `focusColor` to the app accent at 34% for the TV subtree only — read from `AircloneTheme`, not `colorScheme`, which handed the ring Material's default purple. |
+| `TvFocusOverlay` | The ring, above. |
+| `TvDpadEscape` | Rebinds bare ArrowUp/ArrowDown to `DirectionalFocusIntent(ignoreTextFields: false)`. Flutter binds those to a text-editing intent on Android, and `EditableText` enables it whenever the selection is valid — always — so the key is consumed to move the caret and never reaches traversal. Vertical only: LEFT/RIGHT stay with the caret so a typo is still fixable. |
+| `TvFocusSeed` | Directional traversal needs an *origin*; with only a bare `FocusScopeNode` focused (what a freshly pushed route leaves) every arrow press is a no-op. This re-seeds whenever the primary focus is a scope, and settles by itself because a real widget is not a scope. |
+
+Inside the shell, `MobileHomeScreen` swaps its bottom bar for `TvNavRail` and wraps itself in
+`TvInitialFocus` — **a side rail, because a bottom bar is the wrong shape for a D-pad**: reaching a
+bottom bar means pressing DOWN through every row of the file list first, where one LEFT press reaches
+a side rail from anywhere. The rail is hand-built for the `NavigationRail` reason above.
+`TvInitialFocus` is the home shell's counterpart to `TvFocusSeed` — it owns its own `FocusScopeNode`
+rather than looking one up, because the ambient route scope can already report a focused child for
+reasons that have nothing to do with the file list, which made the "is anything focused?" guard read
+yes and the seed never run. The whole frame sits inside `tvOverscan` (48dp across, 27dp down —
+Google's 5% guidance at 1080p), because a television crops the edge of the picture by an amount an app
+cannot query; without it the wordmark and the settings button sat hard against the bezel.
+
+---
+
 ## 🔗 Related
 
 - [06-design-system.md](06-design-system.md) — the tokens, components and breakpoints every surface
   described here is built from; read it before touching UI.
 - [20-explorer-design.md](20-explorer-design.md) — the explorer direction behind the dual pane: view
   modes, inspector, thumbnails, Quick Look, native feel.
-- [03-user-journey.md](03-user-journey.md) — this shell walked per platform
-  (Windows/macOS/Linux/Android/iOS) with the feature matrix.
+- [03-user-journey.md](03-user-journey.md) — these shells walked per platform
+  (Windows/macOS/Linux/Android/Android TV/iOS) with the feature matrix.
+- [dev/android-tv.md](../../dev/android-tv.md) — how to actually drive a TV build with a D-pad, and
+  what an Android TV image does not have.
 - [07-state-context.md](07-state-context.md) — which Riverpod provider owns pane, tab, job and mount
   state behind these layouts.
 - [08-core-architecture.md](08-core-architecture.md) — why in-app explorer actions bypass the VFS and

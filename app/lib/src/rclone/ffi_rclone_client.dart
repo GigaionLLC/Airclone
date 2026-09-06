@@ -9,7 +9,7 @@ import 'rclone_client.dart';
 /// no subprocess, no loopback HTTP, and no port — `rpc` maps straight onto
 /// librclone's `RcloneRPC`. This is the only legal way to run rclone on iOS / the
 /// Mac App Store (no `fork`/`exec`), and a tidier option on desktop.
-/// See dev/plans/dual-engine-plan.md and [LibrcloneEngine].
+/// See dev/archive-plans/dual-engine-plan.md and [LibrcloneEngine].
 class FfiRcloneClient implements RcloneClient {
   FfiRcloneClient({
     required this.libraryPath,

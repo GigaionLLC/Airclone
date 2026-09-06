@@ -18,8 +18,10 @@ graph TD
 
 - **Vision:** [`wiki/core/01-vision-north-star.md`](wiki/core/01-vision-north-star.md) — the strategic
   north star. Maintained with the `create-app-vision-north-star` skill.
-- **Documentation base:** the `wiki/core/00–18` "brain documents" + `wiki/features|components|logic|database`
-  indexes. Maintained with `documentation-architecture-bootstrap` / `-assessment`.
+- **Documentation base:** the `wiki/core/` "brain documents" — numbered 00–20, with 09 and 13 unused —
+  plus the `wiki/features|components|logic|database` indexes. Rather than trust that range, read
+  [`wiki/core/00-system-index.md`](wiki/core/00-system-index.md), which enumerates them. Maintained
+  with `documentation-architecture-bootstrap` / `-assessment`.
 
 ---
 
@@ -49,9 +51,10 @@ flowchart LR
 Because Airclone wraps a powerful engine across very different platforms, a few rules override
 generic flow:
 
-- **Spike the unknowns first.** The highest-risk items (in-process `librclone`/gomobile bindings, the
-  Android `DocumentsProvider` bridge, desktop FUSE mounting) are validated with throwaway spikes
-  before committing to a feature plan. See the [Cross-Platform Architecture plan](dev/plans/).
+- **Spike the unknowns first.** The highest-risk items (in-process `librclone` over `dart:ffi`,
+  shipping the rclone binary as an Android jniLib, desktop FUSE mounting) are validated with throwaway
+  spikes before committing to a feature plan. See the
+  [Cross-Platform Architecture plan](dev/plans/cross-platform-architecture-plan.md).
 - **The `RcloneClient` contract is sacred.** Desktop and mobile satisfy the *same* JSON method
   surface (the rclone RC surface). Never branch the UI on platform for engine calls.
 - **Every feature is dual-spec'd.** A feature doc in `wiki/features/` must describe desktop *and*
@@ -75,9 +78,19 @@ generic flow:
 graph TD
     A[Code Changes Completed] --> B[pre-deployment-vibe-auditor]
     B --> C[Test-and-Deploy]
-    C --> D[Safe Git Push / Release]
+    C --> E["python tool/check-docs.py (also a CI gate)"]
+    E --> D[Safe Git Push / Release]
 ```
 
 - **`pre-deployment-vibe-auditor`** — scans for architectural drift, missing error handling, and
   security risks.
 - **`Test-and-Deploy`** — runs tests + linters and verifies config before a safe push/release.
+- **`python tool/check-docs.py`** — the repo's own doc linter, and a **CI gate**: the `docs` job in
+  [`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs it on every push to `main` and every
+  pull request, so a relative link pointing at a file that no longer exists fails the build instead of
+  reaching a reader. Run it locally before you commit docs; **0 broken links** is the bar it enforces.
+  It also reports *orphans* (docs nothing links to, so only grep can find them) and `wiki/core/` docs
+  missing the shape [`wiki/core/17-docs-blueprint.md`](wiki/core/17-docs-blueprint.md) §3 requires —
+  both advisory, and both promoted to failures by `--strict`. Links into `app/` source are checked
+  too, so moving a Dart file can break a doc. The same job byte-compiles `tool/`, whose store scripts
+  have no tests and whose first execution is against a live store API mid-release.

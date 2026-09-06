@@ -21,6 +21,13 @@ name: iOS App Store (screenshots)
 #             class and report the screenshot dimensions. Cheap, and it stops the
 #             capture run failing on a device name that does not exist here.
 #   capture   seed demo content, launch, and capture.
+#   record    film a walkthrough on the phone simulator, for an App Review
+#             guideline 2.1 "information needed" reply. Apple asks for a
+#             recording from a physical device; this is the honest
+#             approximation, and the reply has to say so. simctl only writes the
+#             video's moov atom on SIGINT, so the stop trap in that job is
+#             load-bearing - kill the recorder any other way and the file is
+#             unplayable.
 
 on:
   workflow_dispatch:

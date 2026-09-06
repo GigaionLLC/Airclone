@@ -10,7 +10,7 @@ import 'config_io.dart'
         openConfigEnvelopeBytes,
         sealConfigEnvelopeBytes;
 
-/// The OFFLINE, self-contained config QR (dev/plans/config-portability-plan.md §5,
+/// The OFFLINE, self-contained config QR (dev/archive-plans/config-portability-plan.md §5,
 /// user-requested 2026-07). Unlike the LAN pairing QR (`airclone-cfg:v3|url|salt|
 /// fp`, which only carries a URL the phone fetches the config from over Wi-Fi),
 /// this QR carries the WHOLE config, gzip-compressed then sealed with the existing

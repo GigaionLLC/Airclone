@@ -433,7 +433,7 @@ Off-screen thumbnail players obey the same reasoning from the other direction �
   those the other way round: a bad VALUE is rejected (`Reshape failed to Unmarshal: … Go struct
   field Options.NetworkMode of type bool`), which an ignored key could never do.
 - **Enforced in:** `app/test/mount_options_test.dart` pins every key and value shape; the live
-  read-back is recorded in [`dev/plans/mount-tuning-plan.md`](../../dev/plans/mount-tuning-plan.md)
+  read-back is recorded in [`dev/archive-plans/mount-tuning-plan.md`](../../dev/archive-plans/mount-tuning-plan.md)
   Phase 8.
 
 **RULE — Drain BOTH `stdout` and `stderr` of every spawned child, on every build.**
@@ -475,6 +475,8 @@ Off-screen thumbnail players obey the same reasoning from the other direction �
 | Engine stats | One 1 Hz `core/stats` poll; keeps the last good snapshot on any error | [stats_controller.dart](../../app/lib/src/state/stats_controller.dart) |
 | Transfer dispatch | `transferConcurrencyProvider` slots; `0` = unlimited (default), persisted | [jobs_controller.dart](../../app/lib/src/state/jobs_controller.dart) |
 | `rcd` readiness | 15 s deadline in `_awaitReady` | [http_rclone_client.dart](../../app/lib/src/rclone/http_rclone_client.dart) |
+| RC call timeout | 30 s per `rpc()` (`core/command` streaming excepted — it has none) | [http_rclone_client.dart](../../app/lib/src/rclone/http_rclone_client.dart) |
+| Transport retry | Exactly one, read-only methods only, never on a timeout — see §7.1 | [http_rclone_client.dart](../../app/lib/src/rclone/http_rclone_client.dart) |
 
 **RULE — Wrap every RC call inside a periodic poller in try/catch, and cancel the timer in `ref.onDispose`.**
 
@@ -488,6 +490,51 @@ Off-screen thumbnail players obey the same reasoning from the other direction �
 - **Enforced in:** `_runningCount` in
   [jobs_controller.dart](../../app/lib/src/state/jobs_controller.dart); `_pump` claims the slot
   before the async dispatch so the count stays accurate.
+
+### 7.1 A dropped connection may be retried once — and only for a read
+
+**RULE — Retry a transport failure at most ONCE, and only when the method is on the read-only allowlist. Never retry a timeout.**
+
+- **Why:** the failure this exists for arrived from the field as one line —
+  `ClientException: Connection closed before full header was received` — a keep-alive socket that
+  died before the response started. It self-healed on the next 1 Hz stats poll, which is exactly what
+  makes it worth handling: the same race on a call the *user* made surfaces as a failed listing or a
+  failed copy, with no poller to quietly try again a second later.
+- **The refuted alternative — retry everything.** A connection-level failure means the request most
+  likely never ran, but "most likely" does not justify repeating a call that moves data. A doubled
+  `operations/copyfile` is a far worse outcome than an error the caller can see and retry
+  deliberately. So `_readOnlyRcMethods` is an **allowlist**, and everything that copies, deletes,
+  mounts, writes config or starts a job is deliberately absent from it. **Anyone adding a method to
+  that set must read this rule first** — the test is "can this run twice and change nothing?", not
+  "is it usually safe?".
+- **A `TimeoutException` is not retried either**, and for the opposite reason: a timeout means the
+  engine *took* the request and did not answer within 30 s. Sending a second copy piles work onto an
+  engine already struggling.
+- **Enforced in:** `sendWithConnectionRetry` and `isRetryableRcMethod` in
+  [http_rclone_client.dart](../../app/lib/src/rclone/http_rclone_client.dart) — a free function over
+  the method string, so the policy is unit-testable without an engine.
+- **Leave evidence, rate-limited per severity.** `_noteTransportFailure` writes at most one
+  diagnostics entry a minute for a *recovered* blip (`DiagLevel.info`) and one a minute for a real
+  failure (`DiagLevel.warning`), with **separate** budgets so a recovered blip cannot spend the
+  minute and silence an outage seconds later. A wedged `rcd` answers nothing, so every poller fails
+  in turn and logging each would bury the report in identical lines. Recording the recovered case is
+  deliberate, not noise: this retry exists *because* one such blip was recorded in the field and
+  could be reasoned about. Silent during `quit()`, where a refused connection is the expected outcome.
+
+**RULE — Keep the capability probes (`operations/about`, `operations/fsinfo`) out of the error channel.**
+
+- **Why:** those two are called on Airclone's *own* initiative to find out what a backend can do, and
+  both callers already degrade honestly. A real problem report opened with
+  `ERROR : rc: "operations/about": error: Encrypted drive 'X:' doesn't support about` — which is
+  simply what crypt-over-S3 says when asked for a quota it has no concept of, working as designed,
+  and the first thing the reader had to dismiss. A report exists to make a real problem findable.
+- **Enforced in:** `_capabilityProbeMethods` in
+  [http_rclone_client.dart](../../app/lib/src/rclone/http_rclone_client.dart), filtered out inside
+  `isEngineFailureLine`.
+- **Check:** the match is on the **method name**, not on the message ("doesn't support"), on purpose:
+  it survives rclone rewording the sentence, and it cannot swallow that same wording when it
+  describes something the *user* asked for and did not get. Both halves are pinned by
+  [engine_log_test.dart](../../app/test/engine_log_test.dart).
 
 ---
 

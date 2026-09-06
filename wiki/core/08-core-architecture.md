@@ -93,13 +93,12 @@ flowchart TB
     end
     subgraph ENGINE["ENGINE LAYER — per platform"]
         direction LR
-        subgraph DESK["Desktop"]
-            HTTP[HttpRcloneClient] --> RCD["rclone rcd (spawned binary)<br/>loopback HTTP / unix socket"] -.-> FUSE["rclone mount<br/>WinFsp / macFUSE / FUSE3"]
+        subgraph DESK["Desktop + Android"]
+            HTTP[HttpRcloneClient] --> RCD["rclone rcd (spawned binary)<br/>loopback HTTP + Basic auth"] -.-> FUSE["rclone mount<br/>WinFsp / macFUSE / FUSE3"]
         end
-        subgraph MOB["Mobile"]
-            FFI[FfiRcloneClient] --> LIB["librclone (in-process)<br/>gomobile .aar / .xcframework"]
-            SAF["Android DocumentsProvider (Kotlin)"] --> LIB
-            FP["iOS File Provider ext (Swift)"] --> LIB
+        subgraph SANDBOX["iOS + Mac App Store"]
+            FFI[FfiRcloneClient] --> LIB["librclone (in-process)<br/>dart:ffi, one worker isolate"]
+            OBJ["LibrcloneObjectServer<br/>(loopback byte bridge)"] --> LIB
         end
     end
     UI --> STATE --> CTRL --> ENGINE
@@ -125,12 +124,22 @@ methods named `category/method` (`sync/copy`, `operations/list`, `config/provide
 `mount/mount`). Crucially, **the identical method/params surface is available whether driven over
 HTTP or in-process.** This is the foundation of Airclone's portability.
 
+**This table is the one owner of "which engine runs where."** It has exactly three shipped cases, and
+[`_resolveEngineMode`](../../app/lib/src/state/engine_controller.dart) plus the pure, unit-tested
+[`resolveEngineMode()`](../../app/lib/src/state/engine_mode.dart) are the code that decides. Any other
+document that states the rule is stale by construction — link here instead.
+
 | Platform | Strategy | Mechanism | Rationale |
 | :--- | :--- | :--- | :--- |
-| **Win / macOS / Linux desktop** | Spawn `rclone rcd`, drive over HTTP | Bundled binary; `rcd` on loopback + unix socket/named pipe; POST JSON | Crash isolation (daemon crash ≠ app crash); **swap the binary to upgrade rclone independently**; real FUSE mounts need the binary anyway; the most mature path. |
-| **Android** | Embed `librclone` in-process | `librclone.aar` via `gomobile bind -target=android`; call `RcloneRPC(method, json)` over FFI/platform-channel | No reliable subprocess model (background limits, W^X). In-process runs under the app's own lifecycle, which Android schedules predictably. |
-| **iOS** | Embed `librclone` — the **only** option | `rclone.xcframework` via `gomobile bind -target=ios`; call in-process | iOS forbids `fork()`/`exec()` of bundled binaries. Linking the library is the only legal way to run rclone on iOS. |
-| **Desktop (future option)** | librclone in-process | `dart:ffi` → `librclone.{so,dll,dylib}` | Reserved for a single-process desktop variant. **Not the default** — we keep the spawnable binary on desktop. |
+| **Win / macOS / Linux desktop** | Spawn `rclone rcd`, drive over HTTP | Bundled binary; `rcd` bound to `127.0.0.1:<free port>` with per-session Basic credentials; POST JSON | Crash isolation (daemon crash ≠ app crash); **swap the binary to upgrade rclone independently**; real FUSE mounts need the binary anyway; the most mature path. |
+| **Android** | **The same spawned `rcd`, over the same loopback HTTP** — `HttpRcloneClient`, exactly as desktop | The rclone **executable** shipped as a per-ABI native library (`librclone.so` in `jniLib`), because `nativeLibraryDir` is the one place Android still permits `exec()` under W^X at targetSdk 29+ | It works, and it keeps Android on the identical, most-exercised transport. `_resolveEngineMode` **short-circuits to `EngineMode.binary` before the setting is even read** — engine choice is desktop-only. |
+| **iOS** | Embed `librclone` — the **only** option | `dart:ffi` → the C ABI, in-process, on one long-lived worker isolate | iOS forbids `fork()`/`exec()` of bundled binaries. Linking the library is the only legal way to run rclone on iOS. |
+| **Mac App Store** | Embed `librclone` — forced | Same FFI path; `subprocessAllowedHere` is `false` in a `--dart-define=AIRCLONE_MAS=true` build, so the spawn branch is const-folded out | A sandboxed app may only execute code bundled and signed with it, and an `inherit`-sandboxed child cannot receive the security-scoped folder grants the parent holds — rclone would be unable to read the folders the user just picked. |
+| **Desktop (option)** | librclone in-process | `dart:ffi` → `librclone.{so,dll,dylib}`, selectable in Settings | Available, **not the default** — the spawnable binary stays the desktop default for the crash-isolation and independent-upgrade reasons above. |
+
+The original design put `librclone` on Android too, via a gomobile `.aar`. That was superseded: the
+bundled-executable route landed first, works, and avoids a second engine build to maintain. The
+librclone constraints in §3.1 therefore bind **iOS and the Mac App Store**, not Android.
 
 ### The single internal interface
 
@@ -168,9 +177,12 @@ written once.
 
 ### 3.1 librclone constraints to design around
 
+These bind the **in-process** engine — iOS and the Mac App Store — not Android, which spawns.
+
 - **`operations/uploadfile` and `core/command` are NOT available in librclone** (they need raw HTTP
-  request/response objects). On mobile, do uploads via `operations/copyfile` / `sync/copy` from a
-  local path; never call `core/command`.
+  request/response objects). Do uploads via `operations/copyfile` / `sync/copy` from a local path, and
+  reach console verbs through the fail-closed argv→RC translator rather than `core/command`.
+  `operations/uploadfile` is in fact never called from *either* client.
 - **No crash isolation in-process:** a fatal in rclone takes the app down. Validate inputs, structure
   RPC errors, pin a known-good rclone tag.
 - **Cannot hot-swap** the embedded library — the rclone version is baked into the app release. Pin it;
@@ -225,8 +237,12 @@ calling the same engine core.
 | **Windows** | FUSE mount as drive letter via **WinFsp** (`--network-mode` for Explorer stability) | spawned `rclone mount` | Detect/install WinFsp |
 | **macOS** | FUSE mount at `/Volumes/<name>` via **macFUSE** or **FUSE-T** (no-kext) | spawned `rclone mount` | Detect/install driver |
 | **Linux** | FUSE3 mount via `fusermount3` | spawned `rclone mount` | Mind AppArmor (recent Ubuntu) |
-| **Android** | **`DocumentsProvider` (SAF)** → remote appears in system Files & to any SAF-aware app | **in-process librclone** + VFS cache | **Yes — Kotlin** |
-| **iOS / iPadOS** | **`NSFileProviderReplicatedExtension`** → appears in Files | **in-process librclone** in the extension | **Yes — Swift** |
+| **Android** ⏳ | **`DocumentsProvider` (SAF)** → remote appears in system Files & to any SAF-aware app | the spawned `rcd` + VFS cache | **Yes — Kotlin. Not written yet.** |
+| **iOS / iPadOS** ⏳ | **`NSFileProviderReplicatedExtension`** → appears in Files | in-process librclone in the extension | **Yes — Swift. Not written yet.** |
+
+The two ⏳ rows are **design, not code**: there is no `DocumentsProvider` under `app/android/` and no
+extension target under `app/ios/`. The notes below are the constraints the work must land inside, kept
+because they are the expensive part; they are not a description of shipped behaviour.
 
 **Android is not a real FUSE mount** — that needs root (`/dev/fuse` is SELinux-blocked for ~99% of
 users). The correct bridge is a custom `DocumentsProvider`: implement `queryRoots` (one row per
@@ -241,7 +257,10 @@ disk in bounded chunks) and **no true streaming through Files** (whole-file up/d
 Drive). For real range playback, expose a separate in-app `rclone rcd` HTTP server with range headers.
 
 Desktop mount must **auto-detect and offer to install** the FUSE provider (via `mount/types`) and
-expose a full VFS options panel (cache mode default `writes`, cache size/age, read-only, volume name).
+expose the VFS options panel. The options themselves, their defaults and the field incident behind
+them are owned by [14-performance-standards.md §6](14-performance-standards.md) and
+[`mount_options.dart`](../../app/lib/src/rclone/models/mount_options.dart) — do not restate a value
+here.
 
 ---
 

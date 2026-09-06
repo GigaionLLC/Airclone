@@ -1,40 +1,47 @@
-# 🍎 Apple App Store plan — iOS + Mac App Store
+# 🍎 Apple App Store — account and legal setup, and the decision record
 
 ## 📊 State Dashboard
 | Metric | Value |
 | :--- | :--- |
-| **Status** | `PROPOSED — awaiting review, nothing executed` |
+| **Status** | `SHIPPED — 0.6.8 READY_FOR_SALE on both platforms, 0.7.5 WAITING_FOR_REVIEW on both` |
 | **Version** | `v1.0.0` |
-| **Last Updated** | 2026-08-16 |
+| **Last Updated** | 2026-09-06 |
 | **Price target** | **$1.49**, matching Microsoft Store and Google Play |
-| **Long pole** | Not the account work — **a build Apple will accept** (see Gate C) |
+| **Long pole** | Nothing — the only remaining human step is pressing **Release** after approval, because `releaseType` is MANUAL at creation |
 
-This plan is ordered the way **Apple** forces the work, not the way we would choose it. Each gate
-below is blocked by the one before it. Every console URL you will need is inline, so this doc can be
-driven top-to-bottom in a browser.
+This plan was ordered the way **Apple** forces the work, not the way we would choose it. Each gate
+below was blocked by the one before it. Every console URL you will need is inline, so the account
+setup can still be driven top-to-bottom in a browser — which is what this document is **for** now:
+the from-nothing account, legal and signing setup, plus the reasoning behind each decision.
 
-> **Nothing in this plan has been executed.** One thing is *staged but not submitted*: the
-> "Request Access to the App Store Connect API" dialog has its agreement checkbox ticked and is
-> waiting on a human to press **Submit** (Gate B1). Cancel it if you would rather start clean.
+> **EXECUTED.** 0.6.8 is live on both platforms and 0.7.5 was submitted from CI on 2026-09-06. The
+> live per-release runbook is [`dev/apple-appstore-and-macos.md`](../apple-appstore-and-macos.md)
+> and the current state, with the signing-identity ledger, is
+> [`dev/apple-handoff.md`](../apple-handoff.md). Every gate below is marked with what it turned out
+> to be; nothing is deleted, because rebuilding this account from nothing would need all of it.
 
 ---
 
-## 1️⃣ Verified current state (checked 2026-08-16, not assumed)
+## 1️⃣ Account and signing state — as built (first checked 2026-08-16; every ⛔ below has since been cleared)
+
+This table is the only from-nothing account checklist in the repo, so it keeps every row and every
+console URL even though all of them are now done. Dates appear only where the repo actually records
+one.
 
 | Thing | State | Where |
 | :--- | :--- | :--- |
 | Apple Developer Program, Gigaion, LLC | ✅ Active | [developer.apple.com/account](https://developer.apple.com/account) |
 | App ID `com.gigaionllc.airclone` | ✅ Registered | [Identifiers](https://developer.apple.com/account/resources/identifiers/list) |
-| ASC app record **Airclone** (Apple ID `6790176897`) | ✅ Exists — iOS 1.0 **and** macOS 1.0, both *Prepare for Submission* | [App record](https://appstoreconnect.apple.com/apps/6790176897/distribution) |
-| Developer ID Application + Installer certs | ✅ Valid to 2031 — these power today's **direct-download** DMG | [Certificates](https://developer.apple.com/account/resources/certificates/list) |
+| ASC app record **Airclone** (Apple ID `6790176897`) | ✅ Exists — iOS **and** macOS | [App record](https://appstoreconnect.apple.com/apps/6790176897/distribution) |
+| Developer ID Application + Installer certs | ✅ Valid to 2031 — these power the **direct-download** DMG | [Certificates](https://developer.apple.com/account/resources/certificates/list) |
 | Free Apps Agreement | ✅ Active | [Business](https://appstoreconnect.apple.com/business) |
 | U.S. Form W-9 | ✅ Active | [Business](https://appstoreconnect.apple.com/business) |
-| **Paid Apps Agreement** | ⛔ **Pending User Info** — no bank account on file | [Business](https://appstoreconnect.apple.com/business) |
-| **EU trader status (DSA)** | ⛔ Not declared | [App Information](https://appstoreconnect.apple.com/apps/6790176897/distribution/info) → *Digital Services Act* |
-| **App Store Connect API access** | ⛔ Never requested (no keys can exist yet) | [Integrations → API](https://appstoreconnect.apple.com/access/integrations/api) |
-| Apple Distribution / Mac Installer Distribution certs | ⛔ Absent — **App Store signing is not possible today** | [Certificates](https://developer.apple.com/account/resources/certificates/list) |
-| Price, availability, category, age rating, privacy | ⛔ All unset | [Pricing](https://appstoreconnect.apple.com/apps/6790176897/distribution/pricing) |
-| **An iOS or Mac-App-Store build** | ⛔ **Does not exist** | see Gate C |
+| **Paid Apps Agreement** | ✅ Active — bank account on file | [Business](https://appstoreconnect.apple.com/business) |
+| **EU trader status (DSA)** | ✅ Declared | [App Information](https://appstoreconnect.apple.com/apps/6790176897/distribution/info) → *Digital Services Act* |
+| **App Store Connect API access** | ✅ Granted; the team key is in the org secrets | [Integrations → API](https://appstoreconnect.apple.com/access/integrations/api) |
+| Apple Distribution / Mac Installer Distribution certs | ✅ Both pairs exist and sign every release — iOS identity minted **2026-09-05**; ledger and expiries in [`dev/apple-handoff.md`](../apple-handoff.md) | [Certificates](https://developer.apple.com/account/resources/certificates/list) |
+| Price, availability, category, age rating, privacy | ✅ $1.49, Public/discoverable, **France excluded** (174 of 175 territories), Utilities, 4+, Data Not Collected | [Pricing](https://appstoreconnect.apple.com/apps/6790176897/distribution/pricing) |
+| **An iOS or Mac-App-Store build** | ✅ Both ship; 0.6.8 is for sale on each | see Gate C |
 
 Two pieces of good news that shorten the work considerably:
 
@@ -47,17 +54,19 @@ Two pieces of good news that shorten the work considerably:
 
 ---
 
-## 2️⃣ Gate A — Legal and financial (Apple blocks *everything* commercial on these)
+## 2️⃣ Gate A — Legal and financial ✅ **done** (Apple blocks *everything* commercial on these)
 
-**These are yours to do. I cannot and will not enter banking or tax details.**
+**These are yours to do. I cannot and will not enter banking or tax details.** All three landed
+before the first submission; the instructions stay because a rebuilt account needs them again in
+this order.
 
 ### A1. Add a bank account → Paid Apps Agreement goes Active
 🔗 <https://appstoreconnect.apple.com/business>
 
-The Paid Apps Agreement sits at *Pending User Info* purely because no bank account exists; the W-9
-is already Active. **Until this is Active the price field will not hold a non-zero value**, so a
-$1.49 listing is impossible. Do this early — it is the item with the longest external latency
-(bank verification is days, not minutes).
+A new account's Paid Apps Agreement sits at *Pending User Info* purely because no bank account
+exists, even with the W-9 already Active. **Until it goes Active the price field will not hold a
+non-zero value**, so a $1.49 listing is impossible. Do this early — it is the item with the longest
+external latency (bank verification is days, not minutes).
 
 ### A2. Declare EU trader status (Digital Services Act)
 🔗 [App Information → App Store Regulations & Permits → Digital Services Act → **Set Up**](https://appstoreconnect.apple.com/apps/6790176897/distribution/info)
@@ -86,14 +95,16 @@ setting that was silently wrong on the Microsoft Store and capped discovery from
 
 ---
 
-## 3️⃣ Gate B — Credentials for automation
+## 3️⃣ Gate B — Credentials for automation ✅ **done**
 
-### B1. Request App Store Connect API access
+### B1. Request App Store Connect API access — ✅ granted
 🔗 <https://appstoreconnect.apple.com/access/integrations/api>
 
-One-time, free, org-wide. The dialog is currently **staged with its checkbox ticked** — it needs a
-human to press **Submit** because it is an agreement ("use the API for internal development,
-testing, and reporting within your team only"). Access is granted immediately; no waiting.
+One-time, free, org-wide. The dialog needs a human to press **Submit**, because it is an agreement
+("use the API for internal development, testing, and reporting within your team only"). Access is
+granted immediately; no waiting. Every Apple workflow in this repo reads
+`secrets.APPSTORE_API_PRIVATE_KEY`, so this is long since done — but a rebuilt account starts here
+and nothing else in Gate B is reachable until it is.
 
 ### B2. Generate a Team Key
 Same page, after B1. Role: **App Manager** (enough to upload builds and manage versions; *not*
@@ -104,7 +115,7 @@ The key yields three values:
 
 | Value | Where it goes | Sensitivity |
 | :--- | :--- | :--- |
-| Issuer ID | repo/org **variable** `APPSTORE_ISSUER_ID` | low |
+| Issuer ID | org **secret** `APPSTORE_ISSUER_ID` | **not low** — a variable is not masked, and this one appeared verbatim in a public CI log. Every workflow reads it as a secret |
 | Key ID | repo/org **variable** `APPSTORE_API_KEY_ID` | low |
 | `AuthKey_XXXX.p8` | org **secret** `APPSTORE_API_PRIVATE_KEY` | **download-once, never recoverable** |
 
@@ -112,20 +123,51 @@ The key yields three values:
 reissuing. Save it before closing the page.
 🔗 Secrets go to <https://github.com/organizations/GigaionLLC/settings/secrets/actions>
 
-### B3. App Store signing certificates — let CI create them
-No Apple Distribution or Mac Installer Distribution certificate exists yet. Rather than minting
-these by hand (which needs a Mac and a CSR), `xcodebuild -allowProvisioningUpdates` with the ASC API
-key creates and fetches both certificates and provisioning profiles automatically on the runner.
-This is the documented path for a solo maintainer and avoids fastlane `match` entirely.
+### B3. App Store signing certificates — **do NOT let CI create them**
 
-Fallback if automatic signing fights us: create them manually at
-🔗 <https://developer.apple.com/account/resources/certificates/add> — but try automatic first.
+The original plan here said to let `xcodebuild -allowProvisioningUpdates` create and fetch
+certificates on the runner. **That is the one instruction in this document that causes damage.**
+Archiving with `CODE_SIGN_STYLE=Automatic` + `CODE_SIGN_IDENTITY="Apple Development"` makes
+`-allowProvisioningUpdates` mint a **development certificate on every run** and never revoke it. Ten
+accumulated between 2026-08-20 and 2026-09-06 until the account hit Apple's per-team cap, and the
+macOS lane failed with *"Your account has reached the maximum number of certificates"* — a failure
+with no relation to anything that had changed. None of them was ever needed: both lanes re-sign or
+re-export with the real distribution identity, so the archive's signature never reaches the shipped
+artifact.
+
+**As built.** Both lanes now archive **UNSIGNED**
+(`CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY=""`) and apply a stored
+distribution identity at `-exportArchive`. `mas-release.yml` dropped `-allowProvisioningUpdates`
+from its export entirely; `ios-release.yml` still passes it on export and should not gain a second
+minting path. `signing: automatic` on the iOS lane is a retained experiment — it exists to answer
+whether an App Manager key can mint an iOS *distribution* identity this way — not a route.
+
+Certificates are minted **once, deliberately**, through the **Certificates API** with the App
+Manager key: `tool/asc_ios_signing.py` for iOS, and that is also how the Mac pair
+(`3rd Party Mac Developer Application` + `Installer`) was created, after Xcode's cloud signing
+refused with *"Cloud signing permission error"*. Both sets then live in org secrets:
+
+| Platform | Secrets |
+| :--- | :--- |
+| iOS | `APPLE_IOS_DIST_P12_BASE64`, `APPLE_IOS_P12_PASSWORD`, `APPLE_IOS_PROVISIONING_PROFILE_BASE64` (+ optional var `APPLE_IOS_PROFILE_NAME`) |
+| Mac App Store | `APPLE_MAS_APP_P12_BASE64`, `APPLE_MAS_INSTALLER_P12_BASE64`, `APPLE_MAS_P12_PASSWORD`, `APPLE_MAS_PROVISIONING_PROFILE_BASE64` |
+
+A stored identity has to be **rotated before it expires** — the ledger, the expiry dates and the
+rotation recipe are in [`dev/apple-handoff.md`](../apple-handoff.md). Clean up one certificate at a
+time with [`apple-revoke-cert.yml`](../../.github/workflows/apple-revoke-cert.yml), and **never
+revoke one under a build that is submitted but not yet live**: that returned INVALID BINARY on the
+first iOS submission.
+
+Manual fallback, still the from-nothing route if the Certificates API is unavailable:
+🔗 <https://developer.apple.com/account/resources/certificates/add> (needs a Mac and a CSR).
 
 ---
 
-## 4️⃣ Gate C — A build Apple will accept ← **the real work**
+## 4️⃣ Gate C — A build Apple will accept ✅ **done** ← this was the real work
 
-This is where the schedule lives. Everything above is a few hours of forms; this is engineering.
+This is where the schedule lived. Everything above is a few hours of forms; this was engineering, and
+the as-built record below — the linker facts especially — is the part of this plan most likely to be
+needed again.
 
 ### C1. Mac App Store (recommended first — weeks closer than iOS)
 
@@ -133,7 +175,7 @@ This is where the schedule lives. Everything above is a few hours of forms; this
 | :-- | :--- | :--- |
 | 1 | **App Sandbox ON** | Mandatory for MAS. Both `DebugProfile.entitlements` and `Release.entitlements` currently set `com.apple.security.app-sandbox` to `false`, with comments explaining why — those comments describe the *direct-download* build and stay true for it. MAS needs a **separate** entitlements file, not an edit to the existing one. |
 | 2 | **Force the in-process engine** | A sandboxed app may only exec code bundled and signed at build time, and an `inherit`-sandboxed child cannot receive the parent's security-scoped folder grants. `resolveEngineMode(subprocessAllowed: false)` already handles this; the MAS build must pass `subprocessAllowed: false` and compile out the spawn path. |
-| 3 | **Security-scoped bookmarks** | The sandbox denies `dart:io` access to arbitrary paths. Local browsing needs an `NSOpenPanel` grant, a persisted bookmark, and `startAccessingSecurityScopedResource` on resolve. **This does not exist** — `state/bookmarks_controller.dart` is Airclone's *favourites* feature, an unrelated thing with a colliding name. New platform channel + Dart plumbing, and every local path read must route through it. |
+| 3 | **Security-scoped bookmarks** | The sandbox denies `dart:io` access to arbitrary paths. Local browsing needs an `NSOpenPanel` grant, a persisted bookmark, and `startAccessingSecurityScopedResource` on resolve. **Built** — `app/macos/Runner/SecurityScopedBookmarks.swift` on the `airclone/native` channel, with `app/lib/src/state/mac_bookmarks.dart` on the Dart side. Note `state/bookmarks_controller.dart` is Airclone's *favourites* feature, an unrelated thing with a colliding name. |
 | 4 | **Hide subprocess-only features** | OS mount (FUSE is impossible in the sandbox), the command console (`core/command` re-execs rclone), and archive create/extract (spawns the `rclone archive` CLI). All must be absent from the UI, not merely disabled. |
 | 5 | **MAS export + installer signing** | `xcodebuild -exportArchive` with `method: app-store`, signed by Apple Distribution, packaged by Mac Installer Distribution. |
 
@@ -151,7 +193,7 @@ Everything in C1 plus:
 | 6 | **librclone for iOS** — `GOOS=ios GOARCH=arm64 -buildmode=c-archive`, packaged as an `.xcframework`. `dev/desktop/build-librclone.sh` only emits `c-shared` for darwin/linux/windows today. | **Off-road, but proven.** See the corrected assessment below. |
 | 7 | ~~**FFI must resolve from the process**~~ — **DONE 2026-08-28.** `librcloneIsStaticallyLinked('ios')` makes `defaultLibrclonePath()` return the empty sentinel and the worker takes `DynamicLibrary.process()`. `librcloneLibraryAvailable()` replaces the three `File(...).existsSync()` probes, which would otherwise report "not bundled in this build" on the one platform where the engine is *always* present. | ✅ |
 | 8 | **File-access model redesign** — **first cut done 2026-08-28.** The Locations sidebar seeds exactly one entry on iOS, the container's `Documents`, and `UIFileSharingEnabled` + `LSSupportsOpeningDocumentsInPlace` make that the Files app's *On My iPhone → Airclone*, so it is a shared folder rather than a private hole. `/` is no longer offered and the **+ button is hidden** — `file_selector` has no `getDirectoryPath` on iOS, so it would have thrown. Still open: pulling in a file the user picks elsewhere in Files (`UIDocumentPicker`). | 🟡 usable |
-| 9 | **Info.plist keys** — `NSCameraUsageDescription` and `NSFaceIDUsageDescription` **added 2026-08-28**; both dependencies are real (`mobile_scanner` for Offline-QR import, `local_auth` behind `biometric_unlock.dart`), so the strings describe what the app actually does. `ITSAppUsesNonExemptEncryption` is deliberately **absent** — see the note below. | ✅ |
+| 9 | **Info.plist keys** — `NSCameraUsageDescription` and `NSFaceIDUsageDescription` **added 2026-08-28**; both dependencies are real (`mobile_scanner` for Offline-QR import, `local_auth` behind `biometric_unlock.dart`), so the strings describe what the app actually does. `ITSAppUsesNonExemptEncryption` ships as **`false`**, valid only while France stays excluded — see "Export compliance: SETTLED" below, which owns that decision. | ✅ |
 | 10 | **Plugin sweep on device** | The dependency set is largely iOS-capable (`media_kit`, `pdfrx`, `mobile_scanner`, `file_selector`, `local_auth`, `super_drag_and_drop`). `flutter_acrylic` and `desktop_multi_window` are desktop-only and already `Platform`-guarded. Verify, don't assume. |
 
 **RESULT (2026-08-21): librclone BUILDS for iOS.** Both slices, on a CI Mac, with
@@ -259,19 +301,21 @@ installs, launches and screenshots the app. Three different failures live betwee
 apart: the link (Go omits its own `//go:cgo_ldflag` for `c-archive`), the strip
 (Release removes all symbols by default) and the runtime lookup.
 
-### Export compliance: DECIDED — the answer is YES (2026-09-05)
+### Export compliance: SETTLED 2026-09-06 — `ITSAppUsesNonExemptEncryption=false` in both Info.plists, valid only while France stays excluded
 
-**The determination the section below called for has been made: Airclone uses
-non-exempt encryption.** It implements standard confidentiality algorithms of its
-own, the "HTTPS only" and "only Apple's OS crypto" exemptions are both false, and
-it is mass-market **5D992** — which carries an annual self-classification report
-to BIS.
+**This section owns the decision.** Everywhere else in the repo should state the answer in one
+clause and link here rather than re-argue it.
 
-**RESOLVED 2026-09-06: it is automated, and the answer is `false`.**
-`ITSAppUsesNonExemptEncryption=false` is now set in both `Info.plist` files, so
-Apple never asks per build on either platform. `false` means "does not use
-NON-EXEMPT encryption" — not "uses no encryption". Airclone does encrypt; all of
-it is published, standard cryptography, which is exempt.
+`ITSAppUsesNonExemptEncryption=false` is set in both `app/ios/Runner/Info.plist` and
+`app/macos/Runner/Info.plist`, so Apple never asks per build on either platform, and
+`asc-submit-review.yml` does not ask either. `false` means "does not use NON-EXEMPT encryption" —
+not "uses no encryption". Airclone does encrypt; all of it is published, standard cryptography,
+which is exempt.
+
+**Separately, and regardless of Apple's question:** this is mass-market **5D992**, which carries an
+annual self-classification report to **BIS** in the US. That is a live obligation of its own, tied
+to neither the Apple answer nor the France answer, and it does not go away because Apple stopped
+asking.
 
 Apple itself draws the line, and that is what settled it: `POST
 /v1/appEncryptionDeclarations` is REFUSED unless the app uses proprietary
@@ -287,12 +331,19 @@ with nothing about the build to say so. `asc-version.yml -f mode=audit` now
 checks French availability on every run and fails the audit if it is ever
 enabled.
 
-**Automating it turned out not to be a boolean, and the discovery is worth
-keeping.** `usesNonExemptEncryption` lives on the build and can be PATCHed, so
-answering **no** is trivially automatable — which is exactly what builds 117, 118
-and 119 carry. Answering **yes** is not: it needs an **App Encryption
-Declaration**, the resource that holds the documentation, the France/ANSSI answer
-and the compliance code, and which Apple reviews.
+#### The wrong turn we took first, and what it taught
+
+For a day this plan recorded the opposite conclusion — **"the answer is YES,
+Airclone uses non-exempt encryption"** — and set out to automate it. That was
+wrong, and Apple is the one who said so: it refuses the declaration for an app in
+this shape. What the detour left behind is worth keeping.
+
+**Automating it turned out not to be a boolean.** `usesNonExemptEncryption` lives
+on the build and can be PATCHed, so answering **no** is trivially automatable —
+which is exactly what builds 117, 118 and 119 carry. Answering **yes** is not: it
+needs an **App Encryption Declaration**, the resource that holds the
+documentation, the France/ANSSI answer and the compliance code, and which Apple
+reviews.
 
 With no declaration on the app, `PATCH /v1/builds/<id>
 {usesNonExemptEncryption: true}` returns **200 and echoes `true`, and stores
@@ -300,19 +351,17 @@ nothing**. Read back, the build still says unanswered. `tool/asc_build.py` now
 reads it back and fails loudly rather than reporting a write that did not happen
 — the same class of trap as a green CI step that shipped no rclone.
 
-Two consequences follow, and both are real work rather than clicks:
-
-1. **Someone has to create the App Encryption Declaration once**, in App Store
-   Connect, with supporting documentation, and Apple reviews it. After that,
-   builds inherit it and the per-build answer becomes automatic.
-2. **Builds 117, 118 and 119 are already live declaring `no`.** If YES is the
-   correct answer, those declarations are wrong and that is a compliance
-   question, not a tooling one.
-
-Until the declaration exists, 0.7.4's two builds stay unanswered and Apple asks
-at submission — which is the safe failure mode.
+Two consequences were drawn at the time, and both are now moot: creating a
+declaration once by hand (Apple refuses one), and treating builds 117/118/119's
+`no` as possibly wrong (it was right). From build 123 onward the question does not
+reach a build at all — the `Info.plist` key answers it before upload.
 
 ### Export compliance, the original analysis (2026-08-28)
+
+**Kept because it is still needed.** Apple's dialog no longer appears — the
+`Info.plist` key answers it — but this is the only question-by-question record of
+what the honest answers are, and it is what a human would work from if the key
+were ever removed or **if France were ever added to availability**.
 
 Apple's dialog, and what Airclone's actual answers are:
 
@@ -338,7 +387,7 @@ Two legitimate routes, and the choice is commercial rather than technical:
 - **file first**, upload the receipt, wait for Apple's approval, and get back the
   `ITSEncryptionExportComplianceCode` for `Info.plist`.
 
-**SUPERSEDED 2026-09-06 — `ITSAppUsesNonExemptEncryption` IS now set, to `false`, on both platforms. The paragraph below is kept for its reasoning, but its conclusion was wrong; see the DECIDED section at the top.**
+**SUPERSEDED 2026-09-06 — `ITSAppUsesNonExemptEncryption` IS now set, to `false`, on both platforms. The paragraph below is kept for its reasoning, but its conclusion was wrong; see "Export compliance: SETTLED" above.**
 
 **~~`ITSAppUsesNonExemptEncryption` is deliberately NOT set — this one is yours.~~**
 Setting it to `false` would be a US export-control declaration made by a machine
@@ -446,19 +495,20 @@ when one arrives. Revisit Xcode Cloud only if we exhaust GH runner minutes, and 
 
 🔗 Xcode Cloud, if we ever do reconsider: App Store Connect → any app → **Xcode Cloud**.
 (The direct URL embeds the team UUID, which is also the `APPSTORE_ISSUER_ID` — a PRIVATE
-value, so it is not written here. It is in the vault.)
+value, so it is not written here. It is in the vault, and it is an org **secret** rather than a
+variable for exactly this reason; see B2.)
 
 ---
 
-## 5️⃣ Gate D — Upload lanes (mirroring Play and Microsoft)
+## 5️⃣ Gate D — Upload lanes ✅ **built** (mirroring Play and Microsoft)
 
 The shape you asked for maps onto Apple cleanly, and Apple gives us a **third** safety gate for free:
 
 | Stage | Trigger | Equivalent |
 | :--- | :--- | :--- |
-| Tag push → build → **TestFlight** | Automatic | Play "open testing" |
-| **Submit for App Review** | Manual workflow-dispatch | `promote-play.yml` |
-| **Release after approval** | Human button in ASC — *"Manually release this version"* | (no Microsoft/Play equivalent) |
+| Tag push → build → **TestFlight** | ⛔ **NOT BUILT, deliberately** — both Apple lanes are `workflow_dispatch` only (`ios-release.yml` / `mas-release.yml -f mode=upload`), so no Apple build is ever produced by a tag | Play "open testing" |
+| **Submit for App Review** | Manual workflow-dispatch — [`asc-submit-review.yml`](../../.github/workflows/asc-submit-review.yml), with `confirm_version` typed exactly | `promote-play.yml` |
+| **Release after approval** | Human button in ASC — `releaseType` is MANUAL, set at version creation | (no Microsoft/Play equivalent) |
 
 That last one deserves emphasis: on the version page, choosing **"Manually release this version"**
 means even an *approved* build sits and waits. Approval and publication are separate events. Given
@@ -470,30 +520,36 @@ workflow with a platform switch would have been mostly branches.
 
 | Lane | Modes | State |
 | :--- | :--- | :--- |
-| [`mas-release.yml`](../../.github/workflows/mas-release.yml) | `dry-run` / `validate` / `upload` | ✅ Apple-validated |
-| [`ios-release.yml`](../../.github/workflows/ios-release.yml) | `dry-run` / `validate` / `upload` | 🟡 written; `dry-run` needs no secret, `validate`/`upload` need the certs below |
+| [`mas-release.yml`](../../.github/workflows/mas-release.yml) | `dry-run` / `validate` / `upload` | ✅ shipping |
+| [`ios-release.yml`](../../.github/workflows/ios-release.yml) | `dry-run` / `validate` / `upload`, with `signing` = `secrets` (default) / `ephemeral` / `automatic` | ✅ shipping on `signing=secrets`; `dry-run` still needs no secret |
 
 `ios-release.yml`'s **`dry-run` deliberately requires no Apple credential at all**: it archives with
 `CODE_SIGNING_ALLOWED=NO` purely to prove the DEVICE slice links and keeps its Go symbols, which the
 simulator job cannot tell you. It is the cheapest possible check of the thing most likely to break.
 
-**SOLVED 2026-08-28 — no secret needed at all.** `signing=ephemeral` mints the
-certificate and profile through the Certificates API inside the job, signs,
-exports, and revokes the certificate in an `always()` step. Apple validated the
-result: `VERIFY SUCCEEDED with no errors` on a 57 MB `.ipa`.
-
-Two routes were tried before this and both are dead ends worth not repeating:
+Two automatic routes were tried before any of this, and both are dead ends worth not repeating:
 
 | Attempt | Apple's answer |
 | :--- | :--- |
 | archive as `Apple Development`, automatic | *"Your team has no devices from which to generate a provisioning profile"* — iOS dev profiles need a registered device; macOS ones do not |
 | archive unsigned, export automatic | *"Cloud signing permission error"*, *"No signing certificate 'iOS Distribution' found"* — the same limit macOS hit |
 
-The stored-p12 path below still works and remains the default; it is simply no
-longer the only way in.
+~~**SOLVED 2026-08-28 — no secret needed at all**, on `signing=ephemeral`.~~
+**Superseded 2026-09-05.** Ephemeral minted a certificate and profile through the
+Certificates API inside each job and revoked the certificate on the way out —
+which was coherent only while it *did* revoke. Once revoking after an upload was
+found to return INVALID BINARY, the lane had to retain, and a retained
+per-release certificate is a slot against Apple's per-team cap plus a manual
+revoke, for no security gain. `signing=secrets` is the path now, and passing
+`ephemeral` is a trap rather than a fallback.
 
-Still needed before `validate` works, because the Mac certificates (`3rd Party Mac Developer *`) do
-not cover iOS:
+✅ **The iOS signing secrets, as built.** Recreate these on rotation (certificate and profile both
+expire **2027-09-05**) with
+`python tool/asc_ios_signing.py <key.p8> <keyid> <issuerid> --apply --force-new`, which prints the
+three `gh secret set` lines reading from files, so no value reaches a transcript. The full recipe,
+including the cap ordering and `--profile-only` as the resume path, is in
+[`dev/apple-handoff.md`](../apple-handoff.md). The Mac certificates
+(`3rd Party Mac Developer *`) do **not** cover iOS.
 
 | Secret / variable | What |
 | :--- | :--- |
@@ -506,9 +562,10 @@ The Certificates API can mint the certificate with the existing App Manager key 
 pair was created, after Xcode's cloud signing refused. See §3e of the vault record.
 
 - ~~**New:** `submit-appstore.yml`~~ — superseded by the two lanes above.
-- **Extend:** `release.yml` — `ios`/`mas` jobs uploading to TestFlight via
-  `apple-actions/upload-testflight-build`, gated on `APPSTORE_API_PRIVATE_KEY` existing so nothing
-  changes until the secret lands (exactly how the Play lane was introduced).
+- ~~**Extend:** `release.yml` — `ios`/`mas` jobs uploading to TestFlight~~ — **never done, and
+  deliberately so.** A tag push builds and publishes Windows, Linux, macOS (direct download) and
+  Android only. An Apple upload stays a typed, dispatch-only act, for the same reason the submit
+  lane is separate from the routine one.
 - **Verify by artifact** (AGENT.md rule 9): after upload, query the ASC API and assert the build
   number CI just produced is actually visible in TestFlight. A green upload step is not evidence.
 
@@ -520,7 +577,7 @@ automatic; auto-to-external is not, and no CI can change that.
 
 ---
 
-## 6️⃣ Gate E — Listing metadata and screenshots
+## 6️⃣ Gate E — Listing metadata and screenshots ✅ **done, and pushed from this repo**
 
 **Screenshot sizes CONFIRMED on CI 2026-08-28** — the runner's simulators produce
 Apple's required sizes natively, so nothing is rescaled or cropped:
@@ -558,13 +615,23 @@ record; the per-platform pages are separate and both must be completed if both p
 - **App Privacy** — Airclone collects nothing. "Data Not Collected" is the honest answer and matches
   [`PRIVACY.md`](../../PRIVACY.md) and the no-telemetry stance.
 - **App Encryption Documentation** — the app does use non-Apple crypto (rclone's config encryption,
-  crypt remotes, our Argon2id QR sealing). The exemption that applies is **publicly available /
-  open-source cryptography**; declare it rather than leaving the questionnaire to ambush every
-  upload. Setting `ITSAppUsesNonExemptEncryption` in `Info.plist` answers it at build time.
+  crypt remotes, our Argon2id QR sealing), and the exemption that applies is **publicly available /
+  open-source cryptography**. There is nothing to declare in the console: Apple refuses to create a
+  declaration for an app in this shape, and `ITSAppUsesNonExemptEncryption=false` in `Info.plist`
+  answers it at build time instead. See "Export compliance: SETTLED" above, including the France
+  precondition.
 
 ### E2. Per platform, per version
-Description (4,000), Promotional Text (170), Keywords (100), Support URL, Marketing URL, Copyright
-(200), Version, and App Review notes.
+Description (4,000), Promotional Text (170), Keywords (100), **What's New (4,000)**, Support URL,
+Marketing URL, Copyright (200), Version, and App Review notes.
+
+⚠️ **What's New is the one that bites.** It is REQUIRED on every update, and it is per-*version*
+rather than per-listing: it starts empty on each release and never carries forward — renaming a
+version does not carry it either. Apple refused both 0.7.5 submissions for exactly this, minutes
+after the audit printed *No gaps*. `tool/asc_listing.py` now pushes it from
+`docs/store/store-release-notes.txt` and `tool/asc_build.py` audits it, and
+`asc-submit-review.yml`'s `refresh_listing` input must stay **on** so the notes are re-pushed,
+pinned to the confirmed version, before the audit runs.
 
 ⚠️ Two copy rules this repo already learned the hard way, both in
 [`docs/store/README.md`](../../docs/store/README.md):
@@ -578,13 +645,15 @@ risks a trademark/impersonation rejection.
 
 ### E3. Screenshots — exact requirements
 
-Apple validates dimensions strictly and rejects off-by-one sizes.
+Apple validates dimensions strictly and rejects off-by-one sizes. The "accepted" column is Apple's
+list; the "we upload" column is what `tool/asc_screenshots.py` actually sends, and the display type
+is the thing the API keys on.
 
-| Platform | Size accepted | Count | How to capture |
-| :--- | :--- | :--- | :--- |
-| **Mac** | **1280×800**, 1440×900, 2560×1600, or 2880×1800 | up to 10 (**ship 5–6**) | macOS runner in CI, or a MacBook when one arrives |
-| **iPhone 6.5"** | 1242×2688, 2688×1242, 1284×2778, or 2778×1284 | up to 10 (**ship 5–6**) | iOS Simulator — `xcrun simctl io booted screenshot` gives exact device pixels for free |
-| **iPad** | 13" / 12.9" sizes, only because `TARGETED_DEVICE_FAMILY = "1,2"` | up to 10 (**ship 3–4**) | Simulator, same method — or drop iPad support and skip entirely |
+| Platform | Sizes Apple accepts | What we upload | Count | How to capture |
+| :--- | :--- | :--- | :--- | :--- |
+| **Mac** | **1280×800**, 1440×900, 2560×1600, or 2880×1800 | `APP_DESKTOP`, **1280×800** | up to 10 (**ship 5–6**) | macOS runner in CI, or a MacBook when one arrives |
+| **iPhone** | the 6.5" set (1242×2688 …) and the 6.9" set | `APP_IPHONE_67`, **1320×2868** — the operative one | up to 10 (**ship 5–6**) | iOS Simulator — `xcrun simctl io booted screenshot` gives exact device pixels for free |
+| **iPad** | 13" / 12.9" sizes, only because `TARGETED_DEVICE_FAMILY = "1,2"` | `APP_IPAD_PRO_3GEN_129`, **2064×2752** | up to 10 (**ship 3–4**) | Simulator, same method — or drop iPad support and skip entirely |
 
 **Proposed shot list** (reusing the `D:\AircloneDemo` alias-remote demo data and the CC0 media
 already vetted in [`docs/store/play/DEMO-MEDIA-PROVENANCE.md`](../../docs/store/play/DEMO-MEDIA-PROVENANCE.md)):
@@ -603,19 +672,34 @@ media, and none may show synthetic gradients.
 ⚠️ **A MAS screenshot must not show mount, console, or archive** — features the sandboxed build does
 not have. A screenshot of a feature the shipped binary lacks is a straightforward rejection.
 
-**Storage convention:** follow the established layout —
-`docs/store/apple/{mac,iphone-6.5,ipad-13}/` with a `store-ready/` subfolder and a `MANIFEST.md`
-recording what each shot is and why, exactly as `docs/store/play/` does.
+**Storage convention:** `docs/store/apple/mac/store-ready/`, `docs/store/apple/ios/iphone/` and
+`docs/store/apple/ios/ipad/` — the paths hard-coded in `tool/asc_screenshots.py`, with
+`docs/store/apple/ios/MANIFEST.md` recording what each shot is and why, as `docs/store/play/` does.
+Shots filed anywhere else are simply never uploaded.
 
 ---
 
-## 7️⃣ Gate F — Submit, review, release
+## 7️⃣ Gate F — Submit, review, release ✅ **automated, except the Release press**
 
-1. Build lands in TestFlight (automatic on tag).
-2. Attach the build to the version, fill review notes, **Add for Review**.
-3. Set **"Manually release this version"** — always.
-4. Review takes ~24–48h typically. Rejections arrive as a message thread in ASC; reply there.
-5. On approval, press **Release** deliberately.
+As built, this is five `gh workflow run` dispatches and one button. The runbook
+[`dev/apple-appstore-and-macos.md`](../apple-appstore-and-macos.md) has the exact commands in order;
+what matters here is which tool owns which step.
+
+| Step | Owner |
+| :--- | :--- |
+| Create the version record (`releaseType: MANUAL` at creation) | [`asc-version.yml`](../../.github/workflows/asc-version.yml) `mode=create` |
+| Push the listing text, **including What's New** | [`asc-listing.yml`](../../.github/workflows/asc-listing.yml), or the refresh step inside the submit lane |
+| Upload a build (dispatch only — **never** on a tag) | [`ios-release.yml`](../../.github/workflows/ios-release.yml) / [`mas-release.yml`](../../.github/workflows/mas-release.yml) `mode=upload` |
+| Confirm the build registered, attach it, audit | `asc-version.yml` `mode=builds` → `mode=apply` → `mode=audit` |
+| **Add for Review** | [`asc-submit-review.yml`](../../.github/workflows/asc-submit-review.yml) — `mode=dry-run` first, then `mode=submit` with `confirm_version` typed exactly; refuses on any audit gap |
+| Revoke a spent certificate, one id at a time | [`apple-revoke-cert.yml`](../../.github/workflows/apple-revoke-cert.yml) |
+
+Review takes ~24–48h typically. Rejections arrive as a message thread in ASC; reply there — the
+exact resubmit click path, which is genuinely not where you expect it, is in the runbook.
+
+**The only step still performed by a human is the last one:** on approval, press **Release**
+deliberately. `releaseType` is MANUAL from the moment the version record exists, so an approved
+version sits and waits.
 
 🔗 Submission status and reviewer messages: <https://appstoreconnect.apple.com/apps/6790176897/distribution>
 
@@ -630,9 +714,15 @@ recording what each shot is and why, exactly as `docs/store/play/` does.
 
 ---
 
-## 8️⃣ Risks and unknowns, ranked
+## 8️⃣ Risks and unknowns, ranked — how they landed
 
-| Risk | Severity | Mitigation |
+Recorded as forecast against outcome, because the ranking was mostly wrong and that is the useful
+part. The two "Medium" items — librclone linking, and the missing interactive Mac — cost the most,
+and the "High" sandbox risk was largely absorbed by the security-scoped bookmark work. The one that
+was not on this list at all is the one that bit hardest: **CI quietly minting a certificate per
+run** until the account hit Apple's cap.
+
+| Risk | Severity as forecast | Mitigation |
 | :--- | :--- | :--- |
 | **librclone will not link for iOS** in this repo's pinned configuration | **Medium** (was High) | Two shipping App Store apps prove it works, and one publishes its build script. The compile is the easy half — rclone's author: *"until it tries to link it with the wrong linker"*. Spike on a `macos-latest` runner; it needs no Mac and no device. |
 | **Sandbox breaks local file access** in ways not visible until a device runs it | **High** | Build MAS early and test on a real Mac; this is the failure most likely to be invisible in CI |
@@ -643,36 +733,46 @@ recording what each shot is and why, exactly as `docs/store/play/` does.
 
 ---
 
-## 9️⃣ Recommended sequence
+## 9️⃣ The sequence that worked
 
-**Now, in parallel:**
-- **You:** A1 bank account, A2 trader status, B1 Submit the staged API-access dialog.
-- **Me:** the librclone-for-iOS spike (C2.6) — the single highest-uncertainty item, and it needs no
-  account access at all.
+This is the order to repeat on a rebuilt account, and it is the order that was actually followed:
 
-**Then:** B2 API key + secrets → C1 Mac App Store build → D upload lanes → E metadata and
-screenshots → F submit **macOS first**.
+**First, in parallel:** A1 bank account, A2 trader status and B1 API access on the account side;
+the librclone-for-iOS spike (C2.6) on the engineering side — the highest-uncertainty item, and it
+needs no account access at all.
 
-**iOS follows**, once the sandbox work has proven itself on macOS and the librclone spike has
-answered whether iOS is weeks or months away.
+**Then:** B2 API key + secrets → B3 mint the distribution identities *once*, through the
+Certificates API → C1 Mac App Store build → D upload lanes → E metadata and screenshots → F submit,
+**macOS first**.
+
+**iOS followed** once the sandbox work had proven itself on macOS, and both platforms ended up in
+the same 0.6.8 submission round.
 
 ---
 
-## 🔟 Decisions I need from you
+## 🔟 Decisions, and how each was answered
 
-1. **macOS first, or both together?** I recommend macOS first — it is far closer, and it de-risks
-   iOS.
-2. **Keep iPad support?** Dropping to iPhone-only removes a whole screenshot set and a QA surface
-   for the first submission. iPad can be added in any later version.
-3. **Xcode Cloud** — I recommend skipping it (GH Actions already gives us Macs, free). Confirm.
-4. **MAS feature parity** — confirm you are content shipping a Mac App Store build without mount,
-   console, or archive, with the DMG remaining the full build.
-5. **Do you have any iOS device** for TestFlight? It changes how blind the iOS work has to be.
+Kept as a record rather than deleted, because each of these is a thing a future change would be
+reopening rather than deciding fresh.
+
+1. **macOS first, or both together?** macOS first — and in the end both shipped in the same 0.6.8
+   submission round.
+2. **Keep iPad support?** **Kept.** `TARGETED_DEVICE_FAMILY` is still `"1,2"`, so the iPad
+   screenshot set is mandatory and `asc-listing.yml` has to run twice on iOS.
+3. **Xcode Cloud** — **skipped**, in favour of GitHub Actions macOS runners, which are free for this
+   public repo and already carry the toolchain.
+4. **MAS feature parity** — **accepted.** The Mac App Store build ships without mount, console or
+   archive, and the listing's `ABOUT THIS VERSION` paragraph says so; the DMG remains the full build.
+5. **Any iOS device for TestFlight?** No, and the work was done blind: CI simulators for
+   verification and screenshots, and the guideline 2.1 screen recording captured with
+   `ios-screenshots.yml -f mode=record` rather than on hardware. Apple accepted it.
 
 ## See also
-- [`dev/apple-appstore-and-macos.md`](../apple-appstore-and-macos.md) — the LIVE direct-download
-  macOS path, and the pre-existing "do not attempt yet" verdict this plan supersedes.
-- [`dev/plans/dual-engine-plan.md`](dual-engine-plan.md) — the librclone/FFI engine this depends on.
+- [`dev/apple-appstore-and-macos.md`](../apple-appstore-and-macos.md) — **the per-release runbook**
+  for both App Store platforms, and the direct-download macOS path.
+- [`dev/apple-handoff.md`](../apple-handoff.md) — current state, the signing-identity ledger, and
+  the rotation recipe.
+- [`dev/archive-plans/dual-engine-plan.md`](../archive-plans/dual-engine-plan.md) — the librclone/FFI engine this depends on.
 - [`dev/plans/store-automation-plan.md`](store-automation-plan.md) — where the Apple CI lanes were
   first scoped.
 - [`docs/store/README.md`](../../docs/store/README.md) — pricing policy and the pre-submission truth

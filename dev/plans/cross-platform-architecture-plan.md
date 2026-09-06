@@ -3,10 +3,10 @@
 ## 📊 State Dashboard
 | Metric | Value |
 | :--- | :--- |
-| **Status** | `PROPOSED` |
+| **Status** | `PARTLY BUILT` — Phase 0 and Phase 1 shipped; Phase 2 and Phase 3 are each part-done (see the roadmap) |
 | **Version** | `v1.0.0` |
 | **Active Persona** | `Architect` |
-| **Last Updated** | 2026-06-28 |
+| **Last Updated** | 2026-09-06 |
 
 > Architectural source of truth for the build sequence. The *what/why* of the architecture lives in
 > [wiki/core/08-core-architecture.md](../../wiki/core/08-core-architecture.md); this plan is the
@@ -37,7 +37,13 @@ Full rationale + rejected options: [08-core-architecture.md §1](../../wiki/core
 
 > **Spike the riskiest unknowns first.** All four are engine/platform-seam issues, not UI.
 
-### Phase 0 — Spike (de-risk the keystone) · *weeks*
+### Phase 0 — Spike (de-risk the keystone) · **DONE**, though not as written
+S0.1's `gomobile bind` guess was wrong — gomobile's rclone binding is Android-only, and iOS wants a
+`c-archive` static link instead; the whole recipe is in
+[`dual-engine-plan.md`](../archive-plans/dual-engine-plan.md) Phase 5. S0.2 and S0.4 shipped. **S0.3 was never
+built** — see Phase 2.
+
+*Original text:*
 Prove the load-bearing assumptions before committing to UI.
 - **S0.1 (HIGHEST RISK):** `gomobile bind -target=ios` → `rclone.xcframework`; call `RcloneRPC` from
   Swift in a trivial Flutter app. (iOS in-process rclone is officially "untested"; prior art exists —
@@ -52,7 +58,7 @@ Prove the load-bearing assumptions before committing to UI.
 - **Exit criteria:** identical RC JSON drives both transports; a remote is browsable in Android Files;
   the iOS xcframework executes an RPC.
 
-### Phase 1 — Desktop MVP · *first shippable*
+### Phase 1 — Desktop MVP · **DONE** (shipped through the alpha run to v0.1.0-beta.1 and since)
 - Spawn/supervise `rcd` (loopback + socket, transient creds); binary provisioning + SHA256 +
   min-version + `"system"`/PATH fallback.
 - Dynamic add-remote wizard from `config/providers` + interactive/OAuth state machine.
@@ -66,7 +72,15 @@ Prove the load-bearing assumptions before committing to UI.
 - **Exit criteria:** browse/transfer/sync/mount on all three desktop OSes; safe destructive ops; clean
   engine lifecycle.
 
-### Phase 2 — Mobile · *the differentiator*
+### Phase 2 — Mobile · **PART DONE**
+Android ships from alpha.84 (bundled engine, phone-first shell) and iOS from 2026-08-28 (statically
+linked `librclone`), sharing the whole Dart layer; background transfers hold the engine alive through
+a `dataSync` foreground service (alpha.86), and `rclone serve` is offered on mobile like everywhere
+but the Mac App Store build. **The two OS Files integrations were never built** — there is no Android
+`DocumentsProvider` and no iOS File Provider extension, so a remote does not appear in the system
+file picker. That is the single largest gap left in this phase.
+
+*Original text:*
 - `FfiRcloneClient` in production; share the entire Dart domain/UI layer; touch-first layouts.
 - **Android `DocumentsProvider`** (full CRUD, thumbnails, VFS cache, instant `queryRoots`, async file
   close off the binder thread).
@@ -79,7 +93,14 @@ Prove the load-bearing assumptions before committing to UI.
 - **Exit criteria:** remotes appear in Android Files & iOS Files; browse/transfer/sync; reliable
   user-initiated background transfers.
 
-### Phase 3 — Advanced · *depth & stickiness*
+### Phase 3 — Advanced · **PART DONE**
+bisync, the crypt wrap wizard, the scheduler (with desktop background execution), filter UI,
+bandwidth limits and public-link sharing all ship. Still open, and tracked in
+[`phase3-continuation-plan.md`](phase3-continuation-plan.md): background execution beyond Windows,
+crypt reattach/rotation, the bisync reliability surface, and the engine test harness. Real-time FS
+watchers, remote-`rcd` "mobile drives desktop", and full i18n are untouched.
+
+*Original text:*
 - **bisync** "two-way sync pair" (guided one-time `--resync`, dry-run preview, conflict strategy —
   never auto-resync) with conflict-rename.
 - **crypt** "wrap an existing remote" wizard with live filename-transform preview.

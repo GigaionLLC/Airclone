@@ -1,9 +1,22 @@
 # App Store (iOS) — listing details (English, United States)
 
-Paste-ready copy for App Store Connect → **iOS** version. The Mac copy lives in
-[`listing-en-US.md`](listing-en-US.md); this is a separate document rather than a
-find-and-replace of it, because the iOS build is a *different shape of app*, not
-the Mac one with a smaller window.
+⚠️ **This file is MACHINE-READ.** [`tool/asc_listing.py`](../../../tool/asc_listing.py)
+`--platform IOS` sends its copy straight to App Store Connect, driven by
+[`asc-listing.yml`](../../../.github/workflows/asc-listing.yml) and again by
+[`asc-submit-review.yml`](../../../.github/workflows/asc-submit-review.yml)
+immediately before every submission. Editing this file changes the **live** listing
+on the next run. The headings `Description`, `Promotional text` and `Keywords` are
+load-bearing: each field is the first fenced block after its heading, and the parser
+matches the first occurrence of the literal heading text *anywhere* in the file — so
+never rename one, never put another fence between a heading and its block, and never
+write one of those heading strings in prose above its real heading. (That is why this
+warning drops their `##` prefix.) Unlike the Mac doc, this one keeps no rejected
+keyword alternative, so its keywords anchor on the heading itself; do not add one
+here without reading how the Mac doc's marker works.
+
+The Mac copy lives in [`listing-en-US.md`](listing-en-US.md); this is a separate
+document rather than a find-and-replace of it, because the iOS build is a *different
+shape of app*, not the Mac one with a smaller window.
 
 The same four constraints apply as on the Mac listing, and each has already cost
 this project a review cycle somewhere:
@@ -47,7 +60,7 @@ It is built on rclone, the open-source engine that can move and sync files acros
 
 WHAT YOU CAN DO
 • Browse every cloud like a folder. All of your remotes sit side by side, with familiar rows, previews and long-press actions.
-• Move and copy between clouds directly. Send a file from one cloud to another — the transfer runs as a background job you can watch, pause or cancel.
+• Move and copy between clouds directly. Send a file from one cloud to another — the transfer runs as a background job you can watch or cancel, and you can pause the queue so nothing new starts.
 • Sync and back up folders. Mirror, copy, move or two-way sync, with a dry-run preview that shows exactly what will change before anything happens.
 • See your photos and videos. Image and video thumbnails load right in the app for any remote.
 • Stay in control. Nothing is overwritten silently — every collision asks first: skip, replace, or keep both.
@@ -76,9 +89,12 @@ cloud storage,file manager,sync,backup,file transfer,s3,webdav,sftp,remote files
 
 ## URLs and version
 
-**Version: 0.6.8** — matching the app and the macOS listing. Three stores
-disagreeing about what version Airclone is would be worse than a modest-looking
-number.
+**No version number is pinned here** — it is a per-release fact this doc cannot
+track. The version record must match `app/pubspec.yaml` and the macOS listing, since
+three stores disagreeing about what version Airclone is would be worse than a
+modest-looking number. It is created by `tool/asc_build.py --create-version X.Y.Z`
+(releaseType MANUAL) and pinned at submit time by `asc-submit-review.yml`'s
+`confirm_version`.
 
 | Field | Value |
 | :--- | :--- |

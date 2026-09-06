@@ -8,6 +8,12 @@ mandatory, not a nice-to-have.
 
 Four per device, captured by driving the real app with `integration_test`.
 
+iPhone and iPad are **separate screenshot sets** in App Store Connect, not one set
+holding both sizes, so they live in separate folders here:
+`tool/asc_screenshots.py --device iphone` uploads `docs/store/apple/ios/iphone` and
+`--device ipad` uploads `docs/store/apple/ios/ipad`. Both paths are **hard-coded** in
+that script — moving or renaming either folder breaks the uploader.
+
 | # | Shows |
 | :-- | :--- |
 | `01-home` | the sidebar — On My Device, and the Demo Cloud remote |
@@ -33,8 +39,10 @@ of Apple's four accepted Mac sizes.
 ## What these show, and why it is honest
 
 Both come from a build with **librclone statically linked and running** — the
-iPad shot's status line reads `engine ok · rclone v1.75.0`, which the app cannot
-print without having started the engine.
+iPad shot's status line reads `engine ok · rclone <version>`, which is `v1.75.0` in
+the shots banked for 0.6.8; the pin moved to `v1.75.1` in v0.7.3 (`RCLONE_VERSION` in
+`release.yml`), so a fresh capture prints the newer string. The point is that a
+version is printed at all: the app cannot print one without having started the engine.
 
 The content is seeded into each app's own container: an rclone `alias` remote
 ("Demo Cloud") pointing at the app's Documents directory, plus the same CC0

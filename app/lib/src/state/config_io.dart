@@ -6,7 +6,7 @@ import 'package:cryptography/cryptography.dart';
 import 'package:flutter/foundation.dart';
 
 /// Pure, injectable config-portability I/O — the shared seam under the
-/// import/export wizards (dev/plans/config-portability-plan.md §3/§4) and the
+/// import/export wizards (dev/archive-plans/config-portability-plan.md §3/§4) and the
 /// QR/LAN handoff. Deliberately UI-free and side-effect-free: format sniffing,
 /// INI/JSON <-> model conversion, the encrypted-export envelope, dependency
 /// closure, and merge planning all live here so they can be exhaustively

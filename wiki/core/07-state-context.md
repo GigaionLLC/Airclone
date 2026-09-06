@@ -23,8 +23,8 @@ cached server value — or when you need to find "which provider owns X" without
 | :--- | :--- |
 | **Framework** | Riverpod 2 (`flutter_riverpod`) with the modern `Notifier` / `NotifierProvider` API **only**. |
 | **Not used** | No `riverpod_generator` / code-gen, no `StateNotifierProvider`, no `ChangeNotifierProvider`, no `AsyncNotifierProvider`. Do not introduce them. |
-| **Naming** | Every top-level provider is named `<thing>Provider`. 80 public providers + 1 private (`_transferInFlightProvider` in [ui/paste_action.dart](../../app/lib/src/ui/paste_action.dart)). |
-| **Location** | 75 live in [app/lib/src/state/](../../app/lib/src/state/); 5 UI-local ones live beside their widget in `app/lib/src/ui/`. New state belongs in `state/` unless it is purely one widget's chrome. |
+| **Naming** | Every top-level provider is named `<thing>Provider`. 85 public providers + 1 private (`_transferInFlightProvider` in [ui/paste_action.dart](../../app/lib/src/ui/paste_action.dart)). |
+| **Location** | 80 live in [app/lib/src/state/](../../app/lib/src/state/); the other 5 public ones (plus that single private one) live beside their widget in `app/lib/src/ui/`. New state belongs in `state/` unless it is purely one widget's chrome. |
 | **Root** | The graph is rooted at `engineControllerProvider`. Every server-state provider starts with `ref.read/watch(engineControllerProvider).client` and returns an **empty value when it is null** — never throws, never blocks. |
 | **Persisted scalar idiom** | A `Notifier<T>` whose `build()` fires an unawaited `_load()` and returns the default **synchronously**, plus `Future<void> set(T)` that assigns `state` then writes SharedPreferences inside a swallowing `try/catch`. Canonical example: [state/advanced_mode.dart](../../app/lib/src/state/advanced_mode.dart). |
 | **`ensureLoaded()`** | Providers whose value is read at *startup decision time* also expose an idempotent `Future<void> ensureLoaded()` caching a single `_loading` future — see [settings_controller.dart](../../app/lib/src/state/settings_controller.dart), [config_password_vault.dart](../../app/lib/src/state/config_password_vault.dart), [biometric_unlock.dart](../../app/lib/src/state/biometric_unlock.dart). Callers making a boot-time branch **must await it** (see Traps). |
@@ -87,6 +87,7 @@ Paths are relative to `app/lib/src/`. Line numbers are the declaration site at t
 | `sidebarWidthProvider` | [ui/home_screen.dart:70](../../app/lib/src/ui/home_screen.dart) | `StateProvider<double>` | Default 240. |
 | `inspectorVisibleProvider` | [ui/inspector_panel.dart:26](../../app/lib/src/ui/inspector_panel.dart) | `StateProvider<bool>` | |
 | `columnWidthsProvider` | [ui/column_header.dart:141](../../app/lib/src/ui/column_header.dart) | `NotifierProvider<ColumnWidthsController, ColumnWidths>` | Persisted Size / Modified column widths (clamped on load). |
+| `jobsDockHeightProvider` | [state/pane_layout.dart:172](../../app/lib/src/state/pane_layout.dart) | `NotifierProvider<JobsDockHeight, double>` | Height of the bottom Transfers dock, persisted **unclamped by viewport** — the widget re-clamps against the live layout every build via the pure `clampJobsDockHeight`, so a dock dragged tall on a big monitor cannot swallow a small one. |
 | `skinProvider` | [state/skin.dart:47](../../app/lib/src/state/skin.dart) | `NotifierProvider<SkinController, Skin>` | Defaults to `Skin.forHost()`; a persisted choice always wins. |
 | `windowBackdropProvider` | [state/window_backdrop.dart:99](../../app/lib/src/state/window_backdrop.dart) | `NotifierProvider<…, WindowBackdrop>` | Desktop Mica/Acrylic. `loadSavedBackdrop()` reads the same key **before the provider graph exists**, to apply the effect pre-first-frame. |
 | `advancedModeProvider` | [state/advanced_mode.dart:35](../../app/lib/src/state/advanced_mode.dart) | `NotifierProvider<AdvancedMode, bool>` | Gates advanced affordances (Serve/Mount entry points, etc.). |
@@ -125,16 +126,26 @@ Paths are relative to `app/lib/src/`. Line numbers are the declaration site at t
 | :--- | :--- | :--- | :--- |
 | `mountControllerProvider` | [state/mount_controller.dart:147](../../app/lib/src/state/mount_controller.dart) | `NotifierProvider<MountController, List<MountInfo>>` | 2 s `mount/listmounts` poll. `mount`, `unmount`, `unmountAll`, `unmountAllForExit`, `refreshCache`. **Nothing is persisted**, so mounts never auto-resurrect. |
 | `mountTypesProvider` | [state/mount_controller.dart:12](../../app/lib/src/state/mount_controller.dart) | `FutureProvider<List<String>>` | Empty on Windows ⇒ WinFsp missing. |
+| `mountDefaultsProvider` | [state/mount_defaults.dart:68](../../app/lib/src/state/mount_defaults.dart) | `NotifierProvider<MountDefaults, MountOptions>` | The [`MountOptions`](../../app/lib/src/rclone/models/mount_options.dart) a **new** mount starts from — edited in Settings, and copied transiently by the mount dialog for one mount. Two levels only: a per-mount tweak never redefines the default, and a changed default never reaches a running mount (rclone fixes a VFS's options at mount time). Persisted as one JSON string so a new option needs no migration. |
 | `mountEnabledProvider` | [state/mount_policy.dart:7](../../app/lib/src/state/mount_policy.dart) | `Provider<bool>` (hard-coded `true`) | MDM/enterprise kill-switch seam, meant to be **overridden**, not edited. |
 | `serveControllerProvider` | [state/serve_controller.dart:157](../../app/lib/src/state/serve_controller.dart) | `NotifierProvider<ServeController, List<ServeServer>>` | 2 s `serve/list` poll. `start`, `stop`, `panicStopAll`. |
 | `serveTypesProvider` | [state/serve_controller.dart:17](../../app/lib/src/state/serve_controller.dart) | `FutureProvider<List<String>>` | Curated set ∩ `serve/types`. |
 | `lanIpProvider` | [state/serve_controller.dart:34](../../app/lib/src/state/serve_controller.dart) | `FutureProvider<String?>` | Display only — never used as a bind address. |
 | `serveEnabledProvider` | [state/serve_policy.dart:9](../../app/lib/src/state/serve_policy.dart) | `Provider<bool>` (hard-coded `true`) | Same kill-switch pattern. `panicStopAll()` stays callable when disabled. |
+| `revealEnabledProvider` | [state/native_actions_policy.dart](../../app/lib/src/state/native_actions_policy.dart) | `Provider<bool>` | "Reveal in file manager". **Computed**, not hard-coded: `subprocessAllowedHere`, because every implementation (`open -R`, `explorer.exe /select,`, `dbus-send`) is a spawned process. Still an override seam. |
+| `archiveEnabledProvider` | [state/native_actions_policy.dart](../../app/lib/src/state/native_actions_policy.dart) | `Provider<bool>` | Archive create / extract / list, likewise `subprocessAllowedHere` — rclone exposes no RC method for archives, so `ArchiveService` shells out. Unlike mount, no future entitlement fixes this; it needs an RC method upstream. |
 
-Both kill-switches are re-checked **inside** `MountController.mount()` and `ServeController.start()`,
-not only in the UI — flipping one to `false` refuses new mounts/servers rather than merely hiding a
-button. Overriding either is the enterprise-deployment lever described in
-[19-enterprise-readiness.md](19-enterprise-readiness.md).
+All four are re-checked **inside** the operation — `MountController.mount()`, `ServeController.start()`,
+[`os_integration.dart`](../../app/lib/src/state/os_integration.dart) and
+[`archive_service.dart`](../../app/lib/src/state/archive_service.dart) each carry a belt-and-braces
+check behind the menu item that already hides. Flipping one to `false` therefore *refuses* the action
+rather than merely hiding a button. Overriding mount/serve is the enterprise-deployment lever
+described in [19-enterprise-readiness.md](19-enterprise-readiness.md).
+
+Two neighbouring actions are deliberately **not** gated, and the policy file says so: **open with the
+default app** goes through `url_launcher` (NSWorkspace on macOS), not a spawn, and the sandbox permits
+handing off a file the user granted; **copy path** is pure clipboard. Gating either would remove a
+feature that works.
 
 ### Security & secrets
 
@@ -158,6 +169,7 @@ Threat model and the full secrets posture live in [15-security.md](15-security.m
 | `thumbnailReloadProvider` | [state/thumbnail_reload.dart:67](../../app/lib/src/state/thumbnail_reload.dart) | `NotifierProvider<…, ThumbnailReloadSignal>` | Carries only a `tick` + `force` epoch — deliberately **not** per-item progress, so tiles wake rarely. `reload()`, `rebuild()`, `prewarm()` (batched). |
 | `thumbnailsDisabledProvider` | [state/thumbnail_prefs.dart:59](../../app/lib/src/state/thumbnail_prefs.dart) | `NotifierProvider<ThumbnailPrefs, Set<String>>` | Per-remote **opt-out** keyed by fs — thumbnails are on by default. `toggle(fs)`, `isDisabled(fs)`. |
 | `folderPreviewServiceProvider` | [state/folder_preview.dart:223](../../app/lib/src/state/folder_preview.dart) | `Provider<FolderPreviewService>` | Composites a folder's images into a 2×2 card thumbnail, sealed + disk-cached. |
+| `repeatPlaybackProvider` | [state/media_prefs.dart:47](../../app/lib/src/state/media_prefs.dart) | `NotifierProvider<RepeatPlayback, bool>` | Whether a previewed video/audio file restarts at the end. Persisted, app-wide (a "how I like my player to behave" choice), default **off**. Applied *after* `Player.open` and re-applied mid-playback from a `ref.listen` — see [14 §4](14-performance-standards.md). |
 
 Exact slot counts, timeouts and batch sizes are budgets, not state — they belong to
 [14-performance-standards.md](14-performance-standards.md). Content reads must additionally respect
@@ -241,7 +253,7 @@ Explorer-level design intent for these panes lives in [20-explorer-design.md](20
 
 Three backing stores, plus rclone's own config which this layer does **not** own.
 
-### SharedPreferences (27 keys)
+### SharedPreferences (30 keys)
 
 | Key | Provider | Encoding |
 | :--- | :--- | :--- |
@@ -259,6 +271,9 @@ Three backing stores, plus rclone's own config which this layer does **not** own
 | `engine_flags` | `engineFlagsProvider` | string |
 | `external_backup_mode` | `externalBackupProvider` | enum name (`off`/`encrypted`/`plaintext`) |
 | `external_backup_digest` | `externalBackupProvider` | string — SHA-256 of the last config written, so an unchanged config is not re-sealed |
+| `jobs_dock_height` | `jobsDockHeightProvider` | double — stored unclamped; the widget clamps against the live layout |
+| `media_repeat` | `repeatPlaybackProvider` | bool |
+| `mount_options_defaults` | `mountDefaultsProvider` | JSON string — tolerant decode; a wrong type, a removed key **or an unknown cache mode** falls back to the shipped default rather than throwing |
 | `pane_split_ratio` | `paneSplitRatioProvider` | double |
 | `pane_split_orientation` | `paneSplitOrientationProvider` | enum name |
 | `rclonePath` | `settingsControllerProvider` | string |
@@ -373,6 +388,9 @@ force-reads the ones with no natural watcher from a post-frame callback in
    cache or spawns against an encrypted config without ever reaching the gate.
 9. **Kill-switch providers are override seams, not constants.** Change deployment behaviour by
    overriding `mountEnabledProvider` / `serveEnabledProvider`, never by editing the `true` literal.
+   `revealEnabledProvider` and `archiveEnabledProvider` are the same seam but *computed* from
+   `subprocessAllowedHere` — override those too rather than changing the capability predicate, which
+   a store build depends on.
 10. **`Provider.family` instances that create disposables must dispose them.**
     `paneFilterFocusProvider` and `paneScrollProvider` both register `ref.onDispose`. Follow that
     pattern for any new family that mints a `FocusNode`, `ScrollController`, or subscription.

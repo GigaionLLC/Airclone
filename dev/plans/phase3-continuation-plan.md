@@ -2,7 +2,7 @@
 type: "plan"
 name: "Phase 3 Continuation Plan"
 status: "active"
-description: "Finishing bisync / crypt / scheduling + engine currency: what shipped in the 2026-07-09 safety batch, and the designed path for the big items (background execution, crypt reattach, engine test harness)."
+description: "Finishing bisync / crypt / scheduling + engine currency. Desktop background execution and the crypt round-trip canary have since shipped (v0.2.0-beta.1); still open are background execution on macOS/Linux/Android, the crypt reattach and rotation wizards, bisync reliability surface, and the engine test harness."
 ---
 
 # 🧭 Phase 3 Continuation Plan
@@ -23,32 +23,42 @@ about closing their trust gaps and keeping the engine current.
 
 ## Big items (each needs its own change, in recommended order)
 
-### 1. Background execution for scheduled tasks — the headline gap
-Schedules only fire while the app is open (single `Timer.periodic(30s)`, `scheduler_controller.dart`).
-Build order:
-1. **Headless entrypoint first** (shared by all desktop platforms): `main(List<String> args)` —
-   the Windows runner already forwards args (`main.cpp:22-25`), Dart currently drops them. `--run-task
+### 1. Background execution for scheduled tasks — mostly closed
+As written, schedules only fired while the app was open (a single `Timer.periodic(30s)` in
+`scheduler_controller.dart`). **Items 1, 2, 5 and 6 shipped in v0.2.0-beta.1**, so on Windows a
+saved task now runs with Airclone closed. What is left is the other two desktop operating systems
+(3), Android (4), and the sharp edges under "Deliberately deferred". Build order:
+1. ~~**Headless entrypoint first**~~ **DONE** (shared by all desktop platforms):
+   [`headless/headless_runner.dart`](../../app/lib/src/headless/headless_runner.dart). `main(List<String> args)`
+   now reads the args the Windows runner had always been forwarding (`main.cpp:22-25`); `--run-task
    <id>` / `--run-due` boots a `ProviderContainer` without `runApp`, spawns rcd on its own free
    loopback port (no collision with a running GUI), runs the task(s) to terminal status, exits with a
-   code. ~2–4 days.
-2. **Windows**: register via `schtasks` (XML form for run-missed-start catch-up) from the schedule
-   editor. ~1–2 days on top of (1).
+   code.
+2. ~~**Windows**: register via `schtasks`~~ **DONE** (XML form for run-missed-start catch-up) from
+   the schedule editor —
+   [`state/windows_task_scheduler.dart`](../../app/lib/src/state/windows_task_scheduler.dart). Read
+   "Deliberately deferred" below before touching it: the orphaned-task self-heal is still open, and
+   an orphan re-fires forever.
 3. **macOS launchd / Linux systemd-user timers** (`Persistent=true` gives catch-up) — ~1–2 days each.
 4. **Android**: `workmanager` plugin + headless isolate; requires moving `nativeLibraryDir` + FGS
    channel from MainActivity to an Application-scoped channel so a background isolate can exec
    `librclone.so`; reuse `TransferService.kt` as the long-running worker; battery-optimization UX.
    ~1–2 weeks.
-5. **Cross-cutting prerequisite**: encrypted-config headless unlock — store the config password in the
-   OS vault (DPAPI / Keychain / Secret Service) or gate background scheduling on unencrypted configs
-   with a clear warning. Without it, unattended runs can't start on locked configs (today the
-   scheduler already silently skips; the batch added a visible warning).
-6. **Per-run history** on `TransferTask` (last N: timestamp/result/bytes) — prerequisite for trusting
-   unattended runs; today a failed scheduled run is indistinguishable from a successful one.
+5. ~~**Cross-cutting prerequisite**: encrypted-config headless unlock~~ **DONE** — the config
+   password comes from the OS vault (DPAPI / Keychain / Secret Service), opt-in, with
+   `headless_runner.dart` falling back to an explicit vault read when the engine's own silent unlock
+   does not fire. Without it, unattended runs could not start on a locked config at all.
+6. ~~**Per-run history** on the saved task~~ **DONE** — `TaskRunRecord`s on `tasks_controller.dart`,
+   newest-first, capped at 10 and persisted, so a failed scheduled run is no longer
+   indistinguishable from a successful one.
 
 ### 2. Crypt: prove it, reattach it, rotate it
-- **Round-trip canary verification**: replace `cryptcheck [base, crypt]` (trivially passes on empty
-  remotes, false-alarms on populated ones) with write-tiny-blob → read-back → compare → delete via
-  `operations/*`. Actually proves the key decrypts.
+- ~~**Round-trip canary verification**~~ **DONE** — `state/encrypt_remote_controller.dart` `_verify`
+  replaced `cryptcheck [base, crypt]` (which passed trivially on empty remotes and false-alarmed on
+  populated ones) with a probe *directory* created through the crypt remote and read back both ways:
+  its plaintext name reappearing through the crypt remote proves rclone decrypted it, a scrambled
+  name at the base proves it was encrypted going down. Safe RC primitives only, and it never fails
+  the wizard — the result is a tri-state hint.
 - **"Connect an existing encrypted remote" wizard**: guided reattach (base + password/salt + matching
   modes) with round-trip verification — today users must hand-recreate via the generic form and any
   mode mismatch yields silent garbage.

@@ -18,8 +18,9 @@ shell, OS-integration surface and capability level actually are — or a proposa
 (tray, dual-pane, drag-out, background sync, FUSE mount) that one of the five platforms does not have.
 
 > Form-factor split: **desktop** (Win/macOS/Linux) = dual-pane commander; **mobile** (Android/iOS) =
-> single-pane touch browser + system-Files integration; **tablet/iPad** = adaptive (single-pane
-> portrait, optional dual-pane landscape).
+> single-pane touch browser; **tablet/iPad** = adaptive (the desktop shell from 700px wide);
+> **television** (Android TV / Google TV) = the mobile shell plus a D-pad side rail and a focus ring
+> we draw ourselves (§3.1).
 
 ---
 
@@ -30,8 +31,10 @@ shell, OS-integration surface and capability level actually are — or a proposa
 - The same **add-remote wizard** (dynamic form from `config/providers` + OAuth), **transfer/job
   model**, **sync directions** (Mirror / Backup-new / Two-way), **design tokens**, light/dark theme,
   and **i18n**.
-- Differences are only: window chrome, navigation (sidebar+tabs vs bottom-nav), and how a remote is
-  exposed to the OS (FUSE mount vs DocumentsProvider/File Provider).
+- Differences are only: window chrome, navigation (sidebar+tabs vs bottom-nav vs D-pad rail), and how
+  a remote is exposed to the OS — a FUSE mount on desktop, and on mobile the planned
+  `DocumentsProvider` / File Provider bridge, which is **not built yet** (see
+  [02-product-context](02-product-context.md), which owns that status).
 
 ---
 
@@ -108,7 +111,7 @@ The body is identical across the three desktops; the **chrome and OS integration
 ┌──────── New Sync Job ─────────┐        ┌──────── Mount remote ────────┐
 │ name [ Nightly-Photos____ ]   │        │ Remote  [ gdrive ▾ ] /        │
 │ SRC [Local C ▾]/Photos        │        │ Mount at [ X:  ▾ ]            │
-│ DST [onedrive ▾]/Photos       │        │ Cache mode ( writes ▾ )       │
+│ DST [onedrive ▾]/Photos       │        │ Cache mode ( full ▾ )         │
 │ ( ) Mirror →  ⚠ deletes       │        │ Cache dir [ SSD…/cache ]      │
 │ (•) Backup new only           │        │ [ ] read-only  [✓] auto-mount │
 │ ( ) Two-way ⇄ (pairing)       │        │ ⚠ WinFsp not found — [Install]│
@@ -128,8 +131,12 @@ tray + auto-launch, headless/remote-`rcd` profiles (v2).
 
 ## 3. 📱 Android
 
-Single-pane, touch-first, 4-tab bottom nav. Headline = remotes appear in the **system Files app** via
-a `DocumentsProvider` (the "Show in Files" toggle).
+Single-pane, touch-first, bottom-nav shell. The intended headline is that remotes appear in the
+**system Files app** via a `DocumentsProvider` — the "Show in Files" toggle sketched below. **That
+bridge is designed, not built:** there is no `DocumentsProvider` in `app/android/`, and the
+toggle does not ship. What *does* ship on Android today is the in-app explorer, background transfers
+as a foreground service, and hand-off to another app through a `FileProvider` `content://` URI.
+[02-product-context](02-product-context.md) owns that status; do not re-state it as shipped here.
 
 ```
  Remotes (home)            Files (browser)          In Android system Files
@@ -153,19 +160,54 @@ a `DocumentsProvider` (the "Show in Files" toggle).
 │Rem  File Tran  Set  │                              │ ▓▓▓▓▓▓░░  124/200 · 2.1MB/s│
 └─────────────────────┘                              └───────────────────────────┘
 ```
-- **Show in Files** registers the remote as a SAF root (no FUSE/root needed); other apps' open/save
-  pickers can use it.
+- **Show in Files** (planned) would register the remote as a SAF root (no FUSE/root needed) so other
+  apps' open/save pickers could use it. Not implemented.
 - Transfers run as foreground-service jobs with a progress notification; scheduled sync via
   WorkManager (best-effort, honest framing).
 - Long-press → multi-select action bar (Copy/Move/Download/Share link/Delete); FAB upload.
 - Distribution: Play Store + APK (F-Droid-friendly).
 
+### 3.1 📺 Android TV / Google TV
+
+The **same APK and the same phone shell**, wrapped in affordances that arm only when Android reports a
+television. `MainActivity.isTelevision()` answers on two independent signals — `UI_MODE_TYPE_TELEVISION`
+(what the platform reports at runtime, and what emulators set) or `FEATURE_LEANBACK` (what Play
+filters on, and what some manufacturer boxes report instead) — and
+[`android_native.dart`](../../app/lib/src/state/android_native.dart) resolves it **once in `main()`
+before `runApp`**, into the plain `bool androidIsTelevision`, because the shell is chosen inside a
+synchronous `build()`. It is false on every other platform and false until that call returns, so a
+failure degrades a TV to the touch shell rather than giving a phone the TV one.
+
+```
+┌──────────────────────────────────────────────────────────────┐  ← 48×27dp overscan inset
+│ ▤   │  ‹ gdrive › Work › Q1                                  │     (TVs crop the picture by an
+│Files│  ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓     │      amount no app can query)
+│ ⇅   │  ┃ 📁 designs/                            2d      ┃ ←──┼── the focus ring WE draw
+│Trans│  ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛     │
+│ ⚙   │    📄 plan.pdf                     2.1MB  3h            │
+│ Set │    🖼 hero.png                     8.4MB  2h            │
+└──────────────────────────────────────────────────────────────┘
+   ↑ side rail, not a bottom bar
+```
+
+Three things differ from the phone, and each exists because a remote has no pointer: the **rail is on
+the side** (from a bottom bar, reaching it means pressing DOWN through every row of the file list
+first), the **focus ring is drawn by Airclone** rather than by Material, and **focus is seeded and
+kept escapable** so a dialog or a text field can never trap it. The shell that installs all three,
+and the incident behind each, is [05-app-structure.md](05-app-structure.md) § *Television*.
+
+Distribution is the same bundle; `leanback` is declared `required="false"` so the phone build stays
+installable. Operational detail — how to test with a D-pad, and what a TV image does not have — is in
+[`dev/android-tv.md`](../../dev/android-tv.md).
+
 ---
 
 ## 4. 📱 iOS / iPadOS
 
-Same mobile model; OS integration via a **File Provider extension** (remotes appear in the **Files**
-app). iPad can show an optional dual-pane in landscape.
+Same mobile model. OS integration is designed around a **File Provider extension** (remotes appearing
+in the **Files** app) — **that extension does not exist yet**: `app/ios/` holds only `Runner` and
+`RunnerTests`, no extension target. iPad gets the desktop shell from 700px wide, so a landscape dual
+pane comes for free.
 
 ```
  iOS — Remotes              In iOS Files app            iPad landscape (adaptive dual-pane)
@@ -183,17 +225,19 @@ app). iPad can show an optional dual-pane in landscape.
 │Rem  File Tran  Set  │   Drag-drop between apps     Pencil/keyboard + drag-drop on iPad;
 └─────────────────────┘   works via Files.            Stage Manager multi-window aware.
 ```
-- **Show in Files** publishes an `NSFileProviderDomain`; remotes appear in Files + any app's document
-  picker. Constraints: ~20 MB extension memory (stream to disk), whole-file up/down (no live mount);
-  range playback via an in-app server.
+- **Show in Files** (planned) would publish an `NSFileProviderDomain` so remotes appear in Files and
+  in any app's document picker. Design constraints already known and worth keeping: ~20 MB extension
+  memory (stream to disk), whole-file up/down (no live mount), range playback via an in-app server.
 - Background sync = BGTaskScheduler (opportunistic/best-effort).
 - Distribution: App Store; ABM/VPP for managed fleets.
 
 ---
 
-## 5. 🏢 Enterprise overlay (how managed devices differ)
+## 5. 🏢 Enterprise overlay (how managed devices would differ)
 
-When IT manages the device, policy from the OS/MDM plane changes the UI: forced settings render
+**Designed, not built** — this section is the target shape, kept because it is what the kill-switch
+seams in the code are shaped for. When IT manages the device, policy from the OS/MDM plane changes the
+UI: forced settings render
 **locked** (greyed with a small "Managed by your organization" badge), disabled features disappear or
 refuse with a clear reason, and pre-provisioned remotes appear already configured. Examples:
 ```
@@ -214,7 +258,7 @@ nothing phones home. Full design: [19-enterprise-readiness](19-enterprise-readin
 
 ## 6. Per-Platform Feature Matrix
 
-✅ full · ➖ adapted/limited · ❌ not applicable
+✅ full · ➖ adapted/limited · ❌ not applicable · ⏳ planned, not built
 
 | Capability | Windows | macOS | Linux | Android | iOS/iPad |
 | :--- | :--: | :--: | :--: | :--: | :--: |
@@ -223,14 +267,29 @@ nothing phones home. Full design: [19-enterprise-readiness](19-enterprise-readin
 | Drag-drop onto folders / drag-out | ✅ | ✅ | ✅ | ➖ (long-press) | ➖ (Files drag) |
 | Add/config remotes + OAuth | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Copy/Move/Sync/Bisync + dry-run | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Appears in OS file explorer | ✅ FUSE drive | ✅ FUSE volume | ✅ FUSE | ✅ DocumentsProvider | ✅ File Provider |
+| Appears in OS file explorer | ✅ FUSE drive | ✅ FUSE volume | ✅ FUSE | ⏳ DocumentsProvider | ⏳ File Provider |
 | Live mount perf for upload/move | ➖ VFS | ➖ VFS | ➖ VFS | ➖ on-demand | ➖ whole-file |
 | Serve (WebDAV/SFTP/HTTP/DLNA) | ✅ | ✅ | ✅ | ➖ (in-app) | ➖ (in-app) |
 | System tray / menu-bar | ✅ | ✅ | ➖ (ext) | ❌ | ❌ |
 | Background sync | ✅ daemon | ✅ daemon | ✅ daemon | ➖ WorkManager | ➖ BGTask (best-effort) |
 | Scheduler + watch-folder | ✅ | ✅ | ✅ | ➖ scheduled | ➖ scheduled |
-| MDM/policy managed | ✅ ADMX/Intune | ✅ profiles/Jamf | ✅ /etc/repo | ✅ managed config | ✅ AppConfig |
-| Engine | spawn `rcd` | spawn `rcd` | spawn `rcd` | in-proc librclone | in-proc librclone |
+| MDM/policy managed | ⏳ ADMX/Intune | ⏳ profiles/Jamf | ⏳ /etc/repo | ⏳ managed config | ⏳ AppConfig |
+| Engine | spawn `rcd` | spawn `rcd` | spawn `rcd` | spawn `rcd` (bundled jniLib) | in-proc librclone |
+
+Android runs the **same `HttpRcloneClient` as desktop** — the rclone executable ships as a per-ABI
+native library and is spawned as `rcd` on loopback. Only iOS and the Mac App Store build are
+in-process. The rule lives in [10-external-integrations.md](10-external-integrations.md) §1.1–§1.2.
+
+**MDM is ⏳ on every platform**, and the §5 overlay below is the design for it. What exists today is
+the seam it will be enforced through — the four kill-switch providers in
+[07-state-context.md](07-state-context.md), each re-checked inside the controller — not a reader for
+any OS's managed configuration. Nothing in `app/` parses ADMX, a configuration profile, Android
+restrictions or AppConfig.
+
+**Android TV** is the Android column with the shell from §3.1: no tray, no dual pane, and mount and
+serve stay where they are on Android. The one capability a television removes outright is the system
+file picker — `ACTION_OPEN_DOCUMENT` resolves to a framework stub with no UI, so any flow that asks
+the OS for a file needs an in-app path on TV.
 
 ---
 

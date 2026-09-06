@@ -19,8 +19,11 @@ Usage (from the repo root):
     python tool/check-docs.py --strict   # exit 1 on any finding (orphans, shape too)
     python tool/check-docs.py --quiet    # totals only
 
-Exit codes: 0 clean, 1 findings. Safe to wire into CI later; nothing here is
-platform-specific and it needs no third-party packages.
+Exit codes: 0 clean, 1 findings. The `docs` job in .github/workflows/ci.yml runs
+the plain form on every push and pull request, so a broken link fails CI while
+orphans and shape findings stay advisory - run it locally before pushing rather
+than learning from a red check. Nothing here is platform-specific and it needs no
+third-party packages.
 """
 from __future__ import annotations
 

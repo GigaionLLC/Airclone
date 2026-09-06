@@ -21,7 +21,7 @@ import 'settings_controller.dart';
 
 /// The import/export ORCHESTRATION over the pure config-IO seam (config_io.dart)
 /// and the always-on backups (config_backups.dart) — the runtime half of the
-/// config-portability wizards (dev/plans/config-portability-plan.md §3/§4). The
+/// config-portability wizards (dev/archive-plans/config-portability-plan.md §3/§4). The
 /// pure parsing/envelope/closure/planning logic stays in config_io.dart so it is
 /// exhaustively unit-tested without an engine; THIS layer wires those results to
 /// the live RC seam (config/create, config/dump), the backups ring, the active

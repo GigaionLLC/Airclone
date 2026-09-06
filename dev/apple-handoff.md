@@ -1,8 +1,11 @@
-# Apple App Store — session handoff
+# Apple App Store — current state and the signing-identity ledger
 
-Where the Apple track stands, what to do next, and the traps that already cost
-time. Written 2026-08-21, updated 2026-08-28. **Value-free by design** — real
-IDs, key paths and account state live in the encrypted vault
+Where the Apple track stands right now, which signing identity signed what, and
+the traps that already cost time. The per-release runbook is
+[`dev/apple-appstore-and-macos.md`](apple-appstore-and-macos.md); the
+from-nothing account and legal setup is
+[`dev/plans/apple-appstore-plan.md`](plans/apple-appstore-plan.md). **Value-free
+by design** — real IDs, key paths and account state live in the encrypted vault
 (`python tool/vault.py unlock`, then
 `dev/vault/notes/apple-appstore-setup-record.md`).
 
@@ -62,42 +65,37 @@ shipped artifact. Both now archive UNSIGNED and mint nothing.
 
 `asc_ios_signing.py --list-certs` prints every certificate with its id and type —
 without it, a cap cannot even be diagnosed, let alone cleared.
-| Build 122 uploaded | ✅ `UPLOAD SUCCEEDED` (UUID 799e7838…) | ✅ `UPLOAD SUCCEEDED` (UUID db0a8c14…) |
-| Build 122 **registered** VALID | ✅ confirmed 2026-09-05 | ✅ confirmed 2026-09-05 |
 
-**Creating the version record is no longer a human step.** It used to be:
-`asc_build.py` only ever picked an existing editable version, so the whole tool
-sat behind someone clicking "+ Version or Platform". The API always allowed it —
-the tool simply never asked. `--create-version X.Y.Z` (workflow `mode=create`)
-POSTs it with `releaseType: MANUAL` set at creation rather than patched
-afterwards, and refuses when an editable version already exists, because Apple
-allows exactly one per platform and the intent in that case is almost always a
-rename.
+### Two steps that used to need a human, and no longer do
 
-0.7.4 was created that way on both platforms, then had build 122 attached,
-review notes, copyright and the full listing text applied. **Both audits now
-report no gaps.**
+**Creating the version record.** `asc_build.py` only ever picked an existing
+editable version, so the whole tool sat behind someone clicking "+ Version or
+Platform". The API always allowed it — the tool simply never asked.
+`--create-version X.Y.Z` (workflow `mode=create`) POSTs it with
+`releaseType: MANUAL` set at creation rather than patched afterwards, and refuses
+when an editable version already exists, because Apple allows exactly one per
+platform and the intent in that case is almost always a rename.
 
-**Verifying the builds registered used to be blocked by the same thing** — and
-is not any more. `main()` called `pick_version()` before anything else, so the
-build listing was unreachable until a version existed, which is precisely the
-window right after an upload where a build can die silently (macOS 117 and 118
-both did). `asc-version.yml -f mode=builds` now reaches `pick_build()` directly
-and needs no version record. First use, immediately:
+**Verifying a build registered.** `main()` called `pick_version()` before
+anything else, so the build listing was unreachable until a version existed —
+which is precisely the window right after an upload where a build can die
+silently (macOS 117 and 118 both did). `asc-version.yml -f mode=builds` now
+reaches `pick_build()` directly and needs no version record:
 
     builds visible to this key: 5
       build 122    IOS       VALID   expired=False  2026-09-05T12:57:12
       build 122    MAC_OS    VALID   expired=False  2026-09-05T12:55:59
 
-So both 0.7.4 uploads are real and attachable. `UPLOAD SUCCEEDED` still is not
-evidence on its own — this is.
+`UPLOAD SUCCEEDED` still is not evidence on its own — that listing is.
 
-### iOS SIGNING: SOLVED — `secrets` is now the path (2026-09-05)
+## The signing identities, and how to rotate them
 
-The stored identity exists and is proven. `gh workflow run ios-release.yml -f
-mode=validate -f signing=secrets` produced a signed 57 MB `.ipa` and Apple
-answered `No errors validating archive`. No certificate is minted per release any
-more, and nothing has to be revoked afterwards.
+### iOS: a STORED identity, and it is proven (2026-09-05)
+
+`gh workflow run ios-release.yml -f mode=validate -f signing=secrets` produced a
+signed 57 MB `.ipa` and Apple answered `No errors validating archive`. No
+certificate is minted per release any more, and nothing has to be revoked
+afterwards.
 
 | | |
 | :--- | :--- |
@@ -123,65 +121,68 @@ real run failed word-for-word as the comment predicted. Everything now archives
 unsigned except the `automatic` experiment, and `-exportArchive` applies the
 distribution identity — which is what `ephemeral` always did.
 
-### Previously: `ephemeral` was the only path (2026-09-05, superseded)
+### Every identity, and when it expires
 
-`ios-release.yml -f signing=secrets` fails in seconds with
-`missing: APPLE_IOS_DIST_P12_BASE64(secret) APPLE_IOS_PROVISIONING_PROFILE_BASE64(secret)`.
-Those secrets **do not exist and never did**. The org has `APPLE_MAS_*` (Mac App
-Store) and `APPLE_DEVELOPER_ID_*` (notarised direct download) only — confirmed
-against `gh secret list --org GigaionLLC`. So build 118 must also have gone out
-on `ephemeral`, which is where the retained certificate in the note below came
-from. The refusal is cheap and happens before any build work, so the wrong
-choice costs a minute, not a build number.
+Three separate pairs, and they are not interchangeable — the Mac App Store certs
+(`3rd Party Mac Developer *`) do **not** cover iOS, and neither pair has anything
+to do with the notarized direct download. Verify a date with
+`asc_ios_signing.py --list-certs` before relying on it; where the repo records
+none, this table says so rather than guessing.
 
-### SWITCHING iOS OFF EPHEMERAL — the runbook (prepared 2026-09-05)
+| Identity | Where it lives | Expires |
+| :--- | :--- | :--- |
+| Apple Distribution + `Airclone iOS App Store` profile | `APPLE_IOS_DIST_P12_BASE64`, `APPLE_IOS_P12_PASSWORD`, `APPLE_IOS_PROVISIONING_PROFILE_BASE64` | **2027-09-05** |
+| `3rd Party Mac Developer` Application + Installer, + the MAS profile | `APPLE_MAS_APP_P12_BASE64`, `APPLE_MAS_INSTALLER_P12_BASE64`, `APPLE_MAS_P12_PASSWORD`, `APPLE_MAS_PROVISIONING_PROFILE_BASE64` | **2027-08-20** (issued 2026-08-20; recorded in the vault record, not re-verified against the API) |
+| Developer ID Application + Installer (direct download, not a store) | `APPLE_DEVELOPER_ID_APPLICATION_P12_BASE64` + `_PASSWORD` | 2031, per the plan's §1 table |
 
-Ephemeral was a deliberate security posture ("no distribution private key ever
-leaves the runner"), and it was coherent while the cert was revoked at the end of
-every run. That premise is gone: revoking after an upload is what produced the
-build-117 INVALID BINARY, so the lane now retains. We therefore pay a
-long-lived certificate's operational cost — a slot consumed per release and a
-manual revoke each time — while the private key is still discarded, so the
-retained certificate is useless to us AND to an attacker. Worst of both.
+**A lapse is silent.** Nothing warns; the lane simply starts failing at signing,
+and the message names the identity rather than the expiry.
 
-Storing one is also not a new exposure in kind: the org already holds
-`APPLE_MAS_APP_P12_BASE64` and `APPLE_MAS_INSTALLER_P12_BASE64`, the same class
-of material for macOS.
+### Rotating the iOS identity (before 2027-09-05)
 
-**Nothing in this repo needs changing.** `ios-release.yml` already defaults to
-`signing: secrets`, and `tool/asc_ios_signing.py` was written for exactly this —
-it emits pre-base64'd files and prints the `gh secret set` lines, reading from
-files so no secret ever reaches a transcript. It has simply never been run.
+The migration off `ephemeral` is **done** — see the section above. What follows is
+the same recipe read as a rotation, because it is the only place the from-nothing
+details are written down.
 
-**Blocked on one thing only: the `.p8`**, which lives in Proton Drive under
+**It needs the `.p8` in hand**, which lives in Proton Drive under
 `DeveloperFiles/Apple-StoreConnect-API-Files/` (outside this repo, by design, and
 Apple only lets it be downloaded once). No machine here can mint an iOS identity
-without it. The stored `dev/secrets/apple-csr/distribution.p12` does NOT help —
-it is a `3rd Party Mac Developer Application` certificate, Mac App Store only.
+without it, and CI's copy is a secret it cannot hand back. The stored
+`dev/secrets/apple-csr/distribution.p12` does NOT help — it is a
+`3rd Party Mac Developer Application` certificate, Mac App Store only.
 
-Order matters, because Apple caps distribution certificates per team and two
-ephemeral ones are already outstanding:
+Order matters, because Apple caps distribution certificates per team:
 
-1. **Revoke `YQF53PS6AW` first.** 0.6.8 is live, so it is safe, and it frees a
-   slot for the mint below. Skipping this risks the mint failing at the cap.
+1. **Free a slot first** by revoking a spare id whose version is live
+   (`apple-revoke-cert.yml`, and check the ledger below). Skipping this risks the
+   mint below failing at the cap.
 2. Fetch the `.p8`, then:
    ```
    python tool/asc_ios_signing.py <key.p8> <keyid> <issuerid> --apply --force-new
    ```
-   `--force-new` is required: the existing certificates' private keys were
-   discarded by the ephemeral runs, so none of them can be reused.
+   `--force-new` is required whenever the existing certificates' private keys are
+   gone — every `ephemeral` run discarded its own — because reusing a certificate
+   whose key you do not hold produces a p12 that signs nothing.
 3. Run the three `gh secret set` lines the script prints (org scope, visibility
    all). They read from files — do not paste values.
 4. Prove it before relying on it:
    `gh workflow run ios-release.yml --ref main -f mode=validate -f signing=secrets`
-5. From then on the default path works with no flag. `3NWQMKV4UB` is still
-   outstanding — see the certificate table below for why its revoke condition
-   changed — and after that no certificate is ever minted again, only an annual
-   rotation when the cert and profile expire (both 1 year).
+5. If Apple fails partway — it 500'd on `POST /v1/profiles` once, after the old
+   profile was deleted and the new certificate minted — resume with
+   `--profile-only`, which reuses the certificate recorded in `cert-id.txt`.
+   Re-running `--force-new` instead mints a third certificate against the cap.
 
-**Outstanding iOS distribution certificates — BOTH need revoking by hand once
-the version they signed is live.** Apple caps these (typically 3), and every
-`ephemeral` run mints another without revoking, by design:
+Nothing in this repo needs changing for a rotation. `ios-release.yml` already
+defaults to `signing: secrets`, and `tool/asc_ios_signing.py` was written for
+exactly this — it emits pre-base64'd files and prints the `gh secret set` lines,
+reading from files so no secret ever reaches a transcript.
+
+### Outstanding iOS distribution certificates — the ledger
+
+`apple-revoke-cert.yml` names this table as the record of which id signed what.
+Every `ephemeral` run minted one and deliberately did not revoke it, so they
+accumulate against Apple's cap (typically 3) and have to be cleared by hand once
+the version they signed is live.
 
 | Certificate | Signed | State |
 | :--- | :--- | :--- |
@@ -208,138 +209,17 @@ full. Revisit once 0.7.5 is **live on both platforms**, and revoke only after
 confirming with `asc_ios_signing.py --list-certs` which id signs the shipped
 build.
 
-## Previously (2026-08-29): BOTH PLATFORMS SUBMITTED
-
-| | macOS | iOS |
-| :--- | :--- | :--- |
-| Version 0.6.8 | **WAITING_FOR_REVIEW** | **WAITING_FOR_REVIEW** |
-| Build | 119 | 118 (117 was rejected) |
-| Release type | **MANUAL** | **MANUAL** |
-
-**Release type MANUAL on both is the point.** An approved version waits for a
-human rather than publishing itself. It was found set to `AFTER_APPROVAL` on
-macOS *after* the audit had twice reported "no gaps" - copyright and release type
-live on the version, not the localization, and the audit only checked
-localization fields.
-
-### The iOS rejection, and what actually fixed it
-
-Build 117 was submitted and came back **Invalid Binary** within minutes.
-`signing=ephemeral` had revoked its distribution certificate at the end of the
-run that uploaded it. Apple accepts the upload and processes the build to `VALID`
-regardless, so nothing complains until submission.
-
-Build 118 was uploaded with its certificate **retained** and submitted without
-incident. The lane no longer revokes after an `upload`, and prints the
-certificate id instead. **Revoke `YQF53PS6AW` by hand once the iOS version is
-live** - the vault tracks every certificate minted.
-
-That is a hypothesis confirmed by outcome rather than by Apple's own words: the
-email carries the reason and was not needed in the end, but nothing in the API
-ever explains an `INVALID_BINARY`.
-
-### What happens next
-
-1. Apple reviews, up to 48 hours, and emails.
-2. On approval **neither version goes live by itself** - someone presses release.
-3. On rejection, the message names the guideline; fix, re-upload with a new
-   `-f build_number`, re-attach, resubmit.
-
-## Previously (2026-08-28)
-
-| | macOS | iOS |
-| :--- | :--- | :--- |
-| Build uploaded, Apple-accepted | ✅ `UPLOAD SUCCEEDED` | ✅ `UPLOAD SUCCEEDED` |
-| Build **registered** by Apple | ✅ build 119 `VALID` (117 and 118 died silently — see below) | ✅ build 117 `VALID` |
-| Build attached to version 0.6.8 | ✅ | ✅ |
-| **Submission audit** (`asc-version.yml -f mode=audit`) | ✅ **no gaps** | ✅ **no gaps** |
-| Listing text, keywords, promo | ✅ | ✅ |
-| Screenshots | ✅ 5 x 1280x800 | ✅ iPhone 1320x2868 + iPad 2064x2752 |
-| Review notes + contact | ✅ | ✅ |
-| Export compliance, Add for Review, Manually release | ⛔ human | ⛔ human |
-
-**Two things block a human-free finish, and both are genuinely yours:**
-
-1. ~~The review contact~~ **DONE.** It lives in the `APPLE_REVIEW_CONTACT` repo
-   secret as JSON — personal data, so it reaches Apple directly and is never
-   written to this repo or printed. `asc_build.py` prefers a contact already on
-   another platform's version and falls back to the secret.
-
-   **Export compliance is the live one.** Airclone implements standard
-   confidentiality encryption of its own, so the easy exemptions do not apply —
-   see the plan's "Export compliance, answered for real". Answering **yes** to
-   *available in France* makes Apple require an uploaded **ANSSI declaration**,
-   approved before shipping; answering no removes the requirement. Shipping
-   without France first and adding it in a later version costs no rebuild.
-2. ~~The macOS build never registered.~~ **SOLVED 2026-08-29 by Apple's email.**
-   `ITMS-90284: Invalid Code Signing` — nine times, once per Flutter plugin
-   resource bundle in `Contents/Resources/*.bundle`. The re-sign step picked its
-   identity with a grep for `"Apple (Distribution|Development)"`, which does not
-   match **`3rd Party Mac Developer Application`** — the identity a Mac App Store
-   build needs and the one inside the provisioning profile — so it silently fell
-   back to the development identity. `-exportArchive` re-signs the app and its
-   Frameworks but not those bundles, and **Apple's own validator does not look
-   inside them either**, which is exactly how `VERIFY SUCCEEDED with no errors`
-   and a rejected build coexist. The lane now signs every nested bundle with the
-   store identity and asserts the authority on each one before export.
-
-   The old text, kept because the reasoning was sound and only the conclusion was
-   unavailable: **the macOS build never registered.** `altool` returned
-   `UPLOAD SUCCEEDED with no errors` with a delivery UUID, and 2.5 hours later
-   `/v1/builds` shows only the iOS one. The iOS build from the *same* release
-   processed fine, so this is specific to the Mac package. **Apple emails the
-   account holder when a build fails processing** — that message is the only
-   place the reason exists.
-
-## Previously: macOS is one button from submission
-
-Working tree clean, everything pushed to `main`.
-
-| | |
-| :--- | :--- |
-| Account, agreements, EU trader status, bank | ✅ done |
-| Pricing **$1.49**, 175 countries, Public/discoverable | ✅ done |
-| Categories, content rights, age rating **4+**, App Privacy (published) | ✅ done |
-| macOS version **0.6.8**, `PREPARE_FOR_SUBMISSION` | ✅ |
-| Description, keywords, promo text, support URL | ✅ pushed via API |
-| **5 screenshots**, all exactly 1280×800, `COMPLETE` | ✅ uploaded |
-| `.pkg` build+sign lane, **Apple-validated** (`VERIFY SUCCEEDED with no errors`) | ✅ |
-| Build **uploaded** to App Store Connect (2026-08-28) | ✅ `UPLOAD SUCCEEDED with no errors` |
-| **Build attached to the version** | ⏳ waiting on Apple's processing |
-| Export compliance, *Add for Review*, *Manually release* | ⛔ **human only** |
-| iOS | ⛔ separate track, does not block macOS |
-
-## Next: three steps to submit macOS
-
-**1. Upload the build** — DONE 2026-08-28:
-
-```bash
-gh workflow run mas-release.yml --ref main -f mode=upload
-```
-
-Puts a build in App Store Connect and **submits nothing**. Modes are
-`dry-run` (build only) / `validate` (ask Apple if it would accept it) / `upload`.
-
-**2. Attach it and set the review notes** — one dispatch, once Apple's processing
-finishes (a build is not attachable until `processingState` is `VALID`):
-
-```bash
-gh workflow run asc-version.yml --ref main -f platform=MAC_OS -f mode=apply -f notes=true
-```
-
-Run it with `-f mode=report` first; that changes nothing and prints the build
-list. It refuses to touch a version that is not in an editable state.
-
-**3. In App Store Connect, by hand** — three things, all deliberately outside the
-tooling: answer **export compliance** on the build (a legal declaration — see
-below), press *Add for Review*, and choose **"Manually release this version"** so
-approval and publication stay separate.
-
 ## Rules that are not negotiable here
 
-- **No machine presses submit or release.** On the Microsoft Store a machine was
-  allowed to commit a submission and published this app at **$0**, unstoppable
-  once started. See AGENT.md rules 10–13.
+- **No machine presses RELEASE, and no machine submits without a typed
+  confirmation and a clean audit.** Submission itself is automated
+  (`asc-submit-review.yml`), but `mode=submit` requires `confirm_version` typed
+  exactly and refuses on any audit gap, and `releaseType` is MANUAL from the
+  moment the version record is created — so an approved version sits and waits
+  for a human. The Microsoft Store rule stands unchanged and separately: a
+  submission there is **staged only, never committed via the API**, because a
+  machine once committed one and published this app at **$0**, unstoppable once
+  started. See AGENT.md rule 10.
 - **Never name the command console** in reviewer notes or show it in a
   screenshot. It cost Microsoft review cycles.
 - **No screenshot may show mount, archive or "Show in Finder"** — the sandboxed
@@ -359,51 +239,6 @@ plainly — deliberate, so a buyer is not surprised.
 `com.apple.security.network.server` is **required** and not for Serve: the
 in-process engine serves preview/thumbnail/media bytes over a loopback socket.
 Removing it ships a build with no media at all.
-
-## iOS: the engine RUNS; signing is what is left
-
-Done since the first version of this note:
-
-- **The archive is linked into the app.** Three build settings on all three
-  Runner configurations do it — two sdk-conditional `OTHER_LDFLAGS` carrying
-  CoreFoundation, Security, libresolv and a `-force_load`, plus
-  `STRIP_STYLE = non-global`. No `project.pbxproj` file-reference surgery: a
-  `-force_load` of an absolute path needs none, and it settles dead-stripping too.
-- **Dart resolves from the process.** `librcloneIsStaticallyLinked('ios')` →
-  empty path sentinel → `DynamicLibrary.process()`.
-  `librcloneLibraryAvailable()` replaces the `File(...).existsSync()` probes.
-- **A real local pane.** Locations seeds exactly the container's `Documents`,
-  which `UIFileSharingEnabled` + `LSSupportsOpeningDocumentsInPlace` expose as
-  the Files app's *On My iPhone → Airclone*. `/` is not offered and the **+**
-  button is hidden — `file_selector` has no `getDirectoryPath` on iOS.
-- **Two workflows.** [`ios-verify.yml`](../.github/workflows/ios-verify.yml)
-  builds for the simulator, checks the symbols per architecture, then installs,
-  launches and screenshots the app — and fails if it is not running.
-  [`ios-release.yml`](../.github/workflows/ios-release.yml) is the TestFlight
-  lane; its **`dry-run` needs no Apple credential** and exists to prove the
-  DEVICE slice links, which the simulator job cannot tell you.
-
-**Proven 2026-08-28**, on CI, with no hardware: the Release *device* archive keeps
-all four exports (`ios-release.yml -f mode=dry-run`, no Apple credential needed),
-and the Debug simulator build launches and reaches `EnginePhase.ready` - which the
-screenshot shows, because the UI renders `EngineGate` until it does.
-
-**The iOS lane WORKS, with no stored certificate (2026-08-28).**
-`ios-release.yml -f mode=validate -f signing=ephemeral` mints a distribution
-certificate through the Certificates API, signs, exports a 57 MB `.ipa`, gets
-`VERIFY SUCCEEDED with no errors` from Apple, and revokes the certificate on the
-way out. Nothing long-lived is stored.
-
-Both automatic-signing routes were tried first and both are dead ends, so do not
-retry them: an iOS *development* profile needs a **registered device** and this
-team has none, and `exportArchive` gives **"Cloud signing permission error"** for
-distribution with an App Manager key - the same answer macOS gave.
-
-The `signing=secrets` path still exists and needs an **Apple Distribution
-certificate and an iOS App Store profile** — the Mac certs (`3rd Party Mac Developer *`) do not
-cover iOS. The Certificates API can mint them with the existing App Manager key.
-And `UIDocumentPicker`, so a file can be pulled in from elsewhere in Files.
-See `dev/plans/apple-appstore-plan.md` Gate C2 and Gate D.
 
 ## Traps already paid for — do not rediscover these
 
@@ -490,5 +325,201 @@ python tool/check-docs.py            # must be 0 broken before committing
 cd app && flutter analyze && flutter test
 ```
 
-Signing certs and the provisioning profile **expire 2027-08-20**. The lane breaks
-silently when they lapse.
+## History (newest first)
+
+Everything below describes a state that has since changed. It is kept because the
+reasoning outlived the state, not because any of it is still the thing to do.
+
+### Previously (2026-09-05): `ephemeral` was the only path
+
+`ios-release.yml -f signing=secrets` failed in seconds with
+`missing: APPLE_IOS_DIST_P12_BASE64(secret) APPLE_IOS_PROVISIONING_PROFILE_BASE64(secret)`.
+Those secrets **did not exist**. The org had `APPLE_MAS_*` (Mac App Store) and
+`APPLE_DEVELOPER_ID_*` (notarised direct download) only — confirmed against
+`gh secret list --org GigaionLLC`. So build 118 also went out on `ephemeral`,
+which is where the retained certificates in the ledger came from. The refusal is
+cheap and happens before any build work, so the wrong choice cost a minute, not a
+build number.
+
+Ephemeral was a deliberate security posture ("no distribution private key ever
+leaves the runner"), and it was coherent while the certificate was revoked at the
+end of every run. That premise died when revoking after an upload produced the
+build-117 INVALID BINARY and the lane started retaining: from then on we paid a
+long-lived certificate's operational cost — a slot consumed per release and a
+manual revoke each time — while still discarding the private key, so the retained
+certificate was useless to us AND to an attacker. Worst of both, which is what
+settled the switch. Storing one was never a new exposure in kind either: the org
+already held `APPLE_MAS_APP_P12_BASE64` and `APPLE_MAS_INSTALLER_P12_BASE64`, the
+same class of material for macOS.
+
+### Previously (2026-09-05): 0.7.4's builds, and what they proved
+
+| | macOS | iOS |
+| :--- | :--- | :--- |
+| Build 122 uploaded | ✅ `UPLOAD SUCCEEDED` (UUID 799e7838…) | ✅ `UPLOAD SUCCEEDED` (UUID db0a8c14…) |
+| Build 122 **registered** VALID | ✅ confirmed 2026-09-05 | ✅ confirmed 2026-09-05 |
+
+0.7.4 was created on both platforms with `mode=create`, had build 122 attached,
+and took review notes, copyright and the full listing text. Both audits reported
+no gaps. It was then renamed to 0.7.5 rather than submitted.
+
+### Previously (2026-08-29): BOTH PLATFORMS SUBMITTED
+
+| | macOS | iOS |
+| :--- | :--- | :--- |
+| Version 0.6.8 | **WAITING_FOR_REVIEW** | **WAITING_FOR_REVIEW** |
+| Build | 119 | 118 (117 was rejected) |
+| Release type | **MANUAL** | **MANUAL** |
+
+**Release type MANUAL on both is the point.** An approved version waits for a
+human rather than publishing itself. It was found set to `AFTER_APPROVAL` on
+macOS *after* the audit had twice reported "no gaps" - copyright and release type
+live on the version, not the localization, and the audit only checked
+localization fields.
+
+#### The iOS rejection, and what actually fixed it
+
+Build 117 was submitted and came back **Invalid Binary** within minutes.
+`signing=ephemeral` had revoked its distribution certificate at the end of the
+run that uploaded it. Apple accepts the upload and processes the build to `VALID`
+regardless, so nothing complains until submission.
+
+Build 118 was uploaded with its certificate **retained** and submitted without
+incident. The lane no longer revokes after an `upload`, and prints the
+certificate id instead.
+
+That is a hypothesis confirmed by outcome rather than by Apple's own words: the
+email carries the reason and was not needed in the end, but nothing in the API
+ever explains an `INVALID_BINARY`.
+
+The shape of what follows a submission has not changed: Apple reviews within
+about 48 hours and emails; on approval **neither version goes live by itself**,
+because `releaseType` is MANUAL; on rejection the message names the guideline, and
+the fix is to re-upload with a new `-f build_number`, re-attach, and resubmit.
+
+### Previously (2026-08-28): builds uploaded, submission still human
+
+| | macOS | iOS |
+| :--- | :--- | :--- |
+| Build uploaded, Apple-accepted | ✅ `UPLOAD SUCCEEDED` | ✅ `UPLOAD SUCCEEDED` |
+| Build **registered** by Apple | ✅ build 119 `VALID` (117 and 118 died silently — see below) | ✅ build 117 `VALID` |
+| Build attached to version 0.6.8 | ✅ | ✅ |
+| **Submission audit** (`asc-version.yml -f mode=audit`) | ✅ **no gaps** | ✅ **no gaps** |
+| Listing text, keywords, promo | ✅ | ✅ |
+| Screenshots | ✅ 5 x 1280x800 | ✅ iPhone 1320x2868 + iPad 2064x2752 |
+| Review notes + contact | ✅ | ✅ |
+| Export compliance, Add for Review, Manually release | ⛔ human | ⛔ human |
+
+**Two things blocked a human-free finish**, and both are now closed:
+
+1. ~~The review contact~~ **DONE.** It lives in the `APPLE_REVIEW_CONTACT` repo
+   secret as JSON — personal data, so it reaches Apple directly and is never
+   written to this repo or printed. `asc_build.py` prefers a contact already on
+   another platform's version and falls back to the secret.
+
+   ~~Export compliance is the live one.~~ **Also done**, declaratively:
+   `ITSAppUsesNonExemptEncryption=false` in both `Info.plist` files, valid only
+   while France stays excluded from availability. See the plan's "Export
+   compliance: SETTLED".
+2. ~~The macOS build never registered.~~ **SOLVED 2026-08-29 by Apple's email.**
+   `ITMS-90284: Invalid Code Signing` — nine times, once per Flutter plugin
+   resource bundle in `Contents/Resources/*.bundle`. The re-sign step picked its
+   identity with a grep for `"Apple (Distribution|Development)"`, which does not
+   match **`3rd Party Mac Developer Application`** — the identity a Mac App Store
+   build needs and the one inside the provisioning profile — so it silently fell
+   back to the development identity. `-exportArchive` re-signs the app and its
+   Frameworks but not those bundles, and **Apple's own validator does not look
+   inside them either**, which is exactly how `VERIFY SUCCEEDED with no errors`
+   and a rejected build coexist. The lane now signs every nested bundle with the
+   store identity and asserts the authority on each one before export.
+
+   The old text, kept because the reasoning was sound and only the conclusion was
+   unavailable: **the macOS build never registered.** `altool` returned
+   `UPLOAD SUCCEEDED with no errors` with a delivery UUID, and 2.5 hours later
+   `/v1/builds` shows only the iOS one. The iOS build from the *same* release
+   processed fine, so this is specific to the Mac package. **Apple emails the
+   account holder when a build fails processing** — that message is the only
+   place the reason exists.
+
+### Previously (2026-08-28): macOS is one button from submission
+
+| | |
+| :--- | :--- |
+| Account, agreements, EU trader status, bank | ✅ done |
+| Pricing **$1.49**, 175 countries, Public/discoverable | ✅ done |
+| Categories, content rights, age rating **4+**, App Privacy (published) | ✅ done |
+| macOS version **0.6.8**, `PREPARE_FOR_SUBMISSION` | ✅ |
+| Description, keywords, promo text, support URL | ✅ pushed via API |
+| **5 screenshots**, all exactly 1280×800, `COMPLETE` | ✅ uploaded |
+| `.pkg` build+sign lane, **Apple-validated** (`VERIFY SUCCEEDED with no errors`) | ✅ |
+| Build **uploaded** to App Store Connect (2026-08-28) | ✅ `UPLOAD SUCCEEDED with no errors` |
+| **Build attached to the version** | ⏳ waiting on Apple's processing |
+| Export compliance, *Add for Review*, *Manually release* | ⛔ **human only** |
+| iOS | ⛔ separate track, does not block macOS |
+
+### Previously (2026-08-28): the three steps to submit macOS, before any of it was automated
+
+All three of these are now inside the tooling — the runbook has the current
+sequence. They are recorded because the shape of the sequence did not change,
+only who performs it.
+
+**1. Upload the build:**
+
+```bash
+gh workflow run mas-release.yml --ref main -f mode=upload
+```
+
+Puts a build in App Store Connect and **submits nothing**. Modes are
+`dry-run` (build only) / `validate` (ask Apple if it would accept it) / `upload`.
+
+**2. Attach it and set the review notes** — one dispatch, once Apple's processing
+finishes (a build is not attachable until `processingState` is `VALID`):
+
+```bash
+gh workflow run asc-version.yml --ref main -f platform=MAC_OS -f mode=apply -f notes=true
+```
+
+Run it with `-f mode=report` first; that changes nothing and prints the build
+list. It refuses to touch a version that is not in an editable state.
+
+**3. In App Store Connect, by hand** — three things that were deliberately
+outside the tooling at the time: answer **export compliance** on the build, press
+*Add for Review*, and choose **"Manually release this version"**. The first is
+now answered by `Info.plist`, the second by `asc-submit-review.yml`, and the
+third is set at version creation. Only the final **Release** press is still a
+human act.
+
+### Previously (2026-08-28): the engine RUNS; signing was what was left
+
+The signing half is solved — see the stored identity above. The engine facts held
+and are the reason the iOS lane exists at all:
+
+- **The archive is linked into the app.** Three build settings on all three
+  Runner configurations do it — two sdk-conditional `OTHER_LDFLAGS` carrying
+  CoreFoundation, Security, libresolv and a `-force_load`, plus
+  `STRIP_STYLE = non-global`. No `project.pbxproj` file-reference surgery: a
+  `-force_load` of an absolute path needs none, and it settles dead-stripping too.
+- **Dart resolves from the process.** `librcloneIsStaticallyLinked('ios')` →
+  empty path sentinel → `DynamicLibrary.process()`.
+  `librcloneLibraryAvailable()` replaces the `File(...).existsSync()` probes.
+- **A real local pane.** Locations seeds exactly the container's `Documents`,
+  which `UIFileSharingEnabled` + `LSSupportsOpeningDocumentsInPlace` expose as
+  the Files app's *On My iPhone → Airclone*. `/` is not offered and the **+**
+  button is hidden — `file_selector` has no `getDirectoryPath` on iOS.
+- **Two workflows.** [`ios-verify.yml`](../.github/workflows/ios-verify.yml)
+  builds for the simulator, checks the symbols per architecture, then installs,
+  launches and screenshots the app — and fails if it is not running.
+  [`ios-release.yml`](../.github/workflows/ios-release.yml) is the TestFlight
+  lane; its **`dry-run` needs no Apple credential** and exists to prove the
+  DEVICE slice links, which the simulator job cannot tell you.
+
+**Proven 2026-08-28**, on CI, with no hardware: the Release *device* archive keeps
+all four exports (`ios-release.yml -f mode=dry-run`, no Apple credential needed),
+and the Debug simulator build launches and reaches `EnginePhase.ready` - which the
+screenshot shows, because the UI renders `EngineGate` until it does.
+
+The remaining gap at the time was an **Apple Distribution certificate and an iOS
+App Store profile** — the Mac certs (`3rd Party Mac Developer *`) do not cover
+iOS — plus `UIDocumentPicker`, so a file can be pulled in from elsewhere in
+Files. The first is done; the second is still open. See
+`dev/plans/apple-appstore-plan.md` Gate C2 and Gate D.

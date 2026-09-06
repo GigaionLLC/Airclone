@@ -3,10 +3,10 @@
 ## 📊 State Dashboard
 | Metric | Value |
 | :--- | :--- |
-| **Status** | `IMPLEMENTED — perf not yet measured` |
+| **Status** | `SHIPPED in v0.7.2` — one caveat outstanding: perf never measured (see the Completion Note) |
 | **Version** | `v1.0.0` |
 | **Active Persona** | `Architect` |
-| **Last Updated** | 2026-09-04 |
+| **Last Updated** | 2026-09-06 |
 
 ---
 
@@ -285,14 +285,39 @@
     is filled in.
 
 ## 9️⃣ Phase 9: User Verification
-* **Status:** `PENDING`
+* **Status:** `SHIPPED TO USERS` — v0.7.2 went out on 2026-09-05.
 * **User Feedback:** —
 
 ## 🔟 Phase 10: Wrap Up & Archival
-* **System Context Updates:** record in `wiki/core/14-performance-standards.md`
-  that a mount's read path is tuned deliberately and why; and the rule that an
-  unknown `vfsOpt`/`mountOpt` key is silently dropped, so mount options must be
-  read back rather than assumed.
+* **System Context Updates:** `DONE` — `wiki/core/14-performance-standards.md`
+  now records that a mount's read path is tuned deliberately and why, and the
+  rule that an unknown `vfsOpt`/`mountOpt` key is silently dropped, so mount
+  options must be read back rather than assumed.
 
 ## ✅ Completion Note
-<!-- Added during wrap-up. -->
+
+**Shipped in v0.7.2**, 2026-09-05. Airclone now sends rclone a full
+`MountOptions` object instead of a lone `CacheMode`, defaulting to **cache mode
+full** with a 10 GiB / 24 h disk cache, 32 MiB chunks rising to 1 GiB, a 5-minute
+directory cache and fast fingerprints — so browsing a mounted drive during an
+upload reads from disk rather than queueing behind the transfer. The values live
+in one place, [`rclone/models/mount_options.dart`](../../app/lib/src/rclone/models/mount_options.dart),
+mapped to rclone's `vfsOpt`/`mountOpt` split, and one reusable `MountOptionsEditor`
+surfaces them twice: `ui/mount_panel.dart` for this mount, `ui/settings_screen.dart`
+for the defaults new mounts start from. Windows also gained an off-by-default
+"mount as a network drive" toggle, which keeps the search indexer off the drive.
+
+The durable lesson, recorded in
+[`wiki/core/14-performance-standards.md`](../../wiki/core/14-performance-standards.md):
+**rclone silently drops an unknown `vfsOpt`/`mountOpt` key.** Mounting with a
+misspelled `ChunkSizee` returned a clean `{"mountPoint": "Z:"}` — success, no
+warning, option ignored. So the wire format is pinned by unit test, and the
+options were confirmed by reading them back off a live engine with `vfs/stats`
+rather than by trusting that they were sent.
+
+**One caveat outlived the release, deliberately:** the before/after has never been
+*measured* on a real mount with an upload running (Phase 8's last box). The options
+demonstrably take effect; that they make Explorer usable during an upload is still
+reasoning from rclone's documented behaviour. That is a measurement to schedule,
+not a reason to keep this plan open — no performance claim should be made until it
+is done.

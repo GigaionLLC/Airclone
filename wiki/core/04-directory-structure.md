@@ -25,24 +25,42 @@ Airclone/
 │  ├─ lib/
 │  │  ├─ main.dart          # entry: ProviderScope → AircloneApp
 │  │  └─ src/
-│  │     ├─ rclone/         # engine seam (platform-agnostic + desktop transport)
+│  │     ├─ rclone/         # engine seam (platform-agnostic + both transports)
 │  │     │  ├─ rclone_client.dart        # RcloneClient interface + EngineStatus
-│  │     │  ├─ http_rclone_client.dart   # desktop: spawn `rclone rcd` + RC HTTP
+│  │     │  ├─ http_rclone_client.dart   # spawn `rclone rcd` + RC HTTP (desktop + Android)
+│  │     │  ├─ ffi_rclone_client.dart    # in-process librclone (iOS + Mac App Store)
 │  │     │  ├─ rclone_engine.dart        # locate / download+verify the rclone binary
-│  │     │  └─ models/                   # Remote, RcloneFile
-│  │     ├─ state/          # Riverpod controllers (engine, remotes, browser)
-│  │     └─ ui/             # app shell, home screen, theme tokens, format helpers
+│  │     │  └─ models/                   # the domain models: Remote, RcloneFile, Job,
+│  │     │                               #   MountInfo, MountOptions, ServeServer, …
+│  │     ├─ state/          # Riverpod controllers (engine, remotes, browser) + pure modules
+│  │     ├─ headless/       # `--run-task` / `--run-due`: no widget tree, no runApp
+│  │     └─ ui/             # app shell, home screen, TV shell, theme tokens, format helpers
 │  ├─ test/                 # unit tests (run in the Linux container / CI)
-│  ├─ windows/ macos/ linux/ android/ ios/   # generated platform runners
-│  └─ pubspec.yaml          # name: airclone · version: <semver>-alpha.N
+│  ├─ windows/ macos/ linux/ android/ ios/   # platform runners + the native handlers
+│  └─ pubspec.yaml          # name: airclone · version: <semver>+<build>
 ├─ wiki/                    # architecture knowledge (source of truth)
-├─ dev/                     # plans, backlog, logs
+├─ dev/                     # plans, backlog, logs, releases, platform + store runbooks
+├─ docs/                    # published assets: brand, screenshots, store listing copy
 ├─ Skills/                  # agentic dev/doc skill library
 ├─ reference/               # GITIGNORED competitive research (never committed)
-├─ tool/                    # dev helper scripts (flutter.ps1/.sh, scaffold.ps1)
-├─ .github/workflows/       # ci.yml (analyze/test) · release.yml (platform binaries)
+├─ tool/                    # dev helpers (flutter.ps1/.sh, scaffold.ps1,
+│                           #   install/run-windows.ps1) + the store-automation Python
+│                           #   scripts (App Store Connect, Play, Microsoft Store) and
+│                           #   check-docs.py — inventory in dev/README.md
+├─ .github/workflows/       # build & verify, release, the Apple / Play / Microsoft
+│                           #   submission lanes, and the librclone builders —
+│                           #   inventory in dev/README.md
 └─ docker-compose.yml       # the `flutter` dev container
 ```
+
+**This map names categories, not counts.** `tool/` and `.github/workflows/` both grow; an enumeration
+here would be wrong within a release. [`dev/README.md`](../../dev/README.md) is the one place that
+lists each script and workflow with what it does, and
+[`docs/store/README.md`](../../docs/store/README.md) is the one place that maps the store-facing side.
+
+Version strings carry no prerelease suffix: the `-alpha.N` / `-beta.N` scheme was dropped at v0.3.0,
+and `pubspec.yaml` reads `<semver>+<build>` (the `+N` is the Android version code and the iOS build
+number, and it must increase on every store upload).
 
 The **shared core** (`lib/src/rclone` interface, `models`, `state`, `ui`) is platform-agnostic;
 Windows is the reference implementation. Only the engine **transport** and OS-integration bits are
@@ -67,16 +85,22 @@ docker compose run --rm flutter dart format lib test
 First-time project scaffold (already done): `./tool/scaffold.ps1`.
 
 ### CI / releases (GitHub Actions — free on the public repo)
-- **`ci.yml`** — on push/PR: `dart format` check, `flutter analyze`, `flutter test` (ubuntu).
+- **`ci.yml`** — on push/PR: `dart format` check, `flutter analyze`, `flutter test` (ubuntu). It fails
+  on **any** info-level lint and on a single unformatted file, so run both before pushing.
 - **`release.yml`** — on a `v*` tag: builds **Windows** (windows-latest/MSVC), **macOS**
   (macos-latest/Xcode), **Linux**, **Android**, and publishes a **GitHub Release** with the binaries
   attached (marked pre-release when the tag contains `alpha`/`beta`/`rc`).
+- The store lanes — Apple, Google Play, Microsoft — are **separate, mostly manually-dispatched**
+  workflows, several of them irreversible. They are documented, with their backing `tool/` scripts,
+  in [dev/README.md](../../dev/README.md). Do not run one from this page.
 
-### Cutting an alpha
+### Cutting a release
 ```bash
-git tag v0.1.0-alpha.1
-git push origin v0.1.0-alpha.1   # → release.yml builds + publishes downloadable binaries
+git tag v0.7.5
+git push origin v0.7.5   # → release.yml builds + publishes downloadable binaries
 ```
+Write `dev/releases/<tag>.md` **before** pushing the tag — CI publishes that file verbatim as the
+release body and only warns when it is missing.
 
 ### Running the Windows app
 Download the `airclone-windows-x64.zip` from the GitHub Release (built on a Windows runner), or —
@@ -89,11 +113,18 @@ pre-seeded rclone engine). Re-running it with a newer tag performs a **proper in
 it stops the running app, swaps the binaries, and relaunches, while **keeping your rclone config and
 engine**:
 ```powershell
-./tool/install-windows.ps1 -Tag v0.1.0-alpha.2   # install
-./tool/install-windows.ps1 -Tag v0.1.0-alpha.3   # upgrade in place
+./tool/install-windows.ps1 -Tag v0.7.4   # install
+./tool/install-windows.ps1 -Tag v0.7.5   # upgrade in place
 ```
 `tool/run-windows.ps1` is the throwaway screenshot harness (download → launch → capture → clean up).
-A future in-app auto-updater (checks GitHub Releases, downloads + swaps) is on the roadmap.
+
+**In-app update checking ships, and it is channel-aware.** A store-managed install makes **no** GitHub
+request at all — the check is short-circuited before the network call, because offering an
+out-of-store download failed Microsoft Store certification once already. See
+[10-external-integrations.md §5.1](10-external-integrations.md) and
+[state/install_source.dart](../../app/lib/src/state/install_source.dart). Replacing the *rclone
+binary* is a different mechanism — the stage-then-swap flow in
+[14-performance-standards.md §5](14-performance-standards.md).
 
 > **Engine note:** on first launch the app locates `rclone` (PATH / app-managed dir) and, if missing,
 > offers to download + SHA256-verify the latest official build into the app-support dir. No separate

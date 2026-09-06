@@ -36,12 +36,13 @@ experience**, and brings it to the desktop *and* the phone:
   kill-switches, OS-keychain/Vault secrets, local audit + opt-in SIEM, signed/SBOM'd builds, optional
   self-hosted control plane). Enterprise control flows only through customer-owned channels.
 
-> **Status: 0.x, active development** — see the latest on the
-> [Releases](https://github.com/GigaionLLC/Airclone/releases) page. Windows, macOS, Linux and Android
-> builds ship there — **Windows** builds are code-signed (Azure Artifact Signing, "Gigaion, LLC") and
-> **macOS** builds are Developer ID **signed + notarized**; iOS hasn't shipped yet. Windows and Android
-> builds bundle the rclone engine (no first-run download). Stack: **Flutter** with a single engine
-> abstraction (`rclone rcd` over HTTP on desktop; a bundled rclone engine on Android).
+> **Status: 0.x, active development** — the free Windows, macOS, Linux and Android builds ship on the
+> [Releases](https://github.com/GigaionLLC/Airclone/releases) page: **Windows** builds are code-signed
+> (Azure Artifact Signing, "Gigaion, LLC") and **macOS** builds are Developer ID **signed +
+> notarized**. Airclone is also listed on the **App Store** (iOS and macOS), the **Microsoft Store**
+> (Windows), and **Google Play** (Android — every tag reaches open testing; production is promoted by
+> hand). Windows and Android builds bundle the rclone engine (no first-run download). Stack:
+> **Flutter** over a single `RcloneClient` seam — see [Architecture at a glance](#-architecture-at-a-glance).
 
 ## 📸 A tour
 
@@ -97,13 +98,17 @@ This repo follows a structured documentation methodology. **Agents and contribut
 
 ```
 UI (Flutter, shared)  →  State (Dart, shared)  →  RcloneClient interface  →  engine
-                                                          ├─ desktop: spawn `rclone rcd` + RC HTTP API
-                                                          └─ mobile:  in-process librclone (gomobile/FFI)
-                                                                       + Android DocumentsProvider / iOS File Provider
+                                     ├─ desktop:  spawn `rclone rcd` + RC HTTP API
+                                     │            (or in-process librclone via dart:ffi)
+                                     ├─ Android:  the bundled rclone binary as a jniLib,
+                                     │            spawned as a loopback `rcd`
+                                     └─ iOS / Mac App Store:  in-process librclone via dart:ffi,
+                                                  because neither may spawn a subprocess
 ```
 
-The whole app talks to one `RcloneClient` interface, so ~95% of the code is platform-agnostic. See
-[Core Architecture](wiki/core/08-core-architecture.md).
+The whole app talks to one `RcloneClient` interface, so ~95% of the code is platform-agnostic, and
+one function — `_resolveEngineMode` in `app/lib/src/state/engine_controller.dart` — decides which
+engine runs. See [Core Architecture](wiki/core/08-core-architecture.md).
 
 ## 🔧 Building & running
 
@@ -130,17 +135,17 @@ Settings.
 page is free to download and install (ad-hoc / sideload), and you can always build it from source
 yourself — no fees, no feature gates, no accounts.
 
-The one exception: listings on the **Apple App Store, Google Play, and Microsoft Store** will carry a
-small fee. That fee exists solely to fund the code-signing certificates and developer-program
-memberships those stores require — it buys convenience, not features. The store builds and the free
-builds are the same app.
+The one exception: the **Apple App Store, Google Play, and Microsoft Store** listings carry a small
+fee. That fee exists solely to fund the code-signing certificates and developer-program memberships
+those stores require — it buys convenience, not features. The store builds and the free builds are the
+same app.
 
 ## 🗺️ Roadmap
 
-**Phase 0** spikes → **Phase 1** desktop MVP → **Phase 2** mobile are **shipped**; most of
-**Phase 3** advanced (bisync, crypt, scheduling) landed during the alphas — profile sync and iOS are
-the big remaining items. Live queue: [Feature Backlog](dev/backlog/feature-backlog.md) · details in
-the [Cross-Platform Plan](dev/plans/cross-platform-architecture-plan.md).
+**Phase 0** spikes → **Phase 1** desktop MVP → **Phase 2** mobile are **shipped**, iOS included; most
+of **Phase 3** advanced (bisync, crypt, scheduling) landed during the alphas — profile sync is the big
+remaining item. Live queue: [Feature Backlog](dev/backlog/feature-backlog.md) · details in the
+[Cross-Platform Plan](dev/plans/cross-platform-architecture-plan.md).
 
 ## 🤖 Built by AI
 

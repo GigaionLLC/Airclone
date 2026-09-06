@@ -19,7 +19,7 @@ import 'package:ffi/ffi.dart';
 /// ```
 /// `RcloneRPC` speaks the SAME RC protocol as the HTTP daemon — a method string
 /// and a JSON body in, a JSON body + HTTP-style status out — so above
-/// [FfiRcloneClient] nothing about the app changes. See dev/plans/dual-engine-plan.md.
+/// [FfiRcloneClient] nothing about the app changes. See dev/archive-plans/dual-engine-plan.md.
 ///
 /// Everything FFI (the [DynamicLibrary], the [Pointer]s, the lookups) lives
 /// ENTIRELY inside the worker isolate: those handles are not sendable, and

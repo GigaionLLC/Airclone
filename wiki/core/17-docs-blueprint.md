@@ -125,7 +125,7 @@ Get the depth right — this is the single most common breakage:
 [`browser_controller.dart`](../../app/lib/src/state/browser_controller.dart). Line numbers drift, so
 treat a `file.dart:1225` suffix as a hint inside a dated `dev/` note, never as the identifier a
 `wiki/` doc depends on. Files move too: at the time of writing
-[`command-console-plan.md`](../../dev/plans/command-console-plan.md) still links
+[`command-console-plan.md`](../../dev/archive-plans/command-console-plan.md) still links
 `app/lib/src/rclone/engine_flags.dart`, which now lives at
 [`app/lib/src/state/engine_flags.dart`](../../app/lib/src/state/engine_flags.dart).
 
@@ -225,7 +225,7 @@ dependency-free and platform-neutral precisely so it can be added to CI when som
 
 What it caught on its first run, all invisible from the hub: nine `wiki/core/` documents promised by
 [00-system-index.md](00-system-index.md) that did not exist, two stale code paths in
-[`command-console-plan.md`](../../dev/plans/command-console-plan.md) (one file moved, one renamed),
+[`command-console-plan.md`](../../dev/archive-plans/command-console-plan.md) (one file moved, one renamed),
 and thirteen orphans — among them every store and release runbook, so an agent could not reach
 [`windows-signing-and-store.md`](../../dev/windows-signing-and-store.md) by following links at all.
 

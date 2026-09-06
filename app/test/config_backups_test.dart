@@ -3,7 +3,7 @@ import 'dart:io';
 import 'package:airclone/src/state/config_backups.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-/// Coverage for the always-on config-backup ring (dev/plans/config-portability-plan.md
+/// Coverage for the always-on config-backup ring (dev/archive-plans/config-portability-plan.md
 /// §2). The backups folder and the clock are injected, so the write→prune→restore
 /// behaviour is exercised over a throwaway temp directory with a controllable
 /// wall clock — no app-support lookup, no real-time flakiness.

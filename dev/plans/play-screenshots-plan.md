@@ -1,6 +1,8 @@
 # Google Play screenshot expansion — plan
 
-**Status:** planned, not yet executed. Written 2026-08-07.
+**Status:** capture DONE, publish OUTSTANDING. Written 2026-08-07; Steps 1-3 executed the same day,
+so everything is generated and staged in `docs/store/play/store-ready/`. Only Step 4 — pushing the
+sets at the live listing — is left.
 
 **Why:** the Play listing ships only **2 phone screenshots** and 3 per tablet size, and none of
 them show the photo/video features. A Play review ("the preview function for video files stored in
@@ -126,11 +128,22 @@ media_kit forces software rendering on an emulator and `eglCreateContext` fails 
 loading or error state and presenting it as the video feature would misrepresent the app, so the
 slot stays empty until hardware is available.
 
-## Step 4 — publish — **YOURS TO DO**
+## Step 4 — publish — **OUTSTANDING**
 
 Everything is upload-ready in `docs/store/play/store-ready/`; `MANIFEST.md` says which file goes
-in which slot. Publishing to a live store listing is a manual, outward-facing step — sign in to
-Play Console → Store listing → Graphics and replace the phone / 7-inch / 10-inch sets.
+in which slot. No Console login and no file picker are needed for the upload itself: dispatch
+[`.github/workflows/play-images.yml`](../../.github/workflows/play-images.yml) once per set —
 
+| `type` | `dir` |
+| :--- | :--- |
+| `phoneScreenshots` | `docs/store/play/store-ready/phone` |
+| `sevenInchScreenshots` | `docs/store/play/store-ready/tablet-7in` |
+| `tenInchScreenshots` | `docs/store/play/store-ready/tablet-10in` |
+
+— with `replace: true` (Play *appends* otherwise and leaves duplicates) and `mode: report` on the
+first run, which shows exactly what it would send without sending it; re-run with `mode: apply`.
+
+What stays human: the workflow writes images only — it cannot change text, attach a build, or
+publish. Play holds the change as a **draft** until someone reviews it in the Console and sends it.
 Listing edits do not require a new AAB (see `dev/google-play-store.md`), so this ships
 independently of a release.

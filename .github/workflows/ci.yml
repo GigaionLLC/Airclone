@@ -46,6 +46,36 @@ jobs:
           path: app/coverage/lcov.info
           if-no-files-found: ignore
 
+  docs:
+    # Two cheap guards that had no CI at all, on a runner with no Flutter.
+    #
+    # check-docs.py's own docstring said it was "safe to wire into CI later", and
+    # later never came: its only callers were checklist items nobody runs on a
+    # push. It exits 1 on a BROKEN LINK, which is the right hard gate - a link to
+    # a moved file is wrong for everyone downstream. --strict is deliberately
+    # off, so orphans and shape findings stay advisory rather than failing a
+    # release on a doc nothing happens to link yet.
+    #
+    # compileall covers the store scripts, which have no tests and whose FIRST
+    # execution is against a live store API, half way through a release. It only
+    # catches the parse-time class - a stray edit that leaves a script
+    # unparseable - but that is exactly the class nothing else here catches, and
+    # the cost of missing it is not a red check. store_submit.py has already died
+    # mid-run once - a character outside cp1252 on a Windows runner - and left a
+    # half-created Store submission behind. A script that will not even parse
+    # fails in exactly that shape, and this catches it before the release does.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with: { python-version: '3.12' }
+      - name: Check the doc library
+        working-directory: .
+        run: python tool/check-docs.py
+      - name: Byte-compile the store scripts
+        working-directory: .
+        run: python -m compileall -q tool/
+
   rclone-pin:
     # Warns (never fails) when the Android rclone pin drifts between its two
     # definition sites, or falls behind the latest upstream release — rclone

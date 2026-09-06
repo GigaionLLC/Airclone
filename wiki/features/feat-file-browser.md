@@ -117,8 +117,10 @@ The explorer and the mount are **complementary**:
 - **Mount / system Files** = a convenience so the remote is reachable in *other* apps; slower for
   upload/move due to VFS. The UI nudges heavy file work back into the explorer.
 
-On **mobile**, the equivalent of "mount" is the per-remote **"Show in Files"** toggle
-(`DocumentsProvider` / File Provider); the in-app explorer remains the primary surface there too.
+On **mobile** there is no equivalent of mount yet: the per-remote **"Show in Files"** toggle
+(`DocumentsProvider` / File Provider) is designed but not built — see
+[02-product-context](../core/02-product-context.md), which owns that status. The in-app explorer is
+therefore the *only* surface on a phone, as well as the primary one.
 
 ---
 

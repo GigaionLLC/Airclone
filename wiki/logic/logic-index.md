@@ -13,9 +13,9 @@ Core non-UI logic: the rclone control layer and shared utilities.
 
 | Module | Doc | Purpose |
 | :--- | :--- | :--- |
-| RcloneClient interface | `util-rclone-client.md` | The single contract the UI uses to drive rclone (JSON method surface). Satisfied by the desktop `rcd`-HTTP transport and the mobile in-process `librclone` transport. |
-| Daemon transport (desktop) | `util-rcd-transport.md` | Spawns/manages `rclone rcd`, talks RC over loopback HTTP with auth. |
-| In-process transport (mobile) | `util-librclone-transport.md` | Calls `librclone`/gomobile `RcloneRPC(method, input)` in-process. |
+| RcloneClient interface | `util-rclone-client.md` | The single contract the UI uses to drive rclone (JSON method surface). Satisfied by the spawned-`rcd` HTTP transport and the in-process `librclone` transport; [08](../core/08-core-architecture.md) §3 owns which runs where. |
+| Daemon transport (desktop + Android) | `util-rcd-transport.md` | Spawns/manages `rclone rcd`, talks RC over loopback HTTP with auth. |
+| In-process transport (iOS + Mac App Store) | `util-librclone-transport.md` | Calls `librclone`'s C ABI (`RcloneRPC(method, input)`) in-process over `dart:ffi`. |
 | Provider schema → form | `util-provider-schema.md` | Turns `/config/providers` option schemas into dynamic config forms. |
 | Job/stats polling | `util-jobs.md` | Async job lifecycle, `/job/status`, `/core/stats` grouping, progress. |
 | Formatters | `util-format.md` | Bytes, transfer rates, durations, ETA. |

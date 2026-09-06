@@ -9,8 +9,17 @@ name: App Store Connect (listing text + screenshots)
 #   docs/store/apple/listing-ios-en-US.md   iOS
 #
 # Runs on ubuntu: these are plain REST calls and there is no reason to spend a
-# Mac on them. It writes metadata only - it cannot attach a build, cannot answer
-# export compliance, and cannot submit.
+# Mac on them. It writes metadata only - it cannot attach a build (asc-version.yml)
+# and cannot submit (asc-submit-review.yml). Export compliance needs no answer at
+# all: ITSAppUsesNonExemptEncryption=false ships in both Info.plist files.
+#
+# Leave `version` blank and the TEXT pass writes to whichever version App Store
+# Connect happens to list first, which can be one already in review or already
+# live. For a release that is actually going out, prefer asc-submit-review.yml
+# with `refresh_listing` on: it pins the notes to the same version string the
+# operator confirmed for the submission, so the two cannot diverge. The
+# screenshot pass has no such pin - asc_screenshots.py always takes the first
+# version for the platform.
 
 on:
   workflow_dispatch:
@@ -38,6 +47,10 @@ on:
         required: true
         default: false
         type: boolean
+      version:
+        description: 'text only: pin the target version (blank = whichever Apple lists first)'
+        required: false
+        type: string
       mode:
         description: 'report = show what it would send | apply = send it'
         required: true
@@ -79,6 +92,7 @@ jobs:
           P8: ${{ secrets.APPSTORE_API_PRIVATE_KEY }}
           KEY_ID: ${{ vars.APPSTORE_API_KEY_ID }}
           ISSUER: ${{ secrets.APPSTORE_ISSUER_ID }}
+          VERSION: ${{ inputs.version }}
         run: |
           set -euo pipefail
           umask 077
@@ -91,8 +105,15 @@ jobs:
           # 6790176897 is the App Store Connect app id. Not a secret - it is in
           # every public App Store URL for the app.
           if [ "${{ inputs.what }}" = "text" ]; then
+            # Only asc_listing.py takes --version; asc_screenshots.py has no such
+            # option and would silently ignore it, so this stays on the text arm.
+            # VERSION arrives through `env:`, never spliced into the script
+            # body. Every other input here is a choice or a boolean, so this is
+            # the only free-form string that reaches the shell, and `${{ }}`
+            # would run a dispatch value like `0.7.5"; curl ... | sh; #`.
+            if [ -n "$VERSION" ]; then set -- --version "$VERSION"; else set --; fi
             python tool/asc_listing.py key.p8 "$KEY_ID" "$ISSUER" 6790176897 \
-              --platform ${{ inputs.platform }} $ARGS
+              --platform ${{ inputs.platform }} $ARGS "$@"
           else
             if [ "${{ inputs.replace }}" = "true" ]; then ARGS="$ARGS --replace"; fi
             python tool/asc_screenshots.py key.p8 "$KEY_ID" "$ISSUER" 6790176897 \

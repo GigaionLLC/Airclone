@@ -4,7 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
 
 /// Automatic, always-on config backups — the trust substrate under every mutating
-/// operation the config-portability plan introduces (dev/plans/config-portability-plan.md
+/// operation the config-portability plan introduces (dev/archive-plans/config-portability-plan.md
 /// §2). Before an import-merge, replace, or path switch, the caller snapshots the
 /// active config here; a bounded ring of the most recent copies is kept so a bad
 /// import is one "Restore a backup…" away. Quiet by design: no setting, no UI

@@ -9,8 +9,10 @@ description: "Threat model, engine hardening, secrets, encryption, audit, and th
 # 🔒 Security
 
 Airclone holds cloud credentials and moves data, so security is a first-class design concern — for the
-solo user *and* the enterprise. The guiding stance: **local-first, no phone-home, encrypted by
-default, and honest about what we can and cannot guarantee.**
+solo user *and* the enterprise. The guiding stance: **local-first, no phone-home, encryption always
+within one step, and honest about what we can and cannot guarantee.** That last clause governs this
+document too — §1 separates what is built from what is designed, and nothing here may state an
+aspiration in the present tense.
 
 **When to read this:** before you write code that stores, prompts for, logs or forwards a credential —
 RC auth flags, config-encryption handling, `SecretStore`/keystore work, a new `serve` or mount
@@ -19,29 +21,47 @@ unauthenticated local port, or a fail-open verification step.
 
 ## 1. Threat Model (what we defend against)
 
-| Threat | Defense |
-| :--- | :--- |
-| **Another local process hijacks the engine** (drives transfers, reads config) over the RC port | Bind `rcd` to **loopback / unix socket / named pipe**; random per-session `--rc-user`/`--rc-pass`; TLS (`--rc-cert/--rc-key`, `--rc-min-tls-version tls1.2`). Mobile uses in-process `librclone` — **no network surface at all**. |
-| **Credential theft at rest** (plaintext `rclone.conf`, reversible "obscure") | Config encrypted by default; passphrase in the OS keystore; per-remote secrets resolved from a `SecretStore` and injected at spawn — plaintext need never hit disk. |
-| **Credential theft in transit** | TLS ≥ 1.2 on RC + serve surfaces; optional mTLS; corporate CA bundle support. |
-| **Locked-config deadlock / startup crash** | Detect encryption **out-of-band before any RC call**; never `--ask-password=false`; feed `RCLONE_CONFIG_PASS` via env. |
-| **Supply-chain tampering** (binary swap, MITM update) | Sign + notarize all artifacts incl. the bundled rclone; pin + **fail-closed** verify the rclone binary; SBOM + provenance; disable `selfupdate` by policy. |
-| **Data exfiltration via the app** (cooperative-user guardrail) | Policy kill-switches + backend allow/deny + remote-pair rules enforced **in the seam**; audit trail of every transfer. (See the honesty note in §6.) |
-| **Accidental phone-home** | All egress default-OFF; no hardcoded remote endpoints; a CI test asserts zero outbound on a clean config. |
+**Read the two columns as two different things.** *Today* is what the shipped binary does and can be
+checked against the source; *designed* is the intended end state. A security document that blurs them
+is the most expensive kind of documentation error there is — it tells a reviewer a control exists that
+does not, so this table never states an aspiration in the present tense.
+
+| Threat | Defense today | Designed, not built |
+| :--- | :--- | :--- |
+| **Another local process hijacks the engine** (drives transfers, reads config) over the RC port | `rcd` binds `127.0.0.1:<free port>` — plain HTTP with **random per-session Basic credentials** (`--rc-user airclone`, 24 random bytes as the password), never persisted, and the user's own engine flags are placed *first* in the argv so they cannot shadow them. In-process (iOS / Mac App Store) there is **no listener at all**. | TLS on the RC surface (`--rc-cert`/`--rc-key`, `--rc-min-tls-version tls1.2`), a unix socket / named pipe instead of TCP, a narrowed `--rc-allow-origin`. None of these flags appear anywhere in `app/`. |
+| **Credential theft at rest** (plaintext `rclone.conf`, reversible "obscure") | rclone's config encryption is **supported, not imposed**: Airclone detects an already-encrypted config out-of-band, gates startup on the password, and can set/change/remove encryption on request. The password is optionally held in the OS vault (opt-in, default off) and never written by Airclone in plaintext. | Encryption **on by default**, and per-remote secrets resolved from a `SecretStore` as references and injected at spawn so `rclone.conf` need never hold a literal. |
+| **Credential theft in transit** | Backend traffic is rclone's own (HTTPS to each provider). The loopback RC channel is not TLS — see the row above. | TLS ≥ 1.2 on the RC and serve surfaces; optional mTLS; corporate CA bundle support. |
+| **Locked-config deadlock / startup crash** | Encryption is detected **out-of-band before any RC call** by reading the config file header; `--ask-password=false` is never used (it crashes rclone); `RCLONE_CONFIG_PASS` travels by env, never argv. | *Nothing outstanding — this row is fully built.* |
+| **Supply-chain tampering** (binary swap, MITM update) | The rclone version is pinned in one place and the download path is **fail-closed** — no fetchable, parseable, matching `SHA256SUMS` entry, no install. Windows artifacts are signed; macOS is Developer-ID signed + notarized; the bundled rclone is signed with them. | SBOM + build provenance; disabling rclone's own `selfupdate` by policy. |
+| **Data exfiltration via the app** (cooperative-user guardrail) | Four kill-switch seams enforced **inside the controller**, not only in the UI — mount, serve, reveal-in-file-manager, archive ([07 §Mount, serve & policy](07-state-context.md)). `serve/start` additionally whitelists its params, defaults to loopback and forces auth on exposed auth-capable protocols. | Backend allow/deny lists, remote-pair rules, and an audit trail of every transfer. (See the honesty note in §6.) |
+| **Accidental phone-home** | No telemetry, no analytics, no crash reporting; diagnostics never leave the device unless the user exports them. The only outbound call Airclone itself makes is the update check, and a **store-managed install short-circuits before it** (§5.1 of [10](10-external-integrations.md)). | A CI test asserting zero outbound traffic on a clean config. No such test exists today. |
 
 ## 2. Engine & RC Hardening
 
-- **Desktop `rcd`:** loopback or unix-socket/named-pipe binding (preferred over TCP to dodge
-  localhost CSRF / DNS-rebinding); random per-session credentials, never persisted; TLS with a
-  minimum version; narrow `--rc-allow-origin`; **never** `--rc-no-auth` on a TCP listener.
-- **Mobile `librclone`:** in-process; no port, no listener, no network attack surface.
-- **`operations/uploadfile` / `core/command`** are unavailable in `librclone` — on mobile, upload via
-  `operations/copyfile` / `sync/copy` and never call `core/command`. See
+- **Spawned `rcd` (desktop and Android), today:** loopback TCP on a free port, random per-session
+  Basic credentials that are never persisted, and user engine flags placed **first** in the argv so
+  the last-wins pflag rule cannot let a pasted flag shadow `--rc-addr`/`--rc-user`/`--rc-pass`.
+  `--rc-no-auth` is never passed. A unix socket / named pipe (preferred over TCP to dodge localhost
+  CSRF and DNS-rebinding), TLS with a minimum version, and a narrowed `--rc-allow-origin` are
+  **designed, not implemented** — none of those flags exist in `app/`.
+- **In-process `librclone` (iOS, Mac App Store):** no port, no listener, no network attack surface for
+  the RC channel itself. The one exception is `LibrcloneObjectServer`, a loopback byte bridge on port
+  0 with a per-session Bearer token, which exists only because `RcloneRPC` returns JSON and previews
+  need bytes.
+- **`operations/uploadfile` / `core/command`** are unavailable in `librclone`; upload via
+  `operations/copyfile` / `sync/copy` and use the argv→RC translator instead of `core/command`. See
   [08-core-architecture.md](08-core-architecture.md).
 
 ## 3. Secrets
 
-A single **`SecretStore`** seam abstracts credential storage with backends per environment:
+**What ships today** is narrower than the design below and is the part to build against: two
+`flutter_secure_storage` keys — `airclone.configPassword` and `airclone.externalBackupPassphrase` —
+both opt-in, both cleared when their feature is turned off, and both degrading to a manual prompt
+rather than a crash when the vault is unavailable ([07-state-context.md](07-state-context.md)). Every
+other credential lives in `rclone.conf`, which the engine owns.
+
+The designed end state is a single **`SecretStore`** seam abstracting credential storage with
+backends per environment. **No such class exists yet**; when it lands it must satisfy:
 
 - **OS-native:** Windows DPAPI + Credential Manager (TPM-backed), macOS Keychain + Secure Enclave,
   Linux Secret Service / KWallet, Android Keystore + StrongBox (biometric-bound), iOS Keychain +
@@ -121,23 +141,34 @@ remotes back; deleting a remote rewrites the backup unprompted; turning it off r
 
 ## 4. Encryption
 
-- **Config encryption** on by default (rclone's encrypted config).
+- **Config encryption** is rclone's own, and it is **user-initiated, not on by default**. Airclone
+  detects an already-encrypted config out-of-band, gates startup behind the password, and can set,
+  change or remove encryption on request (a real subprocess, run with the engine quiesced — rclone
+  prompts on stdin). Encrypt-by-default is a design goal, not current behaviour; do not describe it
+  as shipped anywhere.
 - **`crypt` remotes** are first-class — wrap any remote for transparent E2E encryption, with a
   "wrap an existing remote" wizard and a live filename-transform preview.
-- **In transit:** TLS ≥ 1.2 everywhere a socket exists (RC, serve, control-plane enrollment).
+- **In transit (designed):** TLS ≥ 1.2 everywhere a socket exists — RC, serve, control-plane
+  enrollment. Today only the backend traffic rclone itself makes is TLS; the loopback RC channel is
+  not (§1).
 - **FIPS:** an optional FIPS build (Go FIPS module) forces TLS ≥ 1.2 and **labels `crypt` as
   non-FIPS** (it uses XSalsa20/scrypt); at-rest FIPS relies on backend server-side encryption. Scope:
   desktop/server. See [19-enterprise-readiness.md §6](19-enterprise-readiness.md).
 
 ## 5. Audit & Policy Enforcement
 
-- **Audit:** every security-relevant action (config change, transfer, mount, serve, policy change)
+The audit bus below is **designed, not built** — what exists today is §5.1, the local diagnostics
+ring, which is a debugging channel and not an audit log. Policy enforcement *is* real, in the narrow
+form of the four kill-switch seams named in §1.
+
+- **Audit (designed):** every security-relevant action (config change, transfer, mount, serve, policy change)
   emits a structured JSON event onto an internal bus. Default sink = a **local, append-only,
   hash-chained** log the user/admin can read. Export to SIEM is **opt-in** and additive (never blocks
   the local write).
-- **Policy enforcement happens at the `RcloneClient` seam**, not in the UI — a disallowed action is
-  refused at the call boundary, so it can't be bypassed by editing the UI or scripting around it. The
-  Policy Engine reads OS-native managed config; see
+- **Policy enforcement happens below the UI** — today inside the controller that performs the action
+  (`MountController.mount`, `ServeController.start`, and the reveal/archive services), so hiding a
+  button is never the only defence. Pushing the check down to the `RcloneClient` seam itself, and
+  feeding it from OS-native managed config through a Policy Engine, is the designed end state; see
   [19-enterprise-readiness.md §2](19-enterprise-readiness.md).
 
 ### 5.1 Diagnostics — evidence without telemetry

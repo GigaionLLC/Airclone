@@ -1,6 +1,8 @@
 # Transfer Coordinator plan: one safety policy, enforced where transfers actually run
 
-**Status:** proposed (design). **Closes:** hardening audit [H-03](../backlog/hardening-audit-2026-07-15.md) (P0), [H-02](../backlog/hardening-audit-2026-07-15.md) (P0), and the H-04 hook for a reviewable dry run.
+**Status:** proposed (design) — genuinely unbuilt, re-checked 2026-09-06: there is no
+`TransferCoordinator` anywhere in `app/lib/`, and `showCopyConflictDialog` still has the single
+caller described below. **Closes:** hardening audit [H-03](../backlog/hardening-audit-2026-07-15.md) (P0), [H-02](../backlog/hardening-audit-2026-07-15.md) (P0), and the H-04 hook for a reviewable dry run.
 **Owner interface:** a new `TransferCoordinator` in `app/lib/src/state/` — the ONE door to [`TransferService`](../../app/lib/src/state/transfer_service.dart).
 **Reuses:** [`showCopyConflictDialog`](../../app/lib/src/ui/copy_conflict_dialog.dart) · [`planPaste`/`name_conflict.dart`](../../app/lib/src/state/name_conflict.dart) · [`JobsController`](../../app/lib/src/state/jobs_controller.dart) queue · [`TransferOptions`](../../app/lib/src/state/transfer_service.dart)
 

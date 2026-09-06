@@ -2,10 +2,13 @@
 
 **Purpose:** reproduce, from nothing, the credentials that let CI upload and promote Airclone on
 Google Play — for a new Google account, a rotated key, or a different app.
-**Status:** IN PROGRESS (2026-08-16). Steps are marked ✅ as they are completed and verified.
-**Related:** [`dev/plans/store-automation-plan.md`](plans/store-automation-plan.md) § Google Play (the
-original research) · [`dev/google-play-store.md`](google-play-store.md) (per-release runbook) ·
-[`docs/store/README.md`](../docs/store/README.md) (the store hub).
+**Status:** COMPLETE and in production use. Built 2026-08-16, first full run verified on v0.6.5,
+publishing every release since (v0.7.5 / version code 123 as of 2026-09-06). Re-read this only to
+rebuild the credential from nothing or to rotate the key.
+**Related:** [`dev/google-play-store.md`](google-play-store.md) (the per-release runbook) ·
+[`docs/store/README.md`](../docs/store/README.md) (the store hub) ·
+[`dev/plans/store-automation-plan.md`](plans/store-automation-plan.md) § Google Play (the original
+2026-07-09 research — superseded by this file; do not follow its track or release-notes claims).
 
 > **This repo is public.** Every account-specific value below is a `<placeholder>`. Never commit the
 > service-account JSON, the SA email, the GCP project id, or the Play developer id. Real values live
@@ -83,6 +86,9 @@ gcloud services enable androidpublisher.googleapis.com --project=<project-id>
 
 - `gcloud organizations list` gives `<org-id>` when the account belongs to a Workspace org. Omit
   `--organization` for a personal account.
+- **Without the SDK**, the same two things in the Cloud Console: create or pick a project, then
+  **APIs & Services → Library →** search **"Google Play Android Developer API" → Enable**. That
+  display name is the one to search for; `androidpublisher.googleapis.com` is the same API.
 - **No billing account is attached, and none is needed.** New projects come with a pile of APIs
   enabled by default (BigQuery and friends); they are enabled-but-unused and cannot bill anything
   with no billing account linked. The only API we add deliberately is `androidpublisher`.
@@ -104,6 +110,12 @@ gcloud iam service-accounts keys create <path-outside-the-repo>.json `
 Play Console grant in step 5. The JSON key is the only credential; treat it like a password, write it
 somewhere outside the repo, and delete it once it is in the GitHub secret.
 
+**Without the SDK:** Cloud Console → **IAM & Admin → Service Accounts → Create service account**,
+skip the "grant this service account access to the project" step entirely, **Done**; then open the
+account → **Keys → Add key → Create new key → JSON → Create**. The file that downloads is the
+secret. Either way, note the address it prints —
+`play-ci-publisher@<project-id>.iam.gserviceaccount.com` — because step 5 needs it.
+
 ## 5. Grant the SA access — Play Console (browser, no API exists) ✅
 
 Play Console → **Users and permissions → Invite new user**:
@@ -116,16 +128,31 @@ Play Console → **Users and permissions → Invite new user**:
    - *Release apps to production, exclude devices, and use Play App Signing* — **required for the
      promote-to-production workflow**; without it the promote job 403s while uploads still work,
      which is a confusing failure to debug later.
+   - *Manage store presence* — required for the listing-image lane (`play-images.yml`). Without it
+     `edits.commit` returns a bare **403 after the upload steps report success**, so nothing lands
+     and nothing obviously breaks. It also grants edit access to pricing and distribution; weigh
+     that against uploading listing images by hand.
 3. New access can take minutes to propagate. A first-run 403 usually means "wait and retry", not
    "misconfigured".
 
-While in the Console, record two things that decide whether automated production is even possible:
+*(An older Play Console exposes this as Setup → **API access** → link the GCP project → Grant
+access. Same effect, if that page is the one you are looking at.)*
+
+Those four grants are the canonical list; anything asking for a fifth is asking for more than this
+credential needs. `dev/android-tv.md` describes the *Manage store presence* failure a second time,
+where a TV-lane reader will actually meet it.
+
+While in the Console, record three things that decide what the API can do here at all:
 
 - **Account type** (Settings → Developer account → Account details). A *personal* account created
   after Nov 2023 must run 12 testers for 14 days before production unlocks. Organization accounts are
   exempt.
 - **Whether the Open testing track exists and is configured** (countries/testers). The API can create
   a release on a track, but it cannot do a track's first-time setup.
+- **Whether the app has ever had a release at all.** The very first AAB for a brand-new app MUST go
+  up through the Play Console UI by hand — the API cannot create an app's first track release. Take
+  the `airclone-playstore-aab` artifact from any release run (or `flutter build appbundle
+  --release`), upload it once, and every run after that works over the API.
 
 ## 6. GitHub secret ✅
 
@@ -136,17 +163,29 @@ instead — from git-bash:
 gh secret set PLAY_SERVICE_ACCOUNT_JSON < <path-outside-the-repo>.json
 ```
 
+Without `gh`: repo → **Settings → Secrets and variables → Actions → New repository secret**, name
+`PLAY_SERVICE_ACCOUNT_JSON`, value = the **entire** contents of the `.json`, braces included.
+
 Then **delete the local key file**. It is a live credential and there is no reason for a second copy
-to exist once GitHub holds it.
+to exist once GitHub holds it. The local commands further down need a key on disk, so mint a fresh
+one when you want to run them and delete that too.
 
 ## 7. CI wiring ✅
 
-Two lanes, deliberately split:
+Four things use this one credential. Upload and promote are deliberately split — a tag is a
+consequence, production is a decision — and the other two hang off them:
 
-| Lane | Trigger | Track | File |
+| Lane | Trigger | What it touches | File |
 | :--- | :--- | :--- | :--- |
 | Upload | every `v*` tag | **open testing** (`beta`) | `.github/workflows/release.yml` (android job) |
+| Verify | inside the upload lane, every tag | reads every track, asserts one | the `Verify the build really landed in open testing` step + [`tool/play_tracks.py`](../tool/play_tracks.py) `--expect beta=<code>` |
 | Promote | **manual** — Actions → *Promote on Google Play* → Run workflow | production, staged | `.github/workflows/promote-play.yml` + [`tool/play_promote.py`](../tool/play_promote.py) |
+| Listing images | **manual** — Actions → *Play Store listing images* → Run workflow | listing graphics, incl. `tvScreenshots` / `tvBanner` | `.github/workflows/play-images.yml` + [`tool/play_images.py`](../tool/play_images.py); needs the *Manage store presence* grant |
+
+**The verify step is not ceremony.** An upload action can report success while nothing lands — a
+deprecated input silently ignored, an edit committed against a different track — so the release job
+asks Play what it actually holds and **fails the release** if the version code it just built is not
+in open testing. A green android job is therefore real evidence, which it was not before.
 
 **Track names differ between the Console and the API** — the single most confusing thing here:
 
