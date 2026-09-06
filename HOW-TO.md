@@ -2,7 +2,8 @@
 
 Airclone is built on the **Vibe-App-Wiki** documentation methodology. This guide describes the
 workflow for building features and managing documentation in this repository. (The original
-app-agnostic skill library is vendored under [`Skills/`](Skills/).)
+app-agnostic skill library is vendored under `Skills/`, which is **gitignored** — it exists on the
+machine it was vendored on and is not part of a clone, so do not link to it as a repo path.)
 
 ---
 
