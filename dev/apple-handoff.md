@@ -36,7 +36,38 @@ and needs no version record. First use, immediately:
 So both 0.7.4 uploads are real and attachable. `UPLOAD SUCCEEDED` still is not
 evidence on its own — this is.
 
-### iOS SIGNING: `secrets` DOES NOT WORK — use `ephemeral` (established 2026-09-05)
+### iOS SIGNING: SOLVED — `secrets` is now the path (2026-09-05)
+
+The stored identity exists and is proven. `gh workflow run ios-release.yml -f
+mode=validate -f signing=secrets` produced a signed 57 MB `.ipa` and Apple
+answered `No errors validating archive`. No certificate is minted per release any
+more, and nothing has to be revoked afterwards.
+
+| | |
+| :--- | :--- |
+| Certificate | `YDG7JN3B33` — `Apple Distribution: Gigaion, LLC` |
+| Profile | `Airclone iOS App Store` (IOS_APP_STORE) |
+| **Both expire** | **2027-09-05** — rotate before then |
+| Secrets | `APPLE_IOS_DIST_P12_BASE64`, `APPLE_IOS_P12_PASSWORD`, `APPLE_IOS_PROVISIONING_PROFILE_BASE64` (org, visibility all) |
+| Private key backup | Proton Drive `DeveloperFiles/Apple-iOS-Distribution-Signing/` — the ONLY copy, with the script and a README |
+
+**Two things bit during the switch, both now fixed in the repo.**
+
+*Apple 500'd on `POST /v1/profiles`* after deleting the old profile and minting
+the certificate, leaving a certificate with no profile. Re-running was unsafe in
+both directions: `--force-new` would mint a third certificate against the cap,
+and plain `--apply` would pair the new private key with `ios_certs[0]` — a coin
+flip once two certificates exist — producing a p12 that signs nothing. Hence
+`--profile-only`, which reuses the certificate in `cert-id.txt`.
+
+*The Archive step routed `secrets` into a path its own comment called closed.* An
+"Apple Development" archive on iOS needs a registered device; nobody here owns an
+iPhone. The branch had never run, because the secrets never existed, so the first
+real run failed word-for-word as the comment predicted. Everything now archives
+unsigned except the `automatic` experiment, and `-exportArchive` applies the
+distribution identity — which is what `ephemeral` always did.
+
+### Previously: `ephemeral` was the only path (2026-09-05, superseded)
 
 `ios-release.yml -f signing=secrets` fails in seconds with
 `missing: APPLE_IOS_DIST_P12_BASE64(secret) APPLE_IOS_PROVISIONING_PROFILE_BASE64(secret)`.
@@ -99,6 +130,7 @@ the version they signed is live.** Apple caps these (typically 3), and every
 | :--- | :--- | :--- |
 | `YQF53PS6AW` | 0.6.8 build 118 | ✅ **revoked 2026-09-05** (0.6.8 was live) |
 | `3NWQMKV4UB` | 0.7.4 build 122 | ⛔ **do not revoke** until 0.7.4 is live |
+| `YDG7JN3B33` | the STORED identity, all future releases | ⛔ **never revoke** while it is in the secrets |
 
 Revoking no longer needs a machine with the `.p8` on it: CI already holds the key
 as an org secret, so `apple-revoke-cert.yml` does one id at a time, with the id
