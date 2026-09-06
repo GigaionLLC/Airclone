@@ -259,7 +259,40 @@ installs, launches and screenshots the app. Three different failures live betwee
 apart: the link (Go omits its own `//go:cgo_ldflag` for `c-archive`), the strip
 (Release removes all symbols by default) and the runtime lookup.
 
-### Export compliance, answered for real (2026-08-28)
+### Export compliance: DECIDED — the answer is YES (2026-09-05)
+
+**The determination the section below called for has been made: Airclone uses
+non-exempt encryption.** It implements standard confidentiality algorithms of its
+own, the "HTTPS only" and "only Apple's OS crypto" exemptions are both false, and
+it is mass-market **5D992** — which carries an annual self-classification report
+to BIS.
+
+**Automating it turned out not to be a boolean, and the discovery is worth
+keeping.** `usesNonExemptEncryption` lives on the build and can be PATCHed, so
+answering **no** is trivially automatable — which is exactly what builds 117, 118
+and 119 carry. Answering **yes** is not: it needs an **App Encryption
+Declaration**, the resource that holds the documentation, the France/ANSSI answer
+and the compliance code, and which Apple reviews.
+
+With no declaration on the app, `PATCH /v1/builds/<id>
+{usesNonExemptEncryption: true}` returns **200 and echoes `true`, and stores
+nothing**. Read back, the build still says unanswered. `tool/asc_build.py` now
+reads it back and fails loudly rather than reporting a write that did not happen
+— the same class of trap as a green CI step that shipped no rclone.
+
+Two consequences follow, and both are real work rather than clicks:
+
+1. **Someone has to create the App Encryption Declaration once**, in App Store
+   Connect, with supporting documentation, and Apple reviews it. After that,
+   builds inherit it and the per-build answer becomes automatic.
+2. **Builds 117, 118 and 119 are already live declaring `no`.** If YES is the
+   correct answer, those declarations are wrong and that is a compliance
+   question, not a tooling one.
+
+Until the declaration exists, 0.7.4's two builds stay unanswered and Apple asks
+at submission — which is the safe failure mode.
+
+### Export compliance, the original analysis (2026-08-28)
 
 Apple's dialog, and what Airclone's actual answers are:
 

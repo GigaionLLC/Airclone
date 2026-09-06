@@ -40,6 +40,9 @@ Options:
   --apply                 actually send it. Without this nothing is written.
   --builds                just list the builds Apple has registered, and stop.
   --create-version X.Y.Z  create the version record itself (releaseType MANUAL).
+  --export-compliance yes|no
+                          answer the US export-control question on the build.
+                          Airclone's settled answer is YES (mass-market 5D992).
                           Needs --apply, like everything else that writes.
                           Works with no editable version, which is exactly when
                           you need it: right after an upload.
@@ -90,6 +93,17 @@ CREATE_VERSION = (ARGV[ARGV.index("--create-version") + 1]
                   if "--create-version" in ARGV else None)
 SET_COPYRIGHT = "--copyright" in ARGV
 MANUAL_RELEASE = "--manual-release" in ARGV
+# The US export-control declaration, carried on the BUILD rather than the
+# version. Airclone's settled answer is YES: it implements standard
+# confidentiality encryption of its own (rclone crypt, config encryption,
+# the vault, Argon2id for offline QR, and Go's own TLS because the engine is
+# statically linked and never calls Apple's Security framework). The
+# "HTTPS only" and "only Apple's OS crypto" exemptions are both false here,
+# which makes it mass-market 5D992 - see dev/plans/apple-appstore-plan.md.
+# Kept an explicit flag, never implied by --apply: it is a legal statement
+# and it should be visible in the command that makes it.
+EXPORT_COMPLIANCE = (ARGV[ARGV.index("--export-compliance") + 1]
+                     if "--export-compliance" in ARGV else None)
 
 
 def opt(name, default=None):
@@ -198,8 +212,15 @@ def pick_build():
     # include=preReleaseVersion because a build's PLATFORM lives there, not on
     # the build itself - and macOS and iOS builds of the same release share a
     # build NUMBER, so the number alone cannot tell them apart.
+    # fields[builds] is REQUIRED for usesNonExemptEncryption: the list endpoint
+    # omits it from its default attribute set, so a build that HAS been answered
+    # reads back as unanswered and the listing quietly lies about the one thing
+    # it is most useful for.
     bs = call("GET", "/v1/builds?filter[app]=%s&limit=50&sort=-uploadedDate"
-                     "&include=preReleaseVersion" % APP)
+                     "&include=preReleaseVersion"
+                     "&fields[builds]=version,processingState,expired,"
+                     "uploadedDate,usesNonExemptEncryption,preReleaseVersion"
+                     % APP)
     if not bs:
         sys.exit(1)
     plat_of = {}
@@ -236,6 +257,19 @@ def pick_build():
         rows.append((b["id"], a.get("version"), a.get("processingState"),
                      a.get("expired"), (a.get("uploadedDate") or "")[:19],
                      plat_of.get(pv, "?"), a.get("usesNonExemptEncryption")))
+    # Export compliance "yes" is NOT a boolean write - it needs an App Encryption
+    # Declaration to point at. List them, because without one a PATCH setting
+    # usesNonExemptEncryption=true is accepted, echoed back as true, and stored
+    # as nothing.
+    decls = call("GET", "/v1/appEncryptionDeclarations?filter[app]=%s&limit=20" % APP)
+    dd = (decls or {}).get("data", [])
+    print("app encryption declarations: %d" % len(dd))
+    for d in dd:
+        a = d["attributes"]
+        print("  %s  state=%s  exempt=%s  france=%s  code=%s"
+              % (d["id"][:12], a.get("appEncryptionDeclarationState"),
+                 a.get("exempt"), a.get("availableOnFrenchStore"),
+                 a.get("codeValue") or "-"))
     print("recent builds:")
     for r in rows[:8]:
         # usesNonExemptEncryption is the EXPORT COMPLIANCE answer, carried on the
@@ -458,7 +492,7 @@ def main():
     if ATTACH:
         got = pick_build()
         if got:
-            bid, bnum, _, _, when, _bplat = got
+            bid, bnum, _, _, when, _bplat, _benc = got
             print("  will attach:    build %s (uploaded %s)" % (bnum, when))
 
     notes = None
@@ -517,6 +551,44 @@ def main():
         if r is None:
             sys.exit(1)
         print("attached build %s" % bnum)
+
+    if EXPORT_COMPLIANCE:
+        # On the build, not the version, so it survives being re-attached and has
+        # to be set once per uploaded build.
+        target = bid or (attached or {}).get("id")
+        if not target:
+            print("export compliance: no build to set it on")
+        else:
+            want = EXPORT_COMPLIANCE.lower() in ("yes", "true", "1")
+            r = call("PATCH", "/v1/builds/%s" % target,
+                     {"data": {"id": target, "type": "builds",
+                               "attributes": {"usesNonExemptEncryption": want}}})
+            if r is None:
+                sys.exit(1)
+            # READ IT BACK. Apple accepts this PATCH, echoes the value in the
+            # response, and stores NOTHING when the answer is `true` and the app
+            # has no App Encryption Declaration to attach it to. The echo is not
+            # the artifact - that mistake was made here first, on build 122, and
+            # would otherwise have shipped as "export compliance: True".
+            back = call("GET", "/v1/builds/%s?fields[builds]=usesNonExemptEncryption"
+                        % target)
+            stored = ((back or {}).get("data", {})
+                      .get("attributes", {}).get("usesNonExemptEncryption"))
+            if stored != want:
+                print("::error::export compliance did NOT stick: asked for %s, "
+                      "Apple still reports %s" % (want, stored))
+                if want:
+                    decls = call(
+                        "GET",
+                        "/v1/appEncryptionDeclarations?filter[app]=%s&limit=1" % APP)
+                    if not (decls or {}).get("data"):
+                        print("The app has NO App Encryption Declaration. Answering")
+                        print("YES needs one - it carries the documentation, the")
+                        print("France/ANSSI answer and the compliance code, and Apple")
+                        print("reviews it. Answering NO is a plain boolean and needs")
+                        print("nothing. See dev/plans/apple-appstore-plan.md.")
+                sys.exit(1)
+            print("export compliance: usesNonExemptEncryption = %s (read back)" % stored)
 
     if notes is not None:
         det = call("GET", "/v1/appStoreVersions/%s/appStoreReviewDetail" % ver["id"])
