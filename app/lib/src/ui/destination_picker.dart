@@ -4,7 +4,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../rclone/models/rclone_file.dart';
 import '../rclone/models/remote.dart';
 import '../state/engine_controller.dart';
+import '../state/local_locations.dart';
 import '../state/remotes_provider.dart';
+import 'home_view.dart' show localKindIcon;
 import 'dialog_body.dart';
 import 'theme/tokens.dart';
 
@@ -171,9 +173,19 @@ class _DestinationPickerDialogState
     );
   }
 
-  // Step 1 — pick a remote.
+  // Step 1 — pick where to browse.
+  //
+  // The same three sections as the sidebar (LOCATIONS / DISKS / CLOUD), and for
+  // the same reason: this used to list `remotesProvider` alone, which is the
+  // rclone remotes plus one synthetic home folder. A local disk was therefore
+  // impossible to choose as a destination — "Copy to…" could not reach the
+  // drive sitting in the sidebar two inches away, and the only way through was
+  // to navigate a pane there by hand and paste. Local disks and saved folders
+  // live in their own providers, and nothing here knew about them.
   Widget _buildRemoteStep(AircloneColors c) {
     final remotes = ref.watch(remotesProvider);
+    final locations = ref.watch(userLocationsProvider);
+    final drives = ref.watch(drivesProvider);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -181,16 +193,38 @@ class _DestinationPickerDialogState
         Expanded(
           child: remotes.when(
             data: (list) {
-              if (list.isEmpty) {
-                return _empty(c, 'No remotes configured yet.');
+              final rows = <Widget>[
+                if (locations.isNotEmpty) ...[
+                  _sectionLabel(c, 'LOCATIONS'),
+                  for (final l in locations)
+                    _remoteTile(c, l.remote, icon: localKindIcon(l.kind)),
+                ],
+                if (drives.isNotEmpty) ...[
+                  _sectionLabel(c, 'DISKS'),
+                  for (final d in drives)
+                    _remoteTile(c, d.remote, icon: localKindIcon(d.kind)),
+                ],
+                if (list.isNotEmpty) ...[
+                  _sectionLabel(c, 'CLOUD'),
+                  for (final r in list) _remoteTile(c, r),
+                ],
+              ];
+              if (rows.isEmpty) {
+                return _empty(c, 'Nothing to copy to yet.');
               }
-              return ListView.builder(
-                itemCount: list.length,
-                itemBuilder: (_, i) => _remoteTile(c, list[i]),
-              );
+              return ListView(children: rows);
             },
-            loading: () => const Center(child: CircularProgressIndicator()),
-            error: (e, _) => _errorBox(c, '$e'),
+            // A failed remote list must not hide the local disks, which need no
+            // engine and are always available. Losing the cloud section is bad;
+            // losing the whole dialog with it is worse.
+            loading: () => _localOnly(
+              c,
+              locations,
+              drives,
+              const Center(child: CircularProgressIndicator()),
+            ),
+            error: (e, _) =>
+                _localOnly(c, locations, drives, _errorBox(c, '$e')),
           ),
         ),
         const SizedBox(height: Space.x3),
@@ -207,48 +241,93 @@ class _DestinationPickerDialogState
     );
   }
 
-  Widget _remoteTile(AircloneColors c, Remote remote) => InkWell(
-    onTap: () => _openRemote(remote),
-    borderRadius: BorderRadius.circular(Radii.md),
-    child: Padding(
-      padding: const EdgeInsets.symmetric(
-        horizontal: Space.x2,
-        vertical: Space.x3,
-      ),
-      child: Row(
-        children: [
-          Icon(
-            remote.isLocal ? Icons.computer_outlined : Icons.cloud_outlined,
-            size: 20,
-            color: c.primary,
-          ),
-          const SizedBox(width: Space.x3),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  remote.name,
-                  style: TextStyle(
-                    color: c.text,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                Text(
-                  remote.type,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(color: c.textFaint, fontSize: 12),
-                ),
-              ],
-            ),
-          ),
-          Icon(Icons.chevron_right, size: 18, color: c.textFaint),
-        ],
+  /// The cloud section still loading or broken, with the local sections — which
+  /// need no engine — kept usable underneath it.
+  Widget _localOnly(
+    AircloneColors c,
+    List<LocalLocation> locations,
+    List<LocalLocation> drives,
+    Widget cloudState,
+  ) => ListView(
+    children: [
+      if (locations.isNotEmpty) ...[
+        _sectionLabel(c, 'LOCATIONS'),
+        for (final l in locations)
+          _remoteTile(c, l.remote, icon: localKindIcon(l.kind)),
+      ],
+      if (drives.isNotEmpty) ...[
+        _sectionLabel(c, 'DISKS'),
+        for (final d in drives)
+          _remoteTile(c, d.remote, icon: localKindIcon(d.kind)),
+      ],
+      _sectionLabel(c, 'CLOUD'),
+      SizedBox(height: 80, child: cloudState),
+    ],
+  );
+
+  Widget _sectionLabel(AircloneColors c, String label) => Padding(
+    padding: const EdgeInsets.only(
+      top: Space.x3,
+      bottom: Space.x1,
+      left: Space.x2,
+    ),
+    child: Text(
+      label,
+      style: TextStyle(
+        color: c.textFaint,
+        fontSize: 11,
+        fontWeight: FontWeight.w700,
+        letterSpacing: 0.6,
       ),
     ),
   );
+
+  Widget _remoteTile(AircloneColors c, Remote remote, {IconData? icon}) =>
+      InkWell(
+        onTap: () => _openRemote(remote),
+        borderRadius: BorderRadius.circular(Radii.md),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(
+            horizontal: Space.x2,
+            vertical: Space.x3,
+          ),
+          child: Row(
+            children: [
+              Icon(
+                icon ??
+                    (remote.isLocal
+                        ? Icons.computer_outlined
+                        : Icons.cloud_outlined),
+                size: 20,
+                color: c.primary,
+              ),
+              const SizedBox(width: Space.x3),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      remote.name,
+                      style: TextStyle(
+                        color: c.text,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    Text(
+                      remote.type,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(color: c.textFaint, fontSize: 12),
+                    ),
+                  ],
+                ),
+              ),
+              Icon(Icons.chevron_right, size: 18, color: c.textFaint),
+            ],
+          ),
+        ),
+      );
 
   // Step 2 — browse into folders of the chosen remote.
   Widget _buildBrowseStep(AircloneColors c) {
