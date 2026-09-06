@@ -102,8 +102,8 @@ jobs:
           # secret and is never written to this repo or printed.
           APPLE_REVIEW_CONTACT: ${{ secrets.APPLE_REVIEW_CONTACT }}
           # The three free-form inputs, passed as environment rather than
-          # interpolated into the script below. `${{ }}` splices the dispatch
-          # value into the shell verbatim, so a version string of
+          # interpolated into the script below. Direct interpolation splices the
+          # dispatch value into the shell verbatim, so a version string of
           # `0.7.5"; curl ... | sh; #` would run. Every other input on this
           # workflow is a choice or a boolean and cannot carry a payload.
           VERSION: ${{ inputs.version }}

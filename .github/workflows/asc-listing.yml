@@ -109,8 +109,8 @@ jobs:
             # option and would silently ignore it, so this stays on the text arm.
             # VERSION arrives through `env:`, never spliced into the script
             # body. Every other input here is a choice or a boolean, so this is
-            # the only free-form string that reaches the shell, and `${{ }}`
-            # would run a dispatch value like `0.7.5"; curl ... | sh; #`.
+            # the only free-form string that reaches the shell. Interpolating it
+            # directly would run a dispatch value like `0.7.5"; curl ... | sh; #`.
             if [ -n "$VERSION" ]; then set -- --version "$VERSION"; else set --; fi
             python tool/asc_listing.py key.p8 "$KEY_ID" "$ISSUER" 6790176897 \
               --platform ${{ inputs.platform }} $ARGS "$@"
