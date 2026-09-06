@@ -4,6 +4,48 @@ All changes made by AI agents are tracked chronologically below (most recent fir
 
 ---
 
+## [2026-09-06] - v0.7.5, and the Apple release lanes stop minting a certificate per run
+
+**Agent:** Claude Opus 5 - `main`
+**Files Modified:** `app/lib/src/ui/destination_picker.dart`,
+`app/test/destination_picker_test.dart` (new), `app/pubspec.yaml`,
+`dev/releases/v0.7.5.md` (new), `.github/workflows/{mas-release,ios-release,asc-version}.yml`,
+`.github/workflows/apple-revoke-cert.yml` (new), `tool/asc_build.py`, `tool/asc_ios_signing.py`,
+`dev/apple-handoff.md`, `dev/plans/apple-appstore-plan.md`
+**Database/API Changes:** Play open testing serves **123**. Microsoft submission
+**1152921505701820746** STAGED (superseded the uncommitted 0.7.4 draft - the Store allows one
+pending). App Store Connect: 0.7.4 RENAMED to 0.7.5 on both platforms, build 123 attached, both
+audits **no gaps**. Nine certificates revoked.
+
+**Summary:** "Copy to doesn't show the option to copy to one of the internal or local drives." The
+picker read `remotesProvider` alone - cloud remotes plus one synthetic home folder - so a disk in
+the sidebar two inches away could not be chosen. It now shows the sidebar's own LOCATIONS / DISKS /
+CLOUD, and local disks survive an engine that is down, because they never needed it.
+
+Then 0.7.5 was used to test the release automation end to end, and it found things.
+
+**Both Apple lanes were minting a development certificate on every archive and never revoking it.**
+Ten accumulated between 2026-08-20 and 2026-09-06 until the account hit Apple's cap, and the macOS
+lane failed with "Your account has reached the maximum number of certificates" - unrelated to
+anything that had changed, which is why it read as sudden. NONE was ever needed: both lanes re-sign
+or re-export with the real distribution identity, so the archive signature never reaches the shipped
+artifact. Both now archive unsigned, and the export's `-allowProvisioningUpdates` - a second minting
+path it did not need, since the plist names every identity - is gone too. Verified by artifact: a
+full run now leaves the certificate count unchanged. Two comments in that file had drifted into
+being FALSE ("no .p12 is stored" when stored MAS certs are imported), which is how three weeks of
+minting read as deliberate to anyone who looked.
+
+**Export compliance: I was wrong twice and Apple settled it.** `POST /v1/appEncryptionDeclarations`
+returns "Cannot create unless either containsProprietaryCryptography is True or
+containsThirdPartyCryptography and availableOnFrenchStore are both True". Airclone uses only
+published algorithms and France is already excluded (confirmed: 174 of 175 territories, France
+false), so there is nothing to declare - the encryption is EXEMPT, and
+`usesNonExemptEncryption=false` is correct, exactly as the three shipped builds already had it. The
+earlier claims that those were "very likely wrong" and that a declaration needed the UI were both
+mistaken.
+
+---
+
 ## [2026-09-05] - rclone 1.75.1 security update, two diagnostics fixes, v0.7.3 + v0.7.4 shipped to every store
 
 **Agent:** Claude Opus 5 - `main`
