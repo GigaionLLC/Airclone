@@ -117,6 +117,23 @@ jobs:
           # Positional parameters carry the values that came from env, so they
           # stay one argument each however they are punctuated.
           set --
+          # Quoting stops SHELL injection; it does not stop ARGUMENT injection.
+          # tool/asc_build.py reads its options by `in ARGV` membership rather
+          # than with a parser, so an input whose VALUE IS A FLAG becomes that
+          # flag: mode=report with build='--apply' and set_version=
+          # '--submit-for-review' would take a run that writes nothing all the
+          # way to Add for Review. Refuse anything not shaped like what the
+          # input is documented to hold.
+          for pair in "version:$VERSION" "set_version:$SET_VERSION"; do
+            name=${pair%%:*}; val=${pair#*:}
+            case "$val" in
+              ''|[0-9]*.[0-9]*) ;;
+              *) echo "::error::$name must look like 1.2.3, got '$val'"; exit 1;;
+            esac
+          done
+          case "$BUILD" in
+            ''|*[!0-9]*) [ -z "$BUILD" ] || { echo "::error::build must be a number, got '$BUILD'"; exit 1; };;
+          esac
           # `if`, not `[ ... ] && ARGS=...`: a false test makes the whole line
           # return 1, and this block runs under errexit (GitHub invokes every
           # `run:` as `bash -e {0}`), so the step would die on the first input

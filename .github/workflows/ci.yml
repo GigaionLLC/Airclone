@@ -75,6 +75,17 @@ jobs:
       - name: Byte-compile the store scripts
         working-directory: .
         run: python -m compileall -q tool/
+      - name: Check the workflow files
+        working-directory: .
+        # GitHub's parser is the only authority on a workflow file and it has no
+        # local equivalent - `yaml.safe_load` passes files GitHub rejects. An
+        # invalid one cannot be dispatched at all, and it announces itself only
+        # as a failed push run named after the file path, with no logs. Both
+        # checks are for defects this repo has actually shipped, one of them
+        # three times in a day. See tool/check-workflows.py.
+        run: |
+          pip install --quiet pyyaml
+          python tool/check-workflows.py
 
   rclone-pin:
     # Warns (never fails) when the Android rclone pin drifts between its two

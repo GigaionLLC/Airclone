@@ -551,12 +551,25 @@ def submit_for_review():
 
 
 def create_encryption_declaration():
-    """POST an App Encryption Declaration.
+    """POST an App Encryption Declaration. NOT the shipped answer - see below.
 
-    Airclone implements standard confidentiality encryption of its own, so the
-    "HTTPS only" and "only Apple's OS crypto" exemptions are both false and the
-    honest answer to Apple's export question is YES. That answer is impossible to
-    record without one of these.
+    This path exists but is not the one Airclone uses. The shipped answer is
+    declarative: ITSAppUsesNonExemptEncryption=false in both Info.plists, valid
+    only while France stays excluded from availability. `--audit` checks that
+    precondition as its "french store" row.
+
+    The reasoning that got here, kept because it is the part that is easy to get
+    wrong twice: the app does implement standard confidentiality encryption of
+    its own, so the "HTTPS only" and "only Apple's OS crypto" exemptions do not
+    apply. But Apple refuses to create a declaration for an app in this position
+    at all - a declaration is for proprietary crypto, or for third-party crypto
+    sold in France - so YES is unrecordable rather than merely unrecorded, and
+    the exemption is the accurate answer, not a convenient one. If France is
+    ever added, this changes and the US BIS 5D992 self-classification (a
+    separate, already-live obligation) is not a substitute for it.
+
+    dev/plans/apple-appstore-plan.md owns this decision; state it in one clause
+    elsewhere and link there rather than re-arguing it.
     """
     if FRANCE not in ("yes", "no"):
         sys.exit("--france yes|no is required and is never defaulted: YES makes "

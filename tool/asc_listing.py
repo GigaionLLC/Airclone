@@ -34,7 +34,7 @@ PLATFORM = ARGV[ARGV.index("--platform") + 1] if "--platform" in ARGV else "MAC_
 # Pin the target version by string. Without it this takes the FIRST version the
 # API happens to return for the platform, which may be one already in review or
 # already live. A caller that has confirmed a version - asc-submit-review.yml
-# types it twice - must be able to say which one, or the notes can land on a
+# names the exact version - must be able to say which one, or the notes can land on a
 # different version than the one submitted.
 WANT = (ARGV[ARGV.index("--version") + 1] if "--version" in ARGV else None)
 DOC = ("docs/store/apple/listing-ios-en-US.md" if PLATFORM == "IOS"

@@ -207,7 +207,20 @@ jobs:
       - name: Generate the Flutter build inputs
         # --no-codesign: this only produces the assets and the ephemeral xcconfig
         # that the xcodebuild archive below consumes. Signing happens there.
-        run: flutter build ios --release --no-codesign${{ inputs.build_number && format(' --build-number={0}', inputs.build_number) || '' }}
+        # BN through `env:`, not direct interpolation: format() does no shell
+        # quoting, so a
+        # dispatch value like `123; curl ... | sh` used to execute on the runner.
+        env:
+          BN: ${{ inputs.build_number }}
+        run: |
+          set -euo pipefail
+          case "$BN" in ''|*[!0-9]*) [ -z "$BN" ] || { echo "::error::build_number must be a number"; exit 1; };; esac
+          # `if`, not `[ ... ] && ...`: under errexit a false test is a failed
+          # command and would kill the step whenever build_number is blank,
+          # which is the default. This trap has cost this repo several runs.
+          set --
+          if [ -n "$BN" ]; then set -- --build-number="$BN"; fi
+          flutter build ios --release --no-codesign "$@"
 
       - name: Archive
         env:

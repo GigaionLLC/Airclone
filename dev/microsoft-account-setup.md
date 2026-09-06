@@ -178,14 +178,16 @@ Every one of these actually happened.
 
 **`AADSTS530035` on `az login --use-device-code`.** Security Defaults blocks the device-code flow —
 it is phishable, so Microsoft disables it by default. The sign-in genuinely succeeds and the *token*
-is refused, which reads like a permissions problem. **Use plain `az login`** (authorization-code flow
-in a browser); it is permitted. A device code also only polls ~15 minutes before exiting with
-`AADSTS70016 Authorization is pending`, which looks like failure but means nobody typed it in time.
+is refused, which reads like a permissions problem. A device code also only polls ~15 minutes before
+exiting with `AADSTS70016 Authorization is pending`, which looks like failure but means nobody typed
+it in time.
 
-**And `az login` itself may be refused.** On this tenant both variants below answered *"Your sign-in
-was successful but you don't have permission to access this resource"* — the sign-in works, the
-resource is refused. The app registration was then created in the **Entra portal UI**, which worked
-first time. If the CLI fights you here, stop fighting it; nothing in this setup requires the CLI.
+**Then plain `az login` was refused too.** The obvious next move is the authorization-code flow in a
+browser, and on this tenant it answered *"Your sign-in was successful but you don't have permission
+to access this resource"* — as did the Graph-scoped variant. So the order that actually happened is:
+device code blocked by Security Defaults → plain `az login` refused → the app registration created
+in the **Entra portal UI**, which worked first time. If the CLI fights you here, stop fighting it;
+nothing in this setup requires the CLI.
 
 The two variants, recorded because neither is guessable. The **doubled slash** in the scope is not a
 typo — `az` treats `.default` after a single slash as a path segment and the token comes back for the

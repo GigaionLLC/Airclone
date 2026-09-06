@@ -14,7 +14,7 @@ the shape is nearly identical).
 > tenant id, client id, client secret, Seller ID, Store ID, or the publisher GUID. Real values live
 > in GitHub secrets/variables and private notes — nowhere else. A *published* product's Store ID is
 > public in its Store URL, so it is not a secret, and it is **not** out of the tree: `tool/store_submit.py`
-> carries it as the `--app-id` default and in its own usage example. That is deliberate and harmless
+> carries it in the `--app-id` help text and in its own usage example (`--app-id` is required; CI passes it from `STORE_APP_ID`). That is deliberate and harmless
 > — but do not read the rule above as "nothing identifying is ever in the tree", because that is not
 > what the tree says, and a rule stated more strictly than it is kept is one nobody trusts.
 

@@ -81,14 +81,17 @@ jobs:
 
       - name: Upload
         env:
+          DIR: ${{ inputs.dir }}
           GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/play-key.json
         run: |
           set -euo pipefail
           # `if`, not `[ ... ] && ARGS=...`: a false test returns 1, and every
           # `run:` block is invoked as `bash -e {0}`, so the step would fail.
+          # DIR is free-form, so it arrives through env: rather than being
+          # spliced in - single quotes here do not survive a value containing one.
           args=(--package com.gigaionllc.airclone
                 --type '${{ inputs.type }}'
-                --dir '${{ inputs.dir }}')
+                --dir "$DIR")
           if [ '${{ inputs.replace }}' = 'true' ]; then args+=(--replace); fi
           if [ '${{ inputs.mode }}' = 'apply' ]; then args+=(--apply); fi
           python tool/play_images.py "${args[@]}"

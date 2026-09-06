@@ -66,14 +66,18 @@ jobs:
       - name: Promote
         env:
           GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/play-key.json
+          # Free-form, so it arrives through env: rather than being spliced into
+          # the script - single quotes do not survive a value containing one.
+          VERSION_CODE: ${{ inputs.version_code }}
         run: |
           set -euo pipefail
           args=(--package com.gigaionllc.airclone
                 --from-track beta
                 --to-track production
                 --rollout '${{ inputs.rollout }}')
-          if [ -n '${{ inputs.version_code }}' ]; then
-            args+=(--version-code '${{ inputs.version_code }}')
+          if [ -n "$VERSION_CODE" ]; then
+            case "$VERSION_CODE" in *[!0-9]*) echo "::error::version_code must be a number"; exit 1;; esac
+            args+=(--version-code "$VERSION_CODE")
           fi
           if [ '${{ inputs.dry_run }}' != 'true' ]; then
             args+=(--commit)

@@ -65,6 +65,7 @@ jobs:
         env:
           ID: ${{ inputs.certificate_id }}
           CONFIRM: ${{ inputs.confirm_certificate_id }}
+          REASON: ${{ inputs.reason }}
         run: |
           set -euo pipefail
           if [ "$ID" != "$CONFIRM" ]; then
@@ -72,7 +73,7 @@ jobs:
             exit 1
           fi
           echo "about to revoke $ID"
-          echo "reason: ${{ inputs.reason }}"
+          echo "reason: $REASON"
           echo
           echo "Reminder: a LIVE app is unaffected by this. A build still in"
           echo "review is NOT - revoking its certificate invalidates it."
@@ -88,12 +89,13 @@ jobs:
           P8: ${{ secrets.APPSTORE_API_PRIVATE_KEY }}
           KEY_ID: ${{ vars.APPSTORE_API_KEY_ID }}
           ISSUER: ${{ secrets.APPSTORE_ISSUER_ID }}
+          ID: ${{ inputs.certificate_id }}
         run: |
           set -euo pipefail
           umask 077
           printf '%s' "$P8" > key.p8
           python tool/asc_ios_signing.py key.p8 "$KEY_ID" "$ISSUER" \
-            --revoke "${{ inputs.certificate_id }}"
+            --revoke "$ID"
 
       - name: Shred the key
         if: always()

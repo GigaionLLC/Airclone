@@ -229,10 +229,14 @@ def main() -> int:
     print(f"package: {args.package} ({size_mb:.1f} MB)")
 
     live_pricing: dict = {}
+    pricing_unknown = "this app has no lastPublishedApplicationSubmission"
     if last:
         _r = http.get(f"{API}/applications/{args.app_id}/submissions/{last}", timeout=60)
         if _r.ok:
             live_pricing = _r.json().get("pricing", {})
+            pricing_unknown = ""
+        else:
+            pricing_unknown = f"GET on submission {last} returned HTTP {_r.status_code}"
 
     # ── The commit trap — checked BEFORE anything is created ────────────────
     # Committing through this API DESTROYS the price of a product on the
@@ -247,9 +251,18 @@ def main() -> int:
     # path published correctly at $1.49.
     #
     # Refuse before creating a submission, so a refusal leaves nothing behind.
-    if live_pricing.get("isAdvancedPricingModel") and args.commit:
+    # FAIL CLOSED. This used to read `live_pricing.get(...) and args.commit`,
+    # which only guards anything when the READ SUCCEEDED. A 500, a timeout, a
+    # throttle, or an app with no lastPublishedApplicationSubmission all leave
+    # live_pricing empty, `.get()` returns None, and the commit sails through
+    # unguarded - the one path this function exists to block, open in exactly
+    # the conditions where nobody is watching. If we cannot PROVE the product
+    # is not on advanced pricing, refuse.
+    if args.commit and (not live_pricing or live_pricing.get("isAdvancedPricingModel")):
         fail(
-            "this product uses the ADVANCED PRICING MODEL, and committing through the API "
+            ("this product uses the ADVANCED PRICING MODEL" if live_pricing
+             else f"the live pricing could not be read ({pricing_unknown})")
+            + ", and committing through the API "
             "sets its price to 0.\n"
             "Use mode 'stage' instead, then press 'Submit for certification' in Partner "
             "Center, which preserves the price.\n"
@@ -368,8 +381,14 @@ def main() -> int:
             # Refuse BEFORE commit. An uncommitted submission is a draft nobody
             # sees; a committed one is a price change in front of customers.
             fail(f"{detail}\nRefusing to commit. Delete draft {sub_id} and investigate.")
-    else:
+    elif live_pricing:
         print("pricing preserved (markets, trial and sales match the live submission)")
+    else:
+        # Nothing was compared. Printing "preserved" here claimed a check that
+        # had not run, in the same conditions that opened the commit guard.
+        print(f"::warning::pricing NOT verified - {pricing_unknown}. Nothing was "
+              "compared against a live submission; check Pricing and availability "
+              "in Partner Center before submitting.")
     if now.get("priceId") != live_pricing.get("priceId"):
         # Expected and benign — say so, so nobody re-raises the alarm that this
         # already caused once. The authority is Partner Center's pricing module.

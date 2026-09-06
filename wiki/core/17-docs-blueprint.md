@@ -219,9 +219,12 @@ It strips fenced blocks and inline code first, so link *examples* — including 
 are not reported as broken. Exit code is `0` when clean and `1` on broken links; pass `--strict` to
 also fail on orphans and shape violations, and `--quiet` for totals only.
 
-**No CI job runs it yet.** [`ci.yml`](../../.github/workflows/ci.yml) covers format, analyze and tests
-against `app/` only, so documentation is enforced by habit and review, not by a gate. The script is
-dependency-free and platform-neutral precisely so it can be added to CI when someone wants that.
+**CI runs it on every push and PR** — the `docs` job in
+[`ci.yml`](../../.github/workflows/ci.yml), added 2026-09-06. A broken link fails the build;
+`--strict` is deliberately off, so orphans and shape findings stay advisory rather than failing a
+release over a document nothing links to yet. Run it the way CI does before trusting a local pass:
+CI checks out only tracked files, so a link into a gitignored directory resolves on your machine and
+not in the build — which is exactly what the job caught first.
 
 What it caught on its first run, all invisible from the hub: nine `wiki/core/` documents promised by
 [00-system-index.md](00-system-index.md) that did not exist, two stale code paths in

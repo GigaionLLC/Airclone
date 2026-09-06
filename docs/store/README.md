@@ -123,7 +123,7 @@ Two things that cost a release each:
 Submission is a **manual Actions dispatch**, not something a tag does: *Submit to Microsoft Store*
 ([`submit-msstore.yml`](../../.github/workflows/submit-msstore.yml)) run against a release tag, with
 `mode` = `dry-run` / `stage` / `submit`. It does **not** rebuild — it downloads the exact
-`airclone.msix` that was signed and attached to that release, checks the package identity against the
+`airclone.msix` attached to that release (unsigned by design, as above - the executables inside it are Azure-signed), checks the package identity against the
 repo variables before Partner Center can spend a review cycle on a mismatch, and then drives the Store
 submission REST API through [`tool/store_submit.py`](../../tool/store_submit.py). Manual is deliberate,
 for the same reason `promote-play.yml` is: certification takes **days**, and deciding a build is worth

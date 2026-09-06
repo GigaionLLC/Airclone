@@ -52,7 +52,8 @@ of the whole project: [08-core-architecture.md](08-core-architecture.md).
 | [Plans](../../dev/plans/) · [Template](../../dev/plans/template-plan.md) | Active multi-step work; every non-trivial task gets a plan. |
 | [Backlog & Roadmap](../../dev/backlog/backlog-index.md) | The queue and the prioritised roadmap. |
 | [Plan Archive](../../dev/archive-plans/README.md) | Where finished plans are moved on wrap-up. |
-| [Version History](../../dev/logs/version-history.md) | Per-version record of what shipped. |
+| [Release notes](../../dev/releases/) | One hand-written file per tag, published verbatim as the GitHub Release body. The record of everything since `v0.1.0-beta.1`. |
+| [Version History](../../dev/logs/version-history.md) | Pre-beta alpha log, `v0.0.0` → `v0.1.0-beta.1`. **Closed — do not append.** |
 | [Agent Changelog](../../dev/logs/agent-changelog.md) | Append-only audit log; read the last 3 entries before writing code. |
 
 ### 🏪 docs (Public-facing / store)

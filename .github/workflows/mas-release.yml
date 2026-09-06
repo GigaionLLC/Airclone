@@ -153,7 +153,20 @@ jobs:
         # xcodebuild archive below consumes. AIRCLONE_MAS must travel with the
         # sandbox entitlement - a build without it tries to spawn rclone and is
         # killed by the sandbox.
-        run: flutter build macos --release --dart-define=AIRCLONE_MAS=true${{ inputs.build_number && format(' --build-number={0}', inputs.build_number) || '' }}
+        # BN through `env:`, not direct interpolation: format() does no shell
+        # quoting, so a
+        # dispatch value like `123; curl ... | sh` used to execute on the runner.
+        env:
+          BN: ${{ inputs.build_number }}
+        run: |
+          set -euo pipefail
+          case "$BN" in ''|*[!0-9]*) [ -z "$BN" ] || { echo "::error::build_number must be a number"; exit 1; };; esac
+          # `if`, not `[ ... ] && ...`: under errexit a false test is a failed
+          # command and would kill the step whenever build_number is blank,
+          # which is the default. This trap has cost this repo several runs.
+          set --
+          if [ -n "$BN" ]; then set -- --build-number="$BN"; fi
+          flutter build macos --release --dart-define=AIRCLONE_MAS=true "$@"
 
       - name: Archive (unsigned)
         # Unsigned on purpose - see the block below. The App Store identities are

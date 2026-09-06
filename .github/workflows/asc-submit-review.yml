@@ -62,13 +62,22 @@ jobs:
       # confirmation; a submit does, and it has to match what is actually there.
       - name: Refuse a submit without a matching version
         if: ${{ inputs.mode == 'submit' }}
+        env:
+          CONFIRM: ${{ inputs.confirm_version }}
         run: |
           set -euo pipefail
-          if [ -z "${{ inputs.confirm_version }}" ]; then
+          if [ -z "$CONFIRM" ]; then
             echo "::error::mode=submit needs confirm_version (the exact version string)"
             exit 1
           fi
-          echo "will submit ${{ inputs.platform }} version ${{ inputs.confirm_version }}"
+          # Shape check, not just emptiness. asc_build.py and asc_listing.py both
+          # parse argv by membership rather than with a parser, so a value that
+          # IS a flag (`--apply`, `--submit-for-review`) would be read as one.
+          case "$CONFIRM" in
+            [0-9]*.[0-9]*) ;;
+            *) echo "::error::confirm_version must look like 1.2.3, got '$CONFIRM'"; exit 1;;
+          esac
+          echo "will submit ${{ inputs.platform }} version $CONFIRM"
 
       - uses: actions/setup-python@v6
         with: { python-version: '3.12' }
@@ -98,12 +107,16 @@ jobs:
           umask 077
           printf '%s' "$P8" > key.p8
           # CONFIRM comes through `env:` and is quoted: it is the only free-form
-          # input here and it reaches a shell twice. See asc-listing.yml.
-          if [ "${{ inputs.mode }}" = "submit" ]; then
-            set -- --apply --version "$CONFIRM"
-          else
-            set --
-          fi
+          # input here, and it reaches a shell in three steps. See asc-listing.yml.
+          #
+          # The PIN is applied whenever the operator supplied one, not only on a
+          # submit. Without that, a dry run previewed whichever version Apple
+          # happened to list first while the audit below judged a different one -
+          # the exact divergence --version exists to close, left open on the run
+          # whose whole purpose is to preview. --apply is what makes it write.
+          set --
+          if [ -n "$CONFIRM" ]; then set -- --version "$CONFIRM"; fi
+          if [ "${{ inputs.mode }}" = "submit" ]; then set -- "$@" --apply; fi
           python tool/asc_listing.py key.p8 "$KEY_ID" "$ISSUER" 6790176897             --platform ${{ inputs.platform }} "$@"
 
       - name: Submit

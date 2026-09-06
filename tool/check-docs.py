@@ -127,6 +127,19 @@ def main() -> int:
         and d not in ROOT_FILES
     ]
 
+    # Control bytes. A single NUL inside a .md makes git and grep treat the
+    # whole file as BINARY: `git diff` stops showing changes, `grep -rn` stops
+    # matching it, and reviewing that file silently becomes impossible. It has
+    # happened twice here - once in a Dart string used as a cache-key
+    # separator, then in the changelog sentence describing that fix, written
+    # the same way. Both times the author meant an escape and typed the byte.
+    control = []
+    for d in docs:
+        data = open(os.path.join(repo, d), "rb").read()
+        bad = sorted({b for b in data if b < 9 or b in (11, 12) or 13 < b < 32})
+        if bad:
+            control.append((d, ", ".join("0x%02X" % b for b in bad)))
+
     if not quiet:
         print("=== BROKEN LINKS ===")
         print("  none" if not broken else "")
@@ -138,6 +151,12 @@ def main() -> int:
         for o in orphans:
             print(f"  {o}")
 
+        print("")
+        print("=== CONTROL BYTES (make a file binary to git and grep) ===")
+        print("  none" if not control else "")
+        for rel, bad in control:
+            print(f"  {rel}  contains {bad}  - write the escape, not the byte")
+
         print(f"\n=== DOC SHAPE ({SHAPE_SCOPE}, see 17-docs-blueprint.md section 3) ===")
         print("  all conform" if not shape else "")
         for rel, missing in shape:
@@ -145,10 +164,12 @@ def main() -> int:
 
     print(
         f"\ndocs {len(docs)} | broken {len(broken)} | orphans {len(orphans)} "
-        f"| shape violations {len(shape)}"
+        f"| control-byte files {len(control)} | shape violations {len(shape)}"
     )
 
-    if broken:
+    # Hard gate, like a broken link: both make a file wrong for everyone
+    # downstream, and neither is visible to whoever introduced it.
+    if broken or control:
         return 1
     if strict and (orphans or shape):
         return 1

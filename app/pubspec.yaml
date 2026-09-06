@@ -115,7 +115,7 @@ dependencies:
   # native lib (librclone.dll/.dylib/.so) is built from the pinned rclone via
   # dev/desktop/build-librclone.ps1 and bundled beside the app. See
   # rclone/librclone_ffi.dart + rclone/ffi_rclone_client.dart and
-  # dev/plans/dual-engine-plan.md.
+  # dev/archive-plans/dual-engine-plan.md.
   ffi: ^2.1.0
 
 dev_dependencies:

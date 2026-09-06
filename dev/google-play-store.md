@@ -128,12 +128,15 @@ Save. Listing edits do **not** require a new AAB and can ship independently of a
   review automatically"*, set `changesNotSentForReview: true` for ONE run, then remove it (it errors
   the opposite way once a reviewed release exists). The release.yml step keeps this commented with the
   same note.
-- **Every tag goes to open testing, pre-release or not.** Both Play steps gate only on
-  `refs/tags/*` plus the secret; `tracks: beta` is hardcoded and there is **no `-beta.N`/`-rc`
-  exclusion anywhere on the Play path** (pre-release detection exists only for the GitHub Release
-  flag). Open testing is **public** — anyone with the opt-in link gets it. If a pre-release must stay
-  private, add an explicit `!contains(github.ref, '-')` gate to those steps or route it to `internal`
-  first. Production is never automatic either way.
+- **Every tag goes to open testing, pre-release or not.** All **three** Play steps — prepare notes,
+  upload, and the `play_tracks.py --expect` verification — gate only on `refs/tags/*` plus the
+  secret; `tracks: beta` is hardcoded and there is **no `-beta.N`/`-rc` exclusion anywhere on the
+  Play path** (pre-release detection exists only for the GitHub Release flag). Open testing is
+  **public** — anyone with the opt-in link gets it. If a pre-release must stay private, gate all
+  three on the same `*alpha*|*beta*|*rc*` test `release.yml` already uses for the Release
+  pre-release flag — not a `-` match, which misses a tag like `v1.0.0.rc1` — or route it to
+  `internal` first. Gating only the upload leaves the verify step failing on a build it cannot find.
+  Production is never automatic either way.
 - **Listing vs. release** — screenshots/description update independently of the AAB; you don't need a
   new build to fix copy.
 

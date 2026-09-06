@@ -91,10 +91,11 @@ release note.
 
 **The logs drift; the release notes cannot.** The per-tag note is the only one of the three with a
 mechanism behind it: `release.yml` reads `dev/releases/<tag>.md` and warns loudly when it is missing,
-whereas nothing at all enforces [`agent-changelog.md`](../../dev/logs/agent-changelog.md) or
-[`version-history.md`](../../dev/logs/version-history.md). Treat those two as context, not as a
-complete history — and if you find one behind, add your own entry at the top rather than
-reconstructing months you did not do. Do not "fix" the gap by writing a dated snapshot of how far
+whereas nothing at all enforces [`agent-changelog.md`](../../dev/logs/agent-changelog.md). Treat it
+as context, not as a complete history — and if you find it behind, add your own entry at the top
+rather than reconstructing months you did not do.
+[`version-history.md`](../../dev/logs/version-history.md) is **closed** at `v0.1.0-beta.1`; do not
+append to it. The record since then is `dev/releases/<tag>.md` plus the git tags. Do not "fix" the gap by writing a dated snapshot of how far
 behind they were into this page; §3 is precisely the rule that forbids it.
 
 ---

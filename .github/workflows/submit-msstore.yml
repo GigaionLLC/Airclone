@@ -8,8 +8,10 @@ name: Submit to Microsoft Store
 # 10.2.5 rejection. Tagging builds and publishes the MSIX as a release asset;
 # deciding it is worth a review cycle is a human call.
 #
-# It does NOT rebuild. It downloads the exact `airclone.msix` that was signed and
-# attached to the chosen release, so what gets certified is what was tested.
+# It does NOT rebuild. It downloads the exact `airclone.msix` attached to the
+# chosen release, so what gets certified is what was tested. The package itself
+# is unsigned by design - Partner Center signs it; the executables inside it
+# (airclone.exe, rclone.exe) are Azure-signed at build time.
 
 on:
   workflow_dispatch:
@@ -56,9 +58,10 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ inputs.tag }}
         run: |
           set -euo pipefail
-          gh release download "${{ inputs.tag }}" --repo "$GITHUB_REPOSITORY" \
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" \
             --pattern 'airclone.msix' --dir .
           ls -l airclone.msix
           # A zero-byte or missing package would otherwise reach Partner Center and
