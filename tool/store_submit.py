@@ -153,7 +153,12 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--app-id", required=True, help="Store ID, e.g. 9PJ6LRTS2B8X")
     ap.add_argument("--package", required=True, help="path to the .msix")
-    ap.add_argument("--commit", action="store_true", help="actually submit (default: dry run)")
+    ap.add_argument(
+        "--commit",
+        action="store_true",
+        help="REFUSED for this product - committing through the API sets an advanced-pricing "
+        "app's price to 0. Use --stage and submit from Partner Center (AGENT.md rule 10)",
+    )
     ap.add_argument(
         "--stage",
         action="store_true",
@@ -266,7 +271,8 @@ def main() -> int:
             "sets its price to 0.\n"
             "Use mode 'stage' instead, then press 'Submit for certification' in Partner "
             "Center, which preserves the price.\n"
-            "See dev/msstore-ci-setup.md - 'the commit trap'."
+            "See dev/msstore-ci-setup.md §0 - 'NEVER commit a submission through the API', "
+            "and AGENT.md rule 10."
         )
 
     if not (args.commit or args.stage):

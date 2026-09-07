@@ -171,4 +171,6 @@ it", "that's it", or closes out a conversation — you **MUST**:
 **Part 2 — Docs sync:** Update any `wiki/` file whose described behavior changed.
 
 **Part 3 — Archive completed plans:** Move the finished plan from `dev/plans/[plan].md` to
-`dev/archive-plans/[plan].md`.
+`dev/archive-plans/[plan].md` — read [`dev/archive-plans/README.md`](dev/archive-plans/README.md)
+first. Source files and CI messages cite plans by path *and* by section number, so a bare `git mv`
+dangles a pointer: sweep the inbound references in the same commit as the move.

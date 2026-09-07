@@ -205,6 +205,9 @@ download reputation (days–weeks); an **EV** profile is trusted instantly.
 
 ## 2. Microsoft Store — company account + per-release submission
 
+The live per-release runbook is **§2-MSIX → "Per-release submission runbook — MSIX (current)"**
+below. What follows here is the path decision and, collapsed, the superseded EXE product.
+
 > **PATH DECISION (2026-08-08): we ship as an MSIX.** This REVERSES the 2026-07-23 EXE/MSI decision
 > quoted below. Reason: only a *packaged* product has Store commerce, so the Store collects the
 > listing fee and **no payment code ever enters this open-source app**. The EXE/MSI product type
@@ -423,9 +426,10 @@ makes `stage` the only supported route: [`dev/msstore-ci-setup.md`](msstore-ci-s
 > the app, created a submission, and only then stopped with *"App updates are supported only for
 > Free products."* Note the ordering: it CREATES a submission before discovering it cannot finish
 > one, so a failed attempt can leave a pending draft blocking the next. And
-> `dotnet tool install --global MSStore.CLI` no longer works either — the package was removed from
-> nuget.org (absent from the flat container too, so not merely unlisted); the CLI ships as release
-> binaries via Microsoft's own `microsoft/microsoft-store-apppublisher` action.
+> `dotnet tool install --global MSStore.CLI` no longer works either — it fails with
+> *"msstore.cli is not found in NuGet feeds"*, because the package was removed from nuget.org
+> (absent from the flat container too, so not merely unlisted); the CLI ships as release binaries
+> via Microsoft's own `microsoft/microsoft-store-apppublisher` action.
 
 ### As-built — Microsoft Store (started 2026-07-12; account verified, live product)
 | Thing | Value |
@@ -482,6 +486,11 @@ the listing, the tester notes and the capability justification true for the buil
    engine arrives from a `continue-on-error` artifact download and its absence is only a
    `::warning::` in the release log, so a build genuinely can ship binary-engine-only — and step D2
    names those files to the reviewer.
+
+There is no B or C here. They belonged to the EXE product — self-hosting the installer at a direct
+URL, and its Package details — and are kept in the collapsed 2026-07-23 block above; a packaged
+submission uploads the MSIX to Partner Center instead, so the live runbook goes A → D. The letters
+are deliberately not renumbered: D2, D3 and E are cited by letter from other docs.
 
 **D. Store listing** — paste from **`docs/store/windows/listing-en-US.md`** (Description,
 What's new, Short description, Product features, Keywords, Copyright, **Applicable license
@@ -673,9 +682,10 @@ Process notes for the next round:
 - `airclone.iss` (Inno Setup) → `airclone-setup-x64.exe` installer, on every release.
 - `msix_config` + `dart run msix:create --store` → `airclone.msix`, on every release
   (non-fatal). **Unsigned by design** — Partner Center signs the package — and it carries the REAL
-  Partner Center identity, injected by `release.yml` from the `MSIX_*` repo variables (§2c). Only a
-  LOCAL build keeps the `PLACEHOLDER.*` identity from pubspec, and such a package is deliberately
-  not submittable.
+  Partner Center identity, injected by `release.yml` from the `MSIX_*` repo variables (§2c). A local
+  build — or a CI build with any `MSIX_*` variable unset, which only emits a `::warning::` (§2c) —
+  keeps the `PLACEHOLDER.*` identity from pubspec, and such a package is deliberately not
+  submittable: `submit-msstore.yml` refuses it before a review cycle is spent.
 - **Every Windows artifact bundles a SHA256-verified `rclone.exe`** (zip, Inno
   installer, AND the Store MSIX): the release windows job downloads + verifies it into
   the Release dir **before signing + packaging**, so the Trusted Signing pass also

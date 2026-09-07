@@ -65,13 +65,13 @@ uploading graphics by hand:
 | Full description | Full description | 4000 chars |
 | — | App icon (Graphics) | 512×512 · `store-ready/icon-512.png` · workflow `type=icon` |
 | — | Feature graphic (Graphics) | 1024×500 · `store-ready/feature-1024x500.png` · `type=featureGraphic` |
+| — | Phone / 7-inch / 10-inch screenshots | `store-ready/phone` · `tablet-7in` · `tablet-10in` — workflow `type=phoneScreenshots`, `sevenInchScreenshots`, `tenInchScreenshots` |
 
 > **`--dir` is a whole directory, not a file.** `tool/play_images.py` uploads *every* `.png`/`.jpg`
 > in the directory into the one named slot; there is no per-file option. `icon-512.png` and
 > `feature-1024x500.png` sit in the same `store-ready/` folder, so pointing `type=icon` at it pushes
 > the feature graphic into the icon slot as well. Give those two their own directory, or upload them
 > in the Console. Nothing catches this — neither has a size rule in the script.
-| — | Phone / 7-inch / 10-inch screenshots | `store-ready/phone` · `tablet-7in` · `tablet-10in` — workflow `type=phoneScreenshots`, `sevenInchScreenshots`, `tenInchScreenshots` |
 
 Android TV has two more image types of its own — see [`dev/android-tv.md`](android-tv.md).
 

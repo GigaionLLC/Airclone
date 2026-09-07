@@ -57,7 +57,7 @@ actually changed in a shipped version — and you need the exact file rather tha
 | [`store/`](store/gen_store_shots.py) | `gen_store_shots.py` — the Play screenshot compositor, kept in-repo so the next re-shoot is not archaeology. |
 | [`android/`](android/build-rclone.ps1) | `build-rclone.ps1` — local cross-compile of the Android rclone engine. |
 | [`desktop/`](desktop/build-librclone.ps1) | `build-librclone.ps1` / `build-librclone.sh` — local builds of `librclone.dll` / `.dylib` / `.so` for the FFI engine. |
-| [`ios/`](ios/build-librclone-ios.sh) | `build-librclone-ios.sh` + `librclone_ios.go` — the iOS engine. A static **c-archive** `.xcframework` (iOS has no `c-shared`), built from a trimmed re-export rather than rclone's own `librclone`. Run by `ios-release.yml`, `ios-verify.yml` and `librclone-ios.yml`. |
+| [`ios/`](ios/build-librclone-ios.sh) | `build-librclone-ios.sh` + `librclone_ios.go` — the iOS engine. A static **c-archive** `.xcframework` (iOS has no `c-shared`), built from a trimmed re-export rather than rclone's own `librclone`. Run by `ios-release.yml`, `ios-screenshots.yml`, `ios-verify.yml` and `librclone-ios.yml`. |
 | [`brand/`](brand/make-tv-banner.py) | `make-tv-banner.py` — generates the two Android TV banners from the master icon: the 320×180 launcher tile shipped in the APK and the 1280×720 `tvBanner` uploaded to Play. Both must carry the app name; neither surface draws a label. |
 
 ---
@@ -126,6 +126,10 @@ clones the previous submission's field, so Microsoft's "what's new" is edited by
 | Play (`play-images.yml`, `promote-play.yml`) | `PLAY_SERVICE_ACCOUNT_JSON` | — |
 | Apple, every lane that talks to App Store Connect | `APPSTORE_ISSUER_ID` (a secret, not a variable — a variable is not masked, and this one appeared verbatim in a public log once), `APPSTORE_API_PRIVATE_KEY` (the `.p8` contents); plus `APPLE_REVIEW_CONTACT` on `asc-version.yml` and `asc-submit-review.yml` | `APPSTORE_API_KEY_ID` |
 | Apple build + upload, on top of that | `APPLE_TEAM_ID`; iOS: `APPLE_IOS_DIST_P12_BASE64`, `APPLE_IOS_P12_PASSWORD`, `APPLE_IOS_PROVISIONING_PROFILE_BASE64`. macOS: `APPLE_MAS_APP_P12_BASE64`, `APPLE_MAS_INSTALLER_P12_BASE64`, `APPLE_MAS_P12_PASSWORD`, `APPLE_MAS_PROVISIONING_PROFILE_BASE64` | `APPLE_IOS_PROFILE_NAME` |
+
+This table says which lane needs which name. What each Apple name *is* — which identity, which key,
+which file it was downloaded from — is the per-secret table in
+[`apple-appstore-and-macos.md`](apple-appstore-and-macos.md), and that is the copy to correct first.
 
 Two names that look live and are not: `STORE_PUBLISH_ENABLED` is retired (Store submission is the manual
 `submit-msstore.yml`, not a tag side-effect), and `STORE_SELLER_ID` is consumed by **no** workflow or
@@ -274,8 +278,9 @@ teaches the next reader to skip the section.
   `git tag`; a new release is written there, never appended here. Its `Level` column is a leftover from
   a three-part numbering idea this repo never used — every Airclone tag is plain semver.
 - [`archive-plans/`](archive-plans/README.md) lags what has shipped, because plans are moved there
-  during wrap-up rather than when the code lands. A near-empty archive is therefore not evidence that
-  nothing has shipped: read the plan's own status line, not the directory it sits in.
+  during wrap-up rather than when the code lands. A plan still sitting in [`plans/`](plans/) is
+  therefore not evidence that it has not shipped: read the plan's own status line, not the directory
+  it sits in.
 
 Per-store *status* is deliberately not kept here or in [`../docs/store/README.md`](../docs/store/README.md)
 — two hubs both claiming it is how the Apple rows there fell two platforms behind. Each store's runbook

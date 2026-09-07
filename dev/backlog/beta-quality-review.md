@@ -71,8 +71,11 @@ adversarial safety review), should be built + reviewed as its own change, not ru
 
 13. **No min-version/capability gate on a PATH-located rclone** — an old system rclone is accepted,
     then fails opaquely deep in a feature (`rclone_engine.dart:19-29`, `engine_controller.dart:186-209`).
-14. **version-history.md policy section is fictional** — describes a `1.02.003` 3-level scheme that
-    isn't the real `0.1.0-<pre>.N` semver flow, and the table is mixed-order (`version-history.md:5-13,48+`).
+14. ~~**version-history.md policy section is fictional**~~ — *the invented `1.02.003` 3-level scheme
+    was deleted 2026-09-06*: the file is now a closed log, and its preamble names the **Level**
+    column a vestige of an idea this repo never used (`version-history.md:1-12`). Still open: the
+    table is mixed-order — rows ascend to `v0.1.0-alpha.29`, then `v0.1.0-beta.1` is spliced in and
+    the remainder descends (`version-history.md:50`).
 15. **README build section omits the Rust toolchain requirement** — `super_drag_and_drop` →
     `super_native_extensions` builds a Rust crate via cargokit on desktop (partially addressed in the
     beta.1 commit; verify the dependency is still needed at all).

@@ -11,7 +11,10 @@ name: App Store Connect (listing text + screenshots)
 # Runs on ubuntu: these are plain REST calls and there is no reason to spend a
 # Mac on them. It writes metadata only - it cannot attach a build (asc-version.yml)
 # and cannot submit (asc-submit-review.yml). Export compliance needs no answer at
-# all: ITSAppUsesNonExemptEncryption=false ships in both Info.plist files.
+# all: ITSAppUsesNonExemptEncryption=false ships in both Info.plist files - valid
+# only while France stays excluded from availability, which asc_build.py --audit
+# checks as its "french store" row. dev/plans/apple-appstore-plan.md, "Export
+# compliance: SETTLED", owns that decision.
 #
 # Leave `version` blank and the TEXT pass writes to whichever version App Store
 # Connect happens to list first, which can be one already in review or already

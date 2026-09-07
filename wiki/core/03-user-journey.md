@@ -173,10 +173,9 @@ The **same APK and the same phone shell**, wrapped in affordances that arm only 
 television. `MainActivity.isTelevision()` answers on two independent signals — `UI_MODE_TYPE_TELEVISION`
 (what the platform reports at runtime, and what emulators set) or `FEATURE_LEANBACK` (what Play
 filters on, and what some manufacturer boxes report instead) — and
-[`android_native.dart`](../../app/lib/src/state/android_native.dart) resolves it **once in `main()`
-before `runApp`**, into the plain `bool androidIsTelevision`, because the shell is chosen inside a
-synchronous `build()`. It is false on every other platform and false until that call returns, so a
-failure degrades a TV to the touch shell rather than giving a phone the TV one.
+[`android_native.dart`](../../app/lib/src/state/android_native.dart) resolves it **once before
+`runApp`**, defaulting to `false` until the channel answers — so a channel that fails to answer
+degrades a TV to the touch shell rather than giving a phone the TV one.
 
 ```
 ┌──────────────────────────────────────────────────────────────┐  ← 48×27dp overscan inset
@@ -278,9 +277,13 @@ nothing phones home. Full design: [19-enterprise-readiness](19-enterprise-readin
 
 Android runs the **same `HttpRcloneClient` as desktop** — the rclone executable ships as a per-ABI
 native library and is spawned as `rcd` on loopback. Only iOS and the Mac App Store build are
-in-process. The rule lives in [10-external-integrations.md](10-external-integrations.md) §1.1–§1.2.
+in-process. That is a summary of the `Engine` row: the rule itself, the short-circuit that makes it
+non-negotiable, and the reasoning are owned by [08-core-architecture.md](08-core-architecture.md) §3.
+[10-external-integrations.md](10-external-integrations.md) §1.1–§1.2 carries the two client
+implementations and the per-platform resolution; §1.3 and §4 carry how the binary is located and
+what native code ships in the bundle.
 
-**MDM is ⏳ on every platform**, and the §5 overlay below is the design for it. What exists today is
+**MDM is ⏳ on every platform**, and the §5 overlay above is the design for it. What exists today is
 the seam it will be enforced through — the four kill-switch providers in
 [07-state-context.md](07-state-context.md), each re-checked inside the controller — not a reader for
 any OS's managed configuration. Nothing in `app/` parses ADMX, a configuration profile, Android

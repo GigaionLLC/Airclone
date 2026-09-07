@@ -240,7 +240,10 @@ Send them from **Actions -> *Play Store listing images* -> Run workflow**:
 `type=tvScreenshots`, `dir=docs/store/play/tv`, `replace=true`, `mode=report`
 first, then re-run with `mode=apply`. Same again with `type=tvBanner`,
 `dir=docs/store/play/tv-banner`. `replace` is not optional: Play APPENDS an
-uploaded image to a set, so a second run without it leaves duplicates.
+uploaded image to a set, so a second run without it leaves duplicates. Only the
+two `type` values and their directories are TV-specific; the flags and the
+report-then-apply ordering are the same for every image type, explained once in
+`dev/google-play-store.md` §C.
 
 The workflow is just a wrapper that supplies the key from the repo secret and
 shreds it afterwards. The same thing locally, for anyone who still holds a key

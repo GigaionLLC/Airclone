@@ -49,9 +49,9 @@ Padding(
 ```
 
 **What deliberately does not exist**, so do not reach for it: there is no type scale, no elevation
-scale, and no compare/diff palette. Font sizes are written inline (11 and 13 are the common pair) and
-the one size that *is* a token is the file-list body text, `SkinTokens.bodySize`, because skins
-disagree about it. If a widget needs a value that is not in the table above, add it to `tokens.dart`
+scale, and no compare/diff palette. Font sizes are written inline (11, 12 and 13 carry almost
+everything) and the one size that *is* a token is the file-list body text, `SkinTokens.bodySize`,
+because skins disagree about it. If a widget needs a value that is not in the table above, add it to `tokens.dart`
 and use it everywhere — never invent a local constant or a raw hex.
 
 ## 🖥️ Skins

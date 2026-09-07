@@ -145,9 +145,9 @@ The defaults and the reasoning behind each are owned by
 [14-performance-standards.md §6](14-performance-standards.md) and
 [`mount_options.dart`](../../app/lib/src/rclone/models/mount_options.dart); do not repeat a value
 here. The dialog also carries a **FUSE driver guard** that detects WinFsp/macFUSE/FUSE3 and offers
-one-click install instead of a cryptic error. Mount exists so a remote is reachable *inside other apps*; for uploading
-and moving files, the in-app explorer is faster (it avoids the VFS cache), and the UI gently nudges
-users there for heavy file work.
+one-click install instead of a cryptic error. Mount exists so a remote is reachable *inside other
+apps*; for uploading and moving files, the in-app explorer is faster (it avoids the VFS cache), and
+the UI gently nudges users there for heavy file work.
 
 **Onboarding (3 steps):** Welcome ("Airclone bundles rclone — nothing to install") → Add your first
 remote (provider grid → dynamic form, Quick/OAuth default) → "You're set" (drops into the dual pane,

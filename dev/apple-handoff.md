@@ -172,10 +172,16 @@ Order matters, because Apple caps distribution certificates per team:
    `--profile-only`, which reuses the certificate recorded in `cert-id.txt`.
    Re-running `--force-new` instead mints a third certificate against the cap.
 
-Nothing in this repo needs changing for a rotation. `ios-release.yml` already
+No code in this repo needs changing for a rotation. `ios-release.yml` already
 defaults to `signing: secrets`, and `tool/asc_ios_signing.py` was written for
 exactly this — it emits pre-base64'd files and prints the `gh secret set` lines,
 reading from files so no secret ever reaches a transcript.
+
+The **date** does need editing, in more than one place. This file is the copy that
+is maintained; `dev/apple-appstore-and-macos.md`, `dev/plans/apple-appstore-plan.md`
+and `docs/store/README.md` each restate it beside their own link back here. After a
+rotation, `grep -rn` the old date and sweep all four, or three of them start lying
+at once.
 
 ### Outstanding iOS distribution certificates — the ledger
 

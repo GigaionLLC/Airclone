@@ -8,8 +8,8 @@ Nobody on this project owns a Mac.
 is in it, and the path `docs/store/apple/mac/store-ready` is the built-in default in that
 script — `--dir` can override it, but nothing in the release path passes one, so moving
 or renaming the folder breaks the uploader rather than producing an error anyone would
-read as "the folder moved". This file, not the listing doc, is the
-source of truth for what ships.
+read as "the folder moved". This file, not the listing doc, is the source of truth for
+what ships.
 
 | File | Shows |
 | :--- | :--- |
@@ -68,6 +68,6 @@ assumed from the home layout.
 
 A transfer in flight showing speed and ETA; the add-remote wizard with the provider
 picker open; the split view with two folders side by side; and a media preview open.
-All four need more UI driving than the five
-above, which are enough to submit with — the reason they are listed here rather than
-in the listing doc is that a wish-list in two places disagrees within a release.
+All four need more UI driving than the five that are banked, which are already enough
+to submit with. They are listed here rather than in the listing doc because a wish-list
+kept in two places drifts apart within a release.

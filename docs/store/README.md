@@ -74,8 +74,11 @@ secret (it appears in the workflow's own input description, and the certificate 
 The *private key* is what must never be here, and it is not: it lives in the org secrets and one
 offline backup.
 
-One-time CI/credential setup and the original per-store automation research:
-[`dev/plans/store-automation-plan.md`](../../dev/plans/store-automation-plan.md).
+One-time Apple account, App Store Connect and signing setup, from nothing:
+[`dev/plans/apple-appstore-plan.md`](../../dev/plans/apple-appstore-plan.md). The original 2026-07-09
+per-store automation research is
+[`dev/plans/store-automation-plan.md`](../../dev/plans/store-automation-plan.md) — superseded, and it
+says how the lanes were designed rather than what they do now.
 
 ---
 
@@ -341,7 +344,7 @@ GUID — seller, tenant, app, subscription, Partner Center product, or `CN=<GUID
 | :--- | :--- | :--- |
 | *Submit to Microsoft Store* | [`submit-msstore.yml`](../../.github/workflows/submit-msstore.yml) | [`tool/store_submit.py`](../../tool/store_submit.py) — stage the release's MSIX, then Submit in Partner Center |
 | *Submit to App Review (Apple)* | [`asc-submit-review.yml`](../../.github/workflows/asc-submit-review.yml) | [`tool/asc_build.py`](../../tool/asc_build.py) — refresh listing, audit, submit; release stays manual |
-| *App Store Connect (listing text + screenshots)* | [`asc-listing.yml`](../../.github/workflows/asc-listing.yml) | [`tool/asc_listing.py`](../../tool/asc_listing.py) and [`tool/asc_screenshots.py`](../../tool/asc_screenshots.py) — sends the two `apple/listing-*.md` docs, `whatsNew`, and the banked shots |
+| *App Store Connect (listing text + screenshots)* | [`asc-listing.yml`](../../.github/workflows/asc-listing.yml) | [`tool/asc_listing.py`](../../tool/asc_listing.py) and [`tool/asc_screenshots.py`](../../tool/asc_screenshots.py) — one platform and one thing per run: `what=text` sends that platform's `apple/listing-*.md` plus `whatsNew`; `what=screenshots` uploads one `device` set |
 | *Play Store listing images* | [`play-images.yml`](../../.github/workflows/play-images.yml) | [`tool/play_images.py`](../../tool/play_images.py) — images only; Play text is still pasted by hand |
 | *Promote on Google Play* | [`promote-play.yml`](../../.github/workflows/promote-play.yml) | [`tool/play_promote.py`](../../tool/play_promote.py) — open testing → production |
 
@@ -353,7 +356,7 @@ GUID — seller, tenant, app, subscription, Partner Center product, or `CN=<GUID
 - [`dev/apple-appstore-and-macos.md`](../../dev/apple-appstore-and-macos.md) — the Apple runbook: macOS direct distribution and the App Store lanes.
 - [`dev/apple-handoff.md`](../../dev/apple-handoff.md) — Apple as-built state: what is live, the `whatsNew` lesson, and the certificate-cap incident.
 - [`dev/plans/apple-appstore-plan.md`](../../dev/plans/apple-appstore-plan.md) — the from-nothing Apple account, App Store Connect and signing setup, plus the export-compliance analysis.
-- [`dev/plans/store-automation-plan.md`](../../dev/plans/store-automation-plan.md) — one-time CI/credential setup and the original automation verdict per store.
+- [`dev/plans/store-automation-plan.md`](../../dev/plans/store-automation-plan.md) — the original 2026-07-09 automation verdict per store, **superseded**. The live one-time setup runbooks are [`dev/play-ci-setup.md`](../../dev/play-ci-setup.md), [`dev/msstore-ci-setup.md`](../../dev/msstore-ci-setup.md) and [`dev/plans/apple-appstore-plan.md`](../../dev/plans/apple-appstore-plan.md).
 - [`dev/README.md`](../../dev/README.md) — the operational hub: releases, platforms, backlog, process.
 - [`dev/backlog/hardening-audit-2026-07-15.md`](../../dev/backlog/hardening-audit-2026-07-15.md) — H-17, the origin of the truth audit above.
 - [`.github/workflows/release.yml`](../../.github/workflows/release.yml) — what a `vX.Y.Z` tag actually builds, signs and uploads.

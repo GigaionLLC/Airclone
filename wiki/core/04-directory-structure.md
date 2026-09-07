@@ -96,8 +96,8 @@ First-time project scaffold (already done): `./tool/scaffold.ps1`.
 
 ### Cutting a release
 ```bash
-git tag v0.7.5
-git push origin v0.7.5   # → release.yml builds + publishes downloadable binaries
+git tag vX.Y.Z
+git push origin vX.Y.Z   # → release.yml builds + publishes downloadable binaries
 ```
 Write `dev/releases/<tag>.md` **before** pushing the tag — CI publishes that file verbatim as the
 release body and only warns when it is missing.

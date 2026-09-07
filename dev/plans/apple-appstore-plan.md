@@ -358,10 +358,12 @@ reach a build at all — the `Info.plist` key answers it before upload.
 
 ### Export compliance, the original analysis (2026-08-28)
 
-**Kept because it is still needed.** Apple's dialog no longer appears — the
-`Info.plist` key answers it — but this is the only question-by-question record of
-what the honest answers are, and it is what a human would work from if the key
-were ever removed or **if France were ever added to availability**.
+**Kept for the per-question record, not for its verdict** — what the app
+implements, that nothing in it is proprietary, and what France costs. Apple's
+dialog no longer appears (the `Info.plist` key answers it), but this is what a
+human would work from if that key were ever removed or **if France were ever
+added to availability**. Its exempt/non-exempt conclusion is superseded by
+"Export compliance: SETTLED" above.
 
 Apple's dialog, and what Airclone's actual answers are:
 
@@ -376,9 +378,11 @@ export-compliance documentation — France wants an **ANSSI declaration** and Ap
 wants a copy — approved before the build can ship. Saying no removes the
 requirement entirely.
 
-The exemptions do **not** apply: "HTTPS only" and "only Apple's OS crypto" are
-both false here. This is mass-market 5D992, which separately carries an annual
-self-classification report to BIS in the US regardless of the France answer.
+Apple's two dialog exemptions do **not** describe this app: neither "HTTPS only"
+nor "only Apple's OS crypto" is true here. That is a different question from
+whether the *use* is export-exempt, which Apple settled above. This is mass-market
+5D992, which separately carries an annual self-classification report to BIS in the
+US regardless of the France answer.
 
 Two legitimate routes, and the choice is commercial rather than technical:
 
@@ -647,12 +651,13 @@ risks a trademark/impersonation rejection.
 
 Apple validates dimensions strictly and rejects off-by-one sizes. The "accepted" column is Apple's
 list; the "we upload" column is what `tool/asc_screenshots.py` actually sends, and the display type
-is the thing the API keys on.
+is the thing the API keys on — `APP_IPHONE_67` is the key that accepts the **6.9"** sizes, so the
+API name and the marketing size disagree, and the key is the half that matters.
 
 | Platform | Sizes Apple accepts | What we upload | Count | How to capture |
 | :--- | :--- | :--- | :--- | :--- |
 | **Mac** | **1280×800**, 1440×900, 2560×1600, or 2880×1800 | `APP_DESKTOP`, **1280×800** | up to 10 (**ship 5–6**) | macOS runner in CI, or a MacBook when one arrives |
-| **iPhone** | the 6.5" set (1242×2688 …) and the 6.9" set | `APP_IPHONE_67`, **1320×2868** — the operative one | up to 10 (**ship 5–6**) | iOS Simulator — `xcrun simctl io booted screenshot` gives exact device pixels for free |
+| **iPhone** | 6.9": **1320×2868** / 2868×1320 among others · 6.5": 1242×2688 / 2688×1242 / 1284×2778 / 2778×1284. Not exhaustive — check Apple's current specification before rejecting a capture | `APP_IPHONE_67`, **1320×2868** — the operative one | up to 10 (**ship 5–6**) | iOS Simulator — `xcrun simctl io booted screenshot` gives exact device pixels for free |
 | **iPad** | 13" / 12.9" sizes, only because `TARGETED_DEVICE_FAMILY = "1,2"` | `APP_IPAD_PRO_3GEN_129`, **2064×2752** | up to 10 (**ship 3–4**) | Simulator, same method — or drop iPad support and skip entirely |
 
 **Proposed shot list** (reusing the `D:\AircloneDemo` alias-remote demo data and the CC0 media

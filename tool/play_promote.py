@@ -25,6 +25,12 @@ import sys
 import google.auth
 from google.auth.transport.requests import AuthorizedSession
 
+for _s in (sys.stdout, sys.stderr):
+    try:
+        _s.reconfigure(encoding="utf-8", errors="replace")
+    except (AttributeError, ValueError):
+        pass
+
 API = "https://androidpublisher.googleapis.com/androidpublisher/v3/applications"
 SCOPE = "https://www.googleapis.com/auth/androidpublisher"
 
@@ -182,7 +188,7 @@ def main() -> int:
     if fatal or noop:
         print("--force given; proceeding despite the checks above.")
 
-    print(f"→ {args.to_track}: version {version_codes[0]} at {where}")
+    print(f"-> {args.to_track}: version {version_codes[0]} at {where}")
 
     if not args.commit:
         print("\nDRY RUN — nothing changed. Re-run with --commit to apply.")

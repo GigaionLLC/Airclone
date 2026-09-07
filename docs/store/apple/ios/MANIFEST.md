@@ -11,8 +11,10 @@ Four per device, captured by driving the real app with `integration_test`.
 iPhone and iPad are **separate screenshot sets** in App Store Connect, not one set
 holding both sizes, so they live in separate folders here:
 `tool/asc_screenshots.py --device iphone` uploads `docs/store/apple/ios/iphone` and
-`--device ipad` uploads `docs/store/apple/ios/ipad`. Both paths are **hard-coded** in
-that script — moving or renaming either folder breaks the uploader.
+`--device ipad` uploads `docs/store/apple/ios/ipad`. Both paths are that script's
+built-in defaults — `--dir` can override either, but nothing in the release path
+passes one, so moving or renaming a folder breaks the uploader rather than producing
+an error anyone would read as "the folder moved".
 
 | # | Shows |
 | :-- | :--- |

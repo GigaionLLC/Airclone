@@ -97,7 +97,9 @@ Then repoint importers: `offline_qr.dart:11`, `offline_qr_dialog.dart:10`,
   *(As built, and after the v0.5.0 removal below: on a phone "Import QR Config" opens the camera
   scanner; on desktop there is no QR import at all, and the dialog is the file wizard.)*
 - `pubspec.yaml` — remove `basic_utils` (`pointycastle` auto-drops from the lock). KEEP
-  `mobile_scanner`, `qr_flutter`, `qr`. Fix their now-stale comments. *(`zxing2` and `image` were
+  `mobile_scanner`, `qr_flutter` and `qr` (`qr` was a direct **test-only** dev_dependency here, so
+  the raster round-trip test could import it; it was dropped in v0.5.0 with the desktop QR-image
+  decoder and now arrives only transitively under `qr_flutter`). Fix their now-stale comments. *(`zxing2` and `image` were
   kept here and then dropped in v0.5.0 with the desktop QR-image decoder.)*
 
 ### Tests

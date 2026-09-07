@@ -1,20 +1,39 @@
 # 🗄️ Plan Archive
 
 Completed and closed implementation plans are moved here from [`dev/plans/`](../plans/) during the
-[Wrap-Up Protocol](../../AGENT.md) so the active plans directory only ever shows live work.
+[Wrap-Up Protocol](../../AGENT.md), so the active plans directory reads as live work — apart from
+the two plans named below, which stay there on purpose. That is why [`dev/README.md`](../README.md)
+still describes `dev/plans/` as holding plans "live and shipped alike": check a plan's own status
+line rather than trusting the directory it sits in.
 
 The seven plans below moved here on 2026-09-06, in one commit with their inbound references. Before
 that the directory had said "none yet" since it was created, while `dev/plans/` presented shipped
-work as unstarted design — an agent asking "what is in flight?" got eight wrong answers.
+work as unstarted design. An agent asking "what is in flight?" got a wrong answer in every direction
+at once: four still read `planned` or `proposed (design)`, `mount-tuning-plan.md` read `IMPLEMENTED`,
+`dual-engine-plan.md` read `in progress (Phase 0 spike)`, and `config-transfer-simplify-plan.md`
+carried no status line at all — while every one of the seven had shipped.
 
-**A move is never just a `git mv`.** Source files and CI cite these plans by path, and three cite
-them by *section number* — `offline_qr.dart` points at `config-portability-plan.md §5`, while
-`config_io.dart` and `config_transfer_controller.dart` point at its `§3/§4` — so renumbering a
-section breaks a pointer as surely as moving the file does. Sweep every inbound reference in the same commit
-(`grep -rn "<plan-file>" app/ dev/ docs/ wiki/ .github/`), and leave
-[`apple-appstore-plan.md`](../plans/apple-appstore-plan.md) where it is regardless: eight workflows,
-three Dart files, the iOS/macOS `Info.plist` pair and several docs name it, and some of those are CI
+**A move is never just a `git mv`.** Source files and CI cite these plans by path, and six cite them
+by *section* — `offline_qr.dart` at `config-portability-plan.md §5`, `config_io.dart` and
+`config_transfer_controller.dart` at its `§3/§4`, `config_backups.dart` and its test at its `§2`,
+and `librclone_object_server.dart` at `dual-engine-plan.md §"objectRef under FFI"`, a section named
+rather than numbered — so renumbering or retitling a section breaks a pointer as surely as moving
+the file does. Sweep every inbound reference in the same commit:
+
+```
+grep -rn "<plan-file>" app/ dev/ docs/ wiki/ .github/ tool/ *.md
+```
+
+`tool/check-docs.py` only reads `.md` files, so a citation in code or config is yours to catch by
+hand — `app/pubspec.yaml` carries one, on the `ffi` dependency.
+
+**Two plans stay in [`dev/plans/`](../plans/) whatever their status line says.**
+[`apple-appstore-plan.md`](../plans/apple-appstore-plan.md) is `SHIPPED`, but eight workflows, three
+Dart files, the iOS/macOS `Info.plist` pair and several docs name it, and some of those are CI
 failure messages that print the path and a Gate letter at a maintainer.
+[`store-automation-plan.md`](../plans/store-automation-plan.md) is `superseded`, but it holds the
+from-nothing Google Cloud and Play Console walkthrough — account re-setup knowledge that has to stay
+alongside the other store docs.
 
 Fill one row per plan as it lands here.
 

@@ -64,7 +64,7 @@ sizes).
 | # | Step | Command |
 | :-- | :--- | :--- |
 | 0 | Create the version record | `asc-version.yml -f platform=MAC_OS -f mode=create -f version=0.7.6` |
-| 1 | Listing copy **and the release notes** | `asc-listing.yml -f platform=MAC_OS -f what=text -f mode=apply` |
+| 1 | Listing copy **and the release notes** | `asc-listing.yml -f platform=MAC_OS -f version=0.7.6 -f what=text -f mode=apply` |
 | 2 | Screenshots | `asc-listing.yml -f platform=MAC_OS -f what=screenshots -f device=mac -f replace=true -f mode=apply` |
 | 3 | Build + upload | `mas-release.yml -f mode=upload` (iOS: `ios-release.yml -f mode=upload`) |
 | 4 | Did the upload register? | `asc-version.yml -f platform=MAC_OS -f mode=builds` until a `VALID` build of the RIGHT platform appears |
@@ -82,11 +82,13 @@ Platform"; the API always allowed it, the tool simply never asked.
 
 **Step 1 runs every release, even when the copy has not changed.** The listing
 carries `whatsNew`, Apple requires it on every update, and it is per-*version* —
-it starts empty each time. Pass `-f version=X.Y.Z`: without it the tool takes the
-**first** version the API returns for the platform, which may be one already in
-review or already live (iOS currently lists two). It refuses a version that is
-not editable rather than writing to the wrong one. A submit is safe either way,
-because step 7 re-pushes the listing pinned to the version you confirmed.
+it starts empty each time. The `-f version=` pin in that row is what makes the
+command safe: without it the tool takes the **first** version the API returns for
+the platform, which may be one already in review or already live (iOS currently
+lists two). It refuses a version that is not editable rather than writing to the
+wrong one. A submit is safe either way, because step 7 re-pushes the listing
+pinned to the version you confirmed. Step 2 takes no such pin — screenshots go to
+the same first-listed version, because `asc_screenshots.py` has no `--version`.
 
 **Step 4 uses `mode=builds`, not `mode=report`**, because it routes straight to
 `pick_build()` and needs no version record. That matters precisely in the window
@@ -148,12 +150,18 @@ is exempt.
 **Standing constraint: France must remain deselected in *Pricing and
 Availability*.** The shipped key is a legal declaration, and it is truthful only
 while France is excluded — adding the French store makes it a false statement
-with nothing about the build to signal it. `asc-version.yml -f mode=audit` has a
-"french store" row that reads territory availability on every run and fails the
-audit if France is ever enabled. Adding France legitimately means an uploaded
-**ANSSI declaration**, approved by Apple before the build can ship, *and*
-flipping the key. Availability is independent of the binary, so adding France
-later costs no rebuild — it costs a declaration.
+with nothing about the build to signal it. `asc-version.yml -f mode=audit` reads
+territory availability on every run and prints a "french store" row, marked
+**GAP** when France is available, and `asc-submit-review.yml` refuses to submit
+on any gap. Two things it does not do: `mode=audit` exits 0 whatever it found, so
+the workflow run is green either way, and a territory list it cannot read is
+printed as *could not read - check by hand* and scored OK. **Read the row, not
+the tick.**
+
+Adding France legitimately means an uploaded **ANSSI declaration**, approved by
+Apple before the build can ship, *and* flipping the key. Availability is
+independent of the binary, so adding France later costs no rebuild — it costs a
+declaration.
 
 [`plans/apple-appstore-plan.md`](plans/apple-appstore-plan.md) owns this decision
 and holds the question-by-question analysis under "Export compliance, the
@@ -482,4 +490,5 @@ each, so measure with `wc -c`.
 - Windows Store per-release runbook: `dev/windows-signing-and-store.md` §2.
 - Google Play per-release runbook: `dev/google-play-store.md`.
 - Index + pricing policy + pre-submission truth audit: `docs/store/README.md`.
-- Automation verdicts + one-time setup: `dev/plans/store-automation-plan.md`.
+- Where the store lanes were first scoped (2026-07-09 research, **superseded** — history,
+  not what the lanes do now): `dev/plans/store-automation-plan.md`.

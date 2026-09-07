@@ -18,7 +18,7 @@ name: Release
 #
 #   * it PUBLISHES to Google Play open testing. The android job uploads the AAB
 #     with `tracks: beta, status: completed` whenever PLAY_SERVICE_ACCOUNT_JSON is
-#     set (without it, both Play steps skip silently), then hard-fails the run via
+#     set (without it, every Play step skips silently), then hard-fails the run via
 #     tool/play_tracks.py --expect if Play is not actually serving that version
 #     code. There is no pre-release gate: an `-rc` tag reaches open testing too.
 #     Production is the separate, manual promote-play.yml.

@@ -125,13 +125,12 @@ FRANCE = (ARGV[ARGV.index("--france") + 1] if "--france" in ARGV else None)
 # The US export-control declaration, carried on the BUILD rather than the
 # version - and NOT how this app answers it. The shipped answer is the
 # declarative ITSAppUsesNonExemptEncryption=false in both Info.plist files, so
-# Apple never asks per build. Apple itself drew that line: it refuses to create
-# an App Encryption Declaration unless the app uses proprietary cryptography, or
-# third-party cryptography AND is sold in France. Airclone is neither, which is
-# Apple saying the use is exempt. It holds only while France stays excluded - the
-# audit's "french store" row watches exactly that. If the plist key is ever
-# removed, or France is added, the answer becomes YES (mass-market 5D992) and
-# needs an App Encryption Declaration to attach to first.
+# Apple never asks per build. That answer is valid only while France stays
+# excluded, and the audit's "french store" row watches exactly that; the
+# reasoning behind it is "Export compliance: SETTLED" in
+# dev/plans/apple-appstore-plan.md, which owns the decision. If the plist key is
+# ever removed, or France is added, the answer becomes YES (mass-market 5D992)
+# and needs an App Encryption Declaration to attach to first.
 # Kept an explicit flag, never implied by --apply: it is a legal statement
 # and it should be visible in the command that makes it.
 EXPORT_COMPLIANCE = (ARGV[ARGV.index("--export-compliance") + 1]
@@ -425,7 +424,10 @@ def audit(ver):
     # Apple refuses to create an App Encryption Declaration unless the app uses
     # proprietary cryptography, or third-party cryptography AND is sold in France.
     # Adding France therefore turns the shipped key into a FALSE declaration, and
-    # nothing about the build would change to say so. Check it here, where
+    # nothing about the build would change to say so. This is the in-file owner of
+    # that reasoning - the comment on EXPORT_COMPLIANCE points here rather than
+    # repeating it, because a second copy is one that goes stale next to the check
+    # that enforces it. Check it here, where
     # somebody is already asking whether this version can ship.
     fr_available = None
     av = call("GET", "/v1/apps/%s/appAvailabilityV2" % APP)
@@ -460,7 +462,6 @@ def audit(ver):
         print("No gaps. Export compliance is answered in Info.plist. What")
         print("remains is human: Add for")
         print("Review, and 'Manually release this version'.")
-    return bad
     return bad
 
 

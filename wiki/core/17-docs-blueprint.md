@@ -124,10 +124,12 @@ Get the depth right — this is the single most common breakage:
 **Citing code:** link the file and name the symbol in the sentence —
 [`browser_controller.dart`](../../app/lib/src/state/browser_controller.dart). Line numbers drift, so
 treat a `file.dart:1225` suffix as a hint inside a dated `dev/` note, never as the identifier a
-`wiki/` doc depends on. Files move too: at the time of writing
-[`command-console-plan.md`](../../dev/archive-plans/command-console-plan.md) still links
-`app/lib/src/rclone/engine_flags.dart`, which now lives at
-[`app/lib/src/state/engine_flags.dart`](../../app/lib/src/state/engine_flags.dart).
+`wiki/` doc depends on. Paths drift too, and a wrong one is invisible — the page renders exactly the
+same. [`command-console-plan.md`](../../dev/archive-plans/command-console-plan.md) linked
+`app/lib/src/rclone/engine_flags.dart` for a month while the file sat at
+[`app/lib/src/state/engine_flags.dart`](../../app/lib/src/state/engine_flags.dart) — and it had never
+been anywhere else, so this one was wrong from the day it was written rather than drifting into
+wrongness. Either way a reader could not tell; the link checker in §8 found it.
 
 ---
 
@@ -228,7 +230,8 @@ not in the build — which is exactly what the job caught first.
 
 What it caught on its first run, all invisible from the hub: nine `wiki/core/` documents promised by
 [00-system-index.md](00-system-index.md) that did not exist, two stale code paths in
-[`command-console-plan.md`](../../dev/archive-plans/command-console-plan.md) (one file moved, one renamed),
+[`command-console-plan.md`](../../dev/archive-plans/command-console-plan.md) (one path that was
+never right — see §4 — and one renamed file),
 and thirteen orphans — among them every store and release runbook, so an agent could not reach
 [`windows-signing-and-store.md`](../../dev/windows-signing-and-store.md) by following links at all.
 

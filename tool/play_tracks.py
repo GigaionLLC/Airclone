@@ -21,6 +21,14 @@ from __future__ import annotations
 
 import argparse
 import sys
+# Windows runners default stdout to cp1252, and a character outside it kills the
+# script mid-run - store_submit.py died that way once and left a half-created
+# Store submission behind. Every other script in tool/ carries this.
+for _s in (sys.stdout, sys.stderr):
+    try:
+        _s.reconfigure(encoding="utf-8", errors="replace")
+    except (AttributeError, ValueError):
+        pass
 
 import google.auth
 from google.auth.transport.requests import AuthorizedSession
