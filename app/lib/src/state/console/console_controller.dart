@@ -9,7 +9,6 @@ import '../../rclone/models/job.dart';
 import '../../rclone/rclone_client.dart';
 import '../engine_controller.dart';
 import '../jobs_controller.dart';
-import '../settings_controller.dart';
 import 'console_command.dart';
 import 'console_rc_translate.dart';
 import 'console_redaction.dart';
@@ -182,16 +181,10 @@ class ConsoleController extends FamilyNotifier<ConsoleState, String> {
     // binary to re-exec), so it translates the SAME parsed argv into a curated,
     // fail-closed RC-method call — Path B, the substrate TransferService proves.
     if (client is HttpRcloneClient) {
-      // The spawned rcd runs with a `--config` override, but core/command re-execs
-      // a FRESH rclone that does NOT inherit that flag — so pass it explicitly, or
-      // console commands would read the DEFAULT config. RCLONE_CONFIG_PASS is
-      // already inherited via env.
-      final configPath = ref
-          .read(settingsControllerProvider)
-          .configPathOverride;
-      final args = (configPath != null && configPath.isNotEmpty)
-          ? [...cmd.args, '--config', configPath]
-          : cmd.args;
+      // core/command re-execs a FRESH rclone that does NOT inherit the parent's
+      // `--config`, so the engine's own config path is pinned onto the argv —
+      // see [withConfigArg]. RCLONE_CONFIG_PASS is already inherited via env.
+      final args = withConfigArg(cmd, await client.engineConfigPath());
       final safe = redactedPreview(cmd);
       final jobs = ref.read(jobsControllerProvider.notifier);
       final job = jobs.add(

@@ -61,3 +61,26 @@ String flagName(String flag) {
   final eq = flag.indexOf('=');
   return eq < 0 ? flag : flag.substring(0, eq);
 }
+
+/// [cmd]'s arguments with the engine's own config file pinned onto them.
+///
+/// The console dispatches through `core/command`, which re-execs a FRESH rclone
+/// process. That child inherits the parent engine's environment but NOT its
+/// `--config` flag, so without this it resolves a config file on its own — and
+/// rclone reports a config it cannot open as an EMPTY one rather than an error.
+/// The symptom is every remote answering `didn't find section in config file`
+/// while the sidebar, served by the parent, still lists them: a divergence with
+/// no error anywhere to explain it.
+///
+/// Pinning used to happen only when the user had set a config-path override,
+/// which left the DEFAULT-config case — the common one — free to diverge.
+///
+/// A `--config` the USER typed always wins: it is an explicit instruction, and
+/// rclone lets the last occurrence of a repeated flag win, so appending ours
+/// after theirs would silently override it. [configPath] null/empty leaves the
+/// argv untouched and the child resolves its own, as before.
+List<String> withConfigArg(ConsoleCommand cmd, String? configPath) {
+  if (configPath == null || configPath.isEmpty) return cmd.args;
+  if (cmd.flags.map(flagName).contains('--config')) return cmd.args;
+  return [...cmd.args, '--config', configPath];
+}

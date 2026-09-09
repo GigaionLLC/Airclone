@@ -7,6 +7,7 @@ import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:http/http.dart' as http;
 
 import '../state/diagnostics.dart';
+import '../state/undecryptable_names.dart';
 import 'rclone_client.dart';
 import 'windows_child_job.dart';
 
@@ -55,6 +56,27 @@ bool isEngineFailureLine(String line) {
   return true;
 }
 
+/// Whether a drained line is rclone's crypt "I could not decrypt this name"
+/// notice, e.g.
+///
+///     NOTICE: 5etumoc8orqj4ia13cu8c9tu58: Skipping undecryptable file name: …
+///
+/// It is the ONLY signal that a listing was silently shortened — see
+/// [noteUndecryptableName] for why a UI has to care.
+///
+/// Matched on rclone's fixed phrase rather than on severity, deliberately: the
+/// line is a NOTICE, so both the debug early-return and the release
+/// ERROR/CRITICAL filter in [HttpRcloneClient._onEngineLine] would drop it. It
+/// is counted BEFORE either of them, never after.
+bool isUndecryptableNameLine(String line) => _undecryptableName.hasMatch(line);
+
+/// `file` for objects, `dir` for directories — rclone words the two separately
+/// and a folder of undecryptable directories is the case that renders as a
+/// completely empty pane.
+final RegExp _undecryptableName = RegExp(
+  r'Skipping undecryptable (file|dir) name',
+);
+
 /// RC methods that are safe to send a SECOND time.
 ///
 /// A dropped keep-alive socket fails before any response byte arrives, so the
@@ -76,6 +98,7 @@ const Set<String> _readOnlyRcMethods = {
   'config/listremotes',
   'config/get',
   'config/dump',
+  'config/paths',
   'config/providers',
   'operations/list',
   'operations/about',
@@ -334,12 +357,36 @@ class HttpRcloneClient implements RcloneClient {
   int _loggedLines = 0;
   String? _lastLoggedLine;
 
+  /// Whether the undecryptable-name condition has already been recorded once
+  /// (see [_onEngineLine]).
+  bool _loggedUndecryptable = false;
+
   /// Debug builds print every line. Release builds keep only rclone's own
   /// ERROR/CRITICAL lines, de-duplicated and capped, because at high user
   /// verbosity (-vv / --dump) rclone echoes request headers carrying the rc
   /// credentials — those must never be retained. The ring redacts at ingest as
   /// a second line of defence.
   void _onEngineLine(String line) {
+    // Counted FIRST, on every build: this line is a NOTICE, so both the debug
+    // early-return below and the release ERROR/CRITICAL filter would drop it
+    // before a pane ever learned that its listing had been shortened.
+    if (isUndecryptableNameLine(line)) {
+      noteUndecryptableName();
+      // Recorded once per session, not once per name: a single broken folder
+      // emits one notice PER ENTRY, which would otherwise spend the ring's whole
+      // budget on repetitions of a fact stated fully by the first one — and push
+      // out the errors a report exists to carry. The count belongs to the pane;
+      // the ring only needs to say the condition happened.
+      if (!_loggedUndecryptable) {
+        _loggedUndecryptable = true;
+        logDiagnostic(
+          DiagLevel.warning,
+          'engine',
+          'crypt: a name could not be decrypted, so entries are being hidden '
+              'from listings (password/salt mismatch?)',
+        );
+      }
+    }
     if (kDebugMode) {
       // ignore: avoid_print
       print('[rclone] $line');
@@ -351,6 +398,40 @@ class HttpRcloneClient implements RcloneClient {
     _lastLoggedLine = line;
     _loggedLines++;
     logDiagnostic(DiagLevel.error, 'engine', line);
+  }
+
+  String? _resolvedConfigPath;
+
+  /// Where THIS engine's config file actually lives — the path a `core/command`
+  /// child has to be TOLD, because it will not inherit it.
+  ///
+  /// `core/command` re-execs a fresh rclone. That child gets the parent's
+  /// environment but not its `--config` flag, so left to its own resolution it
+  /// can read a different file than the engine the user is looking at. The
+  /// failure is silent in the worst way: rclone treats a config it cannot open
+  /// as an EMPTY one — no error, no warning — so every remote in it comes back
+  /// as `didn't find section in config file ("…")` while the sidebar, served by
+  /// the parent, still lists them all.
+  ///
+  /// Returns the spawn override when there is one, otherwise asks the running
+  /// engine (`config/paths`) and caches the answer for the process's life (the
+  /// engine is restarted, not re-pathed, when the config changes). Null when it
+  /// cannot be determined at all — callers then leave the child to resolve its
+  /// own, which is exactly what they did before this existed.
+  Future<String?> engineConfigPath() async {
+    final explicit = configPath;
+    if (explicit != null && explicit.isNotEmpty) return explicit;
+    final cached = _resolvedConfigPath;
+    if (cached != null) return cached;
+    try {
+      final res = await rpc('config/paths');
+      final path = res['config'];
+      if (path is String && path.isNotEmpty) return _resolvedConfigPath = path;
+    } catch (_) {
+      // Unresolvable: degrade to rclone's own resolution rather than failing a
+      // command the user asked for.
+    }
+    return null;
   }
 
   Future<void> _awaitReady() async {

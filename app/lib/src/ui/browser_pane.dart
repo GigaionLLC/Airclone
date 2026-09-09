@@ -327,10 +327,16 @@ class BrowserPane extends ConsumerWidget {
     } else if (state.visibleEntries.isEmpty) {
       content = _pullableMessage(
         physics,
-        Text(
-          state.filter.isEmpty ? 'Empty folder' : 'No matches',
-          style: TextStyle(color: c.textFaint, fontSize: 13),
-        ),
+        // "Empty folder" is a claim, and over a crypt remote holding the wrong
+        // key it is a false one: rclone returned an empty list because it could
+        // not decrypt a single name, not because there is nothing there. Say
+        // which of the two happened.
+        state.hiddenUndecryptable > 0 && state.filter.isEmpty
+            ? _hiddenNamesMessage(c, state.hiddenUndecryptable)
+            : Text(
+                state.filter.isEmpty ? 'Empty folder' : 'No matches',
+                style: TextStyle(color: c.textFaint, fontSize: 13),
+              ),
       );
     } else {
       final visible = state.visibleEntries;
@@ -450,11 +456,72 @@ class BrowserPane extends ConsumerWidget {
               ascending: state.ascending,
               onSort: ctrl.setSort,
             ),
+          // Partial hiding is the quieter half of the same failure: the folder
+          // lists, nothing looks wrong, and some entries are simply absent.
+          if (state.hiddenUndecryptable > 0 && state.visibleEntries.isNotEmpty)
+            _hiddenNamesBanner(c, state.hiddenUndecryptable),
           Expanded(child: body),
         ],
       ),
     );
   }
+
+  /// `1 item` / `N items` — used in both hidden-name surfaces below.
+  static String _items(int n) => n == 1 ? '1 item' : '$n items';
+
+  /// The empty-pane message for a listing rclone returned NOTHING from because
+  /// it could not decrypt the names. Replaces "Empty folder", which is the wrong
+  /// answer here and the expensive one: it sends the user looking for missing
+  /// data instead of a mismatched key.
+  Widget _hiddenNamesMessage(AircloneColors c, int n) => Padding(
+    padding: const EdgeInsets.all(Space.x6),
+    child: Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(Icons.lock_outline, size: 28, color: c.warning),
+        const SizedBox(height: Space.x3),
+        Text(
+          '${_items(n)} hidden',
+          style: TextStyle(
+            color: c.text,
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        const SizedBox(height: Space.x2),
+        Text(
+          'rclone could not decrypt their names, so it returned none of them. '
+          "This folder is not empty — the crypt remote's password or salt "
+          'probably does not match the data it wraps.',
+          textAlign: TextAlign.center,
+          style: TextStyle(color: c.textMuted, fontSize: 12, height: 1.4),
+        ),
+      ],
+    ),
+  );
+
+  /// The same fact as a strip above a listing that DID return entries — some of
+  /// them were still withheld.
+  Widget _hiddenNamesBanner(AircloneColors c, int n) => Container(
+    padding: const EdgeInsets.symmetric(
+      horizontal: Space.x3,
+      vertical: Space.x2,
+    ),
+    color: c.warningBg,
+    child: Row(
+      children: [
+        Icon(Icons.lock_outline, size: 16, color: c.warning),
+        const SizedBox(width: Space.x2),
+        Expanded(
+          child: Text(
+            '${_items(n)} hidden here: rclone could not decrypt the names. '
+            "The crypt remote's password or salt may not match this data.",
+            style: TextStyle(color: c.textMuted, fontSize: 11),
+          ),
+        ),
+      ],
+    ),
+  );
 
   /// A centered [child] that is ALSO scrollable on touch (via [physics]), so
   /// pull-to-refresh works over an empty folder or an error message — desktop

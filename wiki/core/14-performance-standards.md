@@ -297,6 +297,31 @@ and copy "object not found"**. That is the downstream bug this section exists to
 - **Enforced in:** [browser_pane.dart](../../app/lib/src/ui/browser_pane.dart) — the same flag also
   decides the wrap: `isTouchPrimary && !initialLoad ? RefreshIndicator(...) : content`.
 
+### 3.4 An empty list is not proof of an empty folder
+
+**RULE — Before rendering "Empty folder", account for the entries rclone withheld: sample
+[`undecryptableNameCount`](../../app/lib/src/state/undecryptable_names.dart) either side of the
+`operations/list` and attribute the delta with `hiddenForBackend`.**
+
+- **Why:** a `crypt` remote whose password or salt does not match its data constructs, reports quota,
+  and answers `operations/list` with HTTP 200 — but every name fails to decrypt, so rclone skips the
+  entries, logs one `NOTICE: <encrypted>: Skipping undecryptable file name: …` per entry, and returns
+  the listing without them. Six directories arrive as `{"list":[]}`. "Empty folder" is then a
+  confident lie, and the expensive kind: a real user read it as data loss, and the cause took a full
+  session to find because the notice never left the engine log.
+- **Enforced in:** `_load` in
+  [browser_controller.dart](../../app/lib/src/state/browser_controller.dart) sets
+  `BrowserState.hiddenUndecryptable`; [browser_pane.dart](../../app/lib/src/ui/browser_pane.dart)
+  renders the count instead of "Empty folder", and as a strip above a listing that came back only
+  partly short.
+- **Check:** the notice is a **NOTICE**, and release builds retain only ERROR/CRITICAL — count it in
+  `_onEngineLine` *before* either filter, and record it in the diagnostics ring **once per session**,
+  not once per name, or one broken folder spends the whole ring on repetitions.
+- **Attribution:** the notice carries the encrypted name and no remote, so a pane may only claim skips
+  seen inside its own request window **and** only when its own backend is `crypt` — anything else is
+  another listing's skip. A crypt reached through an alias or union is therefore missed. Erring
+  toward a miss is deliberate: telling a user data is hidden when it is not is the worse failure.
+
 ---
 
 ## 4. Async media failures must be surfaced

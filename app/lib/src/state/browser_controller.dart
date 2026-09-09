@@ -7,6 +7,7 @@ import '../ui/column_header.dart' show SortKey, compareRcloneFiles;
 import '../ui/file_icon.dart' show isGalleryMedia;
 import 'console/console_controller.dart';
 import 'engine_controller.dart';
+import 'undecryptable_names.dart';
 import 'view_memory.dart';
 
 /// How a pane renders its directory: classic detail list, icon/thumbnail grid,
@@ -54,6 +55,7 @@ class BrowserState {
     this.gridSize = kDefaultGridSize,
     this.tabs = const [],
     this.activeTab = 0,
+    this.hiddenUndecryptable = 0,
   });
 
   final Remote? remote;
@@ -82,6 +84,16 @@ class BrowserState {
 
   /// Index of the active tab within [tabs].
   final int activeTab;
+
+  /// How many entries rclone withheld from the last listing because it could not
+  /// decrypt their names — see [undecryptableNameCount]. Zero for every listing
+  /// that was complete, which is nearly all of them.
+  ///
+  /// A crypt remote holding the wrong password or salt returns HTTP 200 and a
+  /// SHORT list, so without this the pane cannot tell "this folder is empty"
+  /// from "rclone hid everything in it", and renders the same confident "Empty
+  /// folder" over both.
+  final int hiddenUndecryptable;
 
   List<String> get segments => path.isEmpty
       ? const []
@@ -122,6 +134,7 @@ class BrowserState {
     double? gridSize,
     List<TabInfo>? tabs,
     int? activeTab,
+    int? hiddenUndecryptable,
   }) => BrowserState(
     remote: remote ?? this.remote,
     path: path ?? this.path,
@@ -136,6 +149,7 @@ class BrowserState {
     gridSize: gridSize ?? this.gridSize,
     tabs: tabs ?? this.tabs,
     activeTab: activeTab ?? this.activeTab,
+    hiddenUndecryptable: hiddenUndecryptable ?? this.hiddenUndecryptable,
   );
 }
 
@@ -432,6 +446,11 @@ class BrowserController extends Notifier<BrowserState> {
     // await and bailing (committing nothing) if navigation has moved on.
     final path = state.path;
     bool superseded() => state.remote != remote || state.path != path;
+    // Sample the undecryptable-name counter across the request. rclone answers
+    // 200 with the surviving entries and says nothing about the ones it dropped,
+    // so the count of notices the engine emitted WHILE this listing ran is the
+    // only way to know the list came back short.
+    final skipsBefore = undecryptableNameCount;
     try {
       final res = await client.rpc('operations/list', remote.listParams(path));
       if (superseded()) return;
@@ -444,10 +463,27 @@ class BrowserController extends Notifier<BrowserState> {
               (a, b) =>
                   compareRcloneFiles(a, b, state.sortKey, state.ascending),
             );
-      _set(state.copyWith(entries: list, loading: false));
+      _set(
+        state.copyWith(
+          entries: list,
+          loading: false,
+          hiddenUndecryptable: hiddenForBackend(
+            remote.type,
+            skipsBefore,
+            undecryptableNameCount,
+          ),
+        ),
+      );
     } catch (e) {
       if (superseded()) return;
-      _set(state.copyWith(entries: const [], loading: false, error: '$e'));
+      _set(
+        state.copyWith(
+          entries: const [],
+          loading: false,
+          error: '$e',
+          hiddenUndecryptable: 0,
+        ),
+      );
     }
   }
 }
