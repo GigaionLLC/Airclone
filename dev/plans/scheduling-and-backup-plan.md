@@ -1,0 +1,341 @@
+# 📦 Parcel Plan: Scheduling and backup — make the built thing visible, then make it real
+
+## 📊 State Dashboard
+| Metric | Value |
+| :--- | :--- |
+| **Status** | `PROPOSED` — targets **v0.8**. Explicitly NOT v0.7.7 (bug fixes in flight). |
+| **Version** | `v1.0.0` |
+| **Active Persona** | `Architect` |
+| **Last Updated** | 2026-09-09 |
+
+---
+
+## 1️⃣ Phase 1: Expansion & Scoping
+
+**Intent.** A user read the README's scheduling claim and said *"I don't see this
+feature."* They are right, and for a reason the backlog does not predict.
+Scheduling is **built and working**, including OS-level background execution on
+Windows — but every door to it sits behind **advanced mode, off by default**, and
+on a phone there is no door at all. They also asked about **backup tasks** and
+**photo/camera-roll auto-backup**: the first is a naming and safety problem on top
+of machinery that already exists, the second is genuinely unbuilt.
+
+**In scope:** making the shipped scheduler discoverable and its per-platform
+honesty visible; a task-creation flow that does not require two panes; OS-level
+background execution on macOS, Linux and Android; "backup" as a first-class,
+safety-constrained task shape; photo auto-backup on Android; closing the
+uninstall-residue defect, which worsens with every platform added.
+
+**Out of scope:** cron, 5-field (no demand; interval/daily/weekly covers the
+asked-for cases); iOS background scheduling and iOS photo backup (see Phase 5 —
+iOS does not permit what this needs); `DocumentsProvider` / File Provider; a
+real-time filesystem watcher; deleting source media after upload, ever.
+
+## 2️⃣ Phase 2: Requirements & Context
+
+### 2.1 What exists today — capability × platform
+
+`[adv]` means it exists but sits behind advanced mode, which is **off by default**
+(`state/advanced_mode.dart:13` — `build()` returns `false`).
+
+| Capability | Win | mac | Linux | Android | iOS | Proof |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| Saved tasks (persisted) | yes | yes | yes | tablet | tablet | `state/tasks_controller.dart` — SharedPreferences, platform-free |
+| A door to reach them | `[adv]` | `[adv]` | `[adv]` | `[adv]` ≥700dp | `[adv]` ≥700dp | `ui/home_screen.dart:939` toolbar + `:569` palette, both `if (advanced)` |
+| …on a phone-sized window | no | no | no | no | no | `home_screen.dart:640-642`; no tasks entry anywhere in `ui/mobile_home.dart` |
+| Creating a task | needs 2 panes | same | same | same | same | `ui/tasks_panel.dart:176-196` reads BOTH panes and errors if either is empty |
+| Schedule editor | `[adv]` | `[adv]` | `[adv]` | `[adv]` | `[adv]` | `ui/tasks_panel.dart:733`; model `state/task_schedule.dart:16` |
+| In-app 30s tick | yes | yes | yes | yes | yes | `state/scheduler_controller.dart:76`, armed at `home_screen.dart:97` in `initState` — **before** the shell branch, so it ticks on a phone against a list nobody can populate |
+| Missed-slot catch-up | yes | yes | yes | yes | yes | `state/task_schedule.dart:118-133` |
+| Per-run history (10, capped) | yes | yes | yes | yes | yes | `TaskRunRecord`, rendered `ui/tasks_panel.dart:346` |
+| `--run-task` / `--run-due` | yes | built, unused | built, unused | n/a | n/a | `headless/headless_runner.dart:41-56`, branched at `main.dart:22-24` before `runApp` |
+| **OS-level run-while-closed** | `[adv]` | no | no | no | no | `ui/tasks_panel.dart:802` — `_canOsSchedule => Platform.isWindows` |
+| Camera roll browsable | n/a | n/a | n/a | yes | no | `state/local_locations.dart:198` adds Camera (DCIM); `:147-160` gives iOS only its own Documents dir |
+| **File backup as a feature** | no | no | no | no | no | No `TaskKind`, no "Backup" string — a backup is a `TransferTask` the user must shape by hand |
+| **Photo auto-backup** | n/a | n/a | n/a | no | no | No MediaStore, no PHPhotoLibrary, no `READ_MEDIA_*`, no `NSPhotoLibraryUsageDescription` |
+
+**Two things the docs do not record.** The shell is chosen by **width, not
+platform** (`home_screen.dart:640`), so an Android tablet or iPad at ≥700dp gets
+the *desktop* shell and does see tasks, in-app-only. And the mobile scheduler
+timer runs: `home_screen.dart:97` sits in `initState`, before `build()` picks a
+shell, so on a phone it ticks every 30s over a list with no way to add to it.
+
+### 2.2 Do not confuse CONFIG backup with FILE backup
+
+`state/external_config_backup.dart` is an opt-in **encrypted copy of
+`rclone.conf`** kept outside the Android sandbox so a reinstall does not cost the
+user every remote. It is shipped, it works, and it is **not** what was asked
+about. Settings must read **"Back up your files"** against the existing
+**"Back up your remotes"**.
+
+## 3️⃣ Phase 3: User Clarification
+
+* **Open Questions:**
+  - `[ ]` Does "Saved tasks" leave advanced mode, or does a new **Backup** flow
+    become the front door with tasks staying advanced? Leaning to the second:
+    "back up a folder" is a concept a normal user has; "saved transfer task with a
+    `TransferOptions` payload" is not. → **Answer:**
+  - `[ ]` **One `--run-due` registration per user, or one OS task per saved task?**
+    Unified is simpler, makes uninstall cleanup a single known name, and is the
+    only shape that fits launchd-under-sandbox. Cost: a power user can no longer
+    see or disable an individual schedule from Windows Task Scheduler.
+    → **Answer:**
+  - `[ ]` If unified, what poll cadence? 15 min bounds lateness at 96 wakeups a
+    day; 5 min is punctual and expensive. → **Answer:**
+  - `[ ]` **Should a scheduled sync be allowed at all without a `--max-delete`
+    cap?** Recommendation: no. This changes behaviour for existing saved tasks.
+    → **Answer:**
+  - `[ ]` Does the MAS build offer scheduling? `SMAppService.agent` needs a static
+    plist in the bundle and an App Review justification; cheapest answer is to
+    gate it off as Mount already is. → **Answer:**
+  - `[ ]` Linux: is `loginctl enable-linger` acceptable? Without it a `--user`
+    timer fires only while the user is logged in. → **Answer:**
+  - `[ ]` Photo destination convention? Proposal
+    `remote:Airclone/Photos/<device-name>/`. → **Answer:**
+  - `[ ]` Should a failed unattended run raise an OS notification? Today its only
+    trace is a `TaskRunRecord` inside a dialog behind advanced mode. → **Answer:**
+
+## 4️⃣ Phase 4: Detailed Execution Plan
+
+### 4.0 Why the user cannot see it
+
+Three gates, in the order they bite:
+
+1. **Advanced mode, default off** (`state/advanced_mode.dart:13`). Both doors are
+   `if (advanced)`: `ui/home_screen.dart:939` and `:569`. The only place the
+   product mentions scheduling exists is one line of grey text in a settings card.
+2. **Shell width.** Below 700dp there is no toolbar and no command palette at all,
+   so a phone has zero entry points regardless of advanced mode.
+3. **The two-pane requirement.** Even past the first two, "New task" fails unless
+   a dual-pane layout is already arranged (`ui/tasks_panel.dart:189-196`).
+
+`_canOsSchedule` is **not** why the user cannot see scheduling. It gates exactly
+one checkbox — *"Also run while Airclone is closed"* — inside a dialog they must
+already have found. A macOS or Linux user past the three gates sees a complete,
+working editor with an honest footnote about in-app-only running.
+
+**Verdict on the README** (`README.md:31-32`): right but undiscoverable on Windows
+— where it is in fact *understated*, since it omits that a Windows schedule fires
+with the app closed; right but incomplete on macOS/Linux; and **wrong on
+phone-sized Android and iOS**, where no job can be saved at all. The README makes
+no platform distinction, and the phone is exactly where a user expects "on a
+schedule" to mean "in the background".
+
+### 4.a Making it visible and honest — `[S]`
+
+Settings → **Automation**, always visible, listing every saved task with its
+schedule, next run, last outcome and one sentence of per-platform truth; the data
+is already in `tasksProvider`. **Break the two-pane requirement** with an explicit
+From/To picker — the prerequisite for everything mobile. Give the mobile shell a
+door under the Transfers tab. One `state/scheduling_policy.dart` following the
+`mountEnabledProvider` idiom, with `_canOsSchedule` **deleted**, not left beside
+it. Correct the README; write `wiki/features/feat-scheduling.md`, which
+`wiki/features/features-index.md:22` has promised at an empty path.
+
+### 4.b OS-level background execution
+
+The unifying move: **stop registering one OS task per saved task; register one
+`--run-due` job per user.** `--run-due` already exists and is called by nothing
+(`headless_runner.dart:44`). One registration means one name to clean up, and it
+is the only shape that fits macOS sandboxing and systemd user units.
+
+- **Windows `[S]`** — replace `Airclone\<id>` with a single `Airclone\Run due
+  tasks` on a repeating trigger, keeping the settings `buildTaskXml` already gets
+  right. Migration must unregister the existing per-task entries or they orphan.
+- **macOS `[M]`** — a LaunchAgent with `StartInterval` and `RunAtLoad`, loaded
+  with `launchctl bootstrap gui/$UID`. **Must verify before shipping:** whether a
+  `--run-due` launch of the bundle executable shows a Dock icon or steals focus.
+  `main.dart:22-24` returns before `runApp`, but activation policy comes from the
+  bundle's `Info.plist` and there is no macOS equivalent of
+  `windows/runner/main.cpp:24-29`. **Unknowable without building and running it.**
+- **Linux `[M]`** — a `oneshot` service plus a timer with **`Persistent=true`**.
+  Two traps to surface in the UI rather than discover in a bug report: without
+  `loginctl enable-linger` the timer fires only while the user has a session; and
+  the unit bakes an absolute path while Linux ships as a tarball the user can
+  move, silently breaking every schedule.
+- **Android `[L]`** — move the `airclone/native` channel out of
+  `MainActivity.configureFlutterEngine` to Application scope **first**: a
+  WorkManager isolate has no Activity, so `nativeLibraryDir` and the foreground
+  service are unreachable from it, and nothing else here is testable until that
+  lands. Then a `PeriodicWorkRequest` (15-minute floor) to a headless entrypoint
+  running the same `dueTasks` selection, `setForeground()` reusing the existing
+  `TransferService.kt`, and constraints exposed as settings (unmetered, charging).
+  **Do not add a `BOOT_COMPLETED` receiver** — WorkManager reschedules itself
+  across reboot. The backlog and the phase3 plan both say to add one; both are
+  wrong and should be corrected in the same change.
+- **iOS** — do not build. See Phase 5.
+
+### 4.c Backup as a first-class object — `[M]`
+
+A discriminator, not a parallel object: `TaskKind {transfer, backup, photos}`
+defaulting to `transfer` so existing persisted JSON round-trips untouched. A
+**Back up a folder** flow that is not the advanced transfer dialog, hard-setting
+`mode: copy` (never `sync`, never `move`), `keepReplaced: true` (the already
+shipped recoverable-delete mechanism), and a per-device destination subfolder so
+two devices backing up to one remote cannot collide. The panel renders a backup
+with backup vocabulary and hides the transfer-mode chips, so it cannot be turned
+into a destructive sync from inside it.
+
+### 4.d Photo/camera-roll auto-backup — Android `[M]`, iOS not in v0.8
+
+**Android is close to free, and that is the finding worth acting on.** The app
+already holds `MANAGE_EXTERNAL_STORAGE`, and `state/local_locations.dart:198`
+already surfaces `Camera (DCIM)` as a real path rclone's `local` backend reads. So
+photo backup is a `backup` task over `/storage/emulated/0/DCIM` into
+`remote:Airclone/Photos/<device>/` on the 4.b WorkManager path. **No new
+permission is required.**
+
+| OS | Mechanism | Permission | Notes |
+| :--- | :--- | :--- | :--- |
+| Android today | `local` over DCIM | **none new** | Simplest path by a wide margin |
+| Android without All Files Access | MediaStore / Photo Picker | `READ_MEDIA_IMAGES`, `READ_MEDIA_VIDEO`, `…_VISUAL_USER_SELECTED` | rclone's `local` backend cannot read a `content://` URI — a much larger project |
+| iOS | `PHPhotoLibrary` | `NSPhotoLibraryUsageDescription`, plus `.limited` handling | Assets are not files; they must be exported through `PHAssetResourceManager` first, doubling storage during a backup |
+
+Constraints on every platform: **`copy` only, never `move` or `sync`** — a
+camera-roll backup that deletes is a data-loss incident, not a feature; an upload
+ledger keyed on stable asset identity so a re-run does not re-hash the roll; and
+**Wi-Fi-only by default**, because a 40 GB roll on cellular is a bill.
+
+## 5️⃣ Phase 5: Product Owner Review — risks and traps
+
+* **Status:** `PENDING`
+* **Findings:**
+  - [🚫] **A scheduled destructive sync carries no confirm and no cap. This is the
+    most serious finding here.** `ui/transfer_options_dialog.dart:14-19` documents
+    that the destructive-sync confirm deliberately does not fire when `isRunNow`
+    is false, and `ui/tasks_panel.dart:199` creates tasks with that default.
+    Meanwhile `maxDeleteFiles` defaults to `null` (`state/transfer_options.dart:105`),
+    rendered as `hintText: 'no cap'`, and `MaxDelete` is only sent when non-null.
+    Neither `scheduler_controller.dart` nor the headless path adds a gate — both
+    call `transferAdvancedRaw` directly. **The one transfer shape this codebase
+    guards hardest is the one that can be scheduled unattended, uncapped and
+    unconfirmed.** Required: a destructive-intent acknowledgement at *definition*
+    time, worded for a repeating unattended run rather than one happening now; a
+    mandatory delete cap on any repeating `sync`, defaulted rather than blank; a
+    visible failure trace that does not require finding a dialog behind advanced
+    mode; and an empty-source refusal, since an empty source is how a sync wipes a
+    destination.
+  - [🚫] **Uninstall residue, verified, and about to get worse.**
+    `app/windows/installer/airclone.iss` has no `[UninstallRun]` and no `schtasks`
+    call, so Windows tasks survive uninstall pointing at a deleted exe. Deleting a
+    task in-app *does* unregister, so only uninstall is unclean. **The other
+    platforms are worse: they have no uninstaller at all** — macOS ships as a DMG
+    dragged to the Trash, Linux as a tarball the user deletes. A LaunchAgent or a
+    systemd timer would survive both, forever, pointing at nothing. Adding macOS
+    and Linux without solving this multiplies a known defect by three. Required,
+    and what makes the unified `--run-due` design worth it: one registration under
+    one known name; an `[UninstallRun]` on Windows; **reconcile-on-launch** that
+    removes any registration whose target path is no longer us or whose task list
+    is empty; and an explicit **"Remove all background scheduling"** in Settings.
+  - [⚠️] **iOS cannot host this feature, and the plan should say so plainly rather
+    than defer vaguely.** iOS permits `BGAppRefreshTask` (seconds, opportunistically
+    scheduled from learned usage), `BGProcessingTask` (minutes, system-scheduled,
+    in practice when idle and charging, with no time-of-day guarantee), and
+    background `URLSession` for transfers *the system* performs. That last is the
+    killer: the in-process librclone engine does its own HTTP inside the app
+    process, so it cannot hand work to a background `URLSession` without replacing
+    rclone's transport. **iOS can offer "back up when you open the app" and an
+    opportunistic task that may run tonight or Thursday. It cannot offer "every
+    day at 9pm".** A daily/weekly picker on iOS would be a lie the OS enforces.
+  - [⚠️] **Android battery optimisation and foreground-service limits.** Doze and
+    App Standby defer periodic work; a rarely-opened app lands in `RARE` or
+    `RESTRICTED` and its 15-minute period becomes hours. Android 12+ forbids
+    starting a foreground service from the background except through sanctioned
+    routes — WorkManager's `setForeground()` is one, which is why 4.b routes
+    through it. Android 15 caps `dataSync` runtime at roughly 6h/day, after which
+    `onTimeout()` fires, so a first full roll backup must be **resumable**, not
+    restart-from-zero. **Do not request `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`** —
+    Play policy restricts it, and risking the listing to shave scheduling latency
+    is a bad trade. Detect the restricted state and explain it instead.
+  - [⚠️] **The SharedPreferences race gets worse.** `headless_runner.dart:31-37`
+    already documents a last-writer-wins race between a headless run and a live
+    GUI, accepted because "background runs are expected with the app closed". A
+    `--run-due` poll every 15 minutes **regardless** breaks that assumption — the
+    two will now routinely overlap. Cheapest fix: the OS job no-ops when a GUI
+    instance is live.
+  - [⚠️] **The encrypted-config gate lives in the wrong layer** — implemented in
+    the Windows dialog path (`ui/tasks_panel.dart:843-864`). Every new platform
+    would re-implement it, and one that forgets ships a schedule that exits 2 on
+    every fire with no history entry, invisibly. Move it into the shared policy
+    layer before the second platform lands, not after.
+
+## 6️⃣ Phase 6: Senior Dev Hygiene Review
+
+* **Status:** `PENDING`
+* **Findings:**
+  - [⚠️] **DRY** — `_canOsSchedule` must be **deleted**, not supplemented. One
+    provider read by every surface. Three scattered platform checks is how the
+    current invisibility happened.
+  - [⚠️] **Abstraction** — `WindowsTaskScheduler` is well-shaped (pure
+    `buildTaskXml` plus an injectable `ProcessRunner`). Extract an `OsScheduler`
+    interface so launchd and systemd get the same split and the same unit tests
+    `app/test/windows_task_scheduler_test.dart` already gives Windows.
+  - [⚠️] **Technical debt** — existing per-task Windows registrations must be
+    migrated and removed, not abandoned. An abandoned one re-fires forever.
+  - [✅] **Error handling** — the inline-surface-never-throw discipline in
+    `register()` / `_save()` is right; copy it verbatim.
+  - [⚠️] **Testability** — `dueTasks`, `isDue`, `nextRun` and `buildTaskXml` are
+    pure and already covered. Every new definition builder — plist, unit file —
+    lands the same way: a pure function pinned by a golden-string test, **before**
+    any process is spawned.
+
+## 7️⃣ Phase 7: Implementation Checklist
+
+Phases A–C are the release; D–F are the stretch and may slip without making A–C
+incoherent.
+
+- `[ ]` **A — Visibility and honesty `[S]`.** From/To picker; Settings →
+  Automation, not advanced-gated; mobile entry point; `scheduling_policy.dart`
+  replacing `_canOsSchedule`; README corrected; `feat-scheduling.md` written.
+- `[ ]` **B — Safety for unattended runs `[S]`.** Definition-time destructive
+  acknowledgement; mandatory delete cap on a repeating sync; empty-source refusal;
+  a failure trace outside advanced mode.
+- `[ ]` **C — Unify on `--run-due` and clean up after ourselves `[M]`.** One
+  registration; migrate and remove per-task Windows registrations;
+  `[UninstallRun]`; reconcile-on-launch; "Remove all background scheduling";
+  GUI-live no-op to close the prefs race.
+- `[ ]` **D — macOS launchd + Linux systemd-user `[M]`.** Pure builders with
+  golden tests first; verify the macOS headless launch shows no Dock icon
+  **before** shipping; surface the linger requirement.
+- `[ ]` **E — Backup as a first-class task `[M]`.** `TaskKind`; the constrained
+  flow; backup vocabulary in the panel.
+- `[ ]` **F — Android background + photo backup `[L]`.** Application-scoped
+  channel first; WorkManager + `setForeground`; DCIM backup task; correct the
+  `BOOT_COMPLETED` guidance in the backlog.
+
+**Explicitly not doing in v0.8:** cron; iOS background execution; iOS photo
+backup; `DocumentsProvider` / File Provider; a filesystem watcher; deleting source
+media after upload.
+
+## 8️⃣ Phase 8: Verification Dashboard
+
+* **Verification Status:** `PENDING`
+* **Report:**
+  - `[ ]` A schedule registered through the unified path **actually fires with the
+    app closed**, proven by the run landing in `TaskRunRecord` — not by the
+    registration call returning 0. A clean exit code proved nothing in the
+    mount-tuning plan either.
+  - `[ ]` Uninstall (Windows) and delete-the-app (macOS, Linux) leave **no**
+    registration behind. Check the real locations, not the app's own state.
+  - `[ ]` Golden-string tests pin the plist and unit-file output before any
+    `launchctl` or `systemctl` is spawned.
+  - `[ ]` A repeating `sync` cannot be saved without a delete cap.
+  - `[ ]` macOS: a `--run-due` launch shows no Dock icon and steals no focus.
+  - `[ ]` Android: a periodic run survives reboot with no `BOOT_COMPLETED`
+    receiver, confirming the correction to the backlog.
+
+## 9️⃣ Phase 9: User Verification
+
+* **Status:** `PENDING`
+* **User Feedback:** The report that opened this plan — *"the README advertises
+  scheduling, I don't see this feature"* — is the acceptance test. Close it by
+  having them find scheduling **without being told where it is**.
+
+## 🔟 Phase 10: Wrap Up & Archival
+
+* **System Context Updates:** `wiki/features/feat-scheduling.md` (new, and overdue
+  — `features-index.md:22` has referenced it while it did not exist);
+  `dev/backlog/feature-backlog.md` updated for the platforms that land, the
+  uninstall defect closed if it ships, and the `BOOT_COMPLETED` guidance
+  corrected; `dev/plans/phase3-continuation-plan.md` items 3 and 4 marked against
+  reality.
