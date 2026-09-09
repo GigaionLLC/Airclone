@@ -69,9 +69,20 @@ class WrongRcloneConfigPassword implements Exception {
 /// rename target); [failed] pairs each un-created name with its error.
 @immutable
 class MergeReport {
-  const MergeReport({required this.created, required this.failed});
+  const MergeReport({
+    required this.created,
+    required this.failed,
+    this.replaced = const [],
+  });
 
   final List<String> created;
+
+  /// Remotes that landed ON TOP of one that was already there
+  /// ([ImportDecision.replaceExisting]). Reported apart from [created] because
+  /// "imported 6 remotes" and "imported 6 remotes over 6 of yours" are not the
+  /// same outcome, and only one of them is worth double-checking.
+  final List<String> replaced;
+
   final List<({String name, String error})> failed;
 
   bool get allOk => failed.isEmpty;
@@ -141,8 +152,12 @@ Future<MergeReport> mergeRemotes({
   // Trust substrate: back up BEFORE any create so a bad merge is one restore away.
   await backup();
   final created = <String>[];
+  final replaced = <String>[];
   final failed = <({String name, String error})>[];
   for (final d in plan) {
+    // replaceExisting keeps the incoming name, so the create lands ON the remote
+    // already using it — rclone's config/create overwrites a section rather than
+    // refusing it, which is precisely why this needed an explicit user choice.
     final target = d.renamedTo ?? d.name;
     final section = incoming[d.name] ?? const <String, String>{};
     try {
@@ -161,6 +176,8 @@ Future<MergeReport> mergeRemotes({
           name: target,
           error: 'needs interactive setup (not supported for import)',
         ));
+      } else if (d.replaceExisting) {
+        replaced.add(target);
       } else {
         created.add(target);
       }
@@ -170,7 +187,7 @@ Future<MergeReport> mergeRemotes({
       failed.add((name: target, error: '$e'));
     }
   }
-  return MergeReport(created: created, failed: failed);
+  return MergeReport(created: created, replaced: replaced, failed: failed);
 }
 
 /// Applies a REPLACE through the live RC seam instead of a raw file write: create

@@ -548,6 +548,7 @@ class ImportDecision {
     required this.type,
     required this.collision,
     this.renamedTo,
+    this.replaceExisting = false,
   });
 
   final String name;
@@ -555,21 +556,30 @@ class ImportDecision {
   final bool collision;
   final String? renamedTo;
 
+  /// Keep the incoming name and OVERWRITE the remote already using it, instead
+  /// of importing alongside it under [renamedTo].
+  ///
+  /// Only meaningful with [collision]; mutually exclusive with [renamedTo] — a
+  /// decision either lands beside the existing remote or on top of it.
+  final bool replaceExisting;
+
   @override
   bool operator ==(Object other) =>
       other is ImportDecision &&
       other.name == name &&
       other.type == type &&
       other.collision == collision &&
-      other.renamedTo == renamedTo;
+      other.renamedTo == renamedTo &&
+      other.replaceExisting == replaceExisting;
 
   @override
-  int get hashCode => Object.hash(name, type, collision, renamedTo);
+  int get hashCode =>
+      Object.hash(name, type, collision, renamedTo, replaceExisting);
 
   @override
   String toString() =>
       'ImportDecision($name, type: $type, collision: $collision, '
-      'renamedTo: $renamedTo)';
+      'renamedTo: $renamedTo, replaceExisting: $replaceExisting)';
 }
 
 /// Plans a merge of [incoming] onto [existing], one [ImportDecision] per incoming

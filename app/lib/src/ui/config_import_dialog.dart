@@ -82,6 +82,11 @@ class _ConfigImportDialogState extends ConsumerState<_ConfigImportDialog> {
   // original name), pre-seeded from planImport's `-imported` suffix.
   final _renames = <String, TextEditingController>{};
 
+  // Merge, but let a colliding remote land ON the one already using its name
+  // instead of beside it. Off by default: renaming keeps both and is always
+  // recoverable, while replacing discards settings that may be the only copy.
+  bool _replaceCollisions = false;
+
   // Secrets live only in these controllers (disposed on close).
   final _passphrase = TextEditingController();
   final _rclonePw = TextEditingController();
@@ -278,6 +283,22 @@ class _ConfigImportDialogState extends ConsumerState<_ConfigImportDialog> {
     final finals = <String>[];
     for (final d in plan) {
       var renamedTo = d.renamedTo;
+      // Replace mode short-circuits the rename entirely: the decision keeps its
+      // own name and the create lands on the existing remote. The rename field's
+      // contents are deliberately ignored rather than validated — nothing will
+      // be written under that name.
+      if (d.collision && _replaceCollisions) {
+        finals.add(d.name);
+        edited.add(
+          ImportDecision(
+            name: d.name,
+            type: d.type,
+            collision: true,
+            replaceExisting: true,
+          ),
+        );
+        continue;
+      }
       if (d.collision) {
         final v = _renames[d.name]!.text.trim();
         if (v.isEmpty) {
@@ -315,6 +336,9 @@ class _ConfigImportDialogState extends ConsumerState<_ConfigImportDialog> {
       return null;
     }
     for (final d in edited) {
+      // A replace is an overwrite the user asked for by name, so the
+      // "would land on an existing remote" check does not apply to it.
+      if (d.replaceExisting) continue;
       if (d.collision && existing.containsKey(d.renamedTo)) {
         setState(
           () => _previewError =
@@ -562,6 +586,7 @@ class _ConfigImportDialogState extends ConsumerState<_ConfigImportDialog> {
           style: TextStyle(color: c.textFaint, fontSize: 12),
         ),
         const SizedBox(height: Space.x3),
+        if (collisions > 0) _replaceToggle(c, collisions),
         for (final d in plan) _decisionRow(c, d),
         if (_previewError != null) ...[
           const SizedBox(height: Space.x2),
@@ -599,6 +624,77 @@ class _ConfigImportDialogState extends ConsumerState<_ConfigImportDialog> {
           ],
         ),
       ],
+    );
+  }
+
+  /// The merge-mode choice, offered only when something actually collides.
+  ///
+  /// Merge's only answer to a name clash used to be a rename, so re-importing a
+  /// corrected config left `foo` and `foo-imported` side by side and the app
+  /// still using the stale `foo`. Replacing is the other reasonable intent — but
+  /// it is the destructive one, so it is opt-in, per-import, and says what it
+  /// costs.
+  Widget _replaceToggle(AircloneColors c, int collisions) {
+    final many = collisions != 1;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: Space.x3),
+      child: InkWell(
+        onTap: () => setState(() => _replaceCollisions = !_replaceCollisions),
+        borderRadius: BorderRadius.circular(Radii.sm),
+        child: Padding(
+          padding: const EdgeInsets.all(Space.x1),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              SizedBox(
+                height: 20,
+                width: 20,
+                child: Checkbox(
+                  value: _replaceCollisions,
+                  visualDensity: VisualDensity.compact,
+                  onChanged: (v) =>
+                      setState(() => _replaceCollisions = v ?? false),
+                ),
+              ),
+              const SizedBox(width: Space.x2),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Replace the $collisions existing '
+                      'remote${many ? 's' : ''} instead of renaming',
+                      style: TextStyle(
+                        color: c.text,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      // Not a generic "this overwrites" warning: naming the
+                      // encrypted case is the point. A crypt remote replaced
+                      // with a different password or salt still connects and
+                      // still reports free space — it just stops being able to
+                      // read the names of what it stored, and lists as empty.
+                      'The imported settings win, and the current ones are '
+                      'gone. An encrypted remote replaced with a different '
+                      'password or salt can no longer read what it stored: the '
+                      'files stay where they are, but the folder lists as '
+                      'empty. Your config is backed up first either way.',
+                      style: TextStyle(
+                        color: c.textMuted,
+                        fontSize: 11,
+                        height: 1.35,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 
@@ -654,7 +750,23 @@ class _ConfigImportDialogState extends ConsumerState<_ConfigImportDialog> {
                       style: TextStyle(color: c.textMuted, fontSize: 11),
                     ),
                   ),
-                if (d.collision) ...[
+                if (d.collision && _replaceCollisions) ...[
+                  const SizedBox(height: 4),
+                  Row(
+                    children: [
+                      Icon(Icons.swap_horiz, size: 13, color: c.error),
+                      const SizedBox(width: Space.x1),
+                      Expanded(
+                        child: Text(
+                          'Replaces your existing "${d.name}"',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(color: c.error, fontSize: 11),
+                        ),
+                      ),
+                    ],
+                  ),
+                ] else if (d.collision) ...[
                   const SizedBox(height: 4),
                   Row(
                     children: [
@@ -801,7 +913,8 @@ class _ConfigImportDialogState extends ConsumerState<_ConfigImportDialog> {
           c,
           ok ? Icons.check_circle_outline : Icons.report_problem_outlined,
           ok
-              ? 'Imported ${report.created.length} remote(s)'
+              ? 'Imported ${report.created.length + report.replaced.length} '
+                    'remote(s)'
               : 'Imported with problems',
         ),
         const SizedBox(height: Space.x3),
@@ -817,6 +930,22 @@ class _ConfigImportDialogState extends ConsumerState<_ConfigImportDialog> {
           const SizedBox(height: Space.x1),
           for (final name in report.created)
             _outcomeRow(c, Icons.check, c.success, name, null),
+        ],
+        // Listed apart from Merged, not folded into it: these landed ON a
+        // remote the user already had, and that is the line worth re-reading.
+        if (report.replaced.isNotEmpty) ...[
+          const SizedBox(height: Space.x3),
+          Text(
+            'Replaced',
+            style: TextStyle(
+              color: c.textMuted,
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: Space.x1),
+          for (final name in report.replaced)
+            _outcomeRow(c, Icons.swap_horiz, c.warning, name, null),
         ],
         if (report.failed.isNotEmpty) ...[
           const SizedBox(height: Space.x3),

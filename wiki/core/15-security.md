@@ -130,6 +130,27 @@ mandatory preview with endpoint summaries, and the same collision handling as an
 `restorableBackupProvider` watches All Files Access as well as the remotes list — a fresh install has
 no storage permission yet, so the offer must re-fire when the grant lands rather than only at launch.
 
+**Collision handling has two modes, and only the safe one is the default.** A name already in the
+live config is planned as a rename (`foo` → `foo-imported`, bumping `-2`, `-3`; `planImport` in
+[config_io.dart](../../app/lib/src/state/config_io.dart)). That is always recoverable but it is not
+always what was meant — re-importing a corrected config left the stale `foo` in place and the app
+still using it. So the preview offers **"Replace the N existing remotes instead of renaming"**,
+which sets `ImportDecision.replaceExisting` and lets the `config/create` land on the remote already
+holding the name (rclone overwrites a section rather than refusing it — see also the guard on the
+add-remote/encrypt paths, which is why this one had to become an explicit choice rather than an
+accident). Rules:
+
+- **Off by default, per import**, never remembered. The destructive reading of an ambiguous gesture
+  must be chosen each time.
+- **The warning names the encrypted case**, not just "this overwrites": a crypt remote replaced with
+  a different password or salt still connects and still reports free space — it simply stops being
+  able to decrypt the names of what it stored, and the folder lists as **empty**. That is a real
+  incident, not a hypothetical (see §3.4 of
+  [14-performance-standards](14-performance-standards.md)).
+- **The backup still runs first**, before any create, exactly as for a plain merge.
+- **The report separates `replaced` from `created`.** "Imported 6 remotes" and "imported 6 remotes
+  over 6 of yours" are different outcomes and only one of them is worth re-reading.
+
 One state to keep in mind: the *mode* lives in SharedPreferences (wiped by uninstall) while the
 *file* does not, so straight after a reinstall the switch reads off beside a real backup. Settings
 says so explicitly and offers to resume; a user who has just restored must not believe they are
