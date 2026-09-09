@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../rclone/models/remote.dart';
 import '../rclone/rclone_client.dart';
+import 'cloud_placeholder.dart';
 import 'engine_controller.dart';
 
 /// Names already present in the rclone config, or null when they cannot be read.
@@ -39,6 +40,14 @@ final remotesProvider = FutureProvider<List<Remote>>((ref) async {
         ? cfg['type'] as String
         : 'unknown';
     remotes.add(Remote(name: name, type: type, fs: '$name:'));
+  });
+  // Resolve every wrapper remote (crypt/alias/...) to the local path it is
+  // ultimately backed by, and hand the map to the placeholder guard. Without
+  // this a crypt-over-Proton-Drive remote reports type "crypt", the guard sees
+  // "not local", and reading its files silently hydrates them.
+  setRemoteBackingRoots({
+    for (final name in dump.keys)
+      name: resolveLocalBackingRoot(name, dump.cast<String, dynamic>()),
   });
   remotes.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
   // Android has no meaningful $HOME — and the phone shell already offers

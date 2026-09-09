@@ -87,6 +87,48 @@ class _DedupeDialogState extends State<_DedupeDialog> {
       // downloading it in full. Detect those first WITHOUT hydrating (a
       // metadata-only list never hydrates) and require explicit consent, with the
       // total bytes, before the hashing pass touches their content.
+      // NOT `type == 'local'`. A crypt/alias remote over a local path reports
+      // its wrapper type, so gating on that skipped the probe AND the consent
+      // prompt and went straight to the hashing pass - the single worst thing
+      // this dialog can do. isLocalBacked() follows the chain; null means
+      // unresolved (config not read yet, or union/combine, which are not
+      // followed) and is treated as "might be local", because being wrong the
+      // other way downloads the tree.
+      final localBacked = isLocalBacked(widget.remote);
+      if (localBacked != false && widget.remote.type != 'local') {
+        // Backed by local storage through a wrapper. Per-file placeholder
+        // checks are unreliable here - a crypt remote's paths are the DECRYPTED
+        // names, which do not exist on disk under those names - so ask once for
+        // the whole scan rather than pretend to enumerate.
+        final probe = await widget.client.rpc('operations/list', {
+          'fs': widget.fs,
+          'remote': widget.basePath,
+          'opt': {'recurse': true, 'showHash': false, 'noModTime': true},
+        });
+        if (g != _gen || !mounted) return;
+        var count = 0;
+        var bytes = 0;
+        for (final item in (probe['list'] as List? ?? const [])) {
+          final m = (item as Map).cast<String, dynamic>();
+          if ((m['IsDir'] ?? false) as bool) continue;
+          count++;
+          final sz = m['Size'];
+          if (sz is num && sz > 0) bytes += sz.toInt();
+        }
+        if (g != _gen || !mounted) return;
+        if (count > 0) {
+          final ok = await _confirmHydrate(count, bytes, wrapper: true);
+          if (!ok || g != _gen || !mounted) {
+            if (mounted && g == _gen) {
+              setState(() {
+                _scanning = false;
+                _status = 'Scan cancelled - nothing was downloaded.';
+              });
+            }
+            return;
+          }
+        }
+      }
       if (widget.remote.type == 'local') {
         final probe = await widget.client.rpc('operations/list', {
           'fs': widget.fs,
@@ -147,7 +189,11 @@ class _DedupeDialogState extends State<_DedupeDialog> {
   }
 
   /// Consent gate shown when a scan would hydrate online-only cloud files.
-  Future<bool> _confirmHydrate(int count, int bytes) async {
+  Future<bool> _confirmHydrate(
+    int count,
+    int bytes, {
+    bool wrapper = false,
+  }) async {
     final c = AircloneTheme.of(context);
     final n = count == 1 ? '1 file' : '$count files';
     return await showDialog<bool>(
@@ -156,9 +202,16 @@ class _DedupeDialogState extends State<_DedupeDialog> {
             backgroundColor: c.surfaceRaised,
             title: const Text('Download online-only files?'),
             content: Text(
-              '$n in this folder (${humanSize(bytes)}) live only in the cloud. '
-              'Comparing file contents to find duplicates will DOWNLOAD them in '
-              'full to this device. Continue?',
+              wrapper
+                  ? '$n in this folder (${humanSize(bytes)}) sit on local '
+                        'storage through this remote. If that storage is a '
+                        'sync folder (Proton Drive, OneDrive, iCloud), files '
+                        'kept online-only will be DOWNLOADED in full. Which '
+                        'ones cannot be told apart from here, so this counts '
+                        'all of them. Continue?'
+                  : '$n in this folder (${humanSize(bytes)}) live only in the '
+                        'cloud. Comparing file contents to find duplicates '
+                        'will DOWNLOAD them in full to this device. Continue?',
             ),
             actions: [
               TextButton(

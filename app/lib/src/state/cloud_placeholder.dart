@@ -65,6 +65,100 @@ bool isOnlineOnlyPlaceholder(String absolutePath) {
   }
 }
 
+// ── Wrapper remotes over a local backing store ──────────────────────────────
+//
+// A `crypt`, `alias`, `chunker` or `compress` remote can point at a LOCAL path.
+// Its Remote.type is then "crypt"/"alias"/..., never "local", so the type check
+// below used to give up and report "not local" - which [wouldHydrateOnRead]
+// turned into "safe to read". A crypt-over-Proton-Drive remote therefore
+// bypassed this guard completely, which is the opposite of what it exists for.
+//
+// Resolution needs the rclone config, which is async, while this guard is called
+// synchronously from widget builds. So the map is computed once when the remote
+// list loads (see remotes_provider.dart) and cached here.
+
+Map<String, String?> _backingRoots = const {};
+
+/// Cache of remote name -> absolute LOCAL root it ultimately sits on, or null
+/// when it resolves to a cloud backend (which cannot hold placeholders).
+/// A name ABSENT from the map is unresolved - not the same as null, and callers
+/// that are about to read a whole tree must treat absence as "do not proceed".
+void setRemoteBackingRoots(Map<String, String?> roots) {
+  _backingRoots = Map.unmodifiable(roots);
+}
+
+/// Wrapper backends that take a single `remote =` pointing at another remote or
+/// a filesystem path. `union`/`combine` take a LIST and are deliberately absent:
+/// they stay unresolved, so tree-walk callers fail closed on them.
+const _wrapperTypes = {'crypt', 'alias', 'chunker', 'compress'};
+
+/// Every type whose backing store COULD be local: the wrappers above plus the
+/// list-shaped ones this module does not follow. Anything outside this set is a
+/// real backend and is definitively not local.
+const _localCapableTypes = {
+  'crypt',
+  'alias',
+  'chunker',
+  'compress',
+  'union',
+  'combine',
+};
+
+/// Resolves `name` through any chain of wrapper remotes to the absolute local
+/// path it is backed by, or null when it ends at a cloud backend or cannot be
+/// resolved. [dump] is `config/dump`'s response.
+String? resolveLocalBackingRoot(
+  String name,
+  Map<String, dynamic> dump, [
+  int depth = 0,
+]) {
+  if (depth > 8) return null; // cyclic or absurd config
+  final cfg = dump[name];
+  if (cfg is! Map) return null;
+  final type = cfg['type']?.toString();
+  if (type == 'local') return ''; // rooted by the browse path itself
+  if (!_wrapperTypes.contains(type)) return null; // a real cloud backend
+  final target = (cfg['remote'] ?? '').toString();
+  if (target.isEmpty) return null;
+  if (target.startsWith('/')) return target; // absolute POSIX path
+  final i = target.indexOf(':');
+  if (i <= 0) return null;
+  final head = target.substring(0, i);
+  final rest = target.substring(i + 1);
+  // The CONFIG decides, not the shape. A remote named `b` is written `b:`,
+  // which matches a drive letter perfectly - so a single-letter remote used to
+  // resolve to the literal path "b:" and, worse, ended a cycle by accident
+  // rather than by the depth guard. Look the name up first; only fall back to
+  // a drive letter when no such remote exists, and require the separator
+  // (`C:/x`, `C:\x`) that a bare remote reference never has.
+  if (dump.containsKey(head)) {
+    final base = resolveLocalBackingRoot(head, dump, depth + 1);
+    if (base == null) return null;
+    if (rest.isEmpty) return base;
+    return base.isEmpty ? rest : _joinLocal(base, rest);
+  }
+  if (RegExp(r'^[A-Za-z]:[\/]').hasMatch(target)) return target;
+  return null;
+}
+
+/// Whether [remote] is known to sit on local storage. Null means UNRESOLVED -
+/// the config has not been read yet, or the type is one this module does not
+/// follow (`union`, `combine`). Callers about to read a whole tree must refuse
+/// on null rather than assume it is safe.
+bool? isLocalBacked(Remote remote) {
+  if (remote.type == 'local') return true;
+  // A real backend - drive, s3, sftp, b2 - cannot be a local placeholder
+  // whatever the config says, so the TYPE settles it and no lookup is needed.
+  // Without this, a plain cloud remote fell into "might be local" whenever the
+  // backing map had not been populated yet, and every dedupe scan on it would
+  // have prompted about downloads that were never going to happen.
+  if (!_localCapableTypes.contains(remote.type)) {
+    return remote.type == 'unknown' ? null : false;
+  }
+  if (!_backingRoots.containsKey(remote.name)) return null;
+  return _backingRoots[remote.name] != null;
+}
+
 /// Resolves a browse entry ([pathWithinRemote] = the RC `remote` param) to an
 /// absolute local filesystem path, or null when [remote] is not a local backend
 /// (cloud remotes can't be placeholders — their metadata reads for free) or the
@@ -72,11 +166,18 @@ bool isOnlineOnlyPlaceholder(String absolutePath) {
 /// carry an absolute [Remote.fs] root; a named `type=local` conf remote (fs
 /// `"name:"`) is only resolvable when the browse path is already absolute.
 String? localAbsolutePath(Remote remote, String pathWithinRemote) {
-  if (remote.type != 'local') return null;
-  if (remote.isLocal) return _joinLocal(remote.fs, pathWithinRemote);
-  final p = pathWithinRemote;
-  if (RegExp(r'^[A-Za-z]:').hasMatch(p) || p.startsWith('/')) return p;
-  return null;
+  if (remote.type == 'local') {
+    if (remote.isLocal) return _joinLocal(remote.fs, pathWithinRemote);
+    final p = pathWithinRemote;
+    if (RegExp(r'^[A-Za-z]:').hasMatch(p) || p.startsWith('/')) return p;
+    return null;
+  }
+  // A wrapper (crypt/alias/...) over a local path. Its backing root is resolved
+  // from the config when the remote list loads; absent means unresolved, and
+  // there is nothing to check.
+  final root = _backingRoots[remote.name];
+  if (root == null || root.isEmpty) return null;
+  return _joinLocal(root, pathWithinRemote);
 }
 
 String _joinLocal(String root, String within) {

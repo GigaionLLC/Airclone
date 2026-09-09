@@ -45,13 +45,28 @@ to download the whole file. Airclone browses local paths that may sit inside suc
 - **Why:** a thumbnail grid, a checksum dialog or a dedupe scan over a sync root would otherwise
   trigger unexpected multi-GB downloads with no user action and no visible cause.
 - **Enforced in:** [cloud_placeholder.dart](../../app/lib/src/state/cloud_placeholder.dart) —
-  `localAbsolutePath()` resolves the entry to an absolute path (null for any non-`local` backend),
-  then `isOnlineOnlyPlaceholder()` probes `GetFileAttributesW` for
+  `localAbsolutePath()` resolves the entry to an absolute path, then
+  `isOnlineOnlyPlaceholder()` probes `GetFileAttributesW` for
   `FILE_ATTRIBUTE_RECALL_ON_DATA_ACCESS | RECALL_ON_OPEN | OFFLINE`.
-- **Check:** the guard is deliberately **fail-open** — Windows-only, and it returns `false` on any
-  error, on other platforms, and for an unresolvable path. A false positive costs one thumbnail; a
-  false negative costs a silent multi-GB download, so it acts only on a definitive yes. Do not
-  "improve" it into a fail-closed check. Behaviour is covered by
+- **A `crypt`/`alias`/`chunker`/`compress` remote can sit on a LOCAL path**, and its type is then the
+  wrapper's, never `local`. Resolving only `type == 'local'` meant those bypassed the guard
+  completely — the exact case it exists for, since an rclone config often lives inside the sync root
+  it points at. `resolveLocalBackingRoot()` follows the chain (the config decides, not the string
+  shape: a remote named `b` is written `b:` and is indistinguishable from a drive letter by pattern),
+  and `remotes_provider` publishes the map on every load. `union`/`combine` take a list of upstreams
+  and are deliberately **not** followed, so they stay unresolved.
+- **Check:** the PER-FILE guard is deliberately **fail-open** — Windows-only, returning `false` on
+  any error, on other platforms, and for an unresolvable path. A false positive costs one thumbnail.
+  Do not "improve" that into a fail-closed check.
+  **A whole-tree read is the opposite**, because there the cost of being wrong is the tree. Use
+  `isLocalBacked(remote)`, which is TRI-STATE: `true`/`false` are definitive, and `null` means
+  unresolved (config not loaded, or `union`/`combine`) and must be treated as "might be local" — ask
+  before scanning. `dedupe_dialog` gated its consent prompt on `type == 'local'` and so skipped both
+  the probe AND the prompt on a crypt-over-local remote, going straight to a recursive
+  `showHash: true` pass that reads every file end to end.
+  Note a crypt remote's paths are the DECRYPTED names, which do not exist on disk under those names,
+  so per-file probing cannot work there — that is why the tree case asks once for the whole scan
+  instead of pretending to enumerate. Behaviour is covered by
   [cloud_placeholder_test.dart](../../app/test/cloud_placeholder_test.dart).
 
 **The complete consult list today.** Adding a content-read path means adding a row here and a call
