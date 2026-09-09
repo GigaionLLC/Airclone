@@ -202,8 +202,15 @@ typed twice and checked before the key is even written to disk. A live app is
 unaffected by revoking the certificate that signed it; a build still in review is
 not.
 
-**Three DEVELOPMENT certificates are still outstanding** — `K9HRGKWVT4`,
-`QF79989974`, `LN52H3LGTM`, all minted by the old per-run flow.
+**Those three DEVELOPMENT certificates are gone — revoked 2026-09-09.**
+`K9HRGKWVT4`, `QF79989974`, `LN52H3LGTM`, all minted by the old per-run flow.
+Checked before revoking rather than after: neither active profile embedded
+any of them (both carry exactly one certificate, the distribution identity),
+a DEVELOPMENT certificate cannot sign an App Store build in the first place,
+their private keys died with the runners that made them, and 0.7.5 was
+READY_FOR_SALE on both platforms so nothing was mid-review. The account is
+now down to the four that are load-bearing: `AA4N46ZSC7` (Developer ID),
+`YDG7JN3B33` (iOS App Store), `JC9752TUK5` + `JP74Q4C6ZP` (Mac App Store).
 
 **They also prove the fix worked, which was an open question until 2026-09-09.**
 Apple issues a certificate for exactly one year, so its expiry date IS its
