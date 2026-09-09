@@ -46,7 +46,8 @@ Airclone/
 ├─ tool/                    # dev helpers (flutter.ps1/.sh, scaffold.ps1,
 │                           #   install/run-windows.ps1) + the store-automation Python
 │                           #   scripts (App Store Connect, Play, Microsoft Store) and
-│                           #   check-docs.py — inventory in dev/README.md
+│                           #   the CI linters check-docs.py / check-workflows.py —
+│                           #   inventory in dev/README.md
 ├─ .github/workflows/       # build & verify, release, the Apple / Play / Microsoft
 │                           #   submission lanes, and the librclone builders —
 │                           #   inventory in dev/README.md
@@ -86,7 +87,10 @@ First-time project scaffold (already done): `./tool/scaffold.ps1`.
 
 ### CI / releases (GitHub Actions — free on the public repo)
 - **`ci.yml`** — on push/PR: `dart format` check, `flutter analyze`, `flutter test` (ubuntu). It fails
-  on **any** info-level lint and on a single unformatted file, so run both before pushing.
+  on **any** info-level lint and on a single unformatted file, so run both before pushing. A separate
+  `docs` job runs `python tool/check-docs.py` (a broken relative link fails the build; orphans and
+  doc-shape findings stay advisory) and `python tool/check-workflows.py` — run both locally rather
+  than learning from a red check.
 - **`release.yml`** — on a `v*` tag: builds **Windows** (windows-latest/MSVC), **macOS**
   (macos-latest/Xcode), **Linux**, **Android**, and publishes a **GitHub Release** with the binaries
   attached (marked pre-release when the tag contains `alpha`/`beta`/`rc`).

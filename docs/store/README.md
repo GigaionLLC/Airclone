@@ -50,9 +50,14 @@ release.** Full account: [`AGENT.md`](../../AGENT.md) rule 10 and
 **This table deliberately does not say where each store *stands*.** Two hubs both claiming per-store
 status is exactly how the Apple rows here sat at "BLOCKED, do not start a submission lane" while
 0.6.8 was for sale on both Apple platforms. Live state lives with the machinery that produces it:
-[`dev/README.md`](../../dev/README.md) for release and CI state, [`dev/apple-handoff.md`](../../dev/apple-handoff.md)
-for the Apple account, and a `dry-run` of [`submit-msstore.yml`](../../.github/workflows/submit-msstore.yml)
-or [`asc-submit-review.yml`](../../.github/workflows/asc-submit-review.yml) to ask the store itself.
+each store's own runbook ([`dev/windows-signing-and-store.md`](../../dev/windows-signing-and-store.md),
+[`dev/google-play-store.md`](../../dev/google-play-store.md)),
+[`dev/apple-handoff.md`](../../dev/apple-handoff.md) for the Apple account,
+[`dev/releases/`](../../dev/releases/) plus `git tag` for what has actually shipped, and a `dry-run` of
+[`submit-msstore.yml`](../../.github/workflows/submit-msstore.yml) or
+[`asc-submit-review.yml`](../../.github/workflows/asc-submit-review.yml) to ask the store itself.
+[`dev/README.md`](../../dev/README.md) is the *process* hub and declines per-store status for the same
+reason this table does.
 
 **Windows code signing** (Azure Artifact Signing, subject `Gigaion, LLC`) is **LIVE since v0.5.1** and
 runs on every tagged release — the signing half of
@@ -66,7 +71,13 @@ is worth a diary entry because expiry breaks the lane with an error that looks l
 Both Apple lanes archive **unsigned** (`CODE_SIGNING_ALLOWED=NO`) and apply the distribution identity
 at export, so the archive's signature never matters — everywhere except `ios-release.yml`'s
 `signing=automatic`, an experiment kept only because Apple's error strings for it are worth having
-written down. Nothing ships that way. Surplus certificates are revoked one at a time by
+written down. Nothing ships that way. Since v0.7.6 the flag that authorises Xcode to *create* signing
+assets on the fly, `-allowProvisioningUpdates`, reaches that experiment and nothing else: in
+`ios-release.yml` it is now passed at neither the archive nor the export step unless
+`signing=automatic`, and `mas-release.yml` passes it nowhere at all. It used to go to every iOS run
+including the default, which is how unused certificates piled up against Apple's per-team cap —
+`signing=secrets` signs manually from an identity already in the keychain and a profile already on
+disk, and needs the flag for nothing. Surplus certificates are revoked one at a time by
 [`apple-revoke-cert.yml`](../../.github/workflows/apple-revoke-cert.yml) — **never while the build they
 signed is submitted but not yet live**, which produces an INVALID BINARY. Which certificate signed which build is tracked in
 [`dev/apple-handoff.md`](../../dev/apple-handoff.md), in the clear — a certificate id is not a
@@ -177,7 +188,9 @@ the build really landed in open testing* step fails the release if it did not, b
 can report success and land nothing.
 
 **CI never touches production**, and that is the deliberate boundary rather than a missing credential:
-promotion is the separate manual [`promote-play.yml`](../../.github/workflows/promote-play.yml). Note
+promotion is the separate manual [`promote-play.yml`](../../.github/workflows/promote-play.yml) —
+a rollout percent you pick (default **10%** staged, `dry_run` on by default), widened by re-running at
+a larger percent; narrowing a live rollout is refused unless you override it. Note
 what this boundary does *not* include — there is no pre-release gate, so an `-rc` tag reaches public
 open testing exactly like any other.
 

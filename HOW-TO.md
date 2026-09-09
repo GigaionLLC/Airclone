@@ -79,7 +79,7 @@ generic flow:
 graph TD
     A[Code Changes Completed] --> B[pre-deployment-vibe-auditor]
     B --> C[Test-and-Deploy]
-    C --> E["python tool/check-docs.py (also a CI gate)"]
+    C --> E["python tool/check-docs.py + tool/check-workflows.py (both CI gates)"]
     E --> D[Safe Git Push / Release]
 ```
 
@@ -93,5 +93,15 @@ graph TD
   It also reports *orphans* (docs nothing links to, so only grep can find them) and `wiki/core/` docs
   missing the shape [`wiki/core/17-docs-blueprint.md`](wiki/core/17-docs-blueprint.md) §3 requires —
   both advisory, and both promoted to failures by `--strict`. Links into `app/` source are checked
-  too, so moving a Dart file can break a doc. The same job byte-compiles `tool/`, whose store scripts
-  have no tests and whose first execution is against a live store API mid-release.
+  too, so moving a Dart file can break a doc. It hard-fails on one more thing its own docstring does
+  not list: a **control byte** in a doc, which makes the file binary to `git diff` and invisible to
+  `grep -rn` — write the escape, never the byte.
+- **`python tool/check-workflows.py`** — the same `docs` job's third step, and the same shape of gate
+  for `.github/workflows/*.yml`: an **empty GitHub expression** (the two braces with nothing between
+  them, comments included) invalidates the whole workflow file, and a free-form `workflow_dispatch`
+  input interpolated straight into a `run:` block splices a dispatcher's string into the runner's
+  shell. GitHub's parser is the only authority on a workflow file and reports a bad one as a logless
+  run named after the path, so this runs before the push instead of after it.
+- That job also byte-compiles `tool/`, whose store scripts have no tests and whose first execution is
+  against a live store API mid-release. None of the three needs Flutter, so they run on a bare Python
+  runner and finish in seconds — run all three locally before committing.

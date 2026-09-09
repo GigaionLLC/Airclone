@@ -44,12 +44,21 @@ directly **onto a folder row**, exactly like dragging into a folder in a native 
   redundant with drag and right-click so novices and pros each have a path.
 - **Left sidebar (240px, collapsible):** vertical list of **remote cards** (provider icon, name,
   connection dot, thin storage-usage bar) with "+ Add remote" pinned at top. Local disks appear as
-  peers below a divider. Right-click → Mount, Browse, Serve, Edit, pinned Quick Actions.
+  peers below a divider. Right-click → Mount, Browse, Serve, Edit, pinned Quick Actions. A name too
+  long for its row is **not** ellipsised: line one stays at full size and the overflow continues on a
+  second line in smaller text (`OverflowName`), because remotes whose names differ only in the last
+  two characters otherwise render as identical rows. A name that fits is untouched — nearly every
+  row. Removing every remote at once is deliberately **not** here: it lives in Settings, behind a
+  named list and an acknowledgement ([15-security.md §3.3](15-security.md)).
 - **Dual-pane browser (center stage):** two independent panes, each with **tabs** (open many remotes
   at once — a tab per remote+path), its own provider switcher + editable path bar + breadcrumb,
   sortable columns (Name / Size / Modified / Status), and a per-pane filter box. Panes/tabs retarget
   to any remote — Drive left, S3 right, cloud-to-cloud in one drag. A single-pane toggle exists for
-  small windows; either pane can split into more tabs rather than forcing a second window.
+  small windows; either pane can split into more tabs rather than forcing a second window. A pane
+  never says "Empty folder" over a listing rclone shortened: when a `crypt` remote's key does not
+  match its data, rclone drops the entries it cannot decrypt and still answers 200, so the pane
+  counts those notices across its own request and reports **"N items hidden"** instead
+  ([07-state-context.md](07-state-context.md), `hiddenUndecryptable`).
 - **Transfer / Job panel (bottom, dockable):** persistent, and the always-on observability surface.
   Two tabs, not three: **Transfers** (the live per-file strip over the job list — type, source → dest,
   per-file progress, speed, ETA, status, with Stop / Stop-all / Clear-finished) and **Recent
@@ -107,7 +116,23 @@ Drag *default is copy* (safest); move/sync need an explicit modifier or menu cho
 the pane path. Every drag produces a real `_async` job in the Job panel — never a silent operation —
 and within a single remote uses **server-side** copy/move so no bytes round-trip through your machine.
 
-**Sync dialog** (from the Sync verb, a remote Quick Action, or right-drag → Sync):
+**Nothing here overwrites silently.** Every drop, paste and "Copy/Move to…" goes through the one
+conflict-aware routine (`transferNamesIntoFolder` in
+[paste_action.dart](../../app/lib/src/ui/paste_action.dart)): it reads the destination's names
+first, and when any collide it asks Skip / Replace / Keep both before dispatching. "Keep both"
+renames the way a desktop file manager does (`report.pdf` → `report (2).pdf`). Two properties are
+load-bearing and must survive any refactor: a re-entrancy latch, so a double drop cannot stack two
+dialogs or dispatch the same move twice; and a **fail-closed** probe — a destination that cannot be
+listed copies *nothing* and says so, because an unreadable folder used to read as "no collisions"
+and dispatch a plain overwrite.
+
+**Sync dialog** (from the Sync verb, a remote Quick Action, or right-drag → Sync). The sketch below
+is the *intended* shape and is ahead of the code: the shipped
+[`transfer_options_dialog.dart`](../../app/lib/src/ui/transfer_options_dialog.dart) has three tabs —
+**Settings** (Mode, Options, Compare by, Performance, plus the two-way-only conflict rows), **Filters**,
+**rclone cmd** (the exact command the run will produce) — and a Cancel / Dry run / Run footer. There is no job-name field, no
+second destination, and no "Save as Job" here; saved transfers are named and stored from the Tasks
+panel instead. Treat the wireframe as direction, not as the current UI:
 
 ```
 ┌──────────────────────── New Sync Job ─────────────────────────┐
@@ -129,8 +154,34 @@ and within a single remote uses **server-side** copy/move so no bytes round-trip
 ```
 
 Direction is plain-language: **Mirror →** (destructive, labeled), **Backup new only**, **Two-way ⇄**
-(first run shows a one-time "Initialize pairing" + conflict-strategy dropdown). **Dry-run preview** is
-always present and opens the color-coded Compare diff; destructive mirrors require explicit confirm.
+(first run shows a one-time "Initialize pairing" + conflict-strategy dropdown). Destructive mirrors
+require an explicit confirm, which also offers "Dry run first".
+
+**What "dry run" actually does depends on which flow you are in, and only one of them answers the
+question a Sync raises.** A plain dry run dispatches the *real* job with `DryRun` set, so it lands in
+the Transfers dock as a row reading "Done" and a byte count — the number that matters, how many
+files would be **deleted** at the destination, appears nowhere. The marked-source flow below
+instead computes the answer up front with `operations/check` and shows it as counts with expandable
+file lists — **deletions first**, then overwrites, then copies, plus "already identical" and
+"couldn't be compared" — before anything runs
+([sync_preview.dart](../../app/lib/src/state/sync_preview.dart),
+[sync_preview_dialog.dart](../../app/lib/src/ui/sync_preview_dialog.dart)). Going ahead from that
+preview runs the real thing — the preview *was* the dry run. The pane-to-pane Sync verb has not been
+moved onto it yet. Separately, **Compare with other pane** is its own tool over the same RC method
+([folder_tools.dart](../../app/lib/src/ui/folder_tools.dart)); it reports differences and transfers
+nothing.
+
+**Mark-then-sync ("Set as sync source" → "Sync … to here").** A sync's two endpoints no longer have
+to be on screen together: right-click a folder to mark it, navigate anywhere — another folder,
+another remote — and the destination's context menu offers to sync the marked folder into it, named
+so the row itself says what is about to overwrite this folder. Advanced mode only, folders only.
+The gesture's hazard is the gap between its halves, so it preflights before offering any options:
+an **overlapping** source/destination pair is refused outright (either direction, compared
+case-insensitively), and an **unreadable or empty source** is refused too — a one-way sync from an
+empty folder deletes everything at the destination, and "0 files" is indistinguishable from
+"everything here is surplus" once rclone is running.
+[sync_source.dart](../../app/lib/src/state/sync_source.dart) ·
+[sync_here_action.dart](../../app/lib/src/ui/sync_here_action.dart).
 
 **Scheduler** lists saved jobs as rows (name, source→dest, direction chip, human-readable schedule
 via cron→prose, last/next run, run/pause/edit). The editor offers Interval or Time builders with an
@@ -144,8 +195,12 @@ chunk-grows-to, attribute cache, fast change detection and (Windows only) mount-
 The defaults and the reasoning behind each are owned by
 [14-performance-standards.md §6](14-performance-standards.md) and
 [`mount_options.dart`](../../app/lib/src/rclone/models/mount_options.dart); do not repeat a value
-here. The dialog also carries a **FUSE driver guard** that detects WinFsp/macFUSE/FUSE3 and offers
-one-click install instead of a cryptic error. Mount exists so a remote is reachable *inside other
+here. A mount point can also be **pinned per fs**: rclone's `*` picks the next free letter, which is right
+for a one-off and wrong for a drive you have shortcuts and muscle memory pointed at, so ticking the
+box records the letter the mount actually got and re-uses it next time
+([mount_letters.dart](../../app/lib/src/state/mount_letters.dart)). The dialog also carries a
+**FUSE driver guard** that detects WinFsp/macFUSE/FUSE3 and offers one-click install instead of a
+cryptic error. Mount exists so a remote is reachable *inside other
 apps*; for uploading and moving files, the in-app explorer is faster (it avoids the VFS cache), and
 the UI gently nudges users there for heavy file work.
 

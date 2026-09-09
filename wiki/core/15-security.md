@@ -160,6 +160,24 @@ Verified end-to-end on Android 15 (2026-08-11): enable → uninstall (file survi
 no plaintext secrets) → reinstall (app data gone) → automatic offer → passphrase → review → merge →
 remotes back; deleting a remote rewrites the backup unprompted; turning it off removes the file.
 
+### 3.3 Destructive config paths
+
+Three paths can destroy credentials rather than files, so each one is gated in the code and not only
+in the UI. The shared rule: **snapshot the config before mutating it, and refuse the operation when
+the snapshot cannot be taken.**
+
+| Path | Gate |
+| :--- | :--- |
+| **`config/create` on a name that already exists** | rclone REPLACES that section — exit 0, no warning, nothing in the response to distinguish it from a create. The add-remote and encrypt-remote wizards therefore read `existingRemoteNames(client)` ([remotes_provider.dart](../../app/lib/src/state/remotes_provider.dart)) first and refuse a taken name, **failing closed when the config cannot be read** — an unreadable config is not a free name. |
+| **Import → "Replace the N existing remotes"** | The one path allowed to overwrite, and only as an explicit, per-import, never-remembered choice (§3.2). Backup first; the report separates `replaced` from `created`. |
+| **Settings → Remove all remotes** ([remove_all_remotes.dart](../../app/lib/src/ui/remove_all_remotes.dart)) | The bulk form of a per-remote delete, because starting over otherwise meant a confirmation per remote in a list where names differ by two characters. It names every remote it will remove, requires an acknowledgement rather than just a red button, backs the config up first, and **throws rather than deleting anything if the active config file cannot be located to back up**. Deletes run one `config/delete` at a time and a failure is reported per remote, not swallowed. Any pane still pointing at a (non-local) remote is cleared afterwards, so nothing keeps showing a listing for a remote that no longer exists. |
+
+Why the credential wording matters on all three: removing or replacing a remote does not touch the
+files on it, but it does destroy the credentials, paths and — for a `crypt` remote — the password and
+salt that make its contents readable. A crypt remote recreated with a different key still connects
+and still reports free space; it simply stops being able to decrypt the names of what it stored, and
+the folder lists as empty. The UI has to say that, because nothing in rclone's response does.
+
 ## 4. Encryption
 
 - **Config encryption** is rclone's own, and it is **user-initiated, not on by default**. Airclone

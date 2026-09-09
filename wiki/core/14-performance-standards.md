@@ -53,31 +53,40 @@ to download the whole file. Airclone browses local paths that may sit inside suc
   completely — the exact case it exists for, since an rclone config often lives inside the sync root
   it points at. `resolveLocalBackingRoot()` follows the chain (the config decides, not the string
   shape: a remote named `b` is written `b:` and is indistinguishable from a drive letter by pattern),
-  and `remotes_provider` publishes the map on every load. `union`/`combine` take a list of upstreams
-  and are deliberately **not** followed, so they stay unresolved.
+  and `remotes_provider` publishes the map on every load. `union`/`combine` take a *list* of
+  upstreams and are deliberately **not** followed.
 - **Check:** the PER-FILE guard is deliberately **fail-open** — Windows-only, returning `false` on
   any error, on other platforms, and for an unresolvable path. A false positive costs one thumbnail.
   Do not "improve" that into a fail-closed check.
   **A whole-tree read is the opposite**, because there the cost of being wrong is the tree. Use
   `isLocalBacked(remote)`, which is TRI-STATE: `true`/`false` are definitive, and `null` means
-  unresolved (config not loaded, or `union`/`combine`) and must be treated as "might be local" — ask
-  before scanning. `dedupe_dialog` gated its consent prompt on `type == 'local'` and so skipped both
-  the probe AND the prompt on a crypt-over-local remote, going straight to a recursive
-  `showHash: true` pass that reads every file end to end.
+  unresolved and must be treated as "might be local" — ask before scanning. `dedupe_dialog` gated
+  its consent prompt on `type == 'local'` and so skipped both the probe AND the prompt on a
+  crypt-over-local remote, going straight to a recursive `showHash: true` pass that reads every
+  file end to end. It now treats anything other than a definitive `false` as "might be local".
   Note a crypt remote's paths are the DECRYPTED names, which do not exist on disk under those names,
   so per-file probing cannot work there — that is why the tree case asks once for the whole scan
   instead of pretending to enumerate. Behaviour is covered by
-  [cloud_placeholder_test.dart](../../app/test/cloud_placeholder_test.dart).
+  [cloud_placeholder_test.dart](../../app/test/cloud_placeholder_test.dart) and
+  [cloud_placeholder_wrapper_test.dart](../../app/test/cloud_placeholder_wrapper_test.dart).
+- **Known gap — `union`/`combine` currently resolve to `false`, not `null`.** The code and the
+  intent disagree here, and the code is what ships. `isLocalBacked` returns `null` only when the
+  remote's name is ABSENT from the published map (or its type is `unknown`) — but
+  `remotes_provider` publishes an entry for **every** name in `config/dump`, and an unfollowed
+  `union` gets a present-but-null value, which reads back as a definitive "not local". So a union
+  over a local sync root skips the consent prompt. `cloud_placeholder_wrapper_test.dart` asserts
+  `null` only because its fixture omits the name, which the real publisher never does. Fix the
+  publisher (omit the unresolvable types) rather than the caller if you touch this.
 
 **The complete consult list today.** Adding a content-read path means adding a row here and a call
 there:
 
 | # | Call site | What it does on a hit |
 | :--- | :--- | :--- |
-| 1 | `buildThumbRequest` — [browser_pane.dart:75](../../app/lib/src/ui/browser_pane.dart) | Returns null; the tile shows the kind icon. |
+| 1 | `buildThumbRequest` — [browser_pane.dart:77](../../app/lib/src/ui/browser_pane.dart) | Returns null; the tile shows the kind icon. |
 | 2 | Folder cover composition — [folder_thumbnail.dart:75](../../app/lib/src/ui/folder_thumbnail.dart) | Filters the file out (a cover would hydrate up to 4 files *per folder*). |
 | 3 | Inspector preview box — [inspector_panel.dart:256](../../app/lib/src/ui/inspector_panel.dart) | Falls back to the kind icon. |
-| 4 | Checksum dialog — [checksum_dialog.dart:102](../../app/lib/src/ui/checksum_dialog.dart) | Sets `_needsConsent` in `initState` instead of fetching on open. |
+| 4 | Checksum dialog — [checksum_dialog.dart:103](../../app/lib/src/ui/checksum_dialog.dart) | Sets `_needsConsent` in `initState` instead of fetching on open. |
 | 5 | Dedupe scan — [dedupe_dialog.dart:103](../../app/lib/src/ui/dedupe_dialog.dart) | Metadata-only recursive list first, then a consent dialog naming file count + total bytes before the content-hash pass. |
 
 **RULE — For a BULK content read, probe with a metadata-only listing first, then ask for consent with the count and total size.**
@@ -98,7 +107,7 @@ there:
   apply. Videos stream a keyframe rather than a full read, so they rely on the placeholder check
   instead — size-gating them would drop legitimate previews.
 - **Enforced in:** [file_icon.dart:143](../../app/lib/src/ui/file_icon.dart) (the constant),
-  [browser_pane.dart:78](../../app/lib/src/ui/browser_pane.dart),
+  [browser_pane.dart:80](../../app/lib/src/ui/browser_pane.dart),
   [folder_thumbnail.dart:74](../../app/lib/src/ui/folder_thumbnail.dart).
 
 **RULE — Build thumbnail requests through `buildThumbRequest`, not by constructing a `ThumbRequest` inline.**

@@ -9,20 +9,32 @@ by design** — real IDs, key paths and account state live in the encrypted vaul
 (`python tool/vault.py unlock`, then
 `dev/vault/notes/apple-appstore-setup-record.md`).
 
-## State (2026-09-06): 0.7.5 SUBMITTED ON BOTH PLATFORMS, ENTIRELY FROM CI
+## State (2026-09-09): 0.7.5 IS LIVE; 0.7.6 RECORDS CREATED, BUILDS UPLOADING
 
 | | macOS | iOS |
 | :--- | :--- | :--- |
-| Version 0.6.8 | **READY_FOR_SALE** | **READY_FOR_SALE** |
-| Version 0.7.5 | **WAITING_FOR_REVIEW** | **WAITING_FOR_REVIEW** |
-| Build 123 attached | ✅ | ✅ |
-| 0.7.5 audit | ✅ **no gaps** | ✅ **no gaps** |
-| Submitted | `f144ba7c…` 15:56:47Z | `22150b3e…` 15:56:24Z |
+| Version 0.7.5 | **READY_FOR_SALE** | **READY_FOR_SALE** |
+| Version 0.7.6 | **PREPARE_FOR_SUBMISSION** | **PREPARE_FOR_SUBMISSION** |
+| 0.7.6 `releaseType` | MANUAL, set at creation | MANUAL, set at creation |
+| Build 124 attached | ⏳ lane still uploading | ⏳ lane still uploading |
+| 0.7.6 audited / submitted | ⛔ not yet | ⛔ not yet |
 
-Both went through `asc-submit-review.yml -f mode=submit -f confirm_version=0.7.5`
-— no console, no local key. Export compliance answered in `Info.plist`, listing
-refreshed from the repo docs by the same run, audited, then submitted. What is
-still human: pressing **release** after approval (`releaseType` stays MANUAL).
+0.7.6 was created per platform with
+`asc-version.yml -f platform=<IOS|MAC_OS> -f mode=create -f version=0.7.6`, which
+printed `created … version 0.7.6  state=PREPARE_FOR_SUBMISSION  releaseType=MANUAL`
+on both. `ios-release.yml` and `mas-release.yml` were dispatched for build **124**
+in the same window and had not finished, so **nothing is attached and nothing is
+submitted**. The rest of the sequence is the ordinary one: confirm the build
+registered (`asc-version.yml -f mode=builds` — `UPLOAD SUCCEEDED` is not evidence
+on its own), attach it with `mode=apply`, then
+`asc-submit-review.yml -f mode=submit -f confirm_version=0.7.6`.
+
+0.7.5 reached the store the same way and is the proof the lane works end to end:
+submitted 2026-09-06 entirely from CI — no console, no local key — with build 123
+attached, both audits clean, submissions `f144ba7c…` (macOS) and `22150b3e…`
+(iOS), then approved and **released by hand**, because `releaseType` is MANUAL
+from the moment the version record is created. That press is still the only human
+act left in the lane.
 
 ### `whatsNew` is required, per-VERSION, and the audit used to miss it
 
@@ -61,7 +73,20 @@ is exactly why it read as sudden.
 
 None of them was ever needed. Both lanes re-sign or re-export with the real
 distribution identity afterwards, so the archive's signature never reaches the
-shipped artifact. Both now archive UNSIGNED and mint nothing.
+shipped artifact. Both now archive UNSIGNED.
+
+**Archiving was only half of it, and this section used to claim otherwise.**
+`ios-release.yml` kept passing `-allowProvisioningUpdates` and the App Store
+Connect key to `-exportArchive` on *every* signing mode, the default included,
+until 2026-09-09 — three days after the archive was fixed. That flag is precisely
+what authorises Xcode to create signing assets, so a minting route stayed open on
+the shipping path while the notes read as though the hole were shut.
+`mas-release.yml` had already dropped both from its export step; this lane never
+caught up. Both arguments now go only to the `automatic` experiment, which is the
+one mode that exists to test them — `secrets` and `ephemeral` sign manually, from
+an identity already in the keychain against a profile already on disk, and need
+neither. **When a doc and a workflow disagree about what a lane does, read the
+lane.**
 
 `asc_ios_signing.py --list-certs` prints every certificate with its id and type —
 without it, a cap cannot even be diagnosed, let alone cleared.
@@ -223,15 +248,19 @@ minting time to the second. Against the lane runs:
 | `LN52H3LGTM` | 2026-09-06 02:04:18 | from the MAS run started 02:02:24 |
 | — | **2026-09-06 02:28:53** | **`40019b1` archive-unsigned lands** |
 
-Every one predates the fix; the last by 24 minutes. The four Apple-lane runs
-after it (02:28:57, 02:48:07, 03:04:10, and both verify runs at 14:59 and 17:20)
-minted nothing — there are only three, and all three are older than the commit.
-Earlier notes hedged that two were "dated the same day I claimed to have stopped
-the minting" and could not be told apart; the expiry timestamps tell them apart. They sign nothing
-that ships (a development certificate cannot sign an App Store build) and their
-private keys were discarded by the jobs that made them, so they can sign nothing
-at all. They cost only slots against the cap. Clear them with
-`apple-revoke-cert.yml` when convenient; nothing depends on the order.
+Every one predates the fix; the last by 24 minutes. The Apple-lane runs after it
+— three release runs, at 02:28:57, 02:48:07 and 03:04:10, plus the verify runs
+later that day — minted nothing, because there are only three certificates and
+all three are older than the commit. Earlier notes hedged that two were "dated
+the same day I claimed to have stopped the minting" and could not be told apart;
+the expiry timestamps tell them apart. They signed nothing that ships (a
+development certificate cannot sign an App Store build) and their private keys
+were discarded by the jobs that made them, so they could sign nothing at all;
+they cost only slots against the cap, and they are now revoked.
+
+The argument above covers the ARCHIVE step only. The iOS export step was a
+separate minting route and stayed open until 2026-09-09 — see the section on the
+lanes above.
 
 **How the 2026-09-09 revoke was decided, since the reasoning is the reusable
 part.** The old note said to revoke `3NWQMKV4UB` "once 0.7.4 is live" — a

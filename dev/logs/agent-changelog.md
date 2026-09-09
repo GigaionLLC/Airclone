@@ -13,6 +13,112 @@ happened": nothing was logged between 2026-07-02 and 2026-07-15, or between 2026
      it is: it used to say ABOVE, which pushed it further down the file with every entry until
      it sat hundreds of lines under the newest one and pointed writers at the wrong place. -->
 
+## [2026-09-09] - v0.7.6 out to every store, and two guards that were made to fail before they were kept
+
+**Agent:** Claude Opus 5 - `main`
+**Files Modified:** 19. In `app/lib/src/ui/`: `browser_pane`, `inspector_panel`,
+`selection_actions`, `dedupe_dialog`. In `app/lib/src/state/`: `add_remote_controller`,
+`encrypt_remote_controller`, `remotes_provider`, `cloud_placeholder`, `transfer_options`. In
+`app/test/`: `download_conflict`, `create_overwrite_guard`, `cloud_placeholder_wrapper`,
+`transfer_options_build`. Plus `.github/workflows/ios-release.yml`, `app/pubspec.yaml`,
+`dev/releases/v0.7.6.md` (new), `dev/google-play-store.md`, `dev/apple-handoff.md` and
+`wiki/core/14-performance-standards.md`.
+**Database/API Changes:** GitHub release **v0.7.6** published with 11 artifacts. Google Play: build
+**124 promoted from beta to production at a 10% staged rollout** — the dry run first, then
+`committed — production now serving 124`. Microsoft Store: submission **1152921505701850674**
+STAGED and deliberately not committed. App Store Connect: 0.7.6 version records **created** on both
+IOS and MAC_OS, `PREPARE_FOR_SUBMISSION`, `releaseType` MANUAL from creation; the two build lanes
+were still uploading when this was written, so nothing is attached or submitted yet. Four
+certificates revoked through `apple-revoke-cert.yml` in four separate runs: `3NWQMKV4UB` plus the
+three DEVELOPMENT ids `K9HRGKWVT4`, `QF79989974`, `LN52H3LGTM`. Four load-bearing ones remain.
+
+**Summary:** Everything shipped here has one shape — an operation that destroyed or hid something
+and reported success.
+
+**Five transfer paths overwrote the destination with no prompt.** `showCopyConflictDialog` had
+exactly one caller. Paste, "Copy to…" and "Move to…" went through `transferNamesIntoFolder` and
+asked before replacing; Download (toolbar, inspector, selection), an OS drag-and-drop in, and the
+pane-to-pane transfer button went straight at `TransferService`, and rclone replaces by default.
+All five now route through the same helper, which lists the destination, offers
+Skip / Replace / Keep both, and **refuses when the destination cannot be read** rather than assuming
+it is empty. Two shape details worth keeping: a drop can carry paths from several source folders
+while the helper takes one source folder per call, so the drop groups by folder
+and runs one checked transfer per group; and the pane-to-pane path now clears the selection only
+when a transfer was actually dispatched, because cancelling a prompt used to be indistinguishable
+from succeeding.
+
+**`config/create` on an existing name silently REPLACES that remote** — exit 0, no diff, nothing in
+the response to tell it apart from a create. Both wizards called it unchecked. On a `crypt` remote
+that is data loss with no error anywhere: the files stay put, the new key cannot decrypt their
+names, rclone skips them and returns an empty listing, and the pane faithfully draws "Empty folder".
+The encryption wizard's own round-trip canary does not catch it either — it only ever proved the NEW
+key was self-consistent. A user hit exactly this. Both paths now consult one shared
+`existingRemoteNames()` in `remotes_provider.dart` and fail **closed**: an unreadable `config/dump`
+refuses the create rather than assuming the name is free.
+
+**The cloud-hydration guard was bypassed by the case it exists for.** It resolved a path only when
+`remote.type == 'local'`, so a `crypt`, `alias`, `chunker` or `compress` remote sitting on a local
+path reported the wrapper type, `localAbsolutePath()` returned null, and `wouldHydrateOnRead()`
+turned that into "safe to read" at all five consult sites. Dedupe was the sharp edge — both its
+placeholder probe and its consent dialog sat behind that same type check, so it went straight to a
+recursive `operations/list` with `showHash`, reading every file in a subtree end to end.
+`resolveLocalBackingRoot()` now follows the chain; `isLocalBacked()` is deliberately **tri-state**,
+where null means unresolved and a tree-walking caller must treat it as "might be local". A peer
+session then found the live case that was missed: a named local remote with no root of its own
+(`localdisk:`) resolved nothing on a relative browse path, so dedupe counted **zero** placeholders
+and read that confident zero as "nothing is online-only". Dedupe now counts how many entries it
+could resolve at all, and zero-resolved-with-files-present asks about the whole scan.
+
+**The iOS export step was still authorising Xcode to mint signing assets.** `ios-release.yml` passed
+`-allowProvisioningUpdates` and the App Store Connect key to `-exportArchive` on every signing mode
+including the default. The *archive* step had been gated to the `automatic` experiment on 2026-09-06
+and the 0.7.5 entry below records the export flag as gone too — for `mas-release.yml` that was true,
+for this lane it was not, and the code is what settled it. `secrets` and `ephemeral` both sign
+manually from an identity already in the keychain against a profile already on disk; neither needs
+the flag or the key. Both now go only to `automatic`.
+
+**Four certificates revoked, after checking rather than after guessing.** `3NWQMKV4UB` had carried an
+unsatisfiable condition — "revoke once 0.7.4 is live" — and 0.7.4 was renamed to 0.7.5 and carries
+build 123, not the 122 it signed. A rule that can never be met gets read as "no longer applies",
+which is the dangerous direction: revoking early is what returned INVALID BINARY minutes after the
+first iOS Add for Review. The test actually used was **wait until the version is live**, then
+confirm with `--list-certs` which id signs the shipped build. The three DEVELOPMENT ids went the same
+way, and only after verifying that neither active profile embedded any of them.
+
+**Two lessons, and they are the part that generalises.**
+
+**A regression test that has never failed proves nothing.** Both new guards were run RED against the
+old code before being kept — the download prompt genuinely absent ("Found 0 widgets with text 1 of 1
+already exist here"), and `config/create` genuinely firing on a name already present and again on a
+config that could not be read. One of those red runs then earned its keep by exposing a real bug in
+the fix itself. `resolveLocalBackingRoot`'s cycle test (`a:` → `b:` → `a:`) failed, and not because
+the depth guard was missing: a remote named `b` is written `b:`, which is indistinguishable from a
+drive letter by shape, so the resolver returned the literal path `"b:"` and ended the cycle by
+accident. **The CONFIG has to be the authority, not the string shape** — look the head up in
+`config/dump` first, and fall back to a drive letter only when no such remote exists and the
+separator a bare remote reference never carries (`C:/x`, `C:\x`) is present. Had that test been
+written green-first it would have passed for the wrong reason and hidden the bug it was aimed at.
+
+**With several sessions committing into one working tree, stage by path.** Three others were landing
+work here — eight commits interleaved with mine, including the empty-folder notice, the sync-source
+flow, the import replace option and remove-all-remotes. `git add -A` in that situation silently
+sweeps up somebody else's half-finished work; at one point the tree held a test file that did not
+compile, which also makes a local full-suite run meaningless until it lands. Stage the paths you
+touched, and treat CI on the pushed commit as the real check. The same crowding hit the release
+notes: six follow-up passes after they were first written, five of them because something had landed
+in the meantime. A tag cut from HEAD takes everything on main whether the notes mention it or not —
+which is also why the release title stopped calling 0.7.6 a fix release.
+
+Also removed `TransferOptions.extraFlags`: it was rendered into the "rclone cmd" tab and dropped by
+`buildRcCall`, by design and by its own doc comment. Nothing ever set it, so it never actually lied
+— but the only thing a dead field like that can do is make the preview describe a command that is
+not the one that runs, and that tab is what people copy out and run by hand.
+
+**Verified:** **831 tests** pass in a local full-suite run on HEAD; CI green on every commit of the
+release, which is what actually runs `flutter analyze` and `dart format --set-exit-if-changed`; the
+published v0.7.6 release carries all 11 artifacts.
+
+
 ## [2026-09-06] - 0.7.5 submitted to Apple from CI, and a documentation library brought back to the tree
 
 **Agent:** Claude Opus 5 - `main`

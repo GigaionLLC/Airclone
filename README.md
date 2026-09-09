@@ -28,13 +28,18 @@ experience**, and brings it to the desktop *and* the phone:
   as peers in a single list, with the same rows, gestures, and context menu.
 - 🖐️ **Direct manipulation** — drag a folder from one cloud to another to copy it; the transfer runs
   as a live job. Easy one-click sync, and a dry-run mode that runs a job without writing anything.
-- ⏰ **Sync & schedule** — Mirror, Backup-new, or Two-way sync; save jobs and run them on a schedule.
+- ⏰ **Sync & schedule** — Copy, Move, Sync (make the destination match) or Two-way; mark a folder as
+  the sync source, then later sync it INTO wherever you are standing; save jobs and run them on a schedule.
 - 💽 **Make it local** — mount a remote as a drive on desktop, or hand any file straight to another
   app from your phone with **Open in another app** and the share sheet.
 - 🔒 **Free, open-source, and private** — local-only, no telemetry. All manual power stays free.
-- 🏢 **Enterprise-ready, without phoning home** — deployable & governable by IT (MDM/policy, enforced
-  kill-switches, OS-keychain/Vault secrets, local audit + opt-in SIEM, signed/SBOM'd builds, optional
-  self-hosted control plane). Enterprise control flows only through customer-owned channels.
+- 🏢 **Designed for IT, without phoning home** — what ships today is the immovable part: no account,
+  no telemetry, no Airclone-operated endpoint, and mount, serve, reveal-in-file-manager and
+  archive each behind a single kill-switch provider — the seam a policy source would flip, and the one the Mac App Store
+  build already flips. The wider surface — MDM policy, Vault/KMS
+  secrets, on-prem audit, an optional self-hosted control plane — is a specified, phased posture, not
+  a shipped feature: [Enterprise Readiness](wiki/core/19-enterprise-readiness.md). Any enterprise
+  control that lands flows only through customer-owned channels.
 
 > **Status: 0.x, active development** — the free Windows, macOS, Linux and Android builds ship on the
 > [Releases](https://github.com/GigaionLLC/Airclone/releases) page: **Windows** builds are code-signed
@@ -49,14 +54,14 @@ experience**, and brings it to the desktop *and* the phone:
 <table>
   <tr>
     <td width="50%"><img src="docs/screenshots/transfer-running.png" alt="Live transfer job with speed and ETA"><br><sub><b>Live transfers</b> — every copy is an observable job: progress, speed, ETA, pause/cancel.</sub></td>
-    <td width="50%"><img src="docs/screenshots/sync-dry-run.png" alt="Sync dialog with Mirror/Move/Sync/Two-way modes and a Dry run button"><br><sub><b>Safe sync</b> — Copy / Move / Sync / Two-way, with filters, an rclone-command preview, and one-click <b>dry-run</b>.</sub></td>
+    <td width="50%"><img src="docs/screenshots/sync-dry-run.png" alt="Sync dialog with Copy/Move/Sync/Two-way modes and a Dry run button"><br><sub><b>Safe sync</b> — Copy / Move / Sync / Two-way, with filters, an rclone-command preview, and one-click <b>dry-run</b>.</sub></td>
   </tr>
   <tr>
     <td><img src="docs/screenshots/native-skins.png" alt="Settings showing theme control and native skin dropdown"><br><sub><b>Native skins + dark mode</b> — Explorer, Finder, or GNOME looks, light and dark.</sub></td>
     <td><img src="docs/screenshots/thumbnails-grid.png" alt="Grid view with image thumbnails over a cloud remote"><br><sub><b>Thumbnails everywhere</b> — image/video previews over any remote, cached encrypted (AES-256-GCM).</sub></td>
   </tr>
   <tr>
-    <td colspan="2" align="center"><img src="docs/screenshots/conflict-guard.png" alt="Conflict dialog offering Skip, Replace, Keep both" width="720"><br><sub><b>Paste never overwrites silently</b> — a name collision prompts Skip / Replace / Keep both.</sub></td>
+    <td colspan="2" align="center"><img src="docs/screenshots/conflict-guard.png" alt="Conflict dialog offering Skip, Replace, Keep both" width="720"><br><sub><b>Nothing overwrites silently</b> — paste, Copy/Move to…, download, a drag in from Explorer or Finder, or a hand-off to the other pane: a name collision prompts Skip / Replace / Keep both, and a destination that can't be read transfers nothing rather than assuming it's empty.</sub></td>
   </tr>
 </table>
 
@@ -126,8 +131,9 @@ docker compose run --rm flutter flutter test      # unit tests
 [Releases](https://github.com/GigaionLLC/Airclone/releases) page (alpha/beta builds are marked
 pre-release; **Windows** builds are code-signed and **macOS** builds are signed + notarized).
 **Windows and Android** builds bundle the rclone engine (nothing to download on first launch); other
-desktop builds fetch + verify it on first launch, and any desktop build can update the engine from
-Settings.
+desktop builds fetch + verify it on first launch, and a desktop build can update the engine from
+Settings — except the Microsoft Store package, which updates its engine only when the app itself
+updates, through the Store.
 
 ## 💸 Pricing
 
@@ -143,8 +149,10 @@ same app.
 ## 🗺️ Roadmap
 
 **Phase 0** spikes → **Phase 1** desktop MVP → **Phase 2** mobile are **shipped**, iOS included; most
-of **Phase 3** advanced (bisync, crypt, scheduling) landed during the alphas — profile sync is the big
-remaining item. Live queue: [Feature Backlog](dev/backlog/feature-backlog.md) · details in the
+of **Phase 3** advanced (bisync, crypt, scheduling) landed during the alphas. The big remaining item is
+the *automatic* half of cross-device profile sync — an encrypted blob kept on one of your own remotes;
+the manual half already ships (encrypted config export/import and an offline QR handoff between a
+desktop and a phone). Live queue: [Feature Backlog](dev/backlog/feature-backlog.md) · details in the
 [Cross-Platform Plan](dev/plans/cross-platform-architecture-plan.md).
 
 ## 🤖 Built by AI

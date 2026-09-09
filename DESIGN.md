@@ -22,7 +22,8 @@ powerful on demand · progressive disclosure · always-on observability.*
 The tokens are **Dart, not CSS**. [`app/lib/src/ui/theme/tokens.dart`](app/lib/src/ui/theme/tokens.dart)
 is the source of truth: it defines the scales, the palettes, and the `AircloneTheme` `ThemeExtension`
 that carries them. [`AppTheme.build(skin, brightness)`](app/lib/src/ui/theme/app_theme.dart) installs
-that extension on `ThemeData`, and 56 files under `app/lib/src/ui/` already read tokens back out of it.
+that extension on `ThemeData`, and 60 files under `app/lib/src/ui/` already read tokens back out of it
+(`AircloneTheme.of` / `.tokensOf` / `.chromeOf`).
 Where a prose doc and `tokens.dart` disagree, the code wins.
 
 | Token group | How a widget reads it | Values |
@@ -78,7 +79,10 @@ and `SkinChrome.of(skin)` — and `AppTheme.build` installs all three. So:
    component primitives.
 2. **Status is never color-only** — pair every dot/chip with an icon + text label.
 3. **Destructive actions** show a one-line "what's about to happen" explainer and require confirmation.
-4. **Plain language over jargon** — "Two-way sync" not "bisync"; "Mirror →" not `--delete-dest`.
+4. **Plain language over jargon** — the four transfer modes read *Copy*, *Move*, *Sync* and *Two-way
+   sync*, never `copy`/`move`/`sync`/`bisync`, and each carries its consequence in words ("Make
+   destination match source (deletes extras)"), and an rclone flag may sit beside it only as a faint secondary hint, the way the
+`--max-delete` field does - never as the label itself.
 5. **Responsive + accessible** — meet WCAG AA against the *active* skin's palette; full keyboard
    operability on desktop; 44px touch targets on mobile; honor the platform light/dark setting, and
    consult `MediaQuery.disableAnimationsOf(context)` before adding motion that matters.

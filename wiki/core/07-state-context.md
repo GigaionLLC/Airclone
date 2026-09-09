@@ -23,8 +23,8 @@ cached server value — or when you need to find "which provider owns X" without
 | :--- | :--- |
 | **Framework** | Riverpod 2 (`flutter_riverpod`) with the modern `Notifier` / `NotifierProvider` API **only**. |
 | **Not used** | No `riverpod_generator` / code-gen, no `StateNotifierProvider`, no `ChangeNotifierProvider`, no `AsyncNotifierProvider`. Do not introduce them. |
-| **Naming** | Every top-level provider is named `<thing>Provider`. 85 public providers + 1 private (`_transferInFlightProvider` in [ui/paste_action.dart](../../app/lib/src/ui/paste_action.dart)). |
-| **Location** | 80 live in [app/lib/src/state/](../../app/lib/src/state/); the other 5 public ones (plus that single private one) live beside their widget in `app/lib/src/ui/`. New state belongs in `state/` unless it is purely one widget's chrome. |
+| **Naming** | Every top-level provider is named `<thing>Provider`. 88 public providers + 2 private, both re-entrancy latches: `_transferInFlightProvider` in [ui/paste_action.dart](../../app/lib/src/ui/paste_action.dart) and `_syncInFlightProvider` in [ui/sync_here_action.dart](../../app/lib/src/ui/sync_here_action.dart). |
+| **Location** | 83 live in [app/lib/src/state/](../../app/lib/src/state/); the other 5 public ones (plus both private ones) live beside their widget in `app/lib/src/ui/`. New state belongs in `state/` unless it is purely one widget's chrome. |
 | **Root** | The graph is rooted at `engineControllerProvider`. Every server-state provider starts with `ref.read/watch(engineControllerProvider).client` and returns an **empty value when it is null** — never throws, never blocks. |
 | **Persisted scalar idiom** | A `Notifier<T>` whose `build()` fires an unawaited `_load()` and returns the default **synchronously**, plus `Future<void> set(T)` that assigns `state` then writes SharedPreferences inside a swallowing `try/catch`. Canonical example: [state/advanced_mode.dart](../../app/lib/src/state/advanced_mode.dart). |
 | **`ensureLoaded()`** | Providers whose value is read at *startup decision time* also expose an idempotent `Future<void> ensureLoaded()` caching a single `_loading` future — see [settings_controller.dart](../../app/lib/src/state/settings_controller.dart), [config_password_vault.dart](../../app/lib/src/state/config_password_vault.dart), [biometric_unlock.dart](../../app/lib/src/state/biometric_unlock.dart). Callers making a boot-time branch **must await it** (see Traps). |
@@ -44,10 +44,10 @@ Paths are relative to `app/lib/src/`. Line numbers are the declaration site at t
 
 | Provider | File | Kind → state | Owns / mutated by |
 | :--- | :--- | :--- | :--- |
-| `engineControllerProvider` | [state/engine_controller.dart:605](../../app/lib/src/state/engine_controller.dart) | `NotifierProvider<EngineController, EngineUi>` | **Root of the graph.** Locates/provisions rclone, gates on config encryption, spawns the engine, exposes `state.client`. Methods: `bootstrap`, `installAndStart`, `unlockAndStart`, `restartEngine`, `switchConfigAndStart`, `switchEngineAndStart`, `updateEngine`, `quiesceForConfigOp`, `reloadWithConfigPassword`. |
+| `engineControllerProvider` | [state/engine_controller.dart:620](../../app/lib/src/state/engine_controller.dart) | `NotifierProvider<EngineController, EngineUi>` | **Root of the graph.** Locates/provisions rclone, gates on config encryption, spawns the engine, exposes `state.client`. Methods: `bootstrap`, `installAndStart`, `unlockAndStart`, `restartEngine`, `switchConfigAndStart`, `switchEngineAndStart`, `updateEngine`, `quiesceForConfigOp`, `reloadWithConfigPassword`. |
 | `settingsControllerProvider` | [state/settings_controller.dart:151](../../app/lib/src/state/settings_controller.dart) | `NotifierProvider<SettingsController, SettingsState>` | `themeMode`, `rclonePathOverride`, `configPathOverride`, `engineMode`. `setThemeMode` / `setRclonePath` / `setConfigPathOverride` / `setEngineMode`; `ensureLoaded()`. |
 | `engineFlagsProvider` | [state/engine_flags.dart:36](../../app/lib/src/state/engine_flags.dart) | `NotifierProvider<EngineFlags, String>` | Raw extra argv appended to the spawned `rclone rcd`. `set(String)`. |
-| `configTransferControllerProvider` | [state/config_transfer_controller.dart:972](../../app/lib/src/state/config_transfer_controller.dart) | `Provider<ConfigTransferController>` | Config import / export / merge / replace / encryption applied **to the config file itself** (the one sanctioned out-of-band writer — see Traps). |
+| `configTransferControllerProvider` | [state/config_transfer_controller.dart:1058](../../app/lib/src/state/config_transfer_controller.dart) | `Provider<ConfigTransferController>` | Config import / export / merge / replace / encryption applied **to the config file itself** (the one sanctioned out-of-band writer — see Traps). Also owns `removeAllRemotes()` — back up, then `config/delete` every section — which refuses outright when the active config cannot be located to back up. |
 | `configBackupsProvider` | [state/config_backups.dart:167](../../app/lib/src/state/config_backups.dart) | `FutureProvider<ConfigBackups>` | Rolling config backups under `<appSupport>/config-backups`. Fully injectable (dir + clock) for tests. |
 | `appVersionProvider` | [state/app_info.dart:11](../../app/lib/src/state/app_info.dart) | `FutureProvider<String>` | Package version string. |
 | `updateCheckProvider` | [state/app_info.dart:76](../../app/lib/src/state/app_info.dart) | `FutureProvider<UpdateStatus>` | App update availability. **Sealed** result: `StoreManagedUpdates` (no network call at all) or `ReleaseUpdateInfo` (the GitHub check). Branches on `installSourceProvider` — see [10-external-integrations.md §5.1](10-external-integrations.md). |
@@ -61,17 +61,19 @@ Paths are relative to `app/lib/src/`. Line numbers are the declaration site at t
 
 | Provider | File | Kind → state | Owns / mutated by |
 | :--- | :--- | :--- | :--- |
-| `browserAProvider` | [state/browser_controller.dart:456](../../app/lib/src/state/browser_controller.dart) | `NotifierProvider<BrowserController, BrowserState>` | Pane 0 (left / top). |
-| `browserBProvider` | [state/browser_controller.dart:459](../../app/lib/src/state/browser_controller.dart) | same type | Pane 1 (right / bottom). |
-| `activePaneProvider` | [state/browser_controller.dart:465](../../app/lib/src/state/browser_controller.dart) | `StateProvider<int>` | Which pane (0/1) sidebar clicks and cross-pane copies target. |
-| `paneFilterFocusProvider` | [state/browser_controller.dart:472](../../app/lib/src/state/browser_controller.dart) | `Provider.family<FocusNode, int>` | App-lifetime `FocusNode` per pane's Ctrl+F box; disposes it in `ref.onDispose`. |
-| `pathEditRequestProvider` | [state/browser_controller.dart:481](../../app/lib/src/state/browser_controller.dart) | `StateProvider.family<int, int>` | A monotonic tick bumped by Ctrl+L / Alt+D to pop the address bar into edit mode. |
-| `paneScrollProvider` | [state/browser_controller.dart:487](../../app/lib/src/state/browser_controller.dart) | `Provider.family<ScrollController, int>` | App-lifetime `ScrollController` per pane; disposes it in `ref.onDispose`. |
+| `browserAProvider` | [state/browser_controller.dart:492](../../app/lib/src/state/browser_controller.dart) | `NotifierProvider<BrowserController, BrowserState>` | Pane 0 (left / top). |
+| `browserBProvider` | [state/browser_controller.dart:495](../../app/lib/src/state/browser_controller.dart) | same type | Pane 1 (right / bottom). |
+| `activePaneProvider` | [state/browser_controller.dart:501](../../app/lib/src/state/browser_controller.dart) | `StateProvider<int>` | Which pane (0/1) sidebar clicks and cross-pane copies target. |
+| `paneFilterFocusProvider` | [state/browser_controller.dart:508](../../app/lib/src/state/browser_controller.dart) | `Provider.family<FocusNode, int>` | App-lifetime `FocusNode` per pane's Ctrl+F box; disposes it in `ref.onDispose`. |
+| `pathEditRequestProvider` | [state/browser_controller.dart:517](../../app/lib/src/state/browser_controller.dart) | `StateProvider.family<int, int>` | A monotonic tick bumped by Ctrl+L / Alt+D to pop the address bar into edit mode. |
+| `paneScrollProvider` | [state/browser_controller.dart:523](../../app/lib/src/state/browser_controller.dart) | `Provider.family<ScrollController, int>` | App-lifetime `ScrollController` per pane; disposes it in `ref.onDispose`. |
 | `viewMemoryProvider` | [state/view_memory.dart:96](../../app/lib/src/state/view_memory.dart) | `NotifierProvider<ViewMemory, Map<String, ViewPref>>` | Per-remote last view mode / sort / density. `remember(name, pref)` (skips a no-change write), `prefFor(name)`. |
 | `clipboardControllerProvider` | [state/clipboard_controller.dart:82](../../app/lib/src/state/clipboard_controller.dart) | `NotifierProvider<ClipboardController, ClipboardItems>` | Copy/cut staging shared by both panes. `copy`, `cut`, `clear`. Pure state — the paste integrator performs the transfer. |
-| `recentLocationsProvider` | [state/recent_locations.dart:39](../../app/lib/src/state/recent_locations.dart) | `NotifierProvider<RecentLocations, List<RecentLocation>>` | Session-only MRU, capped at 12. `record(remote, path)`. |
+| `recentsEnabledProvider` | [state/recent_locations.dart:46](../../app/lib/src/state/recent_locations.dart) | `NotifierProvider<RecentsEnabled, bool>` | Whether visited folders are remembered at all. **Opt-in, default off** — a trail nobody asked for puts remote and folder names on the Home screen. The *choice* is persisted; the trail is not. |
+| `recentLocationsProvider` | [state/recent_locations.dart:94](../../app/lib/src/state/recent_locations.dart) | `NotifierProvider<RecentLocations, List<RecentLocation>>` | Session-only MRU, capped at 12. `record(remote, path)` is a **no-op while `recentsEnabledProvider` is off** — nothing is collected and filtered later. A `ref.listen` on that switch clears the list the moment it goes off. |
+| `syncSourceProvider` | [state/sync_source.dart:50](../../app/lib/src/state/sync_source.dart) | `NotifierProvider<SyncSourceController, SyncSource>` | The folder a later "Sync to here" syncs **from**. Session-only, and deliberately **not** a third state on the clipboard: `ClipboardItems.isNotEmpty` drives whether Paste appears, and the two gestures are orthogonal. `mark(remote, path)`, `clear()`. The pure `syncTargetRefusal()` beside it refuses an overlapping source/destination pair outright (case-insensitively) rather than warning. |
 
-> `paneProvider(int index)` at [browser_controller.dart:468](../../app/lib/src/state/browser_controller.dart)
+> `paneProvider(int index)` at [browser_controller.dart:504](../../app/lib/src/state/browser_controller.dart)
 > is a plain **top-level function**, not a provider. It returns `browserA`/`browserB` and is the
 > canonical way UI code reaches a pane (~112 call sites in `ui/`).
 
@@ -79,12 +81,12 @@ Paths are relative to `app/lib/src/`. Line numbers are the declaration site at t
 
 | Provider | File | Kind → state | Notes |
 | :--- | :--- | :--- | :--- |
-| `paneSplitRatioProvider` | [state/pane_layout.dart:100](../../app/lib/src/state/pane_layout.dart) | `NotifierProvider<PaneSplitRatio, double>` | Persisted, clamped. |
-| `paneSplitOrientationProvider` | [state/pane_layout.dart:144](../../app/lib/src/state/pane_layout.dart) | `NotifierProvider<…, PaneSplitOrientation>` | `adaptive` / `sideBySide` / `stacked`, persisted. |
-| `mobileSplitProvider` | [state/pane_layout.dart:152](../../app/lib/src/state/pane_layout.dart) | `StateProvider<bool>` | Phone-only second-pane opt-in; session only. |
-| `singlePaneProvider` | [ui/home_screen.dart:64](../../app/lib/src/ui/home_screen.dart) | `StateProvider<bool>` | Desktop single vs dual pane (default `true`). |
-| `sidebarVisibleProvider` | [ui/home_screen.dart:67](../../app/lib/src/ui/home_screen.dart) | `StateProvider<bool>` | |
-| `sidebarWidthProvider` | [ui/home_screen.dart:70](../../app/lib/src/ui/home_screen.dart) | `StateProvider<double>` | Default 240. |
+| `paneSplitRatioProvider` | [state/pane_layout.dart:128](../../app/lib/src/state/pane_layout.dart) | `NotifierProvider<PaneSplitRatio, double>` | Persisted, clamped. |
+| `paneSplitOrientationProvider` | [state/pane_layout.dart:216](../../app/lib/src/state/pane_layout.dart) | `NotifierProvider<…, PaneSplitOrientation>` | `adaptive` / `sideBySide` / `stacked`, persisted. |
+| `mobileSplitProvider` | [state/pane_layout.dart:224](../../app/lib/src/state/pane_layout.dart) | `StateProvider<bool>` | Phone-only second-pane opt-in; session only. |
+| `singlePaneProvider` | [ui/home_screen.dart:66](../../app/lib/src/ui/home_screen.dart) | `StateProvider<bool>` | Desktop single vs dual pane (default `true`). |
+| `sidebarVisibleProvider` | [ui/home_screen.dart:69](../../app/lib/src/ui/home_screen.dart) | `StateProvider<bool>` | |
+| `sidebarWidthProvider` | [ui/home_screen.dart:72](../../app/lib/src/ui/home_screen.dart) | `StateProvider<double>` | Default 240. |
 | `inspectorVisibleProvider` | [ui/inspector_panel.dart:26](../../app/lib/src/ui/inspector_panel.dart) | `StateProvider<bool>` | |
 | `columnWidthsProvider` | [ui/column_header.dart:141](../../app/lib/src/ui/column_header.dart) | `NotifierProvider<ColumnWidthsController, ColumnWidths>` | Persisted Size / Modified column widths (clamped on load). |
 | `jobsDockHeightProvider` | [state/pane_layout.dart:172](../../app/lib/src/state/pane_layout.dart) | `NotifierProvider<JobsDockHeight, double>` | Height of the bottom Transfers dock, persisted **unclamped by viewport** — the widget re-clamps against the live layout every build via the pure `clampJobsDockHeight`, so a dock dragged tall on a big monitor cannot swallow a small one. |
@@ -103,39 +105,41 @@ Paths are relative to `app/lib/src/`. Line numbers are the declaration site at t
 | `transferServiceProvider` | [state/transfer_service.dart:220](../../app/lib/src/state/transfer_service.dart) | `Provider<TransferService>` | Dispatches transfers with `_async: true` and `_group: 'airclone/<local jobId>'`. |
 | `recentTransfersProvider` | [state/recent_activity_controller.dart:10](../../app/lib/src/state/recent_activity_controller.dart) | `FutureProvider.autoDispose<List<TransferredItem>>` | `core/transferred`. The **only** autoDispose provider; the panel refreshes by invalidating it. |
 | `transferForegroundServiceProvider` | [state/android_transfer_service.dart:17](../../app/lib/src/state/android_transfer_service.dart) | `Provider<void>` | Side-effect-only: `ref.listen`s jobs and drives the Android `dataSync` foreground service over `MethodChannel('airclone/native')`. No-op off Android. |
-| `fileOpsProvider` | [state/file_ops.dart:175](../../app/lib/src/state/file_ops.dart) | `Provider<FileOps>` | Single-shot non-streaming mutations (create / rename / delete). Long transfers belong to jobs. |
-| `archiveServiceProvider` | [state/archive_service.dart:214](../../app/lib/src/state/archive_service.dart) | `Provider<ArchiveService>` | `rclone archive create/extract/list` as a **subprocess** (no RC method exists); tracked as `JobType.archive`. |
+| `fileOpsProvider` | [state/file_ops.dart:183](../../app/lib/src/state/file_ops.dart) | `Provider<FileOps>` | Single-shot non-streaming mutations (create / rename / delete), plus the read-only `compare()` (`operations/check`) and `folderSize()` the sync preview is built on. Long transfers belong to jobs. |
+| `archiveServiceProvider` | [state/archive_service.dart:229](../../app/lib/src/state/archive_service.dart) | `Provider<ArchiveService>` | `rclone archive create/extract/list` as a **subprocess** (no RC method exists); tracked as `JobType.archive`. |
 
 ### Remotes & server-state caches
 
 | Provider | File | Kind → state | Backing RC call |
 | :--- | :--- | :--- | :--- |
-| `remotesProvider` | [state/remotes_provider.dart:10](../../app/lib/src/state/remotes_provider.dart) | `FutureProvider<List<Remote>>` | `config/dump`, plus a synthetic `localHomeRemote()` peer (suppressed on Android). |
+| `remotesProvider` | [state/remotes_provider.dart:31](../../app/lib/src/state/remotes_provider.dart) | `FutureProvider<List<Remote>>` | `config/dump`, plus a synthetic `localHomeRemote()` peer (suppressed on Android). Also publishes every remote's resolved local backing root to the hydration guard (`setRemoteBackingRoots`, [14 §1](14-performance-standards.md)). The same file exports `existingRemoteNames(client)` — **every `config/create` caller must consult it and fail closed**, because `config/create` on an existing name silently REPLACES that remote. |
 | `providersProvider` | [state/providers_provider.dart:8](../../app/lib/src/state/providers_provider.dart) | `FutureProvider<List<RcloneProvider>>` | `config/providers` — powers the dynamic add-remote forms. |
 | `remoteAboutProvider` | [state/remote_about.dart:18](../../app/lib/src/state/remote_about.dart) | `FutureProvider.family<RemoteAbout?, String>` | `operations/about`, keyed by fs. |
 | `remoteFeaturesProvider` | [state/remote_features.dart:8](../../app/lib/src/state/remote_features.dart) | `FutureProvider.family<Map<String,bool>, String>` | `operations/fsinfo` → `Features`; used to capability-gate UI. |
-| `drivesProvider` | [state/local_locations.dart:137](../../app/lib/src/state/local_locations.dart) | `Provider<List<LocalLocation>>` | Auto-detected local disks — synchronous, no engine needed. |
-| `userLocationsProvider` | [state/local_locations.dart:249](../../app/lib/src/state/local_locations.dart) | `NotifierProvider<UserLocations, List<LocalLocation>>` | Persisted, seeded with defaults on first run. |
-| `collapsedSectionsProvider` | [state/local_locations.dart:293](../../app/lib/src/state/local_locations.dart) | `NotifierProvider<CollapsedSections, Set<String>>` | Persisted sidebar section collapse. |
+| `drivesProvider` | [state/local_locations.dart:224](../../app/lib/src/state/local_locations.dart) | `Provider<List<LocalLocation>>` | Auto-detected local disks — synchronous, no engine needed. |
+| `userLocationsProvider` | [state/local_locations.dart:374](../../app/lib/src/state/local_locations.dart) | `NotifierProvider<UserLocations, List<LocalLocation>>` | Persisted, seeded with defaults on first run. |
+| `collapsedSectionsProvider` | [state/local_locations.dart:418](../../app/lib/src/state/local_locations.dart) | `NotifierProvider<CollapsedSections, Set<String>>` | Persisted sidebar section collapse. |
 | `bookmarksProvider` | [state/bookmarks_controller.dart:115](../../app/lib/src/state/bookmarks_controller.dart) | `NotifierProvider<BookmarksController, List<Bookmark>>` | Persisted "Favorites", most-recently-pinned first. |
-| `allFilesAccessProvider` | [state/android_native.dart:29](../../app/lib/src/state/android_native.dart) | `FutureProvider<bool>` | Android all-files-access permission state. |
+| `allFilesAccessProvider` | [state/android_native.dart:49](../../app/lib/src/state/android_native.dart) | `FutureProvider<bool>` | Android all-files-access permission state. |
 
 ### Mount, serve & policy kill-switches
 
 | Provider | File | Kind → state | Notes |
 | :--- | :--- | :--- | :--- |
-| `mountControllerProvider` | [state/mount_controller.dart:147](../../app/lib/src/state/mount_controller.dart) | `NotifierProvider<MountController, List<MountInfo>>` | 2 s `mount/listmounts` poll. `mount`, `unmount`, `unmountAll`, `unmountAllForExit`, `refreshCache`. **Nothing is persisted**, so mounts never auto-resurrect. |
-| `mountTypesProvider` | [state/mount_controller.dart:12](../../app/lib/src/state/mount_controller.dart) | `FutureProvider<List<String>>` | Empty on Windows ⇒ WinFsp missing. |
+| `mountControllerProvider` | [state/mount_controller.dart:155](../../app/lib/src/state/mount_controller.dart) | `NotifierProvider<MountController, List<MountInfo>>` | 2 s `mount/listmounts` poll. `mount`, `unmount`, `unmountAll`, `unmountAllForExit`, `refreshCache`. **Nothing is persisted**, so mounts never auto-resurrect. |
+| `mountTypesProvider` | [state/mount_controller.dart:14](../../app/lib/src/state/mount_controller.dart) | `FutureProvider<List<String>>` | Empty on Windows ⇒ WinFsp missing. |
 | `mountDefaultsProvider` | [state/mount_defaults.dart:68](../../app/lib/src/state/mount_defaults.dart) | `NotifierProvider<MountDefaults, MountOptions>` | The [`MountOptions`](../../app/lib/src/rclone/models/mount_options.dart) a **new** mount starts from — edited in Settings, and copied transiently by the mount dialog for one mount. Two levels only: a per-mount tweak never redefines the default, and a changed default never reaches a running mount (rclone fixes a VFS's options at mount time). Persisted as one JSON string so a new option needs no migration. |
-| `mountEnabledProvider` | [state/mount_policy.dart:7](../../app/lib/src/state/mount_policy.dart) | `Provider<bool>` (hard-coded `true`) | MDM/enterprise kill-switch seam, meant to be **overridden**, not edited. |
+| `mountLettersProvider` | [state/mount_letters.dart:75](../../app/lib/src/state/mount_letters.dart) | `NotifierProvider<MountLetters, Map<String, String>>` | Which mount point each **fs** (`gdrive:` or `gdrive:work`, not the remote name) was last pinned to, so a remote lands on the same letter every time instead of taking whatever `*` picks. Persisted as one JSON blob, so a new key needs no migration. `remember(fs, point)` treats `*` as the *absence* of a pin and forgets instead, which is what makes the checkbox symmetric; `forget(fs)`. The pin is written **after** the mount succeeds and records the point rclone actually used — with Auto selected that is the assigned letter, which is exactly the "put it back where it was" case worth remembering. |
+| `mountEnabledProvider` | [state/mount_policy.dart:15](../../app/lib/src/state/mount_policy.dart) | `Provider<bool>` = `!kMacAppStoreBuild` | MDM/enterprise kill-switch seam, meant to be **overridden**, not edited. Not a constant `true`: FUSE is impossible under the App Sandbox, so a Mac App Store build resolves it to `false` and every existing entry point already hides. |
 | `serveControllerProvider` | [state/serve_controller.dart:157](../../app/lib/src/state/serve_controller.dart) | `NotifierProvider<ServeController, List<ServeServer>>` | 2 s `serve/list` poll. `start`, `stop`, `panicStopAll`. |
 | `serveTypesProvider` | [state/serve_controller.dart:17](../../app/lib/src/state/serve_controller.dart) | `FutureProvider<List<String>>` | Curated set ∩ `serve/types`. |
 | `lanIpProvider` | [state/serve_controller.dart:34](../../app/lib/src/state/serve_controller.dart) | `FutureProvider<String?>` | Display only — never used as a bind address. |
-| `serveEnabledProvider` | [state/serve_policy.dart:9](../../app/lib/src/state/serve_policy.dart) | `Provider<bool>` (hard-coded `true`) | Same kill-switch pattern. `panicStopAll()` stays callable when disabled. |
+| `serveEnabledProvider` | [state/serve_policy.dart:17](../../app/lib/src/state/serve_policy.dart) | `Provider<bool>` = `!kMacAppStoreBuild` | Same kill-switch pattern, and likewise not a constant — the MAS entitlement set omits `com.apple.security.network.server`. `panicStopAll()` stays callable when disabled. |
 | `revealEnabledProvider` | [state/native_actions_policy.dart:31](../../app/lib/src/state/native_actions_policy.dart) | `Provider<bool>` | "Reveal in file manager". **Computed**, not hard-coded: `subprocessAllowedHere`, because every implementation (`open -R`, `explorer.exe /select,`, `dbus-send`) is a spawned process. Still an override seam. |
 | `archiveEnabledProvider` | [state/native_actions_policy.dart:46](../../app/lib/src/state/native_actions_policy.dart) | `Provider<bool>` | Archive create / extract / list, likewise `subprocessAllowedHere` — rclone exposes no RC method for archives, so `ArchiveService` shells out. Unlike mount, no future entitlement fixes this; it needs an RC method upstream. |
 
-All four are re-checked **inside** the operation — `MountController.mount()`, `ServeController.start()`,
+All four kill-switches — `mountEnabled`, `serveEnabled`, `revealEnabled`, `archiveEnabled` — are
+re-checked **inside** the operation: `MountController.mount()`, `ServeController.start()`,
 [`os_integration.dart`](../../app/lib/src/state/os_integration.dart) and
 [`archive_service.dart`](../../app/lib/src/state/archive_service.dart) each carry a belt-and-braces
 check behind the menu item that already hides. Flipping one to `false` therefore *refuses* the action
@@ -165,7 +169,7 @@ Threat model and the full secrets posture live in [15-security.md](15-security.m
 
 | Provider | File | Kind → state | Notes |
 | :--- | :--- | :--- | :--- |
-| `thumbnailServiceProvider` | [state/thumbnail_service.dart:307](../../app/lib/src/state/thumbnail_service.dart) | `Provider<ThumbnailService>` | Bounded concurrency + in-flight dedup + a session-scoped "undecodable" negative cache. Two gates: a general one and a stricter video-keyframe one, always taken in that order. |
+| `thumbnailServiceProvider` | [state/thumbnail_service.dart:428](../../app/lib/src/state/thumbnail_service.dart) | `Provider<ThumbnailService>` | Bounded concurrency + in-flight dedup + a session-scoped "undecodable" negative cache. Two gates: a general one and a stricter video-keyframe one, always taken in that order. |
 | `thumbnailReloadProvider` | [state/thumbnail_reload.dart:67](../../app/lib/src/state/thumbnail_reload.dart) | `NotifierProvider<…, ThumbnailReloadSignal>` | Carries only a `tick` + `force` epoch — deliberately **not** per-item progress, so tiles wake rarely. `reload()`, `rebuild()`, `prewarm()` (batched). |
 | `thumbnailsDisabledProvider` | [state/thumbnail_prefs.dart:59](../../app/lib/src/state/thumbnail_prefs.dart) | `NotifierProvider<ThumbnailPrefs, Set<String>>` | Per-remote **opt-out** keyed by fs — thumbnails are on by default. `toggle(fs)`, `isDisabled(fs)`. |
 | `folderPreviewServiceProvider` | [state/folder_preview.dart:223](../../app/lib/src/state/folder_preview.dart) | `Provider<FolderPreviewService>` | Composites a folder's images into a 2×2 card thumbnail, sealed + disk-cached. |
@@ -189,10 +193,10 @@ the cloud-hydration guard in [state/cloud_placeholder.dart](../../app/lib/src/st
 
 | Provider | File | Kind → state | Notes |
 | :--- | :--- | :--- | :--- |
-| `addRemoteControllerProvider` | [state/add_remote_controller.dart:265](../../app/lib/src/state/add_remote_controller.dart) | `NotifierProvider<AddRemoteController, AddRemoteState>` | The `config/create`+`config/update` interactive/OAuth state machine (`AddPhase`). |
-| `encryptRemoteControllerProvider` | [state/encrypt_remote_controller.dart:230](../../app/lib/src/state/encrypt_remote_controller.dart) | `NotifierProvider<…, EncryptRemoteState>` | Wrap-an-existing-remote-in-`crypt` wizard (`EncryptPhase`). |
-| `consoleControllerProvider` | [state/console/console_controller.dart:578](../../app/lib/src/state/console/console_controller.dart) | `NotifierProvider.family<ConsoleController, ConsoleState, String>` | Keyed by a stable console id minted per console tab. **Not autoDispose** — `BrowserController.closeTab` must `stop()` + `invalidate()` it (see Traps). |
-| `osIntegrationProvider` | [state/os_integration.dart:136](../../app/lib/src/state/os_integration.dart) | `Provider<OsIntegration>` | Reveal-in-file-manager, open-with-default-app (`url_launcher`), copy path. |
+| `addRemoteControllerProvider` | [state/add_remote_controller.dart:290](../../app/lib/src/state/add_remote_controller.dart) | `NotifierProvider<AddRemoteController, AddRemoteState>` | The `config/create`+`config/update` interactive/OAuth state machine (`AddPhase`). Refuses a name already in the config (via `existingRemoteNames`) before creating, and fails closed when the config cannot be read. |
+| `encryptRemoteControllerProvider` | [state/encrypt_remote_controller.dart:255](../../app/lib/src/state/encrypt_remote_controller.dart) | `NotifierProvider<…, EncryptRemoteState>` | Wrap-an-existing-remote-in-`crypt` wizard (`EncryptPhase`). Same name guard — recreating a `crypt` remote with a different password or salt orphans everything already stored under it. |
+| `consoleControllerProvider` | [state/console/console_controller.dart:571](../../app/lib/src/state/console/console_controller.dart) | `NotifierProvider.family<ConsoleController, ConsoleState, String>` | Keyed by a stable console id minted per console tab. **Not autoDispose** — `BrowserController.closeTab` must `stop()` + `invalidate()` it (see Traps). |
+| `osIntegrationProvider` | [state/os_integration.dart:142](../../app/lib/src/state/os_integration.dart) | `Provider<OsIntegration>` | Reveal-in-file-manager, open-with-default-app (`url_launcher`), copy path. |
 | `downloadDirProvider` | [state/download_settings.dart:39](../../app/lib/src/state/download_settings.dart) | `NotifierProvider<DownloadDir, String?>` | Remembered download folder; clearing removes the key. |
 | `downloadAlwaysPromptProvider` | [state/download_settings.dart:73](../../app/lib/src/state/download_settings.dart) | `NotifierProvider<DownloadAlwaysPrompt, bool>` | |
 | `diagnosticsProvider` | [state/diagnostics.dart:189](../../app/lib/src/state/diagnostics.dart) | `NotifierProvider<DiagnosticsLog, List<DiagEntry>>` | The local, no-telemetry problem log (Settings → Diagnostics). Bounded ring; **redaction runs at ingest** inside `record()`. `logDiagnostic()` is the `Ref`-free sink for the error hooks in [ui/app.dart](../../app/lib/src/ui/app.dart). See [15-security.md §5.1](15-security.md). |
@@ -215,7 +219,9 @@ over inside a `Notifier` — the test suite reaches these directly:
 [offline_qr.dart](../../app/lib/src/state/offline_qr.dart) ·
 [open_external.dart](../../app/lib/src/state/open_external.dart) ·
 [remote_summary.dart](../../app/lib/src/state/remote_summary.dart) ·
+[sync_preview.dart](../../app/lib/src/state/sync_preview.dart) (buckets → "what a transfer would do") ·
 [task_schedule.dart](../../app/lib/src/state/task_schedule.dart) ·
+[undecryptable_names.dart](../../app/lib/src/state/undecryptable_names.dart) (a session counter, not a provider) ·
 [transfer_options.dart](../../app/lib/src/state/transfer_options.dart) ·
 plus the console helpers in [state/console/](../../app/lib/src/state/console/).
 
@@ -239,6 +245,7 @@ plus the console helpers in [state/console/](../../app/lib/src/state/console/).
 | `selected` (`Set<String>`), `filter` | Multi-selection by name; live client-side Ctrl+F filter. |
 | `sortKey`, `ascending`, `viewMode`, `gridSize` | Per-pane view; persisted per remote via `viewMemoryProvider`. |
 | `tabs`, `activeTab` | Overlaid tab metadata (see above). |
+| `hiddenUndecryptable` | How many entries rclone silently dropped from this listing because a `crypt` remote could not decrypt their names. Sampled either side of the request from the counter in [state/undecryptable_names.dart](../../app/lib/src/state/undecryptable_names.dart); a listing that came back short renders "N items hidden" instead of "Empty folder". |
 | derived | `segments`, `visibleEntries`, `selectedEntries`, `isSelected(name)`, `activeIsConsole`. |
 
 Mutators: `newTab` / `newConsoleTab` / `switchTab` / `closeTab`; `open(remote)`, `enterDir`,
@@ -253,7 +260,7 @@ Explorer-level design intent for these panes lives in [20-explorer-design.md](20
 
 Three backing stores, plus rclone's own config which this layer does **not** own.
 
-### SharedPreferences (30 keys)
+### SharedPreferences (32 keys)
 
 | Key | Provider | Encoding |
 | :--- | :--- | :--- |
@@ -273,10 +280,12 @@ Three backing stores, plus rclone's own config which this layer does **not** own
 | `external_backup_digest` | `externalBackupProvider` | string — SHA-256 of the last config written, so an unchanged config is not re-sealed |
 | `jobs_dock_height` | `jobsDockHeightProvider` | double — stored unclamped; the widget clamps against the live layout |
 | `media_repeat` | `repeatPlaybackProvider` | bool |
+| `mount_letters_v1` | `mountLettersProvider` | JSON string — fs → mount point |
 | `mount_options_defaults` | `mountDefaultsProvider` | JSON string — tolerant decode; a wrong type, a removed key **or an unknown cache mode** falls back to the shipped default rather than throwing |
 | `pane_split_ratio` | `paneSplitRatioProvider` | double |
 | `pane_split_orientation` | `paneSplitOrientationProvider` | enum name |
 | `rclonePath` | `settingsControllerProvider` | string |
+| `recents_enabled` | `recentsEnabledProvider` | bool — the opt-in switch only; the trail itself is never persisted |
 | `remember_config_password` | `rememberConfigPasswordProvider` | bool |
 | `skin` | `skinProvider` | enum name |
 | `themeMode` | `settingsControllerProvider` | enum name |
@@ -337,7 +346,8 @@ Six app-lifetime timers exist. Every one is created in `build()` and cancelled i
 Riverpod providers are **lazy**: a timer-owning provider nobody watches never arms. The shell
 force-reads the ones with no natural watcher from a post-frame callback in
 [ui/home_screen.dart](../../app/lib/src/ui/home_screen.dart) — `schedulerProvider`,
-`bwScheduleControllerProvider`, `bookmarksProvider`, `transferForegroundServiceProvider` — alongside
+`bwScheduleControllerProvider`, `bookmarksProvider`, `transferForegroundServiceProvider` and
+`externalBackupProvider.notifier.ensureLoaded()` — alongside
 `engineControllerProvider.notifier.bootstrap()`. **Add any new self-driving provider to that list.**
 
 ### Two entry points build the graph
@@ -387,7 +397,9 @@ force-reads the ones with no natural watcher from a post-frame callback in
    encryption gate against the *new* config. Using the wrong one leaves a stale password bound to the
    cache or spawns against an encrypted config without ever reaching the gate.
 9. **Kill-switch providers are override seams, not constants.** Change deployment behaviour by
-   overriding `mountEnabledProvider` / `serveEnabledProvider`, never by editing the `true` literal.
+   overriding `mountEnabledProvider` / `serveEnabledProvider`, never by editing their bodies — both
+   already resolve to `!kMacAppStoreBuild`, so an edit there silently re-enables a feature the App
+   Sandbox cannot deliver.
    `revealEnabledProvider` and `archiveEnabledProvider` are the same seam but *computed* from
    `subprocessAllowedHere` — override those too rather than changing the capability predicate, which
    a store build depends on.

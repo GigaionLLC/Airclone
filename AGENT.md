@@ -57,7 +57,8 @@ Store shapes, contexts, and data models.
 | Native / platform build work (Android jniLibs, librclone, FUSE, channels) | [External Integrations](wiki/core/10-external-integrations.md) | [dev hub](dev/README.md) → `dev/android/`, `dev/desktop/` |
 | Cutting a release | [dev hub](dev/README.md) (Release checklist) | [`dev/releases/`](dev/releases/) — notes must exist **before** the tag |
 | Submitting to a store (Microsoft / Play / Apple) | [Store submissions index](docs/store/README.md) | [Windows](dev/windows-signing-and-store.md) · [Play](dev/google-play-store.md) · [Apple/macOS runbook](dev/apple-appstore-and-macos.md) + [Apple current state & traps](dev/apple-handoff.md) |
-| Writing, moving, or removing a doc | [Docs Blueprint](wiki/core/17-docs-blueprint.md) | [Knowledge Capture](wiki/core/18-knowledge-capture.md) |
+| Writing, moving, or removing a doc | [Docs Blueprint](wiki/core/17-docs-blueprint.md) | [Knowledge Capture](wiki/core/18-knowledge-capture.md) — then `python tool/check-docs.py`, a CI gate: a broken relative link (into `wiki/`, `dev/`, `docs/` **or** `app/` source) or a control byte fails the build |
+| Editing a GitHub Actions workflow | [dev hub → CI workflows](dev/README.md) | `python tool/check-workflows.py` before pushing — an empty GitHub expression anywhere in a `.yml`, **comments included**, invalidates the whole file, and GitHub reports that as a logless run named after the path |
 | Checking roadmap / parked items | [Backlog Index](dev/backlog/backlog-index.md) | [Feature Backlog](dev/backlog/feature-backlog.md) |
 
 > **🔒 Reference material:** Deep competitive research and notes that name third-party projects live

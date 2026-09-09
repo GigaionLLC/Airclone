@@ -141,6 +141,33 @@ String? resolveLocalBackingRoot(
   return null;
 }
 
+/// Builds the whole name -> local-root map from a `config/dump`, for
+/// [setRemoteBackingRoots].
+///
+/// Owns the ABSENCE rule, which a caller kept getting wrong: a name is omitted
+/// when this module cannot follow its type at all (`union`, `combine`, which
+/// take a LIST of upstreams rather than a single `remote =`). Publishing those
+/// with a null value made [isLocalBacked] read them as a definitive "not local"
+/// — the key was present, the value was null — and a union sitting on a sync
+/// folder went straight past the dedupe consent prompt. Absent means unknown;
+/// null means known-to-be-cloud. They are not the same and the difference is a
+/// silent multi-GB download.
+Map<String, String?> resolveBackingRoots(Map<String, dynamic> dump) {
+  final out = <String, String?>{};
+  for (final name in dump.keys) {
+    final cfg = dump[name];
+    final type = (cfg is Map ? cfg['type'] : null)?.toString();
+    if (type == null) continue; // unclassifiable -> absent -> unknown
+    if (_unfollowableTypes.contains(type)) continue; // absent on purpose
+    out[name] = resolveLocalBackingRoot(name, dump);
+  }
+  return out;
+}
+
+/// Types whose backing store could be local but which this module does not
+/// follow. They must stay ABSENT from the map, not present-with-null.
+const _unfollowableTypes = {'union', 'combine'};
+
 /// Whether [remote] is known to sit on local storage. Null means UNRESOLVED -
 /// the config has not been read yet, or the type is one this module does not
 /// follow (`union`, `combine`). Callers about to read a whole tree must refuse

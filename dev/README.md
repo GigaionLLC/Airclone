@@ -75,7 +75,7 @@ secrets/variables are named, **never valued** — this repo is public.
 
 | Workflow | Trigger | What it does |
 | :--- | :--- | :--- |
-| [`ci.yml`](../.github/workflows/ci.yml) | push to `main`, every PR, manual, weekly cron (Mondays 06:00 UTC) | `analyze-test`: `dart format --set-exit-if-changed` → `flutter analyze` → `flutter test --coverage` (coverage uploaded as an artifact). `rclone-pin`: **warn-only** drift check comparing `RCLONE_VERSION` in `release.yml` against the pins in `dev/android/build-rclone.ps1` and both `dev/desktop/build-librclone.*`, and against the latest upstream rclone. |
+| [`ci.yml`](../.github/workflows/ci.yml) | push to `main`, every PR, manual, weekly cron (Mondays 06:00 UTC) | Three jobs. `analyze-test`: `dart format --set-exit-if-changed` → `flutter analyze` → `flutter test --coverage` (coverage uploaded as an artifact). `docs` (no Flutter, seconds): [`tool/check-docs.py`](../tool/check-docs.py) — **hard fail** on a broken relative link (including links into `app/` source) or a control byte in a doc, orphans and doc shape advisory without `--strict` — then `python -m compileall tool/`, then [`tool/check-workflows.py`](../tool/check-workflows.py) — **hard fail** on an empty GitHub expression (which invalidates a whole workflow file, comments included) or a free-form dispatch input interpolated straight into a `run:` block. `rclone-pin`: **warn-only** drift check comparing `RCLONE_VERSION` in `release.yml` against the pins in `dev/android/build-rclone.ps1` and both `dev/desktop/build-librclone.*`, and against the latest upstream rclone. |
 | [`release.yml`](../.github/workflows/release.yml) | push of a `v*` tag; manual runs build artifacts only (no Release) | `release` (creates the GitHub Release first, so platform jobs only upload) → `librclone` matrix → `windows`, `linux`, `macos`, `android` in parallel. `RCLONE_VERSION` is pinned once at workflow level for every engine build. The `android` job also uploads to Play **open testing** and then asks Play whether that exact version code landed (`tool/play_tracks.py --expect`). |
 | [`librclone.yml`](../.github/workflows/librclone.yml) | manual, or a push touching the build scripts / FFI sources | Per-OS matrix (windows/macos/ubuntu): build librclone → check the artifact is well-formed → run the **live FFI integration test** against the freshly built lib → upload it. The standalone hard gate for the in-process engine. |
 | [`librclone-ios.yml`](../.github/workflows/librclone-ios.yml) | manual only | The iOS engine **alone** — builds the c-archive `.xcframework` from [`dev/ios/`](ios/build-librclone-ios.sh) and checks its four exported symbols. Touches nothing Flutter. `ios-verify.yml` covers the same ground and then links and runs the app, so reach for this one only when the Go build itself is what broke. |
@@ -211,6 +211,12 @@ Distilled from the store runbooks — Microsoft, Play, Apple — and the release
    and lags that pin (see the note above its `image:` line in
    [`docker-compose.yml`](../docker-compose.yml)); an older formatter reformats files the gate then
    rejects, which is exactly how the v0.6.3 release broke. Analyze and test from Docker are fine.
+   Two more gates need no Flutter and are the easy ones to forget, because a tag never runs them:
+   `python tool/check-docs.py` and `python tool/check-workflows.py`. `ci.yml`'s `docs` job runs both on
+   pushes to `main` and on pull requests — never on a `v*` tag — so the commit carrying the release
+   notes is the last run that will catch a dead link, and a workflow file invalidated in that same push
+   stays undispatchable for the whole release (which is exactly what an empty GitHub expression does,
+   comments included).
 4. **Tag `vX.Y.Z` and push.** An `alpha`/`beta`/`rc` in the tag marks the *GitHub Release* pre-release —
    and nothing more. There is no pre-release gate on Play: a `-rc` tag still publishes to public **open
    testing** like any other. If that is not what you want, do not push the tag.
@@ -238,8 +244,9 @@ Distilled from the store runbooks — Microsoft, Play, Apple — and the release
      listing refresh is what fills it, and the audit checks it now. Current state:
      [`apple-handoff.md`](apple-handoff.md).
    - **Play production** when you want it — Actions → *Promote on Google Play*, at the rollout percent
-     you want; `dry_run` defaults to true, and re-running with a larger percent widens the rollout
-     ([`google-play-store.md`](google-play-store.md)).
+     you want; `dry_run` defaults to true, and re-running with a larger percent widens the same
+     rollout. Narrowing a live rollout (or going backwards) is refused unless you pass the override
+     ([`tool/play_promote.py`](../tool/play_promote.py), [`google-play-store.md`](google-play-store.md)).
    - **macOS direct download** needs nothing — it is [fully automated](apple-appstore-and-macos.md) by
      the tag; just confirm the notarized zip/DMG landed.
 7. **Wrap up:** changelog entry in [`logs/agent-changelog.md`](logs/agent-changelog.md), sync any
@@ -255,12 +262,16 @@ lane, so a green run still does not prove an artifact is complete. A second inst
 the **v0.6.0 MSIX shipped with placeholder identity** — Partner Center rejected it four times, and
 v0.6.1 exists only to fix that.
 
-Download the assets and check:
+One result is confirmed by asking the system that holds it rather than by a step reporting its own
+success: the `android` job asks Play whether the version code it just uploaded is really in open
+testing ([`tool/play_tracks.py`](../tool/play_tracks.py) `--expect`) and fails the release when it is
+not. The rest is on you — download the assets and check:
 
 | Asset | Confirm |
 | :--- | :--- |
+| The Release page itself | The body is the curated `dev/releases/vX.Y.Z.md` and not GitHub's generated commit list — a missing notes file is only a `::warning::`, and the job falls back to `--generate-notes`. Pre-release flag set only for an `alpha`/`beta`/`rc` tag. |
 | `airclone-windows-x64.zip` / `airclone-setup-x64.exe` | `rclone.exe` is inside; `msvcp140.dll` + `vcruntime140.dll` + `vcruntime140_1.dll` sit next to `airclone.exe`; `Get-AuthenticodeSignature` returns **Valid**, timestamped, for the installer, `airclone.exe` and `rclone.exe`. |
-| `airclone.msix` | Only submittable when the `MSIX_*` variables were set for that run — otherwise it carries placeholder identity and Partner Center rejects it before certification starts. |
+| `airclone.msix` | Only submittable when the `MSIX_*` variables were set for that run — otherwise it carries placeholder identity and Partner Center rejects it before certification starts. Cheapest way to know: *Submit to Microsoft Store* with `mode: dry-run`. Its identity check runs **before** the mode branch, so it downloads that release's MSIX, compares Name and Publisher against the repo variables, fails on a `PLACEHOLDER` identity — and creates nothing. |
 | `airclone-macos.zip` / `airclone-macos.dmg` | The **notarized, stapled** zip replaced the pre-notarization upload; the DMG is present only when notarization succeeded. |
 | `airclone-android-<abi>.apk` / `airclone-playstore.aab` | Install on a real device or emulator, launch, browse a remote. (`airclone-android-universal.apk` is the single-APK convenience build.) |
 | `airclone-linux-x64.tar.gz` | Extracts and runs; `librclone.so` present if the in-process engine was expected. |

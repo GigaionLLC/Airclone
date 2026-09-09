@@ -45,10 +45,10 @@ final remotesProvider = FutureProvider<List<Remote>>((ref) async {
   // ultimately backed by, and hand the map to the placeholder guard. Without
   // this a crypt-over-Proton-Drive remote reports type "crypt", the guard sees
   // "not local", and reading its files silently hydrates them.
-  setRemoteBackingRoots({
-    for (final name in dump.keys)
-      name: resolveLocalBackingRoot(name, dump.cast<String, dynamic>()),
-  });
+  // resolveBackingRoots owns which names are omitted; building this map inline
+  // here published union/combine as present-with-null, which reads as a
+  // definitive "not local" instead of "unknown".
+  setRemoteBackingRoots(resolveBackingRoots(dump.cast<String, dynamic>()));
   remotes.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
   // Android has no meaningful $HOME — and the phone shell already offers
   // "Internal storage", so the synthetic local peer would just be noise.

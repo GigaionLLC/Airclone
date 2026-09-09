@@ -11,12 +11,12 @@ Entry point for all Airclone feature documentation. Each feature is specified fo
 **mobile** (or explicitly scoped to one). The prioritized build order lives in the
 [Feature Backlog & Roadmap](../../dev/backlog/feature-backlog.md).
 
-## 🧭 Planned Features (seed — docs authored as features are built)
+## 🧭 Feature docs (written as features are built — the rest are seeds)
 
 | Feature | Doc | Platforms | Description |
 | :--- | :--- | :--- | :--- |
-| ⭐ **File Browser (hero)** | [`feat-file-browser.md`](feat-file-browser.md) | all | **The rebuilt rclone explorer** — multi-remote (tabs + dual-pane), inline config, in-app drag-and-drop onto folders, direct (non-VFS) transfer engine. The primary, performant surface. |
-| Remote / config management | `feat-config-management.md` | all | Add/edit/delete remotes; dynamic forms from `/config/providers`; OAuth. (Surfaced inline in the File Browser.) |
+| ⭐ **File Browser (hero)** | [`feat-file-browser.md`](feat-file-browser.md) | all | **The rebuilt rclone explorer** — multi-remote (tabs + dual-pane), inline config, in-app drag-and-drop onto folders, direct (non-VFS) transfer engine. The primary, performant surface. Also owns the collision preflight, the marked sync source and its dry-run preview, and the undecryptable-name notice. |
+| **Remote / config management** | [`feat-config-management.md`](feat-config-management.md) | all | Add/edit/duplicate/delete remotes, the taken-name guard over `config/create`, config import (merge · merge-replacing-collisions · whole-config replace), remove-all-remotes, and the backup ring under all of it. Forms themselves are inline in the File Browser. |
 | Copy / Move / Sync | `feat-sync.md` | all | One-click transfers; sync direction options; bisync (two-way). |
 | Transfers & jobs | `feat-transfers-and-jobs.md` | all | Async job model, queue, progress, bandwidth limits. |
 | Scheduling & automation | `feat-scheduling.md` | all | Scheduled syncs; triggers; background runs. |
@@ -29,6 +29,13 @@ Entry point for all Airclone feature documentation. Each feature is specified fo
 | Settings & themes | `feat-settings.md` | all | Preferences, light/dark themes, i18n. |
 | Tray & windows | `feat-tray-windows.md` | desktop | System tray, auto-launch, window management. |
 | Onboarding | `feat-onboarding.md` | all | First-run experience expressing the product vision. |
+
+> **Shipped surfaces whose own doc is still a seed** are written up in the two pages above rather than
+> left undocumented: pinned per-remote **drive letters** and the mount/explorer division of labour are
+> [File Browser §7](feat-file-browser.md#7-relationship-to-the-os-mount); **opt-in recent folders**
+> (off by default, session-only, cleared when switched off) are
+> [File Browser §6](feat-file-browser.md#6-browsing--viewing). When `feat-mount.md` and
+> `feat-settings.md` are written, move them and leave a link behind.
 
 ## 🔗 Cross-cutting rules every feature must honour
 

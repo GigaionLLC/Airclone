@@ -64,12 +64,42 @@ void main() {
       expect(isLocalBacked(crypt), isFalse);
     });
 
-    test('NULL — not false — when the remote was never resolved', () {
-      // union/combine take a list of upstreams and are deliberately not
-      // followed. Null must mean "unknown", so a tree-walking caller fails
-      // closed; reporting false here is what downloads someone's drive.
-      setRemoteBackingRoots({'secret': '/mnt/proton'});
-      expect(isLocalBacked(union), isNull);
+    test('NULL - not false - for union, built the way PRODUCTION builds it', () {
+      // This test used to hand-write a map that simply omitted 'pool', so it
+      // passed for the wrong reason. remotes_provider publishes an entry for
+      // EVERY name in the config, so the real question is what
+      // resolveBackingRoots does with a type it cannot follow: it must OMIT the
+      // name, because present-with-null reads as a definitive "not local" and
+      // sends a dedupe scan past its consent prompt onto a sync folder.
+      setRemoteBackingRoots(
+        resolveBackingRoots(<String, dynamic>{
+          'secret': {'type': 'crypt', 'remote': '/mnt/proton'},
+          'pool': {'type': 'union', 'upstreams': '/a /b'},
+          'gdrive': {'type': 'drive'},
+        }),
+      );
+      expect(isLocalBacked(union), isNull, reason: 'union must stay unknown');
+      expect(isLocalBacked(crypt), isTrue);
+      expect(
+        isLocalBacked(
+          const Remote(name: 'gdrive', type: 'drive', fs: 'gdrive:'),
+        ),
+        isFalse,
+        reason: 'a real backend is settled by its type',
+      );
+    });
+
+    test('resolveBackingRoots omits what it cannot follow', () {
+      final m = resolveBackingRoots(<String, dynamic>{
+        'pool': {'type': 'union'},
+        'mix': {'type': 'combine'},
+        'gdrive': {'type': 'drive'},
+      });
+      expect(m.containsKey('pool'), isFalse);
+      expect(m.containsKey('mix'), isFalse);
+      // A real backend IS classified - definitively not local.
+      expect(m.containsKey('gdrive'), isTrue);
+      expect(m['gdrive'], isNull);
     });
   });
 
