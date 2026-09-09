@@ -392,6 +392,17 @@ class _TextBody extends StatefulWidget {
 class _TextBodyState extends State<_TextBody> {
   late final Future<_TextResult> _future = _fetch();
 
+  /// Shared by the code view's Scrollbar and its scroll view. A Scrollbar with
+  /// no controller cannot find the scrollable to drive, so its thumb renders
+  /// and then ignores the mouse — visible, and inert.
+  final _codeScroll = ScrollController();
+
+  @override
+  void dispose() {
+    _codeScroll.dispose();
+    super.dispose();
+  }
+
   Future<_TextResult> _fetch() async {
     final resp = await http.get(
       Uri.parse(widget.ref0.url),
@@ -476,7 +487,10 @@ class _TextBodyState extends State<_TextBody> {
     return Container(
       color: c.surfaceSunken,
       child: Scrollbar(
+        controller: _codeScroll,
+        thumbVisibility: true,
         child: SingleChildScrollView(
+          controller: _codeScroll,
           padding: const EdgeInsets.all(Space.x4),
           child: SelectableText(
             text,

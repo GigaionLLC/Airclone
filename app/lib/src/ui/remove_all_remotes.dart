@@ -84,6 +84,17 @@ class _ConfirmRemoveAll extends StatefulWidget {
 class _ConfirmRemoveAllState extends State<_ConfirmRemoveAll> {
   bool _acknowledged = false;
 
+  /// Shared by the name list's Scrollbar and its scroll view — without it the
+  /// thumb appears on hover and then ignores the drag, because the Scrollbar
+  /// has no scrollable to drive.
+  final _scroll = ScrollController();
+
+  @override
+  void dispose() {
+    _scroll.dispose();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
     final c = AircloneTheme.of(context);
@@ -124,7 +135,10 @@ class _ConfirmRemoveAllState extends State<_ConfirmRemoveAll> {
                 borderRadius: BorderRadius.circular(Radii.sm),
               ),
               child: Scrollbar(
+                controller: _scroll,
+                thumbVisibility: true,
                 child: SingleChildScrollView(
+                  controller: _scroll,
                   child: Text(
                     widget.names.join('\n'),
                     style: TextStyle(color: c.textMuted, fontSize: 12),
