@@ -1,0 +1,145 @@
+# 📦 Parcel Plan: An optional tree view
+
+## 📊 State Dashboard
+| Metric | Value |
+| :--- | :--- |
+| **Status** | `PROPOSED` — targets **v0.8**, alongside [scheduling-and-backup-plan.md](scheduling-and-backup-plan.md). |
+| **Version** | `v1.0.0` |
+| **Active Persona** | `Architect` |
+| **Last Updated** | 2026-09-09 |
+
+---
+
+## 1️⃣ Phase 1: Expansion & Scoping
+
+**Intent.** Rclone Browser shows one pane as an expandable hierarchy — a row per
+entry, a disclosure arrow on every folder, children indented beneath their parent,
+with Name / Size / Modified as columns. Several folders are open at once and the
+shape of the tree is the navigation. Airclone today shows exactly one folder at a
+time, in `ViewMode { list, grid, media }` (`state/browser_controller.dart:15`).
+
+The ask is a **fourth, optional view mode**, not a replacement. The dual-pane
+browser stays the default and stays the thing the rest of the app is built around.
+
+**In scope:** a `ViewMode.tree` with lazy per-node expansion; the columns Rclone
+Browser shows; expansion state that survives switching modes within a tab;
+selection and the existing right-click actions working from a tree node.
+
+**Out of scope for v0.8:**
+- **Expand-all / recursive walk.** Rclone Browser's Export does this. On a cloud
+  remote it is one `operations/list` per folder and it is how a UI becomes a
+  bill. If it ever ships it needs the same consent treatment as the dedupe scan.
+- Miller columns. A different view, still unbuilt, and not what was asked for.
+- Tree in the mobile shell. A phone has no room for indentation plus three
+  columns; the touch shell keeps its own navigation.
+- Drag-and-drop *within* the tree. See §5 — the selection model has to settle first.
+
+## 2️⃣ Phase 2: Requirements & Context
+
+### 2.1 What exists, and what it assumes
+
+| Piece | Today | What a tree changes |
+| :--- | :--- | :--- |
+| `BrowserState` | `path` + `entries` — **one flat folder** (`state/browser_controller.dart`) | A tree needs a *forest*: children keyed by folder path, several open at once |
+| `ViewMode` | `list, grid, media` | Add `tree`; persisted per remote already (per-remote view memory shipped in a26) |
+| Listing | `operations/list` of `state.path` | One call per **expanded node**, lazily, on first expand |
+| Pane operations | build a path as `state.path` + entry name | **Must** build from the node's own parent — see §5, this is the sharp edge |
+| Conflict preflight | `transferNamesIntoFolder` takes ONE `srcParentPath` + names | A tree selection can span folders; needs grouping, like `_uploadLocal` already does for a multi-folder OS drop |
+| Thumbnails | per visible entry, guarded by `wouldHydrateOnRead` | Tree rows are text; no thumbnails, so no hydration surface |
+
+### 2.2 The invariant this feature is most likely to break
+
+`dev/backlog/` and the v0.5.0 history record it, and it is the reason to be
+careful here: **pane operations used to build a path as `state.path` + the entry
+name, so a stale `entries` list produced a preview 404 or a copy that failed with
+"object not found".** The fix was to clear `entries` on navigate and to guard
+`_load` against superseded responses.
+
+A tree deliberately holds **many folders' listings at once and does not clear them
+on navigate** — which is precisely the condition that invariant was written
+against. So:
+
+> **Every operation initiated from a tree node must derive its path from that
+> node's own parent, never from `state.path`.** `state.path` in tree mode is the
+> root the tree is rooted at, not the folder the row lives in.
+
+This is the single highest-risk item in the plan and the one to write tests for
+first.
+
+## 3️⃣ Phase 3: User Clarification
+
+* **Open Questions:**
+  - `[ ]` **Does the tree replace the pane, or sit beside it?** Rclone Browser
+    gives the whole pane to the tree. A separate always-present tree rail (the
+    Explorer left pane) is a different feature and a bigger one. Recommendation:
+    a view mode, matching the ask. → **Answer:**
+  - `[ ]` **Does expansion state persist across restarts?** Per-remote view mode
+    already does. Persisting expansion means storing a set of paths per remote —
+    cheap, but a tree that reopens 40 folders costs 40 listings on launch.
+    Recommendation: persist within the session only. → **Answer:**
+  - `[ ]` **Should a folder's size be shown?** Rclone Browser leaves it blank for
+    folders and offers "Get Size" per selection. Computing it eagerly is
+    `operations/size` per folder — a recursive walk each, and exactly the mistake
+    just fixed in the sync preflight. Recommendation: blank, with an explicit
+    per-folder action. → **Answer:**
+  - `[ ]` **Can a selection span folders?** It is the main thing a tree makes
+    possible and the main thing that stresses the transfer path. → **Answer:**
+
+## 4️⃣ Phase 4: Detailed Execution Plan
+
+- **A — Tree state `[M]`.** A `TreeState` beside the flat one: `Map<String,
+  List<RcloneFile>> children` plus `Set<String> expanded`, both keyed by full
+  folder path. Lazy: expanding a node with no cached children issues one
+  `operations/list` for it. The existing superseded-response guard in `_load`
+  must be generalised per node, or two fast expand/collapse cycles can deliver an
+  older listing over a newer one.
+- **B — The view `[M]`.** A flat `ListView` over a *flattened* tree — do not
+  nest scrollables. Each row: disclosure arrow (folders only), icon, name,
+  size, modified. Indentation by depth. Reuse the existing row widget where it
+  fits rather than forking a second one that drifts.
+- **C — Operations from a node `[S]`, and the risky one.** Right-click, rename,
+  delete, copy/move all resolve their parent from the node. Tests should assert
+  a path built from a *deep* node while `state.path` is the root — that is the
+  regression that would otherwise reach a user as "copy says object not found".
+- **D — Selection `[M]`.** If a selection may span folders, `transferNamesIntoFolder`
+  is called once per source folder, grouped — the same shape `_uploadLocal` uses
+  for an OS drop from several folders. The conflict preflight then asks once per
+  group, which is the honest answer since each group is a different source.
+- **E — Keyboard `[S]`.** Left/Right collapse/expand, Up/Down move, matching what
+  a tree is expected to do. The TV D-pad shell already has directional handling
+  worth reusing rather than reinventing.
+
+## 5️⃣ Phase 5: Risks
+
+- [🚫] **The stale-path invariant above.** It is the one that has already bitten
+  this codebase once, and a tree is the structure most likely to bite it again.
+- [⚠️] **Expansion cost on cloud remotes.** Every expand is a round trip. A tree
+  that auto-expands, remembers 40 open folders, or offers expand-all turns a
+  browse into dozens of API calls. Lazy, session-only, no expand-all.
+- [⚠️] **Deep indentation at a narrow width.** The name column is what
+  distinguishes remotes and folders, and indentation eats it. `OverflowName`
+  already handles a name that outgrows its width (v0.7.7); a tree makes that the
+  common case rather than the exception, so the row must keep a sane minimum name
+  width before it starts indenting further.
+- [⚠️] **Two sources of truth for "where am I".** With a tree, the address bar,
+  the breadcrumb and the pane title all have to agree on what `state.path` means.
+  Decide that before building the view, not after.
+
+## 6️⃣ Phase 6: Implementation Checklist
+
+- `[ ]` **A** tree state + lazy per-node load, with a per-node superseded guard.
+- `[ ]` **B** flattened list view with the three columns.
+- `[ ]` **C** node-relative operations, with the deep-node path test written first.
+- `[ ]` **D** selection, grouped per source folder through the existing preflight.
+- `[ ]` **E** keyboard expand/collapse.
+
+## 7️⃣ Phase 7: Verification
+
+- `[ ]` An operation on a node three levels deep resolves against **that node's**
+  parent while `state.path` is the root.
+- `[ ]` Expanding a folder issues exactly one listing, and collapsing then
+  re-expanding issues none (cached).
+- `[ ]` A rapid expand/collapse/expand does not render the older listing.
+- `[ ]` A selection spanning two folders produces one conflict prompt per source
+  folder and copies both correctly.
+- `[ ]` Switching tree → list → tree keeps the expansion set within the session.
