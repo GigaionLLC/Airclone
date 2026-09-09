@@ -28,6 +28,7 @@ import '../state/jobs_controller.dart';
 import '../state/local_locations.dart';
 import '../state/open_external.dart';
 import '../state/os_integration.dart';
+import '../state/recent_locations.dart';
 import '../rclone/models/mount_options.dart';
 import '../state/mount_defaults.dart';
 import '../state/mount_policy.dart';
@@ -144,6 +145,9 @@ class SettingsContent extends ConsumerWidget {
         const _GroupHeader('Security'),
         _RememberPasswordSection(),
         _BiometricUnlockSection(),
+        // Advanced-gated because it is opt-IN: the default is that nothing is
+        // remembered, and someone who wants a trail can go and ask for one.
+        if (advanced) ...[const SizedBox(height: Space.x4), _RecentsSection()],
         // Config: visible on every platform (mobile is read-only — the path
         // picker/switch is desktop-only, but everyone sees where their remotes
         // live, whether it's encrypted, and how many are configured).
@@ -1634,6 +1638,51 @@ class _EngineVersionSectionState extends ConsumerState<_EngineVersionSection> {
 /// about the exposure. Toggling OFF wipes any stored password immediately;
 /// toggling ON captures the currently-unlocked password now (if any) so it takes
 /// effect without waiting for the next unlock.
+/// Opt-in for the Home screen's "Recent" trail.
+///
+/// Default off. The list is session-only either way, but while it exists it
+/// puts remote and folder names on the first screen of the app, where anyone
+/// glancing at the window can read them — that is a choice to offer, not one to
+/// make on someone's behalf.
+class _RecentsSection extends ConsumerWidget {
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final c = AircloneTheme.of(context);
+    final on = ref.watch(recentsEnabledProvider);
+    return Row(
+      children: [
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Remember recent folders',
+                style: TextStyle(
+                  color: c.text,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                'Shows the folders you have opened in a "Recent" row on the '
+                'Home screen. Never written to disk — the list is dropped when '
+                'Airclone closes, and turning this off clears it immediately.',
+                style: TextStyle(color: c.textFaint, fontSize: 11),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(width: Space.x3),
+        Switch(
+          value: on,
+          onChanged: (v) => ref.read(recentsEnabledProvider.notifier).set(v),
+        ),
+      ],
+    );
+  }
+}
+
 class _RememberPasswordSection extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {

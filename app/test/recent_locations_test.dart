@@ -6,10 +6,26 @@ import 'package:flutter_test/flutter_test.dart';
 Remote _r(String name) =>
     Remote(name: name, type: 'drive', fs: '$name:', isLocal: false);
 
+/// The trail is OFF by default (see recents_enabled_test.dart) — these cover the
+/// list's own behaviour, so they switch it on.
+class _Enabled extends RecentsEnabled {
+  @override
+  bool build() => true;
+  @override
+  Future<void> set(bool v) async => state = v;
+}
+
+ProviderContainer _enabledContainer() {
+  final c = ProviderContainer(
+    overrides: [recentsEnabledProvider.overrideWith(_Enabled.new)],
+  );
+  addTearDown(c.dispose);
+  return c;
+}
+
 void main() {
   test('record pushes newest first and dedupes by fs+path', () {
-    final c = ProviderContainer();
-    addTearDown(c.dispose);
+    final c = _enabledContainer();
     final ctrl = c.read(recentLocationsProvider.notifier);
 
     ctrl.record(_r('a'), 'x');
@@ -23,8 +39,7 @@ void main() {
   });
 
   test('root vs subfolder are distinct entries; label reflects path', () {
-    final c = ProviderContainer();
-    addTearDown(c.dispose);
+    final c = _enabledContainer();
     final ctrl = c.read(recentLocationsProvider.notifier);
     ctrl.record(_r('a'), '');
     ctrl.record(_r('a'), 'sub');
@@ -33,8 +48,7 @@ void main() {
   });
 
   test('caps at 12, dropping the oldest', () {
-    final c = ProviderContainer();
-    addTearDown(c.dispose);
+    final c = _enabledContainer();
     final ctrl = c.read(recentLocationsProvider.notifier);
     for (var i = 0; i < 15; i++) {
       ctrl.record(_r('r'), 'p$i');

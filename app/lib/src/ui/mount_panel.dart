@@ -5,6 +5,7 @@ import '../rclone/models/mount_options.dart';
 import '../rclone/rclone_client.dart';
 import '../state/mount_controller.dart';
 import '../state/mount_defaults.dart';
+import '../state/mount_letters.dart';
 import '../state/mount_policy.dart';
 import '../state/remotes_provider.dart';
 import 'dialog_body.dart';
@@ -29,6 +30,10 @@ class _MountDialogState extends ConsumerState<_MountDialog> {
   String? _error;
   bool _starting = false;
 
+  /// Pin this mount's drive letter to this fs, so it comes back on the same one
+  /// next time. Ticked automatically when the fs already has a pin.
+  bool _rememberDrive = false;
+
   /// This mount's options, seeded from the saved defaults on first build and
   /// edited in place afterwards. Deliberately NOT written back: a tweak for one
   /// mount must not silently redefine what every later mount gets. The header
@@ -41,9 +46,41 @@ class _MountDialogState extends ConsumerState<_MountDialog> {
   String? _refreshMsg;
 
   @override
+  void initState() {
+    super.initState();
+    // The pin is per fs, and the subfolder is part of the fs — so typing one
+    // has to re-check for a pin, not just picking the remote.
+    _subdir.addListener(_applyPinnedDrive);
+  }
+
+  @override
   void dispose() {
+    _subdir.removeListener(_applyPinnedDrive);
     _subdir.dispose();
     super.dispose();
+  }
+
+  /// The fs this dialog would mount, assembled the way [_start] assembles it.
+  String get _fs {
+    final sub = _subdir.text.trim();
+    return sub.isEmpty ? '$_remote:' : '$_remote:$sub';
+  }
+
+  /// Preselect the letter this fs is pinned to, if any. Silent when there is no
+  /// pin: a remote nobody has pinned keeps whatever the user last chose here,
+  /// rather than being reset to Auto under their hands.
+  void _applyPinnedDrive() {
+    if (_remote == null) return;
+    final pinned = ref.read(mountLettersProvider)[_fs];
+    if (pinned == null) {
+      if (_rememberDrive) setState(() => _rememberDrive = false);
+      return;
+    }
+    if (pinned == _drive && _rememberDrive) return;
+    setState(() {
+      _drive = pinned;
+      _rememberDrive = true;
+    });
   }
 
   Future<void> _start() async {
@@ -55,9 +92,18 @@ class _MountDialogState extends ConsumerState<_MountDialog> {
     final sub = _subdir.text.trim();
     final fs = sub.isEmpty ? '$_remote:' : '$_remote:$sub';
     try {
-      await ref
+      final actual = await ref
           .read(mountControllerProvider.notifier)
           .mount(fs: fs, mountPoint: _drive, options: _effectiveOptions);
+      // Pinned AFTER the mount succeeds, and to the letter rclone actually
+      // used: with Auto selected that is the assigned one, which is exactly the
+      // "put it back where it was" case worth remembering.
+      final letters = ref.read(mountLettersProvider.notifier);
+      if (_rememberDrive) {
+        await letters.remember(fs, actual);
+      } else {
+        await letters.forget(fs);
+      }
       if (mounted) setState(() => _starting = false);
     } catch (e) {
       if (mounted) {
@@ -157,7 +203,10 @@ class _MountDialogState extends ConsumerState<_MountDialog> {
                   for (final r in remotes)
                     DropdownMenuItem(value: r.name, child: Text(r.name)),
                 ],
-                onChanged: (v) => setState(() => _remote = v),
+                onChanged: (v) {
+                  setState(() => _remote = v);
+                  _applyPinnedDrive();
+                },
               ),
             ),
           ),
@@ -201,6 +250,7 @@ class _MountDialogState extends ConsumerState<_MountDialog> {
           ),
         ],
       ),
+      _rememberDriveRow(c),
       _optionsDisclosure(c),
       if (_error != null) ...[
         const SizedBox(height: Space.x2),
@@ -237,6 +287,45 @@ class _MountDialogState extends ConsumerState<_MountDialog> {
   /// changed)" suffix is what stops the two places these options live (here and
   /// Settings) from becoming confusing: the dialog always says whether you are
   /// looking at your defaults or at a deviation from them.
+  /// "Use this drive letter next time" — the opt-in that turns a one-off letter
+  /// into a pin for this fs.
+  ///
+  /// Offered even with Auto selected: the pin is written from the letter rclone
+  /// actually assigned, so "whatever I got this time, keep giving me that" is a
+  /// single tick rather than a thing to notice and re-enter afterwards.
+  Widget _rememberDriveRow(AircloneColors c) => Padding(
+    padding: const EdgeInsets.only(top: Space.x1),
+    child: InkWell(
+      onTap: () => setState(() => _rememberDrive = !_rememberDrive),
+      borderRadius: BorderRadius.circular(Radii.sm),
+      child: Padding(
+        padding: const EdgeInsets.all(Space.x1),
+        child: Row(
+          children: [
+            SizedBox(
+              height: 20,
+              width: 20,
+              child: Checkbox(
+                value: _rememberDrive,
+                visualDensity: VisualDensity.compact,
+                onChanged: (v) => setState(() => _rememberDrive = v ?? false),
+              ),
+            ),
+            const SizedBox(width: Space.x2),
+            Expanded(
+              child: Text(
+                _drive == '*'
+                    ? 'Reuse whichever letter this mount gets, next time'
+                    : 'Always mount this on $_drive',
+                style: TextStyle(color: c.textMuted, fontSize: 12),
+              ),
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
+
   Widget _optionsDisclosure(AircloneColors c) {
     final defaults = ref.watch(mountDefaultsProvider);
     final options = _options ?? defaults;
