@@ -216,6 +216,36 @@ class FileOps {
     }
   }
 
+  /// Whether [fs] has any entry at its ROOT: false when it is empty, true when
+  /// it is not, null when it cannot be read at all.
+  ///
+  /// A SHALLOW list, deliberately. The empty-source guard used to answer this
+  /// with `operations/size` - a full recursive walk - BEFORE the first dialog
+  /// appeared. On a 13,000-file tree that is a multi-second dead click, and a
+  /// spinner does not make an O(tree) call in that position the right design.
+  /// One listing answers the cases that actually happen (the source was deleted,
+  /// renamed, or emptied) at the cost of one round trip.
+  ///
+  /// What it does NOT catch is a source that is a tree of empty directories: its
+  /// root lists non-empty while it holds no files, so a one-way sync from it
+  /// still deletes everything at the destination. That case is caught later, on
+  /// the destructive path only - see the caller.
+  Future<bool?> isRootEmpty(String fs) async {
+    final client = _client;
+    if (client == null) return null;
+    try {
+      final res = await client.rpc('operations/list', {
+        'fs': fs,
+        'remote': '',
+        'opt': {'noModTime': true, 'showHash': false},
+      });
+      final list = res['list'];
+      return list is List ? list.isEmpty : null;
+    } catch (_) {
+      return null; // unreadable - the caller refuses rather than guesses
+    }
+  }
+
   /// File count + total byte size of [fs] (`operations/size`). [fs] is a full
   /// `remote:path` filesystem spec; `bytes` may be negative when unknown.
   Future<(int count, int bytes)> folderSize(String fs) async {

@@ -59,20 +59,18 @@ Future<void> runMarkedSyncInto(
 
   ref.read(_syncInFlightProvider.notifier).state = true;
   try {
-    // Read the source before offering to sync FROM it. A marker outlives the
+    // Check the source before offering to sync FROM it. A marker outlives the
     // folder it points at, and "0 files" is indistinguishable from "everything
     // at the destination is surplus" once rclone is running.
-    final int count;
-    try {
-      final n = await _withProgress(
-        context,
-        ref.read(fileOpsProvider).folderSize(src.fs).then((r) => r.$1),
-        label: 'Checking ${src.label}…',
-      );
-      if (n == null || !context.mounted) return; // cancelled or gone
-      count = n;
-    } catch (_) {
-      if (!context.mounted) return;
+    //
+    // ONE SHALLOW LISTING, not a recursive walk. This used to call
+    // operations/size over the whole tree before any dialog appeared, which on
+    // a 13,000-file source is several seconds of a window that has not changed
+    // — reported, fairly, as the menu item doing nothing. The deep question is
+    // asked later and only where it still matters.
+    final empty = await ref.read(fileOpsProvider).isRootEmpty(src.fs);
+    if (!context.mounted) return;
+    if (empty == null) {
       await _refuse(
         context,
         "Couldn't read ${src.label}, so nothing was synced. The source may be "
@@ -80,8 +78,7 @@ Future<void> runMarkedSyncInto(
       );
       return;
     }
-    if (count == 0) {
-      if (!context.mounted) return;
+    if (empty) {
       await _refuse(
         context,
         '${src.label} is empty or no longer exists. Syncing from it would '
@@ -143,6 +140,30 @@ Future<void> runMarkedSyncInto(
       // The preview WAS the dry run. Going ahead from it means the real thing.
       effective = options.copyWith(dryRun: false);
     }
+    // The shallow check above cannot see a source that is a tree of EMPTY
+    // DIRECTORIES: its root lists non-empty, it holds no files, and a one-way
+    // sync from it still deletes everything at the destination. On the dry-run
+    // path the preview answers that plainly ("would delete N, would copy 0").
+    // Without a preview there is nothing between the user and that outcome, so
+    // ask the expensive question here — after they have chosen a destructive
+    // Sync, where a wait is expected, and cancellable.
+    if (effective.mode == TransferMode.sync && !effective.dryRun) {
+      final n = await _withProgress<int?>(
+        context,
+        ref.read(fileOpsProvider).folderSize(src.fs).then((r) => r.$1),
+        label: 'Counting what is in ${src.label}…',
+      );
+      if (n == null || !context.mounted) return; // cancelled, or gone
+      if (n == 0) {
+        await _refuse(
+          context,
+          '${src.label} contains no files, so syncing from it would delete '
+          'everything in $dstLabel. Nothing was run.',
+        );
+        return;
+      }
+    }
+
     if (effective.mode == TransferMode.bisync) {
       // An ad-hoc pair has no baseline, so TransferService would silently fire
       // --resync — the run that lets one side overwrite the other on conflict.
