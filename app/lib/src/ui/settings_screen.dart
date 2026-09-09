@@ -45,6 +45,7 @@ import 'mount_options_editor.dart';
 import 'offline_qr_dialog.dart';
 import 'remove_all_remotes.dart';
 import 'scan_from_desktop_sheet.dart';
+import 'tasks_panel.dart';
 import 'theme/tokens.dart';
 
 /// Opens the app settings dialog (theme, engine path override, update check).
@@ -120,6 +121,17 @@ class SettingsContent extends ConsumerWidget {
             _ConcurrencySection(),
           ],
         ],
+        // Automation: NOT advanced-gated, on purpose. Scheduling shipped several
+        // releases ago and was effectively invisible - behind advanced mode,
+        // behind a 700dp shell, and behind an arranged two-pane layout. This is
+        // the surface that says it exists and what it means on this platform.
+        const SizedBox(height: Space.x5),
+        const _GroupHeader('Automation'),
+        const _SectionLabel(
+          'Scheduled tasks',
+          help: 'Saved transfers that run by themselves.',
+        ),
+        const AutomationSettingsSection(),
         if (desktop || advanced) ...[
           const SizedBox(height: Space.x5),
           const _GroupHeader('Engine'),

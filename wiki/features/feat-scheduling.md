@@ -19,17 +19,33 @@ you set up once.
 
 ---
 
-## 1. Where it lives, and why you may not have found it
+## 1. Where it lives
 
-| Gate | Effect |
-| :--- | :--- |
-| **Advanced mode** (`state/advanced_mode.dart`, default **off**) | Both doors — the toolbar entry and the command palette entry (`ui/home_screen.dart`) — are behind `if (advanced)`. With it off, the only mention of scheduling in the whole product is one line of grey text in a settings card. |
-| **Shell width** | Below 700 dp there is no toolbar and no command palette, so a phone-sized window has no entry point at all, advanced mode or not. |
-| **Two panes** | "New task" reads the source from the active pane and the destination from the other one, so it refuses unless a dual-pane layout is already arranged (`ui/tasks_panel.dart`). |
+**Settings → Automation** is the front door, and it is behind no gate at all. It states what a
+schedule means on this platform (§3–§4), lists every scheduled task with its cadence, next run and
+last outcome, surfaces a tripped circuit breaker (§5.2), and opens the full panel.
 
-All three are being removed in v0.8 — see
-[the scheduling and backup plan](../../dev/plans/scheduling-and-backup-plan.md) §4.a. Until then:
-**Settings → Advanced mode → on**, arrange two panes, then **Saved tasks → New task**.
+**Creating** a schedule is still gated, and these are the gates being removed across v0.8 — see
+[the scheduling and backup plan](../../dev/plans/scheduling-and-backup-plan.md) §4.a:
+
+| Gate | Effect | Status |
+| :--- | :--- | :--- |
+| **Advanced mode** (`state/advanced_mode.dart`, default **off**) | The toolbar and command-palette doors to Saved tasks are behind `if (advanced)` (`ui/home_screen.dart`). | **Bypassed for viewing** — Settings → Automation is ungated and reaches the panel. Creating still needs it. |
+| **Shell width** | Below 700 dp there is no toolbar and no command palette. | Open. Settings → Automation reaches a phone, but §4 has nothing to offer it yet. |
+| **Two panes** | "New task" reads the source from the active pane and the destination from the other, so it refuses unless a dual-pane layout is arranged (`ui/tasks_panel.dart`). | Open — the From/To picker is the next piece. |
+
+Until the rest lands, creating one is: **Settings → Advanced mode → on**, arrange two panes, then
+**Saved tasks → New task**.
+
+### 1.1 One place decides what "scheduled" means
+
+`state/scheduling_policy.dart` — a `SchedulingSupport` of `background`, `whileOpen` or `none`,
+decided by a pure function of the OS name (so it is testable from any platform), plus the one
+sentence to show a user for each. Every surface asks it rather than testing `Platform.isWindows`
+itself; when launchd and systemd-user land, they land in one place.
+
+An OS the function has never heard of gets `none`, not a guess — promising a background run that was
+never wired is the failure the file exists to prevent.
 
 ## 2. What a schedule can say
 
@@ -137,7 +153,8 @@ resumes it (`state/scheduler_pause.dart`).
 - **No background execution on macOS or Linux** (launchd / systemd-user: v0.8 Phase D).
 - **No background execution on mobile.** Android WorkManager is v0.8 Phase F; iOS background
   execution is explicitly out of scope.
-- **No entry point at all on a phone-sized shell** — see §1.
+- **No way to create a task on a phone-sized shell** — Settings → Automation is reachable there and
+  tells the truth about it, but there is nothing behind it to schedule yet.
 - **No cron**, no filesystem watcher, no event triggers.
 - **No definition-time acknowledgement** that a repeating Sync is destructive, and **no refusal to
   run against a source that resolves empty**. Both are open items in Phase B of the plan; the cap
@@ -147,6 +164,7 @@ resumes it (`state/scheduler_pause.dart`).
 
 | Piece | File |
 | :--- | :--- |
+| What "scheduled" means per platform | `state/scheduling_policy.dart` |
 | Tick loop, dispatch, outcome supervision | `state/scheduler_controller.dart` |
 | Schedule model and `isDue` | `state/task_schedule.dart` |
 | Task model, run history | `state/tasks_controller.dart` |
@@ -154,8 +172,8 @@ resumes it (`state/scheduler_pause.dart`).
 | Circuit breaker state and error match | `state/scheduler_pause.dart` |
 | Windows registration | `state/windows_task_scheduler.dart` |
 | Headless entry point and exit codes | `headless/headless_runner.dart` |
-| Tasks dialog, schedule editor, paused banner | `ui/tasks_panel.dart` |
+| Tasks dialog, schedule editor, paused banner, Settings → Automation | `ui/tasks_panel.dart` |
 
 Tests: `test/scheduler_tick_test.dart`, `test/schedule_test.dart`,
-`test/scheduler_delete_cap_test.dart`, `test/scheduler_pause_ui_test.dart`,
-`test/windows_task_scheduler_test.dart`.
+`test/scheduling_policy_test.dart`, `test/scheduler_delete_cap_test.dart`,
+`test/scheduler_pause_ui_test.dart`, `test/windows_task_scheduler_test.dart`.

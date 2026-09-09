@@ -467,9 +467,21 @@ Photo backup specifically:
 Phases A–C are the release; D–F are the stretch and may slip without making A–C
 incoherent.
 
-- `[ ]` **A — Visibility and honesty `[S]`.** From/To picker; Settings →
-  Automation, not advanced-gated; mobile entry point; `scheduling_policy.dart`
-  replacing `_canOsSchedule`; README corrected; `feat-scheduling.md` written.
+- `[~]` **A — Visibility and honesty `[S]`.** Half landed 2026-09-09:
+  - `[x]` **Settings → Automation, not advanced-gated.** States what a schedule
+    means on this platform, lists every scheduled task with cadence / next run /
+    last outcome, surfaces a tripped breaker, and opens the panel. A widget test
+    pumps it with advanced mode forced OFF, because that is the regression.
+  - `[x]` **`scheduling_policy.dart` replacing `_canOsSchedule`.** A
+    `SchedulingSupport` of `background` / `whileOpen` / `none`, decided by a pure
+    function of the OS name so it is testable from any platform, plus the one
+    honest sentence per level. An unknown OS gets `none`, not a guess.
+  - `[x]` **README corrected** — it promised scheduling with no platform
+    distinction, which understated Windows and was simply wrong on a phone.
+  - `[x]` **`feat-scheduling.md` written.**
+  - `[ ]` **From/To picker** — the two-pane requirement, and the prerequisite for
+    everything mobile. This is the remaining bulk of A.
+  - `[ ]` Mobile entry point behind it.
 - `[~]` **B — Safety for unattended runs `[S]`.** Half landed 2026-09-09:
   - `[x]` **Delete cap defaulted to 100 and not clearable** on a repeating sync.
     `withScheduledDeleteCap` in `state/transfer_options.dart` applies it at RUN

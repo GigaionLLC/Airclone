@@ -1,7 +1,9 @@
 import 'dart:io' show ProcessResult;
 
+import 'package:airclone/src/state/advanced_mode.dart';
 import 'package:airclone/src/state/scheduler_controller.dart';
 import 'package:airclone/src/state/scheduler_pause.dart';
+import 'package:airclone/src/state/scheduling_policy.dart';
 import 'package:airclone/src/state/task_schedule.dart';
 import 'package:airclone/src/state/tasks_controller.dart';
 import 'package:airclone/src/state/transfer_options.dart';
@@ -29,6 +31,13 @@ class _FixedTasks extends TasksController {
 
   /// The last task written back, so a test can assert what Save persisted.
   TransferTask? saved;
+}
+
+/// Easy mode — the default, and the state in which scheduling used to be
+/// invisible. Everything in the Automation group must render under this.
+class _EasyMode extends AdvancedMode {
+  @override
+  bool build() => false;
 }
 
 /// The real controller arms a 30 s periodic timer in `build()`, which the test
@@ -154,6 +163,74 @@ void main() {
       await tester.tap(find.text('open'));
       await tester.pumpAndSettle();
       expect(find.text('Scheduling is paused'), findsNothing);
+    });
+  });
+
+  group('Settings → Automation', () {
+    Future<void> openSection(
+      WidgetTester tester,
+      List<TransferTask> tasks, {
+      List<Override> extra = const [],
+    }) async {
+      await pump(
+        tester,
+        (ctx, ref) =>
+            const SingleChildScrollView(child: AutomationSettingsSection()),
+        overrides: [
+          advancedModeProvider.overrideWith(_EasyMode.new),
+          tasksProvider.overrideWith(() => _FixedTasks(tasks)),
+          ...extra,
+        ],
+      );
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('renders in EASY mode — the whole point of the section', (
+      tester,
+    ) async {
+      // Scheduling shipped several releases ago behind advanced mode and was
+      // effectively invisible. If this section ever acquires an `if (advanced)`
+      // it is invisible again, so this is the regression, not decoration.
+      await openSection(tester, [
+        _task(
+          schedule: const TaskSchedule(
+            kind: ScheduleKind.interval,
+            intervalMinutes: 60,
+          ),
+        ),
+      ]);
+      expect(find.text(schedulingSummary), findsOneWidget);
+      expect(find.text('photos to backup'), findsOneWidget);
+    });
+
+    testWidgets('says what to do when nothing is scheduled yet', (
+      tester,
+    ) async {
+      // A task with no schedule must not be listed as if it were automated.
+      await openSection(tester, [_task()]);
+      expect(find.textContaining('Nothing is scheduled yet'), findsOneWidget);
+      expect(find.text('photos to backup'), findsNothing);
+    });
+
+    testWidgets('surfaces a tripped breaker here too, not only in the dialog', (
+      tester,
+    ) async {
+      // The dialog is behind the three gates this section exists to bypass, so
+      // a pause that is only visible there is a pause nobody sees.
+      await openSection(
+        tester,
+        [
+          _task(
+            schedule: const TaskSchedule(
+              kind: ScheduleKind.interval,
+              intervalMinutes: 60,
+            ),
+          ),
+        ],
+        extra: [schedulerPausedProvider.overrideWith(_AlreadyPaused.new)],
+      );
+      expect(find.text('Scheduling is paused'), findsOneWidget);
+      expect(find.text('Resume'), findsOneWidget);
     });
   });
 

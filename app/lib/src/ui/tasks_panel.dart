@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:io' show Platform;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -12,6 +11,7 @@ import '../state/engine_controller.dart';
 import '../state/jobs_controller.dart';
 import '../state/scheduler_controller.dart';
 import '../state/scheduler_pause.dart';
+import '../state/scheduling_policy.dart';
 import '../state/task_schedule.dart';
 import '../state/tasks_controller.dart';
 import '../state/transfer_options.dart';
@@ -257,6 +257,151 @@ class _TasksDialog extends ConsumerWidget {
           ],
         );
       },
+    );
+  }
+}
+
+/// The always-visible face of scheduling, for Settings → Automation.
+///
+/// Scheduling has existed for several releases and almost nobody could find it:
+/// it sits behind advanced mode (default off), behind a 700 dp shell, and behind
+/// an arranged two-pane layout. This widget is behind none of those. It states
+/// what a schedule means on THIS platform, lists what is already scheduled, and
+/// surfaces a tripped circuit breaker where a user will actually see it rather
+/// than only inside the dialog they could not reach.
+///
+/// It deliberately does not duplicate the editor. Everything here is read-only
+/// plus one door into the real panel.
+class AutomationSettingsSection extends ConsumerWidget {
+  const AutomationSettingsSection({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final c = AircloneTheme.of(context);
+    final scheduled = ref
+        .watch(tasksProvider)
+        .where((t) => t.schedule != null)
+        .toList();
+    final paused = ref.watch(schedulerPausedProvider);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          schedulingSummary,
+          style: TextStyle(color: c.textMuted, fontSize: 12),
+        ),
+        if (paused != null) ...[
+          const SizedBox(height: Space.x3),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(Radii.md),
+            child: _PausedBanner(pause: paused),
+          ),
+        ],
+        const SizedBox(height: Space.x3),
+        if (!canSchedule)
+          Text(
+            'Saved tasks still work here — open one and run it when you want '
+            'it. Background scheduling on this platform is planned.',
+            style: TextStyle(color: c.textFaint, fontSize: 11),
+          )
+        else if (scheduled.isEmpty)
+          Text(
+            'Nothing is scheduled yet. Open Saved tasks, pick a task, and give '
+            'it a schedule.',
+            style: TextStyle(color: c.textFaint, fontSize: 11),
+          )
+        else
+          Container(
+            decoration: BoxDecoration(
+              color: c.surfaceSunken,
+              borderRadius: BorderRadius.circular(Radii.md),
+              border: Border.all(color: c.border),
+            ),
+            child: Column(
+              children: [
+                for (var i = 0; i < scheduled.length; i++) ...[
+                  if (i > 0) Divider(height: 1, color: c.border),
+                  _AutomationRow(task: scheduled[i]),
+                ],
+              ],
+            ),
+          ),
+        const SizedBox(height: Space.x3),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: OutlinedButton.icon(
+            onPressed: () => showTasksDialog(context),
+            icon: const Icon(Icons.checklist_rounded, size: 16),
+            label: const Text('Saved tasks'),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// One scheduled task in the Automation section: what it does, when it next
+/// runs, and how the last run went. Read-only — the editor is one tap away.
+class _AutomationRow extends StatelessWidget {
+  const _AutomationRow({required this.task});
+  final TransferTask task;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = AircloneTheme.of(context);
+    final last = task.history.isEmpty ? null : task.history.first;
+    return Padding(
+      padding: const EdgeInsets.symmetric(
+        horizontal: Space.x3,
+        vertical: Space.x2,
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.schedule, size: 14, color: c.primary),
+          const SizedBox(width: Space.x2),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  task.name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: c.text,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 1),
+                Text(
+                  '${task.schedule!.describe()} · ${_nextLabel(task)} · '
+                  'last ran ${_lastRanLabel(task.lastRun)}',
+                  maxLines: 2,
+                  style: TextStyle(color: c.textFaint, fontSize: 11),
+                ),
+              ],
+            ),
+          ),
+          if (last != null) ...[
+            const SizedBox(width: Space.x2),
+            Tooltip(
+              // The error verbatim, for the same reason the paused banner
+              // quotes it: a summary of a failure is one more thing that can
+              // be wrong.
+              message: last.ok
+                  ? 'Last run succeeded'
+                  : 'Last run failed: ${last.error ?? "no detail recorded"}',
+              child: Icon(
+                last.ok ? Icons.check_circle_outline : Icons.error_outline,
+                size: 14,
+                color: last.ok ? c.success : c.error,
+              ),
+            ),
+          ],
+        ],
+      ),
     );
   }
 }
@@ -907,9 +1052,12 @@ class _ScheduleDialogState extends ConsumerState<_ScheduleDialog> {
   /// `schtasks` can't be double-submitted.
   bool _osBusy = false;
 
-  /// Whether OS-level background scheduling is offered here. Windows is the only
-  /// platform wired to the headless `--run-task` CLI so far.
-  bool get _canOsSchedule => Platform.isWindows;
+  /// Whether OS-level background scheduling is offered here.
+  ///
+  /// Delegates to [canRunWhileClosed] rather than testing the platform inline:
+  /// when launchd and systemd-user land, they land in one place instead of in
+  /// every surface that had its own opinion.
+  bool get _canOsSchedule => canRunWhileClosed;
 
   @override
   void initState() {
@@ -1285,8 +1433,7 @@ class _ScheduleDialogState extends ConsumerState<_ScheduleDialog> {
               // above, where the closed-app behaviour no longer applies.
               if (!(_canOsSchedule && _on && _runWhileClosed))
                 Text(
-                  'Runs only while Airclone is open — there is no background '
-                  'service. A missed run starts once on next launch.',
+                  schedulingSummary,
                   style: TextStyle(color: c.textFaint, fontSize: 11),
                 ),
             ],
