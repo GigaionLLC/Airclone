@@ -270,6 +270,11 @@ class _QuickLookState extends ConsumerState<_QuickLook> {
         // Fullscreen mattes photos on black like a phone gallery; the desktop
         // card keeps the themed sunken surface.
         imageBackground: widget.fullscreen ? Colors.black : null,
+        // Null at the ends, so the media players can disable rather than
+        // pretend. A swipe and the arrow keys already move the pager; these
+        // exist for a device that has neither, which is a television remote.
+        onPrevious: p > 0 ? () => _go(-1) : null,
+        onNext: p < widget.files.length - 1 ? () => _go(1) : null,
       );
     },
   );

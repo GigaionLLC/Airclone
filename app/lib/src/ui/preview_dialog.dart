@@ -220,6 +220,8 @@ class PreviewContent extends ConsumerWidget {
     required this.parentPath,
     required this.file,
     this.imageBackground,
+    this.onPrevious,
+    this.onNext,
   });
 
   final Remote remote;
@@ -230,6 +232,12 @@ class PreviewContent extends ConsumerWidget {
   /// passes black so a photo doesn't sit in a light themed band; the dialog
   /// leaves it null and keeps the sunken surface.
   final Color? imageBackground;
+
+  /// Move to the sibling before / after this file, when the host has a list.
+  /// Only the media bodies use them today — a swipe or an arrow key covers the
+  /// others, but an audio player has neither on a television remote.
+  final VoidCallback? onPrevious;
+  final VoidCallback? onNext;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -278,6 +286,8 @@ class PreviewContent extends ConsumerWidget {
           url: ref0.url,
           headers: ref0.headers,
           onOpenExternally: openExternally,
+          onPrevious: onPrevious,
+          onNext: onNext,
         );
       case _PreviewKind.audio:
         return MediaPreviewBody(
@@ -285,6 +295,8 @@ class PreviewContent extends ConsumerWidget {
           headers: ref0.headers,
           audioOnly: true,
           onOpenExternally: openExternally,
+          onPrevious: onPrevious,
+          onNext: onNext,
         );
       case _PreviewKind.unsupported:
         return _UnsupportedBody(file: file, onOpenExternally: openExternally);

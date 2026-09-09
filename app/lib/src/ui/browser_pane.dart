@@ -54,6 +54,7 @@ import 'tab_strip.dart';
 import 'theme/tokens.dart';
 import 'touch.dart';
 import 'transfer_options_dialog.dart';
+import 'tv_row_actions.dart';
 
 /// Builds the [ThumbRequest] for a single file, or null when it isn't
 /// thumbnailable (a directory, an unsupported kind, or no engine/remote).
@@ -2343,6 +2344,16 @@ class _FileRow extends ConsumerStatefulWidget {
 class _FileRowState extends ConsumerState<_FileRow> {
   bool _hover = false;
 
+  /// The row's ⋯ button, kept out of D-pad traversal on a television — see
+  /// [tvSkippableFocusNode] for why.
+  late final FocusNode _menuFocus = tvSkippableFocusNode('file row actions');
+
+  @override
+  void dispose() {
+    _menuFocus.dispose();
+    super.dispose();
+  }
+
   void _setHover(bool v) {
     if (_hover != v) setState(() => _hover = v);
   }
@@ -2452,6 +2463,14 @@ class _FileRowState extends ConsumerState<_FileRow> {
                   width: 28,
                   child: Builder(
                     builder: (bctx) => IconButton(
+                      // A television reported the D-pad drifting onto this
+                      // button while moving through the list. Directional
+                      // traversal picks by geometry, and a second focusable in
+                      // a right-hand column is a second thing UP/DOWN can land
+                      // on - so on a TV this stops being a traversal stop and
+                      // the row answers RIGHT instead (see [_tvRowKey]). It
+                      // stays visible and clickable for a pointer.
+                      focusNode: _menuFocus,
                       icon: Icon(Icons.more_vert, size: 15, color: c.textFaint),
                       tooltip: 'Actions',
                       padding: EdgeInsets.zero,
@@ -2484,7 +2503,12 @@ class _FileRowState extends ConsumerState<_FileRow> {
       );
     }
 
-    return NativePaneDraggable(data: payload, child: row);
+    // TV only: RIGHT opens this row's actions, replacing the arrow-key route to
+    // the ⋯ that [tvSkippableFocusNode] just removed. A no-op everywhere else.
+    return TvRowMenuKey(
+      onMenu: onContextMenu,
+      child: NativePaneDraggable(data: payload, child: row),
+    );
   }
 }
 

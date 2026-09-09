@@ -51,6 +51,8 @@ class MediaPreviewBody extends ConsumerStatefulWidget {
     this.headers = const {},
     this.audioOnly = false,
     this.onOpenExternally,
+    this.onPrevious,
+    this.onNext,
   });
 
   /// Direct/streamable URL of the media to play.
@@ -66,6 +68,17 @@ class MediaPreviewBody extends ConsumerStatefulWidget {
   /// a fallback — the codec libmpv can't handle is often one the phone's own
   /// video player can.
   final VoidCallback? onOpenExternally;
+
+  /// Move to the sibling before / after this one, or null at the ends (and when
+  /// the host has no sibling list at all).
+  ///
+  /// A television reported the absence of these: on a remote there is no swipe
+  /// and no click target, so an audio player with only play/pause is a player
+  /// you cannot get out of without leaving the screen. They render as skip
+  /// buttons either side of play/pause, disabled at the ends rather than hidden,
+  /// so the control row does not reflow as you move through an album.
+  final VoidCallback? onPrevious;
+  final VoidCallback? onNext;
 
   @override
   ConsumerState<MediaPreviewBody> createState() => _MediaPreviewBodyState();
@@ -350,7 +363,7 @@ class _MediaPreviewBodyState extends ConsumerState<MediaPreviewBody> {
     return [...bar.take(spacer), button, ...bar.skip(spacer)];
   }
 
-  /// Centered audio card: art, play/pause, and a seek slider.
+  /// Centered audio card: art, previous/play/next, and a seek slider.
   Widget _audio(AircloneColors colors) {
     final player = _player;
     return Container(
@@ -390,7 +403,17 @@ class _MediaPreviewBodyState extends ConsumerState<MediaPreviewBody> {
                   Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
+                      AudioSkipButton(
+                        direction: SkipDirection.previous,
+                        onPrevious: widget.onPrevious,
+                        onNext: widget.onNext,
+                      ),
                       _PlayPauseButton(player: player, colors: colors),
+                      AudioSkipButton(
+                        direction: SkipDirection.next,
+                        onPrevious: widget.onPrevious,
+                        onNext: widget.onNext,
+                      ),
                       const SizedBox(width: Space.x3),
                       _RepeatToggle(
                         repeat: ref.watch(repeatPlaybackProvider),
@@ -533,6 +556,63 @@ class _MaterialDesktopRepeatButton extends StatelessWidget {
 
 /// Repeat toggle for the themed audio card (no video frame behind it, so it
 /// uses the app's own muted/primary colours rather than white).
+/// Which end of the pair a given [AudioSkipButton] is.
+enum SkipDirection { previous, next }
+
+/// One previous/next control on the audio card.
+///
+/// A television user reported that they could not move between songs: on a
+/// remote there is no swipe and no click target, so an audio player with only
+/// play/pause is a player you cannot get out of without leaving the screen.
+///
+/// It takes BOTH callbacks rather than just its own so it can tell two states
+/// apart that a single nullable cannot:
+///
+/// * **both null** — the host passed no sibling list at all, so a skip control
+///   would be permanently dead. Renders nothing, and the row keeps its old
+///   shape for every caller that does not opt in.
+/// * **one null** — a real list, at one of its ends. Renders DISABLED rather
+///   than disappearing, because a control row that changes shape as you move
+///   through an album is harder to aim at with a D-pad than one that stays put.
+class AudioSkipButton extends StatelessWidget {
+  const AudioSkipButton({
+    super.key,
+    required this.direction,
+    required this.onPrevious,
+    required this.onNext,
+  });
+
+  final SkipDirection direction;
+  final VoidCallback? onPrevious;
+  final VoidCallback? onNext;
+
+  /// True when this player sits in a list at all.
+  bool get inAList => onPrevious != null || onNext != null;
+
+  @override
+  Widget build(BuildContext context) {
+    if (!inAList) return const SizedBox.shrink();
+    final colors = AircloneTheme.of(context);
+    final previous = direction == SkipDirection.previous;
+    final onPressed = previous ? onPrevious : onNext;
+    return Padding(
+      padding: EdgeInsets.only(
+        left: previous ? 0 : Space.x2,
+        right: previous ? Space.x2 : 0,
+      ),
+      child: IconButton(
+        onPressed: onPressed,
+        tooltip: previous ? 'Previous' : 'Next',
+        icon: Icon(
+          previous ? Icons.skip_previous_rounded : Icons.skip_next_rounded,
+          size: 28,
+          color: onPressed == null ? colors.textFaint : colors.text,
+        ),
+      ),
+    );
+  }
+}
+
 class _RepeatToggle extends StatelessWidget {
   const _RepeatToggle({
     required this.repeat,

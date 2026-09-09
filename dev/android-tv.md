@@ -139,6 +139,53 @@ Both are covered by `app/test/tv_dpad_test.dart`, and each has a paired test of
 the UN-wrapped widget that demonstrates the trap — a refactor that drops a
 wrapper fails there instead of in a living room.
 
+## Field reports from a Google TV user (2026-09-09)
+
+Three, from someone actually using it on a set. The first two are focus
+problems, which is the pattern this page keeps predicting; the third was a
+missing control that only a remote makes obvious.
+
+**"Sometimes the navigation goes on the three dots on the right of the screen."**
+A file row is one thing the user is aiming at, but it contains two focusable
+things: the row itself and its trailing ⋯ button. Directional traversal picks by
+geometry, so pressing DOWN repeatedly drifts sideways into that right-hand
+column and stays there. Nothing was broken — there were simply two targets where
+the user was aiming at one.
+
+`tvSkippableFocusNode` (`ui/tv_row_actions.dart`) takes the ⋯ out of traversal on
+a television. `skipTraversal` leaves the node focusable and clickable; it only
+stops the arrow keys from choosing it, so a pointer remote still works and no
+other platform changes at all.
+
+That would strand the menu, so `TvRowMenuKey` gives it a deliberate route:
+**RIGHT on a focused row opens that row's actions**. RIGHT specifically because
+RIGHT already went there — the ⋯ was the nearest focusable to the right, so a
+right-press landed on it before this existed. The key did not mean something
+else and lose its meaning; the same destination just stopped needing an
+intermediate stop on a 15 px glyph. The menu opens at the row's own centre,
+since a television has no pointer position to fall back on.
+
+**"When we listen music on the player we cannot navigate to the previous or next
+song."** Correct, and it had nothing to do with focus: the audio card was
+play/pause, repeat and a seek bar, and that was all. On a phone a swipe moves
+the pager and on a desktop the arrow keys do; a remote has neither, so an audio
+player with only play/pause is one you cannot get out of without leaving the
+screen.
+
+`AudioSkipButton` (`ui/media_preview.dart`) adds previous/next either side of
+play/pause, wired through `PreviewContent` to Quick Look's existing pager — so
+they move through the same sibling list a swipe already did. Two details worth
+keeping: with **both** callbacks null the buttons render nothing (the host
+passed no sibling list, and two permanently dead buttons are worse than none),
+and at either **end** of a real list the dead one stays visible but disabled,
+because a control row that changes shape as you move through an album is harder
+to aim at with a D-pad than one that stays put.
+
+Covered by `app/test/tv_row_actions_test.dart` and
+`app/test/audio_skip_controls_test.dart`, both confirmed RED against the code
+with the fix removed. Neither could be verified on a physical television from
+here — see *What a machine cannot do* below.
+
 ## A television has no file picker
 
 Verified 2026-09-04 on the `airclone_tv` AVD (`sdk_google_atv64_x86_64`, API 36)
