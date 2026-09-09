@@ -586,11 +586,17 @@ class _ConfigImportDialogState extends ConsumerState<_ConfigImportDialog> {
           style: TextStyle(color: c.textFaint, fontSize: 12),
         ),
         const SizedBox(height: Space.x3),
-        if (collisions > 0) _replaceToggle(c, collisions),
         for (final d in plan) _decisionRow(c, d),
         if (_previewError != null) ...[
           const SizedBox(height: Space.x2),
           Text(_previewError!, style: TextStyle(color: c.error, fontSize: 12)),
+        ],
+        // Only once they have opted in. Leading with the cost of a mode nobody
+        // has chosen is noise on the common path, and noise is what gets
+        // scrolled past on the path where it matters.
+        if (collisions > 0 && _replaceCollisions) ...[
+          const SizedBox(height: Space.x3),
+          _replaceWarning(c),
         ],
         const SizedBox(height: Space.x4),
         // A Wrap, not a Row: Cancel + "Replace instead…" + Merge are together
@@ -600,9 +606,16 @@ class _ConfigImportDialogState extends ConsumerState<_ConfigImportDialog> {
         // desktop-width dialog all three still sit on one.
         Wrap(
           alignment: WrapAlignment.end,
+          crossAxisAlignment: WrapCrossAlignment.center,
           spacing: Space.x2,
           runSpacing: Space.x2,
           children: [
+            // The mode sits WITH the action it modifies, so what Merge is about
+            // to do is legible at the moment of pressing it rather than in a
+            // control scrolled off the top. On a narrow dialog the Wrap drops it
+            // onto its own line above the buttons, which is the same reason the
+            // buttons are in a Wrap at all.
+            if (collisions > 0) _replaceCheckbox(c, collisions),
             TextButton(
               onPressed: () => Navigator.of(context).pop(),
               child: Text('Cancel', style: TextStyle(color: c.textMuted)),
@@ -618,8 +631,17 @@ class _ConfigImportDialogState extends ConsumerState<_ConfigImportDialog> {
               ),
             FilledButton.icon(
               onPressed: plan.isEmpty ? null : _applyMerge,
-              icon: const Icon(Icons.merge_type, size: 16),
-              label: const Text('Merge'),
+              icon: Icon(
+                _replaceCollisions ? Icons.swap_horiz : Icons.merge_type,
+                size: 16,
+              ),
+              // The button states the actual outcome. "Merge" over a plan that
+              // overwrites six of your remotes is not a description of it.
+              label: Text(
+                _replaceCollisions && collisions > 0
+                    ? 'Replace + merge'
+                    : 'Merge',
+              ),
             ),
           ],
         ),
@@ -627,76 +649,79 @@ class _ConfigImportDialogState extends ConsumerState<_ConfigImportDialog> {
     );
   }
 
-  /// The merge-mode choice, offered only when something actually collides.
+  /// The merge-mode choice, sitting with the Merge button it modifies.
   ///
-  /// Merge's only answer to a name clash used to be a rename, so re-importing a
-  /// corrected config left `foo` and `foo-imported` side by side and the app
+  /// Merge's only answer to a name clash was a rename, so re-importing a
+  /// corrected config left `foo` and `foo-imported` side by side with the app
   /// still using the stale `foo`. Replacing is the other reasonable intent — but
-  /// it is the destructive one, so it is opt-in, per-import, and says what it
-  /// costs.
-  Widget _replaceToggle(AircloneColors c, int collisions) {
-    final many = collisions != 1;
-    return Padding(
-      padding: const EdgeInsets.only(bottom: Space.x3),
-      child: InkWell(
-        onTap: () => setState(() => _replaceCollisions = !_replaceCollisions),
-        borderRadius: BorderRadius.circular(Radii.sm),
-        child: Padding(
-          padding: const EdgeInsets.all(Space.x1),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              SizedBox(
-                height: 20,
-                width: 20,
-                child: Checkbox(
-                  value: _replaceCollisions,
-                  visualDensity: VisualDensity.compact,
-                  onChanged: (v) =>
-                      setState(() => _replaceCollisions = v ?? false),
-                ),
-              ),
-              const SizedBox(width: Space.x2),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Replace the $collisions existing '
-                      'remote${many ? 's' : ''} instead of renaming',
-                      style: TextStyle(
-                        color: c.text,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      // Not a generic "this overwrites" warning: naming the
-                      // encrypted case is the point. A crypt remote replaced
-                      // with a different password or salt still connects and
-                      // still reports free space — it just stops being able to
-                      // read the names of what it stored, and lists as empty.
-                      'The imported settings win, and the current ones are '
-                      'gone. An encrypted remote replaced with a different '
-                      'password or salt can no longer read what it stored: the '
-                      'files stay where they are, but the folder lists as '
-                      'empty. Your config is backed up first either way.',
-                      style: TextStyle(
-                        color: c.textMuted,
-                        fontSize: 11,
-                        height: 1.35,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
+  /// it is the destructive one, so it stays opt-in, per import, never
+  /// remembered, and the label says which remotes it would land on.
+  Widget _replaceCheckbox(AircloneColors c, int collisions) => InkWell(
+    onTap: () => setState(() => _replaceCollisions = !_replaceCollisions),
+    borderRadius: BorderRadius.circular(Radii.sm),
+    child: Padding(
+      padding: const EdgeInsets.symmetric(
+        horizontal: Space.x1,
+        vertical: Space.x1,
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          SizedBox(
+            height: 20,
+            width: 20,
+            child: Checkbox(
+              value: _replaceCollisions,
+              visualDensity: VisualDensity.compact,
+              onChanged: (v) => setState(() => _replaceCollisions = v ?? false),
+            ),
+          ),
+          const SizedBox(width: Space.x2),
+          Text(
+            'Replace the $collisions existing',
+            style: TextStyle(
+              color: _replaceCollisions ? c.error : c.textMuted,
+              fontSize: 12,
+              fontWeight: _replaceCollisions
+                  ? FontWeight.w600
+                  : FontWeight.w400,
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
+
+  /// What replacing costs, shown only once it has been chosen.
+  ///
+  /// Not a generic "this overwrites" line: naming the encrypted case is the
+  /// point. A crypt remote replaced with a different password or salt still
+  /// connects and still reports free space — it simply stops being able to read
+  /// the names of what it stored, and the folder lists as empty.
+  Widget _replaceWarning(AircloneColors c) => Container(
+    padding: const EdgeInsets.all(Space.x2),
+    decoration: BoxDecoration(
+      color: c.warningBg,
+      borderRadius: BorderRadius.circular(Radii.sm),
+    ),
+    child: Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(Icons.warning_amber_rounded, size: 15, color: c.warning),
+        const SizedBox(width: Space.x2),
+        Expanded(
+          child: Text(
+            'The imported settings win, and the current ones are gone. An '
+            'encrypted remote replaced with a different password or salt can '
+            'no longer read what it stored: the files stay where they are, but '
+            'the folder lists as empty. Your config is backed up first either '
+            'way.',
+            style: TextStyle(color: c.textMuted, fontSize: 11, height: 1.35),
           ),
         ),
-      ),
-    );
-  }
+      ],
+    ),
+  );
 
   Widget _decisionRow(AircloneColors c, ImportDecision d) {
     final typeLabel = d.type.isEmpty ? 'unknown type' : d.type;
