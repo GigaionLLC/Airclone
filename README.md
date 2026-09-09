@@ -37,7 +37,9 @@ experience**, and brings it to the desktop *and* the phone:
 - 🖐️ **Direct manipulation** — drag a folder from one cloud to another to copy it; the transfer runs
   as a live job. Easy one-click sync, and a dry-run mode that runs a job without writing anything.
 - ⏰ **Sync & schedule** — Copy, Move, Sync (make the destination match) or Two-way; mark a folder as
-  the sync source, then later sync it INTO wherever you are standing; save jobs and run them on a schedule.
+  the sync source, then later sync it INTO wherever you are standing. Save a job and run it on a
+  schedule *(desktop; on **Windows** a schedule also fires with Airclone closed, elsewhere it runs
+  while the app is open — see [Scheduling](wiki/features/feat-scheduling.md))*.
 - 💽 **Make it local** — mount a remote as a drive on desktop, or hand any file straight to another
   app from your phone with **Open in another app** and the share sheet.
 - 🔒 **Free, open-source, and private** — local-only, no telemetry. All manual power stays free.

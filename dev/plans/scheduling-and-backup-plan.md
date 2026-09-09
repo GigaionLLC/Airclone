@@ -3,9 +3,9 @@
 ## 📊 State Dashboard
 | Metric | Value |
 | :--- | :--- |
-| **Status** | `PROPOSED` — targets **v0.8**. Explicitly NOT v0.7.7 (bug fixes in flight). |
-| **Version** | `v1.0.0` |
-| **Active Persona** | `Architect` |
+| **Status** | `IN PROGRESS` — targets **v0.8**. Phase B's two safety items (delete cap + circuit breaker) landed 2026-09-09; Phase A (visibility) is next. v0.7.7 shipped clean. |
+| **Version** | `v1.1.0` |
+| **Active Persona** | `Builder` |
 | **Last Updated** | 2026-09-09 |
 
 ---
@@ -470,10 +470,28 @@ incoherent.
 - `[ ]` **A — Visibility and honesty `[S]`.** From/To picker; Settings →
   Automation, not advanced-gated; mobile entry point; `scheduling_policy.dart`
   replacing `_canOsSchedule`; README corrected; `feat-scheduling.md` written.
-- `[ ]` **B — Safety for unattended runs `[S]`.** Definition-time destructive
-  acknowledgement; **delete cap defaulted to 100 and not clearable** on a
-  repeating sync; **circuit breaker that pauses the whole scheduler on a trip**
-  (§4.e); empty-source refusal; a failure trace outside advanced mode.
+- `[~]` **B — Safety for unattended runs `[S]`.** Half landed 2026-09-09:
+  - `[x]` **Delete cap defaulted to 100 and not clearable** on a repeating sync.
+    `withScheduledDeleteCap` in `state/transfer_options.dart` applies it at RUN
+    time (so tasks saved before the cap existed are covered — those are exactly
+    the uncapped scheduled syncs already sitting in people's configs), and the
+    schedule editor pre-fills the number so it is applied visibly rather than
+    silently. Blanking the field saves the default, never "unlimited".
+  - `[x]` **Circuit breaker that pauses the whole scheduler on a trip** (§4.e).
+    `state/scheduler_pause.dart` — persisted, global, no auto-resume; hooked at
+    `recordRunOutcome`'s single terminal path, checked at the top of `tick()`,
+    and surfaced as a banner with the engine's verbatim error plus a Resume
+    button at the top of the tasks dialog.
+  - `[ ]` Definition-time destructive acknowledgement.
+  - `[ ]` Empty-source refusal.
+  - `[ ]` A failure trace outside advanced mode.
+
+  **Still unverified:** `isDeleteCapError` is a text match against rclone's
+  error string (the RC gives no exit code) and has NOT been checked against a
+  real aborted run. If the wording varies across rclone versions, the fallback
+  is to pause on any failure of a scheduled destructive sync — blunter, but it
+  cannot silently stop working, and silently-stopped-working is the failure this
+  whole feature exists to prevent.
 - `[ ]` **C — Unify on `--run-due` and clean up after ourselves `[M]`.** One
   registration; migrate and remove per-task Windows registrations;
   `[UninstallRun]`; reconcile-on-launch; "Remove all background scheduling";
@@ -503,7 +521,14 @@ media after upload.
     registration behind. Check the real locations, not the app's own state.
   - `[ ]` Golden-string tests pin the plist and unit-file output before any
     `launchctl` or `systemctl` is spawned.
-  - `[ ]` A repeating `sync` cannot be saved without a delete cap.
+  - `[x]` A repeating `sync` cannot be saved without a delete cap. Covered by
+    `test/scheduler_delete_cap_test.dart` (the helper, and the cap reaching the
+    engine as `_config.MaxDelete`) and `test/scheduler_pause_ui_test.dart` (the
+    editor pre-fills it; an emptied field saves the default, not "no cap").
+    Both suites were confirmed RED against the code with the fix removed.
+  - `[ ]` A run that trips the cap actually pauses the scheduler **against a
+    real rclone abort**, not a synthesised error string. This is the one that
+    matters and the one still outstanding — see the caveat in Phase 7 B.
   - `[ ]` macOS: a `--run-due` launch shows no Dock icon and steals no focus.
   - `[ ]` Android: a periodic run survives reboot with no `BOOT_COMPLETED`
     receiver, confirming the correction to the backlog.

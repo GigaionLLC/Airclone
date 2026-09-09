@@ -7,6 +7,7 @@ import '../rclone/models/job.dart';
 import '../rclone/rclone_client.dart';
 import 'engine_controller.dart';
 import 'jobs_controller.dart';
+import 'scheduler_pause.dart';
 import 'task_schedule.dart';
 import 'tasks_controller.dart';
 import 'transfer_options.dart';
@@ -84,6 +85,11 @@ class SchedulerController extends Notifier<SchedulerStatus> {
   @visibleForTesting
   void tick() {
     final now = DateTime.now();
+    // A tripped circuit breaker stops EVERYTHING until a human resumes it. The
+    // causes of a run deleting more than its cap are environmental - an
+    // unmounted drive, an expired token, a renamed folder - and they are rarely
+    // confined to the one task that noticed. See state/scheduler_pause.dart.
+    if (ref.read(schedulerPausedProvider) != null) return;
     // Before tasks hydrate from disk the list is empty, so a cold boot fires
     // nothing here regardless of engine state.
     final due = dueTasks(ref.read(tasksProvider), now);
@@ -128,7 +134,10 @@ class SchedulerController extends Notifier<SchedulerStatus> {
       dstFs: t.dstFs,
       srcLabel: t.srcLabel,
       dstLabel: t.dstLabel,
-      options: t.options,
+      // A repeating Sync never runs uncapped. Applied HERE rather than only at
+      // definition so tasks saved before the cap existed are covered - those are
+      // precisely the uncapped scheduled syncs already sitting in configs.
+      options: withScheduledDeleteCap(t.options),
     );
     await recordRunOutcome(
       readClient: () => ref.read(engineControllerProvider).client,
@@ -136,6 +145,21 @@ class SchedulerController extends Notifier<SchedulerStatus> {
       readJobs: () => ref.read(jobsControllerProvider),
       taskId: t.id,
       jobId: jobId,
+      onOutcome: ({required bool ok, String? error}) {
+        if (ok || !isDeleteCapError(error)) return;
+        unawaited(
+          ref
+              .read(schedulerPausedProvider.notifier)
+              .pause(
+                SchedulerPause(
+                  at: DateTime.now(),
+                  taskId: t.id,
+                  taskName: '${t.srcLabel} -> ${t.dstLabel}',
+                  reason: error ?? '',
+                ),
+              ),
+        );
+      },
     );
   }
 }
@@ -182,6 +206,7 @@ Future<void> recordRunOutcome({
   required int jobId,
   Duration pollInterval = kOutcomePollInterval,
   Duration maxSupervise = kMaxSuperviseDuration,
+  void Function({required bool ok, String? error})? onOutcome,
 }) async {
   final start = DateTime.now();
   final deadline = start.add(maxSupervise);
@@ -194,6 +219,10 @@ Future<void> recordRunOutcome({
   }
 
   void record({required bool ok, String? error, int? bytes}) {
+    // Every terminal path in this function goes through here, which is why the
+    // circuit breaker hooks it rather than the call sites: a future platform
+    // cannot add a path that skips the check without also skipping history.
+    onOutcome?.call(ok: ok, error: error);
     tasks.recordRun(
       taskId,
       TaskRunRecord(

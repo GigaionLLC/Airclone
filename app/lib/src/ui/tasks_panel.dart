@@ -11,6 +11,7 @@ import '../state/config_password_vault.dart';
 import '../state/engine_controller.dart';
 import '../state/jobs_controller.dart';
 import '../state/scheduler_controller.dart';
+import '../state/scheduler_pause.dart';
 import '../state/task_schedule.dart';
 import '../state/tasks_controller.dart';
 import '../state/transfer_options.dart';
@@ -34,6 +35,9 @@ class _TasksDialog extends ConsumerWidget {
     // Re-read each tick; also carries the "a run was due while the engine was
     // locked" flag surfaced in the footer below.
     final sched = ref.watch(schedulerProvider);
+    // A tripped delete-cap breaker stops every scheduled task, so it belongs
+    // above the list rather than in the footer with the softer warnings.
+    final paused = ref.watch(schedulerPausedProvider);
     return Dialog(
       backgroundColor: c.surfaceRaised,
       shape: RoundedRectangleBorder(
@@ -80,6 +84,7 @@ class _TasksDialog extends ConsumerWidget {
               ),
             ),
             Divider(height: 1, color: c.border),
+            if (paused != null) _PausedBanner(pause: paused),
             Expanded(
               child: tasks.isEmpty
                   ? _empty(c)
@@ -253,6 +258,88 @@ class _TasksDialog extends ConsumerWidget {
         );
       },
     );
+  }
+}
+
+/// Shown while the delete-cap circuit breaker is tripped.
+///
+/// Nothing scheduled runs until Resume is pressed, so this states which task
+/// tripped it and quotes the engine verbatim — a user deciding whether it is
+/// safe to resume needs the actual error, not a paraphrase of it.
+class _PausedBanner extends ConsumerWidget {
+  const _PausedBanner({required this.pause});
+  final SchedulerPause pause;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final c = AircloneTheme.of(context);
+    return Container(
+      width: double.infinity,
+      color: c.error.withValues(alpha: 0.10),
+      padding: const EdgeInsets.fromLTRB(
+        Space.x5,
+        Space.x3,
+        Space.x3,
+        Space.x3,
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.pause_circle_outline, size: 16, color: c.error),
+          const SizedBox(width: Space.x2),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Scheduling is paused',
+                  style: TextStyle(
+                    color: c.error,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  '"${pause.taskName}" would have deleted more than its cap, '
+                  'so nothing scheduled has run since '
+                  '${_stamp(pause.at)}. Check that the source is where you '
+                  'expect it before resuming.',
+                  style: TextStyle(color: c.textMuted, fontSize: 11),
+                ),
+                if (pause.reason.isNotEmpty) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    pause.reason,
+                    maxLines: 3,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: c.textFaint,
+                      fontSize: 10,
+                      fontFamily: 'monospace',
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          const SizedBox(width: Space.x2),
+          TextButton(
+            onPressed: () =>
+                ref.read(schedulerPausedProvider.notifier).resume(),
+            child: const Text('Resume'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  static String _stamp(DateTime d) {
+    final t =
+        '${d.hour.toString().padLeft(2, '0')}:'
+        '${d.minute.toString().padLeft(2, '0')}';
+    return '${d.year}-${d.month.toString().padLeft(2, '0')}-'
+        '${d.day.toString().padLeft(2, '0')} $t';
   }
 }
 
@@ -765,6 +852,29 @@ class _ScheduleDialogState extends ConsumerState<_ScheduleDialog> {
   late int _minute;
   late Set<int> _weekdays;
 
+  /// The delete cap this task will run under, for a one-way Sync only. Seeded
+  /// from the task if it already has one and from [kDefaultScheduledDeleteCap]
+  /// if it does not, so turning a schedule on shows the number rather than
+  /// applying it invisibly at run time.
+  ///
+  /// There is deliberately no "no cap" here. A repeating Sync gets a cap when
+  /// it runs whatever this dialog saves ([withScheduledDeleteCap]), so offering
+  /// to clear it would be offering something the scheduler does not honour.
+  late final TextEditingController _cap;
+
+  /// Whether the cap field applies at all. Copy and Move never delete at the
+  /// destination; a two-way sync caps by PERCENT, a different setting on a
+  /// different screen.
+  bool get _capApplies => widget.task.options.mode == TransferMode.sync;
+
+  /// The cap as saved: whatever parses, floored at 0. An unparseable or empty
+  /// field falls back to the default rather than to "unlimited".
+  int get _capValue {
+    final n = int.tryParse(_cap.text.trim());
+    if (n == null || n < 0) return kDefaultScheduledDeleteCap;
+    return n;
+  }
+
   /// Windows-only: also register this schedule as an OS Scheduled Task so it runs
   /// while Airclone is closed. Task Scheduler itself is the source of truth (we
   /// persist nothing on the model), so the box is seeded from an [isRegistered]
@@ -812,10 +922,20 @@ class _ScheduleDialogState extends ConsumerState<_ScheduleDialog> {
     _minute = s?.minute ?? 0;
     _weekdays = {...?s?.weekdays};
     if (_weekdays.isEmpty) _weekdays = {DateTime.now().weekday};
+    _cap = TextEditingController(
+      text: (widget.task.options.maxDeleteFiles ?? kDefaultScheduledDeleteCap)
+          .toString(),
+    );
     if (_canOsSchedule) {
       _probing = true;
       unawaited(_probeRegistered());
     }
+  }
+
+  @override
+  void dispose() {
+    _cap.dispose();
+    super.dispose();
   }
 
   /// Reflects an already-registered Scheduled Task into the checkbox so re-opening
@@ -879,6 +999,11 @@ class _ScheduleDialogState extends ConsumerState<_ScheduleDialog> {
               ? (_weekdays.toList()..sort())
               : const [],
         ),
+        // Persist the cap the dialog showed, so the task carries the number the
+        // user saw rather than acquiring one silently on its first run.
+        options: _capApplies
+            ? widget.task.options.copyWith(maxDeleteFiles: _capValue)
+            : widget.task.options,
         // Reset the clock so a slot already past today doesn't fire instantly.
         lastRun: DateTime.now(),
       );
@@ -949,175 +1074,223 @@ class _ScheduleDialogState extends ConsumerState<_ScheduleDialog> {
       title: Text('Schedule "${widget.task.name}"'),
       content: DialogBody(
         width: 400,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            SwitchListTile(
-              contentPadding: EdgeInsets.zero,
-              dense: true,
-              title: const Text('Run automatically on a schedule'),
-              value: _on,
-              onChanged: (v) => setState(() => _on = v),
-            ),
-            if (_on) ...[
-              const SizedBox(height: Space.x2),
-              Wrap(
-                spacing: Space.x2,
-                children: [
-                  for (final k in ScheduleKind.values)
-                    ChoiceChip(
-                      label: Text(switch (k) {
-                        ScheduleKind.interval => 'Interval',
-                        ScheduleKind.daily => 'Daily',
-                        ScheduleKind.weekly => 'Weekly',
-                      }),
-                      selected: _kind == k,
-                      onSelected: (_) => setState(() => _kind = k),
-                    ),
-                ],
+        // Scrollable because this dialog grows: weekly adds a chip row, Windows
+        // adds the background-run block, a Sync adds the delete cap. On a short
+        // window that is taller than the dialog gets, and an unscrollable Column
+        // clips the buttons rather than the content.
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                dense: true,
+                title: const Text('Run automatically on a schedule'),
+                value: _on,
+                onChanged: (v) => setState(() => _on = v),
               ),
-              const SizedBox(height: Space.x3),
-              if (_kind == ScheduleKind.interval)
-                Row(
+              if (_on) ...[
+                const SizedBox(height: Space.x2),
+                Wrap(
+                  spacing: Space.x2,
                   children: [
-                    Text('Every', style: TextStyle(color: c.textMuted)),
-                    const SizedBox(width: Space.x3),
-                    DropdownButton<int>(
-                      value: _interval,
-                      dropdownColor: c.surfaceRaised,
-                      borderRadius: BorderRadius.circular(Radii.md),
-                      items: [
-                        for (final m in intervals)
-                          DropdownMenuItem(
-                            value: m,
-                            child: Text(
-                              _intervalPresets
-                                      .where((p) => p.$1 == m)
-                                      .map((p) => p.$2)
-                                      .firstOrNull ??
-                                  '$m minutes',
+                    for (final k in ScheduleKind.values)
+                      ChoiceChip(
+                        label: Text(switch (k) {
+                          ScheduleKind.interval => 'Interval',
+                          ScheduleKind.daily => 'Daily',
+                          ScheduleKind.weekly => 'Weekly',
+                        }),
+                        selected: _kind == k,
+                        onSelected: (_) => setState(() => _kind = k),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: Space.x3),
+                if (_kind == ScheduleKind.interval)
+                  Row(
+                    children: [
+                      Text('Every', style: TextStyle(color: c.textMuted)),
+                      const SizedBox(width: Space.x3),
+                      DropdownButton<int>(
+                        value: _interval,
+                        dropdownColor: c.surfaceRaised,
+                        borderRadius: BorderRadius.circular(Radii.md),
+                        items: [
+                          for (final m in intervals)
+                            DropdownMenuItem(
+                              value: m,
+                              child: Text(
+                                _intervalPresets
+                                        .where((p) => p.$1 == m)
+                                        .map((p) => p.$2)
+                                        .firstOrNull ??
+                                    '$m minutes',
+                              ),
                             ),
+                        ],
+                        onChanged: (v) =>
+                            setState(() => _interval = v ?? _interval),
+                      ),
+                    ],
+                  )
+                else ...[
+                  if (_kind == ScheduleKind.weekly) ...[
+                    Text('On days', style: TextStyle(color: c.textMuted)),
+                    const SizedBox(height: Space.x2),
+                    Wrap(
+                      spacing: Space.x1,
+                      children: [
+                        for (var d = 1; d <= 7; d++)
+                          FilterChip(
+                            label: Text(
+                              const ['M', 'T', 'W', 'T', 'F', 'S', 'S'][d - 1],
+                            ),
+                            selected: _weekdays.contains(d),
+                            onSelected: (sel) => setState(() {
+                              sel ? _weekdays.add(d) : _weekdays.remove(d);
+                            }),
                           ),
                       ],
-                      onChanged: (v) =>
-                          setState(() => _interval = v ?? _interval),
                     ),
+                    const SizedBox(height: Space.x3),
                   ],
-                )
-              else ...[
-                if (_kind == ScheduleKind.weekly) ...[
-                  Text('On days', style: TextStyle(color: c.textMuted)),
-                  const SizedBox(height: Space.x2),
-                  Wrap(
-                    spacing: Space.x1,
+                  Row(
                     children: [
-                      for (var d = 1; d <= 7; d++)
-                        FilterChip(
-                          label: Text(
-                            const ['M', 'T', 'W', 'T', 'F', 'S', 'S'][d - 1],
-                          ),
-                          selected: _weekdays.contains(d),
-                          onSelected: (sel) => setState(() {
-                            sel ? _weekdays.add(d) : _weekdays.remove(d);
-                          }),
-                        ),
+                      Text('At', style: TextStyle(color: c.textMuted)),
+                      const SizedBox(width: Space.x3),
+                      OutlinedButton.icon(
+                        onPressed: _pickTime,
+                        icon: const Icon(Icons.schedule, size: 16),
+                        label: Text(time),
+                      ),
                     ],
                   ),
-                  const SizedBox(height: Space.x3),
                 ],
-                Row(
-                  children: [
-                    Text('At', style: TextStyle(color: c.textMuted)),
-                    const SizedBox(width: Space.x3),
-                    OutlinedButton.icon(
-                      onPressed: _pickTime,
-                      icon: const Icon(Icons.schedule, size: 16),
-                      label: Text(time),
-                    ),
-                  ],
-                ),
-              ],
-              // Windows only: opt into an OS Scheduled Task so the run fires even
-              // with Airclone closed. Only meaningful when a schedule is set, so
-              // it lives inside the `_on` block.
-              if (_canOsSchedule) ...[
-                const SizedBox(height: Space.x2),
-                Divider(height: 1, color: c.border),
-                CheckboxListTile(
-                  contentPadding: EdgeInsets.zero,
-                  dense: true,
-                  controlAffinity: ListTileControlAffinity.leading,
-                  title: const Text('Also run while Airclone is closed'),
-                  subtitle: Text(
-                    'Registers a Windows Scheduled Task that runs this task in '
-                    'the background; missed runs start as soon as the PC is '
-                    'available.',
+                if (_capApplies) ...[
+                  const SizedBox(height: Space.x3),
+                  Divider(height: 1, color: c.border),
+                  const SizedBox(height: Space.x3),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      Expanded(
+                        child: Text(
+                          'Stop if a run would delete more than',
+                          style: TextStyle(color: c.textMuted),
+                        ),
+                      ),
+                      const SizedBox(width: Space.x2),
+                      SizedBox(
+                        width: 76,
+                        child: TextField(
+                          controller: _cap,
+                          keyboardType: TextInputType.number,
+                          textAlign: TextAlign.end,
+                          style: TextStyle(color: c.text, fontSize: 13),
+                          decoration: InputDecoration(
+                            isDense: true,
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(Radii.md),
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: Space.x2),
+                      Text('files', style: TextStyle(color: c.textMuted)),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Sync deletes anything the source no longer has. If the '
+                    'source is ever missing or empty, that is the whole '
+                    'destination — this stops the run instead, and pauses '
+                    'scheduling until you have looked.',
                     style: TextStyle(color: c.textFaint, fontSize: 11),
                   ),
-                  value: _runWhileClosed,
-                  onChanged: (v) {
-                    setState(() {
-                      _userTouchedClosed = true;
-                      _runWhileClosed = v ?? false;
-                      if (!_runWhileClosed) _bgPasswordError = null;
-                    });
-                    // Ticking ON: verify an encrypted config actually has a
-                    // stored password for the unattended unlock (async vault
-                    // read), and surface an inline block if not.
-                    if (_runWhileClosed) unawaited(_refreshBgPasswordGate());
-                  },
-                ),
-                if (_bgPasswordError != null)
-                  Padding(
-                    padding: const EdgeInsets.only(left: Space.x1),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Icon(
-                          Icons.warning_amber_rounded,
-                          size: 13,
-                          color: c.warning,
-                        ),
-                        const SizedBox(width: Space.x2),
-                        Expanded(
-                          child: Text(
-                            _bgPasswordError!,
-                            style: TextStyle(color: c.warning, fontSize: 11),
-                          ),
-                        ),
-                      ],
+                ],
+                // Windows only: opt into an OS Scheduled Task so the run fires even
+                // with Airclone closed. Only meaningful when a schedule is set, so
+                // it lives inside the `_on` block.
+                if (_canOsSchedule) ...[
+                  const SizedBox(height: Space.x2),
+                  Divider(height: 1, color: c.border),
+                  CheckboxListTile(
+                    contentPadding: EdgeInsets.zero,
+                    dense: true,
+                    controlAffinity: ListTileControlAffinity.leading,
+                    title: const Text('Also run while Airclone is closed'),
+                    subtitle: Text(
+                      'Registers a Windows Scheduled Task that runs this task in '
+                      'the background; missed runs start as soon as the PC is '
+                      'available.',
+                      style: TextStyle(color: c.textFaint, fontSize: 11),
                     ),
+                    value: _runWhileClosed,
+                    onChanged: (v) {
+                      setState(() {
+                        _userTouchedClosed = true;
+                        _runWhileClosed = v ?? false;
+                        if (!_runWhileClosed) _bgPasswordError = null;
+                      });
+                      // Ticking ON: verify an encrypted config actually has a
+                      // stored password for the unattended unlock (async vault
+                      // read), and surface an inline block if not.
+                      if (_runWhileClosed) unawaited(_refreshBgPasswordGate());
+                    },
                   ),
-                if (_osError != null)
-                  Padding(
-                    padding: const EdgeInsets.only(left: Space.x1),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Icon(Icons.error_outline, size: 13, color: c.error),
-                        const SizedBox(width: Space.x2),
-                        Expanded(
-                          child: Text(
-                            'Could not register the background task: $_osError',
-                            style: TextStyle(color: c.error, fontSize: 11),
+                  if (_bgPasswordError != null)
+                    Padding(
+                      padding: const EdgeInsets.only(left: Space.x1),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Icon(
+                            Icons.warning_amber_rounded,
+                            size: 13,
+                            color: c.warning,
                           ),
-                        ),
-                      ],
+                          const SizedBox(width: Space.x2),
+                          Expanded(
+                            child: Text(
+                              _bgPasswordError!,
+                              style: TextStyle(color: c.warning, fontSize: 11),
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
+                  if (_osError != null)
+                    Padding(
+                      padding: const EdgeInsets.only(left: Space.x1),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Icon(Icons.error_outline, size: 13, color: c.error),
+                          const SizedBox(width: Space.x2),
+                          Expanded(
+                            child: Text(
+                              'Could not register the background task: $_osError',
+                              style: TextStyle(color: c.error, fontSize: 11),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                ],
               ],
+              const SizedBox(height: Space.x3),
+              // Base-case caveat — suppressed once an OS Scheduled Task is opted in
+              // above, where the closed-app behaviour no longer applies.
+              if (!(_canOsSchedule && _on && _runWhileClosed))
+                Text(
+                  'Runs only while Airclone is open — there is no background '
+                  'service. A missed run starts once on next launch.',
+                  style: TextStyle(color: c.textFaint, fontSize: 11),
+                ),
             ],
-            const SizedBox(height: Space.x3),
-            // Base-case caveat — suppressed once an OS Scheduled Task is opted in
-            // above, where the closed-app behaviour no longer applies.
-            if (!(_canOsSchedule && _on && _runWhileClosed))
-              Text(
-                'Runs only while Airclone is open — there is no background '
-                'service. A missed run starts once on next launch.',
-                style: TextStyle(color: c.textFaint, fontSize: 11),
-              ),
-          ],
+          ),
         ),
       ),
       actions: [

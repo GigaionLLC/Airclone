@@ -7,6 +7,32 @@ enum TransferMode { copy, move, sync, bisync }
 /// How rclone decides two files are equal (skip vs. retransfer).
 enum CompareMode { sizeModTime, size, checksum }
 
+/// The delete cap a REPEATING one-way Sync gets when the user has not chosen one.
+///
+/// Not a tuning number. The case it guards is a source that vanished or emptied,
+/// where rclone would otherwise delete the entire destination: any cap well below
+/// a real destination's file count catches that. 100 is high enough not to trip on
+/// ordinary churn - somebody tidying a folder - and low enough that a wipe of
+/// anything substantial aborts.
+///
+/// What it does NOT cover is a destination holding fewer than 100 files, which can
+/// still be emptied without tripping. That end is the empty-source refusal's job.
+/// Neither guard covers both ends alone, and neither should be described as if it
+/// does.
+const int kDefaultScheduledDeleteCap = 100;
+
+/// Gives a repeating one-way Sync a delete cap if it has none.
+///
+/// Applied when a task RUNS, not only when it is defined, so that tasks saved
+/// before this existed are covered too - an uncapped scheduled sync is exactly
+/// the shape this is for, and those are the ones already sitting in people's
+/// configs. Anything that is not a one-way Sync is returned untouched: copy and
+/// move do not delete, and bisync has its own percentage cap.
+TransferOptions withScheduledDeleteCap(TransferOptions o) =>
+    o.mode == TransferMode.sync && o.maxDeleteFiles == null
+    ? o.copyWith(maxDeleteFiles: kDefaultScheduledDeleteCap)
+    : o;
+
 /// Sentinel telling [TransferOptions.copyWith] to leave [maxDeleteFiles]
 /// unchanged, distinct from an explicit `null` ("clear the cap"). Needed
 /// because — unlike every other field — `null` is itself a meaningful value

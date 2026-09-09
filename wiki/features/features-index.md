@@ -19,7 +19,7 @@ Entry point for all Airclone feature documentation. Each feature is specified fo
 | **Remote / config management** | [`feat-config-management.md`](feat-config-management.md) | all | Add/edit/duplicate/delete remotes, the taken-name guard over `config/create`, config import (merge · merge-replacing-collisions · whole-config replace), remove-all-remotes, and the backup ring under all of it. Forms themselves are inline in the File Browser. |
 | Copy / Move / Sync | `feat-sync.md` | all | One-click transfers; sync direction options; bisync (two-way). |
 | Transfers & jobs | `feat-transfers-and-jobs.md` | all | Async job model, queue, progress, bandwidth limits. |
-| Scheduling & automation | `feat-scheduling.md` | all | Scheduled syncs; triggers; background runs. |
+| **Scheduling & automation** | [`feat-scheduling.md`](feat-scheduling.md) | desktop | Saved tasks on an interval/daily/weekly schedule; in-app ticking everywhere, background runs with the app closed on **Windows** (`--run-task` + Task Scheduler); the mandatory delete cap on a repeating Sync and the circuit breaker that pauses the whole scheduler when one trips. |
 | Mount as drive (secondary) | `feat-mount.md` | desktop | FUSE mounting (WinFsp/macFUSE/FUSE3) — a convenience for other apps; slower than the File Browser for upload/move (VFS). |
 | Mobile file-provider | `feat-mobile-fileprovider.md` | mobile | Android DocumentsProvider / iOS File Provider exposure. |
 | Serve | `feat-serve.md` | desktop/mobile | WebDAV/SFTP/HTTP/FTP/NFS/DLNA servers. |
