@@ -3,7 +3,27 @@ import 'dart:io';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../rclone/models/remote.dart';
+import '../rclone/rclone_client.dart';
 import 'engine_controller.dart';
+
+/// Names already present in the rclone config, or null when they cannot be read.
+///
+/// EVERY `config/create` caller must consult this first and fail closed.
+/// `config/create` on a name that already exists silently REPLACES that remote:
+/// exit 0, no warning, no diff, nothing in the response to distinguish it from
+/// creating a new one. On a `crypt` remote that is data loss with no error --
+/// the files stay where they are, but the new key cannot decrypt their names,
+/// so rclone skips them and returns an empty listing and the pane renders
+/// "Empty folder". A user hit exactly that; the config was the cause and
+/// nothing in the app had warned them.
+Future<Set<String>?> existingRemoteNames(RcloneClient client) async {
+  try {
+    final dump = await client.rpc('config/dump');
+    return dump.keys.toSet();
+  } catch (_) {
+    return null; // unreadable -> callers must refuse, not assume "free"
+  }
+}
 
 /// Loads the list of browsable locations: every configured rclone remote (from
 /// `config/dump`) plus a synthetic local-disk peer.

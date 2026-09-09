@@ -105,6 +105,31 @@ class AddRemoteController extends Notifier<AddRemoteState> {
       );
       return;
     }
+    final wanted = state.name.trim();
+    // Refuse a name that is already taken. config/create would REPLACE that
+    // remote silently -- see existingRemoteNames. Editing an existing remote is
+    // a separate, explicit action (isEdit -> config/update).
+    final client = ref.read(engineControllerProvider).client;
+    final taken = client == null ? null : await existingRemoteNames(client);
+    if (taken == null) {
+      state = state.copyWith(
+        phase: AddPhase.form,
+        error:
+            "Couldn't read the existing remotes, so nothing was created. "
+            'Check the engine and try again.',
+      );
+      return;
+    }
+    if (taken.contains(wanted)) {
+      state = state.copyWith(
+        phase: AddPhase.form,
+        error:
+            'A remote called "$wanted" already exists. Choose another name, '
+            'or edit that one instead -- creating over it would replace its '
+            'settings.',
+      );
+      return;
+    }
     state = state.copyWith(phase: AddPhase.creating, error: null);
     final params = <String, dynamic>{
       for (final entry in state.values.entries)
@@ -113,7 +138,7 @@ class AddRemoteController extends Notifier<AddRemoteState> {
     await _call(
       method: 'config/create',
       body: {
-        'name': state.name.trim(),
+        'name': wanted,
         'type': p.name,
         'parameters': params,
         'opt': {'nonInteractive': true, 'obscure': true, 'all': true},

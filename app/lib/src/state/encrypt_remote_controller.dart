@@ -63,8 +63,33 @@ class EncryptRemoteController extends Notifier<EncryptRemoteState> {
       );
       return;
     }
-    state = const EncryptRemoteState(phase: EncryptPhase.creating);
     final cryptName = name.trim();
+    // Same guard as the add-remote wizard: config/create over an existing name
+    // REPLACES it. Here it matters most -- re-creating a populated crypt remote
+    // with a different password/salt orphans everything already in it, and the
+    // wizard's round-trip canary would still pass because it only proves the
+    // NEW key is self-consistent.
+    final taken = await existingRemoteNames(client);
+    if (taken == null) {
+      state = const EncryptRemoteState(
+        phase: EncryptPhase.error,
+        error:
+            "Couldn't read the existing remotes, so nothing was created. "
+            'Check the engine and try again.',
+      );
+      return;
+    }
+    if (taken.contains(cryptName)) {
+      state = EncryptRemoteState(
+        phase: EncryptPhase.error,
+        error:
+            'A remote called "$cryptName" already exists. Choose another '
+            'name -- creating over it would replace its settings, and if it '
+            'holds encrypted data that data becomes unreadable.',
+      );
+      return;
+    }
+    state = const EncryptRemoteState(phase: EncryptPhase.creating);
     try {
       final res = await client.rpc('config/create', {
         'name': cryptName,
