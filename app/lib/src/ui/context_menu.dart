@@ -30,10 +30,24 @@ enum FileMenuAction {
   extractHere,
   extractTo,
   listArchive,
+  setSyncSource,
+  syncToHere,
 }
 
 /// Actions offered when right-clicking empty space in a pane.
-enum EmptyMenuAction { paste, newFolder, refresh, selectAll }
+enum EmptyMenuAction {
+  paste,
+  setSyncSource,
+  syncToHere,
+  newFolder,
+  refresh,
+  selectAll,
+}
+
+/// A source label short enough for a menu row. The tail is the part that
+/// identifies a folder, so a long path loses its head, not its end.
+String _shortLabel(String label) =>
+    label.length <= 34 ? label : '…${label.substring(label.length - 33)}';
 
 /// One row (or a separator) in a context menu.
 class _Entry<T> {
@@ -73,6 +87,8 @@ Future<FileMenuAction?> showFileContextMenu(
   bool isLocal = false,
   bool isArchive = false,
   bool canSelect = false,
+  bool advanced = false,
+  String syncSourceLabel = '',
 }) {
   final entries = <_Entry<FileMenuAction>>[
     // Touch entry point to multi-select: picks this item and drops the pane into
@@ -142,6 +158,23 @@ Future<FileMenuAction?> showFileContextMenu(
         Icons.splitscreen_outlined,
         'Open in other pane',
       ),
+    // Folders only. A sync's endpoints are directories, and offering it on a
+    // file would mark something that cannot be synced from.
+    if (advanced && isDir) ...[
+      const _Entry.divider(),
+      _item(
+        FileMenuAction.setSyncSource,
+        Icons.my_location_outlined,
+        'Set as sync source',
+      ),
+      if (syncSourceLabel.isNotEmpty)
+        _item(
+          FileMenuAction.syncToHere,
+          Icons.sync_outlined,
+          'Sync ${_shortLabel(syncSourceLabel)} into this folder…',
+          danger: true,
+        ),
+    ],
     // Archive: Compress anything; Extract/List only for a recognised archive.
     // rclone exposes no RC method for archives, so this shells out to the
     // `rclone archive` CLI - impossible in a store build, which may not spawn and
@@ -181,14 +214,39 @@ Future<FileMenuAction?> showFileContextMenu(
 
 /// Shows the right-click menu for empty pane space and resolves to the chosen
 /// [EmptyMenuAction], or `null` if dismissed. [canPaste] reveals Paste.
+/// [advanced] reveals the sync-source block (Settings → Advanced), which is
+/// where a one-way sync belongs: it deletes. [syncSourceLabel] is the currently
+/// marked source, non-empty only when syncing into HERE is possible — the mark
+/// exists and does not overlap this folder.
 Future<EmptyMenuAction?> showEmptyContextMenu(
   BuildContext context,
   Offset globalPosition, {
   required bool canPaste,
+  bool advanced = false,
+  String syncSourceLabel = '',
 }) {
   final entries = <_Entry<EmptyMenuAction>>[
     if (canPaste)
       _item(EmptyMenuAction.paste, Icons.content_paste_outlined, 'Paste'),
+    if (advanced) ...[
+      const _Entry.divider(),
+      _item(
+        EmptyMenuAction.setSyncSource,
+        Icons.my_location_outlined,
+        'Set as sync source',
+      ),
+      // Named, not just "Sync to here": the source was chosen minutes ago and
+      // somewhere else entirely, so the row itself has to say what is about to
+      // overwrite this folder.
+      if (syncSourceLabel.isNotEmpty)
+        _item(
+          EmptyMenuAction.syncToHere,
+          Icons.sync_outlined,
+          'Sync ${_shortLabel(syncSourceLabel)} to here…',
+          danger: true,
+        ),
+      const _Entry.divider(),
+    ],
     _item(
       EmptyMenuAction.newFolder,
       Icons.create_new_folder_outlined,

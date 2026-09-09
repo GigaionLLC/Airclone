@@ -19,6 +19,7 @@ import '../state/file_ops.dart';
 import '../state/os_integration.dart';
 import '../state/remote_features.dart';
 import '../state/remotes_provider.dart';
+import '../state/sync_source.dart';
 import '../state/thumbnail_prefs.dart';
 import '../state/thumbnail_reload.dart';
 import '../state/thumbnail_service.dart';
@@ -46,6 +47,7 @@ import 'path_bar.dart';
 import 'public_link_dialog.dart';
 import 'quick_look.dart';
 import 'storage_breakdown.dart';
+import 'sync_here_action.dart';
 import 'home_view.dart';
 import 'console_pane.dart';
 import 'tab_strip.dart';
@@ -572,6 +574,10 @@ class BrowserPane extends ConsumerWidget {
       isLocal: state.remote!.isLocal,
       isArchive: !file.isDir && looksLikeArchive(file.name),
       canSelect: isTouchPrimary,
+      advanced: ref.read(advancedModeProvider),
+      syncSourceLabel: ref.read(syncSourceProvider).isSet
+          ? ref.read(syncSourceProvider).label
+          : '',
     );
     if (action == null || state.remote == null) return;
     final files = _targetFiles(state, file);
@@ -661,6 +667,27 @@ class BrowserPane extends ConsumerWidget {
             ref,
             archivePath:
                 '${state.remote!.fs}${joinPath(state.path, file.name)}',
+          );
+        }
+      // Both are offered on folder rows only (see showFileContextMenu), so the
+      // target is this row's subfolder rather than the pane's current folder.
+      case FileMenuAction.setSyncSource:
+        if (context.mounted) {
+          _markSyncSource(
+            context,
+            ref,
+            state.remote!,
+            joinPath(state.path, file.name),
+          );
+        }
+      case FileMenuAction.syncToHere:
+        if (context.mounted) {
+          await runMarkedSyncInto(
+            context,
+            ref,
+            destRemote: state.remote!,
+            destPath: joinPath(state.path, file.name),
+            paneIndex: index,
           );
         }
     }
@@ -778,16 +805,36 @@ class BrowserPane extends ConsumerWidget {
     if (state.remote == null) return;
     final ctrl = ref.read(paneProvider(index).notifier);
     final clip = ref.read(clipboardControllerProvider);
+    final src = ref.read(syncSourceProvider);
     final action = await showEmptyContextMenu(
       context,
       pos,
       canPaste: clip.isNotEmpty,
+      advanced: ref.read(advancedModeProvider),
+      // Offered whenever a source is marked, even when it overlaps this folder:
+      // runMarkedSyncInto refuses those and SAYS WHY. A row that silently is not
+      // there teaches nothing.
+      syncSourceLabel: src.isSet ? src.label : '',
     );
     if (action == null) return;
     switch (action) {
       case EmptyMenuAction.paste:
         if (context.mounted) {
           await _paste(context, ref, state, state.remote!, state.path);
+        }
+      case EmptyMenuAction.setSyncSource:
+        if (context.mounted) {
+          _markSyncSource(context, ref, state.remote!, state.path);
+        }
+      case EmptyMenuAction.syncToHere:
+        if (context.mounted) {
+          await runMarkedSyncInto(
+            context,
+            ref,
+            destRemote: state.remote!,
+            destPath: state.path,
+            paneIndex: index,
+          );
         }
       case EmptyMenuAction.newFolder:
         if (context.mounted) await _newFolder(context, ref, state);
@@ -799,6 +846,28 @@ class BrowserPane extends ConsumerWidget {
   }
 
   // ── handlers ─────────────────────────────────────────────────────────────────
+
+  /// Record [path] on [remote] as the source of the next sync, and say so. A
+  /// mark that produces no visible change is indistinguishable from a menu item
+  /// that did nothing — and this one arms a destructive action several clicks
+  /// later, so it has to be obvious that it took.
+  void _markSyncSource(
+    BuildContext context,
+    WidgetRef ref,
+    Remote remote,
+    String path,
+  ) {
+    ref.read(syncSourceProvider.notifier).mark(remote, path);
+    ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+      SnackBar(
+        content: Text('Sync source: ${remote.name}:$path'),
+        action: SnackBarAction(
+          label: 'Clear',
+          onPressed: () => ref.read(syncSourceProvider.notifier).clear(),
+        ),
+      ),
+    );
+  }
 
   Future<void> _newFolder(
     BuildContext context,

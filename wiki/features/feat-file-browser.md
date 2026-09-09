@@ -97,6 +97,39 @@ for row→folder and pane→pane moves.
 Destructive operations (mirror-delete, overwrite) always offer a **dry-run preview** and a color diff
 before committing, with a `--max-delete` guard.
 
+### 5.1 Marked sync source ("sync to here")
+
+The two-pane transfer needs both endpoints open at once. The **marked source** is the one-pane form:
+right-click a folder (or empty pane space) → **Set as sync source**, navigate anywhere — another
+folder, another remote — then right-click → **Sync … to here…**, which opens the same transfer
+options dialog pre-aimed at Sync. Advanced-mode only, because a one-way sync deletes.
+
+The mark lives in `syncSourceProvider` ([sync_source.dart](../../app/lib/src/state/sync_source.dart)),
+deliberately NOT on the copy/cut clipboard: the clipboard is a list of names inside a folder, this is
+the folder itself, `isNotEmpty` there already drives whether Paste appears, and the two gestures are
+orthogonal. Session-only — a mark that survived a restart would be a forgotten pointer attached to an
+operation that deletes.
+
+**The gap between the two halves is the hazard**, and is what
+[sync_here_action.dart](../../app/lib/src/ui/sync_here_action.dart) exists to close. The source was
+chosen minutes ago and may since have been renamed, emptied or deleted, and a one-way sync from an
+empty source deletes everything at the destination. So before any options are offered:
+
+- **Overlapping paths are refused**, not warned about — `syncTargetRefusal` rejects identical and
+  nested pairs in both directions (case-insensitively, `\` normalized). The marked flow is the first
+  one where "sync a remote's root into a folder inside it" is two clicks with nothing on screen to
+  make the overlap obvious. A shared name *prefix* (`Photos` vs `Photos-old`) is not containment.
+- **An unreadable or empty source is refused**, fail-closed, on the same rule `paste_action.dart`
+  applies to an unreadable destination: if we cannot see what is there, we do not write over it.
+- The refusal is a **dialog, not a snackbar** — each one means "the sync you asked for would have
+  destroyed something".
+
+The menu row names the source (`Sync gdrive:Photos to here…`) rather than saying "Sync to here",
+because the thing about to overwrite this folder was chosen somewhere else entirely. It is offered
+even when the paths overlap, so the refusal can explain; a row that is silently absent teaches
+nothing. bisync re-uses the existing baseline confirm — an ad-hoc pair has no baseline, so
+`TransferService` would otherwise fire `--resync` silently.
+
 ## 6. Browsing & viewing
 
 - Navigation: editable path bar + breadcrumb, back/forward/up, per-tab history.
