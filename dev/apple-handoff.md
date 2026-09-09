@@ -203,7 +203,24 @@ unaffected by revoking the certificate that signed it; a build still in review i
 not.
 
 **Three DEVELOPMENT certificates are still outstanding** — `K9HRGKWVT4`,
-`QF79989974`, `LN52H3LGTM`, all minted by the old per-run flow. They sign nothing
+`QF79989974`, `LN52H3LGTM`, all minted by the old per-run flow.
+
+**They also prove the fix worked, which was an open question until 2026-09-09.**
+Apple issues a certificate for exactly one year, so its expiry date IS its
+minting time to the second. Against the lane runs:
+
+| Certificate | Minted (UTC) | |
+| :--- | :--- | :--- |
+| `K9HRGKWVT4` | 2026-09-05 19:33:19 | |
+| `QF79989974` | 2026-09-06 00:05:10 | |
+| `LN52H3LGTM` | 2026-09-06 02:04:18 | from the MAS run started 02:02:24 |
+| — | **2026-09-06 02:28:53** | **`40019b1` archive-unsigned lands** |
+
+Every one predates the fix; the last by 24 minutes. The four Apple-lane runs
+after it (02:28:57, 02:48:07, 03:04:10, and both verify runs at 14:59 and 17:20)
+minted nothing — there are only three, and all three are older than the commit.
+Earlier notes hedged that two were "dated the same day I claimed to have stopped
+the minting" and could not be told apart; the expiry timestamps tell them apart. They sign nothing
 that ships (a development certificate cannot sign an App Store build) and their
 private keys were discarded by the jobs that made them, so they can sign nothing
 at all. They cost only slots against the cap. Clear them with
