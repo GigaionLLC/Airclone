@@ -13,7 +13,6 @@ import '../state/os_integration.dart';
 import '../state/remote_features.dart';
 import '../state/thumbnail_prefs.dart';
 import '../state/thumbnail_service.dart';
-import '../state/transfer_service.dart';
 import 'file_icon.dart';
 import 'format.dart';
 import 'pane_drag.dart';
@@ -21,6 +20,7 @@ import 'preview_dialog.dart';
 import 'public_link_dialog.dart';
 import 'theme/tokens.dart';
 import 'thumbnail_image.dart';
+import 'paste_action.dart';
 
 /// Whether the right-rail inspector is shown (off by default).
 final inspectorVisibleProvider = StateProvider<bool>((ref) => false);
@@ -524,23 +524,26 @@ class _InspectorPanelState extends ConsumerState<InspectorPanel> {
     final remote = state.remote;
     if (remote == null || files.isEmpty) return;
     final dir = await resolveDownloadDir(ref);
-    if (dir == null) return; // cancelled
+    if (dir == null || !mounted) return; // cancelled
     final local = Remote(
       name: 'Download',
       type: 'local',
       fs: '$dir/',
       isLocal: true,
     );
-    final svc = ref.read(transferServiceProvider);
-    for (final f in files) {
-      await svc.transfer(
-        srcRemote: remote,
-        srcPath: joinPath(state.path, f.name),
-        dstRemote: local,
-        dstPath: f.name,
-        type: JobType.copy,
-      );
-    }
+    // Conflict-aware, like every other transfer entry point: rclone overwrites
+    // by default, so downloading a file you already have used to replace the
+    // local copy silently.
+    await transferNamesIntoFolder(
+      context,
+      ref,
+      srcRemote: remote,
+      srcParentPath: state.path,
+      names: [for (final f in files) f.name],
+      destRemote: local,
+      destPath: '',
+      type: JobType.copy,
+    );
   }
 
   /// Open the public-link dialog (create with optional expiry · copy · revoke).

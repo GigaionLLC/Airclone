@@ -190,8 +190,13 @@ class BrowserPane extends ConsumerWidget {
                           knownNames: state.entries.map((e) => e.name),
                         ),
                         // OS files dragged in from Explorer/Finder → upload.
-                        onOsFiles: (paths) =>
-                            _uploadLocal(ref, paths, state.remote!, state.path),
+                        onOsFiles: (paths) => _uploadLocal(
+                          context,
+                          ref,
+                          paths,
+                          state.remote!,
+                          state.path,
+                        ),
                         // Auto-scroll the list while dragging near its edges.
                         scrollController: ref.watch(paneScrollProvider(index)),
                         highlightColor: c.primary,
@@ -540,7 +545,7 @@ class BrowserPane extends ConsumerWidget {
       case FileMenuAction.checksums:
         if (context.mounted) await _checksums(context, ref, state, file);
       case FileMenuAction.download:
-        await _download(ref, state, files);
+        if (context.mounted) await _download(context, ref, state, files);
       case FileMenuAction.copy:
         clipCtrl.copy(state.remote!, state.path, files);
       case FileMenuAction.cut:
@@ -825,29 +830,34 @@ class BrowserPane extends ConsumerWidget {
   }
 
   Future<void> _download(
+    BuildContext context,
     WidgetRef ref,
     BrowserState state,
     List<RcloneFile> files,
   ) async {
     if (state.remote == null || files.isEmpty) return;
     final dir = await resolveDownloadDir(ref); // prompts / uses saved default
-    if (dir == null) return; // cancelled
+    if (dir == null || !context.mounted) return; // cancelled
     final local = Remote(
       name: 'Download',
       type: 'local',
       fs: '$dir/',
       isLocal: true,
     );
-    final svc = ref.read(transferServiceProvider);
-    for (final f in files) {
-      await svc.transfer(
-        srcRemote: state.remote!,
-        srcPath: joinPath(state.path, f.name),
-        dstRemote: local,
-        dstPath: f.name,
-        type: JobType.copy,
-      );
-    }
+    // Through the conflict-aware helper, not straight at the service: rclone
+    // overwrites by default, so downloading a file you already have used to
+    // destroy the local copy without asking. destPath is empty because the
+    // local Remote's fs already points AT the chosen download folder.
+    await transferNamesIntoFolder(
+      context,
+      ref,
+      srcRemote: state.remote!,
+      srcParentPath: state.path,
+      names: [for (final f in files) f.name],
+      destRemote: local,
+      destPath: '',
+      type: JobType.copy,
+    );
   }
 
   Future<void> _paste(
@@ -1001,28 +1011,40 @@ class BrowserPane extends ConsumerWidget {
   }
 
   Future<void> _uploadLocal(
+    BuildContext context,
     WidgetRef ref,
     List<String> paths,
     Remote dst,
     String dstPath,
   ) async {
-    final svc = ref.read(transferServiceProvider);
+    // One drop can carry paths from several source folders, and the helper
+    // takes one source folder per call - so group by folder and run one
+    // conflict-checked transfer per group. The ordinary case, a drag out of
+    // a single Explorer window, is one group and therefore one prompt.
+    final byDir = <String, List<String>>{};
     for (final p in paths) {
       final norm = p.replaceAll('\\', '/');
       final slash = norm.lastIndexOf('/');
       final dir = slash >= 0 ? norm.substring(0, slash) : '.';
       final name = slash >= 0 ? norm.substring(slash + 1) : norm;
+      (byDir[dir] ??= <String>[]).add(name);
+    }
+    for (final group in byDir.entries) {
+      if (!context.mounted) return;
       final local = Remote(
         name: 'local',
         type: 'local',
-        fs: '$dir/',
+        fs: '${group.key}/',
         isLocal: true,
       );
-      await svc.transfer(
+      await transferNamesIntoFolder(
+        context,
+        ref,
         srcRemote: local,
-        srcPath: name,
-        dstRemote: dst,
-        dstPath: joinPath(dstPath, name),
+        srcParentPath: '',
+        names: group.value,
+        destRemote: dst,
+        destPath: dstPath,
         type: JobType.copy,
       );
     }
@@ -1413,14 +1435,14 @@ class _PaneToolbar extends ConsumerWidget {
                     Icons.copy_all,
                     'Copy to other pane',
                     enabled: other.remote != null,
-                    onTap: () => _transferToOther(ref, JobType.copy),
+                    onTap: () => _transferToOther(context, ref, JobType.copy),
                   ),
                   _cmd(
                     c,
                     Icons.drive_file_move_outline,
                     'Move to other pane',
                     enabled: other.remote != null,
-                    onTap: () => _transferToOther(ref, JobType.move),
+                    onTap: () => _transferToOther(context, ref, JobType.move),
                   ),
                   _cmd(
                     c,
@@ -1667,12 +1689,12 @@ class _PaneToolbar extends ConsumerWidget {
         item(
           Icons.copy_all,
           'Copy to other pane',
-          toOther ? () => _transferToOther(ref, JobType.copy) : null,
+          toOther ? () => _transferToOther(context, ref, JobType.copy) : null,
         ),
         item(
           Icons.drive_file_move_outline,
           'Move to other pane',
-          toOther ? () => _transferToOther(ref, JobType.move) : null,
+          toOther ? () => _transferToOther(context, ref, JobType.move) : null,
         ),
         item(
           Icons.sync,
@@ -2041,21 +2063,29 @@ class _PaneToolbar extends ConsumerWidget {
     await ref.read(paneProvider(index).notifier).refresh();
   }
 
-  Future<void> _transferToOther(WidgetRef ref, JobType type) async {
+  Future<void> _transferToOther(
+    BuildContext context,
+    WidgetRef ref,
+    JobType type,
+  ) async {
     final from = ref.read(paneProvider(index));
     final to = ref.read(paneProvider(index == 0 ? 1 : 0));
     if (from.remote == null || to.remote == null) return;
-    final svc = ref.read(transferServiceProvider);
-    for (final f in from.selectedEntries) {
-      await svc.transfer(
-        srcRemote: from.remote!,
-        srcPath: joinPath(from.path, f.name),
-        dstRemote: to.remote!,
-        dstPath: joinPath(to.path, f.name),
-        type: type,
-      );
-    }
-    ref.read(paneProvider(index).notifier).clearSelection();
+    final ran = await transferNamesIntoFolder(
+      context,
+      ref,
+      srcRemote: from.remote!,
+      srcParentPath: from.path,
+      names: [for (final f in from.selectedEntries) f.name],
+      destRemote: to.remote!,
+      destPath: to.path,
+      type: type,
+      // The other pane's listing is already loaded - collision-check for free.
+      knownNames: to.entries.map((e) => e.name),
+    );
+    // Only on a real dispatch: a cancelled conflict prompt should leave the
+    // selection alone so the user can retry without re-selecting.
+    if (ran) ref.read(paneProvider(index).notifier).clearSelection();
   }
 }
 

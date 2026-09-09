@@ -7,9 +7,8 @@ import '../state/browser_controller.dart';
 import '../state/clipboard_controller.dart';
 import '../state/download_settings.dart';
 import '../state/file_ops.dart';
-import '../state/transfer_service.dart';
 import 'file_op_dialogs.dart';
-import 'pane_drag.dart';
+import 'paste_action.dart';
 
 /// Bulk operations over pane [index]'s current multi-selection, factored out so
 /// the phone selection bar runs the SAME logic the desktop toolbar does. Each
@@ -70,28 +69,33 @@ Future<({bool ran, int failed})> selectionDelete(
 /// Download the selection to the user's download folder (prompts / uses the saved
 /// default). Returns true once the transfers are queued (false if cancelled or
 /// nothing was selected).
-Future<bool> selectionDownload(WidgetRef ref, int index) async {
+Future<bool> selectionDownload(
+  BuildContext context,
+  WidgetRef ref,
+  int index,
+) async {
   final state = ref.read(paneProvider(index));
   final remote = state.remote;
   final files = state.selectedEntries;
   if (remote == null || files.isEmpty) return false;
   final dir = await resolveDownloadDir(ref); // prompts / uses saved default
-  if (dir == null) return false; // cancelled
+  if (dir == null || !context.mounted) return false; // cancelled
   final local = Remote(
     name: 'Download',
     type: 'local',
     fs: '$dir/',
     isLocal: true,
   );
-  final svc = ref.read(transferServiceProvider);
-  for (final f in files) {
-    await svc.transfer(
-      srcRemote: remote,
-      srcPath: joinPath(state.path, f.name),
-      dstRemote: local,
-      dstPath: f.name,
-      type: JobType.copy,
-    );
-  }
-  return true;
+  // Conflict-aware: see transferNamesIntoFolder. Going straight at the service
+  // here would overwrite a same-named local file without asking.
+  return transferNamesIntoFolder(
+    context,
+    ref,
+    srcRemote: remote,
+    srcParentPath: state.path,
+    names: [for (final f in files) f.name],
+    destRemote: local,
+    destPath: '',
+    type: JobType.copy,
+  );
 }
