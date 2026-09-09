@@ -279,6 +279,59 @@ whose trigger has only been reasoned about.
     people) but get their own toggle, because they dominate the byte count and the
     first run's duration.
 
+### 4.h Where it lives in the UI
+
+**Split by activity, not by feature.** Monitoring is continuous and deserves
+persistent chrome; setting a backup up is occasional and deserves a door, not a
+permanent panel. Putting both in one place is what produces either clutter or a
+fifth hiding place, and this feature already has four.
+
+**Monitoring → a third tab in the bottom dock**, beside `Transfers` and
+`Recent activity` (`ui/jobs_dock.dart:41-42`). Call it **Scheduled**.
+
+That dock is already the answer to "what is my data doing", which is exactly the
+question "did my backup run last night?" is a form of. It costs no new top-level
+chrome, it is already resizable (v0.7.1), and it is where someone will look first
+without being told. Contents: each task with its next run, its last outcome, a
+**Run now**, and a per-task pause. This is also the natural home for the **staleness
+warning** — "Photos: last succeeded 9 days ago" belongs next to the runs, not in
+Settings.
+
+**The circuit breaker is louder than a tab.** When it trips, the scheduler is off
+and every schedule is silently not happening — a red dot on a dock tab is not
+enough. It wants a dismissible banner across the top of the window, with the task,
+the time, and Resume. Being noisy exactly once, when something is genuinely wrong,
+is the whole point.
+
+**Setup → a wizard, launched from that tab and from Settings.** "Back up a folder"
+is a three-answer flow (what, where, how often) that someone runs a handful of
+times, so it opens, asks, and closes. It is not the advanced transfer dialog and
+must not become it — the constraints in §4.c (copy only, versions on, delete cap
+defaulted) are what make it a backup rather than a transfer with different words.
+
+**Restore reuses the browser, and this is the cheap win.** A backup destination is
+an ordinary remote folder. "Restore from this backup" can open it in the other
+pane, at the right path, in the view the user already knows — and then restoring is
+copying, through the same conflict preflight that v0.7.6 gave every other transfer.
+Almost no new UI, and it inherits every guard rather than growing its own.
+
+**Rejected, with reasons, so they are not re-proposed:**
+
+- *A new top-level section beside the browser.* This is a file manager; a
+  permanent Backup mode competing with the panes costs chrome every day to serve
+  something used monthly.
+- *Settings → Automation as the only home.* Settings is where you configure, not
+  where you check. "Did it run?" asked in Settings is a design that answers the
+  wrong question. (It still gets a link — just not the primary door.)
+- *A sidebar section.* The sidebar is places. Tasks are activities. Mixing them
+  breaks the one mental model the sidebar currently has.
+
+**Advanced mode:** the Scheduled tab and the backup wizard are **not** advanced-
+gated. The raw saved-task editor, with full `TransferOptions`, stays advanced —
+that split is what §4.a is for, and it is the difference between "a backup" as a
+concept an ordinary user has and "a saved transfer task with an options payload",
+which is not.
+
 ### 4.g What people expect that is not yet in this plan
 
 Written down because the gap between "a scheduled copy runs" and "a backup
