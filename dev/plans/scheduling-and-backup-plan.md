@@ -82,9 +82,10 @@ about. Settings must read **"Back up your files"** against the existing
     → **Answer:**
   - `[ ]` If unified, what poll cadence? 15 min bounds lateness at 96 wakeups a
     day; 5 min is punctual and expensive. → **Answer:**
-  - `[ ]` **Should a scheduled sync be allowed at all without a `--max-delete`
-    cap?** Recommendation: no. This changes behaviour for existing saved tasks.
-    → **Answer:**
+  - `[x]` **Should a scheduled sync be allowed at all without a `--max-delete`
+    cap?** → **ANSWERED (user, 2026-09-09): no.** A repeating sync gets a cap with
+    a sensible default, editable while setting the schedule up, and **tripping it
+    pauses the scheduler for review**. Designed in §4.e.
   - `[ ]` Does the MAS build offer scheduling? `SMAppService.agent` needs a static
     plist in the bundle and an App Review justification; cheapest answer is to
     gate it off as Mount already is. → **Answer:**
@@ -196,6 +197,113 @@ camera-roll backup that deletes is a data-loss incident, not a feature; an uploa
 ledger keyed on stable asset identity so a re-run does not re-hash the roll; and
 **Wi-Fi-only by default**, because a 40 GB roll on cellular is a bill.
 
+### 4.e The delete cap, and the circuit breaker — `[S]`
+
+Decided by the user, 2026-09-09. Three parts, and the third is the one that turns
+a cap from a nuisance into a safety feature.
+
+**1. rclone genuinely supports this, and there are two different flags.** For
+one-way `sync`/`copy`/`move`, `--max-delete` is a **count** of files, wired here as
+`_config['MaxDelete']` (`state/transfer_options.dart:412-416`, applied only when
+`mode == sync`). For `bisync` it is a **percentage**, defaulting to 50
+(`transfer_options.dart:51` `maxDeletePercent`). So two-way sync already ships with
+a safety net and one-way sync ships with none — `maxDeleteFiles` is `int?`,
+default `null`, rendered as `hintText: 'no cap'`.
+
+**What the flag does, precisely, so the UI does not overstate it:** rclone deletes
+*during* the run and aborts once the limit is exceeded. It is a **blast-radius
+limiter, not a preflight veto** — deletions up to the cap can already have
+happened when it trips. "Abort after 100" is enormously better than "delete all
+40,000", but it is not "nothing was deleted", and the wording must not imply it.
+
+**2. A default, editable while setting the schedule up.** Proposed default:
+**100 files**. The reasoning, since a number pulled from nowhere is worse than
+none: the catastrophic case this guards is a source that vanished or emptied, where
+rclone would delete the *entire* destination — so any cap far below a real
+destination's file count catches it. 100 is high enough not to trip on ordinary
+churn (a user tidying a folder) and low enough that a wipe of anything substantial
+aborts. The schedule editor shows it **pre-filled, not blank**, and for a repeating
+`sync` it cannot be cleared.
+
+**The gap 100 does not close, and what does:** a destination with fewer than 100
+files can still be wiped without tripping. That case is covered by the other guard
+in Phase B — a task whose **source resolves empty refuses to run at all**. The two
+together cover both ends; neither covers both alone, and the plan should not
+pretend the cap is sufficient by itself.
+
+**3. Tripping the cap PAUSES THE SCHEDULER, for review.** Not just the task.
+The causes of a sudden mass deletion are usually environmental — an external drive
+not mounted, a remote whose token expired, a folder renamed — and those affect
+*every* task pointing at that source or destination. Letting the other schedules
+keep firing while one has already demonstrated the environment is wrong is how one
+bad night becomes several.
+
+- A persisted `schedulerPausedProvider` carrying **why**: which task, when, and
+  the error.
+- `recordRunOutcome` (`state/scheduler_controller.dart:177`) is the single
+  convergence point where every scheduled run lands its `{ok, error}` — the
+  breaker hooks there and nowhere else, so no future platform can bypass it.
+- Paused is **loud**: a banner, not a line in a dialog behind advanced mode. The
+  whole failure of this feature so far has been silence.
+- Resuming is **explicit**. No auto-resume on next launch, no timeout — the point
+  is that a human looks.
+- Optional, per the request, but **defaulting to on**.
+
+**Detection needs verifying, not guessing.** Over the RC there is no exit code —
+only the error string in `job/status`. Matching rclone's max-delete message is
+therefore load-bearing and must be **confirmed against a real aborted run** before
+it is relied on. If the string proves unstable across rclone versions, the robust
+fallback is to pause on *any* failure of a scheduled destructive sync, which is a
+slightly blunter rule that cannot silently stop working. Do not ship a breaker
+whose trigger has only been reasoned about.
+
+### 4.f What people expect that is not yet in this plan
+
+Written down because the gap between "a scheduled copy runs" and "a backup
+feature" is mostly these, and every one of them is something a user assumes is
+there until the day they need it.
+
+- **🔴 Restore.** The plan describes writing a backup and never reading one back.
+  A backup you cannot restore from is a copy. At minimum: pick a backup task, pick
+  a point, browse what it holds, restore a file or the folder — to its original
+  place or somewhere else. This is the single biggest omission and it is not small.
+- **🔴 Retention for replaced versions.** `keepReplaced` renames the old copy with
+  a suffix rather than losing it, which is right — and nothing ever removes those.
+  A daily backup of a churning folder grows without bound, silently, on storage
+  the user pays for. Needs a policy ("keep 30 days" / "keep 10 versions") and a
+  way to see what it is costing.
+- **🔴 "Your backup has not run since…".** Silent failure is what actually kills
+  backups: it stops working, nobody notices, and the discovery happens on the day
+  it was needed. A staleness warning is worth more than most of the rest of this
+  plan.
+- **Run now.** Test a schedule without waiting for its slot. Nobody trusts a
+  schedule they have not seen fire once.
+- **Pause one task**, not just the global breaker.
+- **Do not stack runs.** If a run is still going when the next slot arrives, skip
+  rather than start a second one over the same destination.
+- **Sensible default exclusions** on a folder backup — `node_modules`, `.git`,
+  `Thumbs.db`, `.DS_Store`, partial-download files. Offered, not imposed.
+- **Backup to an encrypted remote** as a first-class choice; the crypt wizard
+  already exists, so the flow can offer it rather than making the user go and
+  build one first.
+- **Bandwidth limit while a backup runs**, so an overnight job does not make the
+  connection unusable if it slips into the working day. `core/bwlimit` is wired.
+
+Photo backup specifically:
+
+- **What counts as a photo.** Camera roll only, or screenshots, downloads and
+  WhatsApp media too? People usually mean the camera roll and are surprised by
+  the rest — but only some of them.
+- **Videos or not.** A separate toggle. Videos dominate the byte count and the
+  first run's duration.
+- **How it is organised at the destination:** mirror DCIM, or reorganise by
+  capture date (`2026/09/…`). Mirroring is honest and predictable; by-date is what
+  most photo tools do and what most people picture.
+- **Progress that means something** — "1,204 of 8,331" beats a spinner on a job
+  that runs for hours.
+- **HEIC and Live Photos** — a Live Photo is a still plus a paired video, and
+  backing up only one half is a data-loss surprise nobody expects.
+
 ## 5️⃣ Phase 5: Product Owner Review — risks and traps
 
 * **Status:** `PENDING`
@@ -288,8 +396,9 @@ incoherent.
   Automation, not advanced-gated; mobile entry point; `scheduling_policy.dart`
   replacing `_canOsSchedule`; README corrected; `feat-scheduling.md` written.
 - `[ ]` **B — Safety for unattended runs `[S]`.** Definition-time destructive
-  acknowledgement; mandatory delete cap on a repeating sync; empty-source refusal;
-  a failure trace outside advanced mode.
+  acknowledgement; **delete cap defaulted to 100 and not clearable** on a
+  repeating sync; **circuit breaker that pauses the whole scheduler on a trip**
+  (§4.e); empty-source refusal; a failure trace outside advanced mode.
 - `[ ]` **C — Unify on `--run-due` and clean up after ourselves `[M]`.** One
   registration; migrate and remove per-task Windows registrations;
   `[UninstallRun]`; reconcile-on-launch; "Remove all background scheduling";

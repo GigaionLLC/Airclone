@@ -109,6 +109,28 @@ first.
   a tree is expected to do. The TV D-pad shell already has directional handling
   worth reusing rather than reinventing.
 
+### 4.f What people expect from a tree
+
+- **Type-to-jump** inside the tree, as Explorer and Finder do. Type-to-navigate
+  already exists for the flat list; it should follow into the tree rather than
+  quietly stop working there.
+- **Filter that reveals matches in collapsed folders.** The existing Ctrl+F
+  filters the visible listing. In a tree, users expect a filter to *find* things
+  they have not expanded — which is a recursive search, not a filter, and is a
+  much bigger promise. Either make it clearly a same-level filter, or do not put a
+  filter box on the tree at all until search is real.
+- **Expand/collapse all under this node**, from the right-click menu — bounded to
+  one subtree, which is affordable, unlike a global expand-all.
+- **The current folder stays revealed.** Switching from list to tree should open
+  the tree to wherever the user already was, not dump them at the root.
+- **Show/hide hidden files** honoured the same way the flat list honours it, so
+  the two views do not disagree about what exists.
+- **The columns sort**, and sorting sorts *within each parent* rather than
+  flattening the hierarchy. This is the detail people notice immediately when it
+  is wrong.
+- **Middle-click or a modifier opens a folder in the other pane** — the dual-pane
+  habit does not disappear because the view changed.
+
 ## 5️⃣ Phase 5: Risks
 
 - [🚫] **The stale-path invariant above.** It is the one that has already bitten
