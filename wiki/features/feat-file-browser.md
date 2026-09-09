@@ -124,6 +124,39 @@ empty source deletes everything at the destination. So before any options are of
 - The refusal is a **dialog, not a snackbar** — each one means "the sync you asked for would have
   destroyed something".
 
+**The dry run now answers the question it exists for.** Choosing "Dry run" in the options dialog used
+to dispatch the real job with `DryRun` set, which arrives in the Transfers dock as a row reading
+"Done" beside a byte count — for a Sync, the one number a dry run is for (how many files it would
+DELETE on the destination) appeared nowhere. It now runs a comparison first and shows
+[sync_preview_dialog.dart](../../app/lib/src/ui/sync_preview_dialog.dart): deletions first and in
+the error colour, then overwrites, then new files, each with its file list one click away, and "Run
+it, deleting N" as the commit button.
+
+Built on **`operations/check`**, not on a dry run's transfer log — an evidence-based choice, from
+running both against a throwaway `rcd`. `core/transferred` does carry the deletions (`what:
+"deleting"`) and its numbers match the real run exactly, but it is a ring buffer capped at ~100
+entries per group and returned in completion order: a 300-file dry run comes back as 104 entries,
+all deletions, with the transfers evicted. A preview built on it would quietly lie on any sync big
+enough to need one. `operations/check` is uncapped and sorted, and `missingOnSrc` **is** the delete
+list.
+
+Two correctness rules for that comparison, both load-bearing:
+
+- **It must compare under the transfer's own `_filter`** (hence `filterBlock` being public).
+  `operations/check` honours filters, so a preview given different rules than the run reports a
+  different set of deletions than the run performs.
+- **It must compare the transfer's way** — `--size-only` / `--checksum` decide whether two files
+  count as equal, so `previewConfig` carries those and nothing else. Everything else in a transfer's
+  config changes what happens to a difference, not whether there is one, and belongs in
+  `previewFrom`.
+
+`previewFrom` is where "how the sides differ" becomes "what this would do": only Sync turns
+`missingOnSrc` into deletions (Copy and Move report none — reporting them would invent a threat),
+`--ignore-existing` means nothing is overwritten, `--suffix` means the overwrites are recoverable,
+and `--update` means some overwrites may not happen after all, which is stated as "some" because
+rclone decides per file at run time. If the deletions alone would trip `--max-delete`, the preview
+says the run would **abort** — worth knowing before starting rather than after.
+
 The menu row names the source (`Sync gdrive:Photos to here…`) rather than saying "Sync to here",
 because the thing about to overwrite this folder was chosen somewhere else entirely. It is offered
 even when the paths overlap, so the refusal can explain; a row that is silently absent teaches

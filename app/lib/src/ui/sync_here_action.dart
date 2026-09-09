@@ -4,11 +4,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../rclone/models/remote.dart';
 import '../state/browser_controller.dart';
 import '../state/file_ops.dart';
+import '../state/sync_preview.dart';
 import '../state/sync_source.dart';
 import '../state/transfer_options.dart';
 import '../state/transfer_service.dart';
 import 'bisync_confirm.dart';
 import 'dialog_body.dart';
+import 'sync_preview_dialog.dart';
 import 'theme/tokens.dart';
 import 'transfer_options_dialog.dart';
 
@@ -97,7 +99,37 @@ Future<void> runMarkedSyncInto(
     if (options == null || !context.mounted) return;
 
     var effective = options;
-    if (options.mode == TransferMode.bisync) {
+    // A dry run used to mean "dispatch the real job with DryRun set and read the
+    // Transfers dock", where a Sync's whole question — how many files would be
+    // DELETED — never appeared. Answer it here instead, then offer to run.
+    if (options.dryRun && options.mode != TransferMode.bisync) {
+      final SyncPreview? preview;
+      try {
+        preview = await _withProgress(
+          context,
+          buildSyncPreview(ref, srcFs: src.fs, dstFs: dstFs, options: options),
+        );
+      } catch (e) {
+        if (!context.mounted) return;
+        await _refuse(
+          context,
+          "Couldn't compare $dstLabel with ${src.label}, so there is nothing "
+          'to preview and nothing was run. ($e)',
+        );
+        return;
+      }
+      if (preview == null || !context.mounted) return;
+      final go = await showSyncPreviewDialog(
+        context,
+        preview: preview,
+        fromLabel: src.label,
+        toLabel: dstLabel,
+      );
+      if (go != true || !context.mounted) return;
+      // The preview WAS the dry run. Going ahead from it means the real thing.
+      effective = options.copyWith(dryRun: false);
+    }
+    if (effective.mode == TransferMode.bisync) {
       // An ad-hoc pair has no baseline, so TransferService would silently fire
       // --resync — the run that lets one side overwrite the other on conflict.
       // Same trap the two-pane flow documents; same confirm.
@@ -107,7 +139,7 @@ Future<void> runMarkedSyncInto(
         path2Label: dstLabel,
       );
       if (choice == null) return;
-      if (choice.dryRun) effective = options.copyWith(dryRun: true);
+      if (choice.dryRun) effective = effective.copyWith(dryRun: true);
     }
 
     await ref
@@ -122,6 +154,52 @@ Future<void> runMarkedSyncInto(
     await ref.read(paneProvider(paneIndex).notifier).refresh();
   } finally {
     ref.read(_syncInFlightProvider.notifier).state = false;
+  }
+}
+
+/// Runs [work] behind a modal spinner. The comparison behind a preview talks to
+/// both remotes and can take a while; without this the app looks frozen between
+/// pressing Dry run and the preview appearing.
+Future<T> _withProgress<T>(BuildContext context, Future<T> work) async {
+  final navigator = Navigator.of(context);
+  showDialog<void>(
+    context: context,
+    barrierDismissible: false,
+    builder: (ctx) {
+      final c = AircloneTheme.of(ctx);
+      return AlertDialog(
+        backgroundColor: c.surfaceRaised,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(Radii.md),
+        ),
+        content: DialogBody(
+          width: 320,
+          child: Row(
+            children: [
+              const SizedBox(
+                height: 18,
+                width: 18,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+              const SizedBox(width: Space.x3),
+              Expanded(
+                child: Text(
+                  'Working out what would change…',
+                  style: TextStyle(color: c.textMuted, fontSize: 13),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    },
+  );
+  try {
+    return await work;
+  } finally {
+    // Pop the spinner whether the work succeeded or threw, or it becomes a
+    // permanent modal barrier over the app.
+    if (navigator.canPop()) navigator.pop();
   }
 }
 

@@ -433,15 +433,19 @@ List<String> _clean(List<String> patterns) => [
     '_async': true,
   };
   if (config.isNotEmpty) params['_config'] = config;
-  final filter = _filterBlock(o);
+  final filter = filterBlock(o);
   if (filter != null) params['_filter'] = filter;
 
   return (method: method, params: params);
 }
 
 /// The `_filter` block (include/exclude/filter rule lists), or null when empty.
-/// Shared by the one-way and bisync calls (filters apply to both).
-Map<String, dynamic>? _filterBlock(TransferOptions o) {
+/// Shared by the one-way and bisync calls (filters apply to both) — and by the
+/// dry-run PREVIEW, which is why it is public. `operations/check` honours
+/// `_filter`, so a preview given different rules than the run reports a
+/// different set of deletions than the run performs: the one kind of lie a
+/// preview must not tell.
+Map<String, dynamic>? filterBlock(TransferOptions o) {
   final filter = <String, dynamic>{};
   final inc = _clean(o.includes);
   final exc = _clean(o.excludes);
@@ -483,7 +487,7 @@ Map<String, dynamic>? _filterBlock(TransferOptions o) {
   if (o.createEmptySrcDirs) params['createEmptySrcDirs'] = true;
   if (o.dryRun) params['dryRun'] = true;
 
-  final filter = _filterBlock(o);
+  final filter = filterBlock(o);
   if (filter != null) params['_filter'] = filter;
 
   return (method: 'sync/bisync', params: params);

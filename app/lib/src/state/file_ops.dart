@@ -119,10 +119,16 @@ class FileOps {
   /// Compares [srcFs] against [dstFs] (`operations/check`) and returns the
   /// per-bucket file lists. Set [download] to compare by streaming bytes when
   /// the backends share no hash. Returns null only when the engine isn't ready.
+  /// [config] and [filter] are passed straight through as rclone's `_config` /
+  /// `_filter` blocks. The dry-run preview supplies the SAME ones the transfer
+  /// will run with: check honours both, so a comparison made under different
+  /// rules describes a different operation than the one about to happen.
   Future<CompareResult?> compare(
     String srcFs,
     String dstFs, {
     bool download = false,
+    Map<String, dynamic>? config,
+    Map<String, dynamic>? filter,
   }) async {
     final client = _client;
     if (client == null) return null;
@@ -135,6 +141,8 @@ class FileOps {
       'missingOnDst': true,
       'differ': true,
       'error': true,
+      if (config != null && config.isNotEmpty) '_config': config,
+      if (filter != null && filter.isNotEmpty) '_filter': filter,
     });
     return CompareResult.fromRpc(res);
   }
