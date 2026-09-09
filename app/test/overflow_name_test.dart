@@ -94,4 +94,42 @@ void main() {
       reason: 'the two painted fragments are presentation only',
     );
   });
+
+  testWidgets('the remainder wraps instead of being cut at a narrow width', (
+    tester,
+  ) async {
+    // Reported against v0.7.6: at a narrow sidebar the name was STILL cut, and
+    // the user asked why it did not continue onto a third row. Line one is
+    // measured to fill the width exactly; the remainder had no such guarantee
+    // and was capped at one line, so a long name overflowed twice and the
+    // second overflow was ellipsized - the very truncation this widget exists
+    // to prevent.
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Center(
+            child: SizedBox(
+              width: 90, // a narrow sidebar
+              child: OverflowName(
+                'S3-BRAUNSYNOLOGY1_RC-DISK-C1',
+                style: const TextStyle(fontSize: 13),
+                overflowStyle: const TextStyle(fontSize: 11),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    final texts = tester.widgetList<Text>(find.byType(Text)).toList();
+    expect(texts.length, 2, reason: 'head + tail');
+    final tail = texts.last;
+    expect(tail.softWrap, isTrue, reason: 'the tail must be allowed to wrap');
+    expect(
+      tail.maxLines,
+      OverflowName.maxTailLines,
+      reason: 'one line was what cut the name',
+    );
+    expect(OverflowName.maxTailLines, greaterThan(1));
+  });
 }

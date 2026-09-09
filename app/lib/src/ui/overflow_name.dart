@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
-/// A name that keeps its full size for as long as it fits, then continues on a
-/// second line in smaller text instead of being cut off.
+/// A name that keeps its full size for as long as it fits, then continues on
+/// further lines in smaller text instead of being cut off.
 ///
 /// The sidebar's problem is not that long names are truncated — it is WHERE.
 /// `S3-BRAUNSYNOLOGY1_RC-DISK-C1`, `-M1` and `-O1` differ only in their last two
@@ -28,8 +28,16 @@ class OverflowName extends StatelessWidget {
   /// Line one, and the whole name whenever it fits.
   final TextStyle style;
 
-  /// Line two — the remainder that did not fit, in smaller text.
+  /// The remainder that did not fit, in smaller text. It WRAPS: at a narrow
+  /// sidebar width the tail is itself too long for one line, and capping it at
+  /// one produced the very truncation this widget exists to avoid - reported as
+  /// the name being cut instead of continuing onto a third row.
   final TextStyle overflowStyle;
+
+  /// How many lines the remainder may use before it really is ellipsized. A
+  /// bound rather than none, so one absurd name cannot push every other row off
+  /// a short sidebar.
+  static const int maxTailLines = 3;
 
   @override
   Widget build(BuildContext context) => LayoutBuilder(
@@ -94,7 +102,7 @@ class OverflowName extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
-            children: [_single(head, style), _single(tail, overflowStyle)],
+            children: [_single(head, style), _tail(tail, overflowStyle)],
           ),
         ),
       );
@@ -108,6 +116,17 @@ class OverflowName extends StatelessWidget {
     s,
     maxLines: 1,
     softWrap: false,
+    overflow: TextOverflow.ellipsis,
+    style: style,
+  );
+
+  /// The remainder, wrapping over up to [maxTailLines]. Line one is measured to
+  /// fill the width exactly; the tail has no such guarantee and at a narrow
+  /// width routinely needs more than one line of its own.
+  static Widget _tail(String s, TextStyle style) => Text(
+    s,
+    maxLines: maxTailLines,
+    softWrap: true,
     overflow: TextOverflow.ellipsis,
     style: style,
   );
