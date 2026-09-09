@@ -138,19 +138,45 @@ class _DedupeDialogState extends State<_DedupeDialog> {
         if (g != _gen || !mounted) return;
         var onlineCount = 0;
         var onlineBytes = 0;
+        // How many entries we could actually resolve to a filesystem path, and
+        // the totals if we could not. A named local remote configured without a
+        // root (`localdisk:`) has no root to join onto, so a RELATIVE browse
+        // path resolves to nothing - and "nothing resolved" then read as
+        // "nothing is online-only", which is the same silent yes as before.
+        // That is the one remote shape that actually points at a sync root on a
+        // typical Windows setup, so it is the case that matters most.
+        var resolved = 0;
+        var allCount = 0;
+        var allBytes = 0;
         for (final item in (probe['list'] as List? ?? const [])) {
           final m = (item as Map).cast<String, dynamic>();
           if ((m['IsDir'] ?? false) as bool) continue;
           final p = (m['Path'] ?? '') as String;
           final within = widget.basePath.isEmpty ? p : '${widget.basePath}/$p';
+          final s = m['Size'];
+          allCount++;
+          if (s is num && s > 0) allBytes += s.toInt();
+          if (localAbsolutePath(widget.remote, within) != null) resolved++;
           if (wouldHydrateOnRead(widget.remote, within)) {
             onlineCount++;
-            final s = m['Size'];
             if (s is num && s > 0) onlineBytes += s.toInt();
           }
         }
         if (g != _gen || !mounted) return;
-        if (onlineCount > 0) {
+        if (resolved == 0 && allCount > 0) {
+          // We proved nothing. Ask about the whole scan rather than report a
+          // confident zero we never established.
+          final ok = await _confirmHydrate(allCount, allBytes, wrapper: true);
+          if (!ok || g != _gen || !mounted) {
+            if (mounted && g == _gen) {
+              setState(() {
+                _scanning = false;
+                _status = 'Scan cancelled - nothing was downloaded.';
+              });
+            }
+            return;
+          }
+        } else if (onlineCount > 0) {
           final ok = await _confirmHydrate(onlineCount, onlineBytes);
           if (!ok || g != _gen || !mounted) {
             if (mounted && g == _gen) {

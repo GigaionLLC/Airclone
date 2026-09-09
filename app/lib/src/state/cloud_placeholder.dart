@@ -168,16 +168,24 @@ bool? isLocalBacked(Remote remote) {
 String? localAbsolutePath(Remote remote, String pathWithinRemote) {
   if (remote.type == 'local') {
     if (remote.isLocal) return _joinLocal(remote.fs, pathWithinRemote);
-    final p = pathWithinRemote;
-    if (RegExp(r'^[A-Za-z]:').hasMatch(p) || p.startsWith('/')) return p;
-    return null;
+    return _absoluteOrNull(pathWithinRemote);
   }
   // A wrapper (crypt/alias/...) over a local path. Its backing root is resolved
   // from the config when the remote list loads; absent means unresolved, and
   // there is nothing to check.
   final root = _backingRoots[remote.name];
-  if (root == null || root.isEmpty) return null;
+  if (root == null) return null;
+  // An empty root means the chain ends at a bare `name:` local remote, which
+  // has no fixed root of its own - so only an already-absolute browse path can
+  // be resolved, exactly as for that remote directly.
+  if (root.isEmpty) return _absoluteOrNull(pathWithinRemote);
   return _joinLocal(root, pathWithinRemote);
+}
+
+/// [p] when it is already an absolute filesystem path, else null.
+String? _absoluteOrNull(String p) {
+  if (RegExp(r'^[A-Za-z]:').hasMatch(p) || p.startsWith('/')) return p;
+  return null;
 }
 
 String _joinLocal(String root, String within) {
