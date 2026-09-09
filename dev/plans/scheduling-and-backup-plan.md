@@ -257,7 +257,29 @@ fallback is to pause on *any* failure of a scheduled destructive sync, which is 
 slightly blunter rule that cannot silently stop working. Do not ship a breaker
 whose trigger has only been reasoned about.
 
-### 4.f What people expect that is not yet in this plan
+### 4.f DECIDED by the user, 2026-09-09
+
+- **Restore is in v0.8, in full.** Pick a backup, browse what it holds, restore a
+  file or the whole folder, to its original place or elsewhere. This makes
+  "backup" an honest word. It also means the restore path needs the same conflict
+  preflight everything else got in v0.7.6 — restoring *over* live files is a
+  write, and it must ask.
+- **Retention: keep 30 days, configurable.** A prune pass that understands the
+  `keepReplaced` suffix naming, plus a visible "versions are using X GB" so the
+  cost is not invisible. Two traps: pruning must never touch a *current* file, only
+  a suffixed version; and the prune itself is a delete loop over a remote, so it
+  needs the same care as any other destructive path — dry-run-able, and bounded.
+- **Photos: camera roll (DCIM) by default, with a picker to add more folders.**
+  So the source is a *set* of folders, not a single fixed path.
+  - That decides the layout question by implication: **mirror the source
+    structure**, since an arbitrary user-chosen folder has no "capture date"
+    meaning. By-date remains offerable for the camera roll alone, later.
+  - **Still open, and I am defaulting rather than guessing:** videos are included
+    (they live in DCIM and a camera-roll backup missing them would surprise
+    people) but get their own toggle, because they dominate the byte count and the
+    first run's duration.
+
+### 4.g What people expect that is not yet in this plan
 
 Written down because the gap between "a scheduled copy runs" and "a backup
 feature" is mostly these, and every one of them is something a user assumes is

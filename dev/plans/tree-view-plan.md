@@ -82,8 +82,13 @@ first.
     `operations/size` per folder — a recursive walk each, and exactly the mistake
     just fixed in the sync preflight. Recommendation: blank, with an explicit
     per-folder action. → **Answer:**
-  - `[ ]` **Can a selection span folders?** It is the main thing a tree makes
-    possible and the main thing that stresses the transfer path. → **Answer:**
+  - `[x]` **Can a selection span folders?** → **ANSWERED (user, 2026-09-09): yes.**
+    So §4.D is in scope and is the largest single piece of this plan. Transfers
+    group by source folder — the shape `_uploadLocal` already uses for an OS drop
+    spanning several folders — and the conflict preflight asks once per group,
+    which is honest because each group is a different source. Delete and the
+    other bulk operations need the same treatment, and `state.selected` becomes a
+    set of full paths rather than names within one folder.
 
 ## 4️⃣ Phase 4: Detailed Execution Plan
 
