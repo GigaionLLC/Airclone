@@ -17,8 +17,18 @@ const Object _keepMaxDelete = Object();
 ///
 /// The easy path does a one-click copy; this is the power path surfaced by
 /// the transfer options dialog. [includes]/[excludes]/[filters] are raw rclone
-/// patterns (one per entry). [extraFlags] are pre-tokenised CLI args used only
-/// for the human-readable preview (e.g. `--transfers 8`).
+/// patterns (one per entry).
+///
+/// Everything here reaches the actual run. There used to be an `extraFlags`
+/// list that did not: it was rendered into the command preview and dropped by
+/// [buildRcCall], so anything in it described a command that would not be the
+/// one that ran. Nothing ever wrote to it, so it never lied in practice — but a
+/// preview is the thing people copy out and run by hand, and a field whose only
+/// possible effect is to make it wrong is a trap for whoever wires up the next
+/// input. Arbitrary CLI flags cannot pass through the RC as flags at all (it
+/// takes a `_config` map of Go field names), so offering them means a real
+/// argv→RC translator, the way the console has one — not a list the preview
+/// prints and the dispatcher ignores.
 @immutable
 class TransferOptions {
   const TransferOptions({
@@ -45,7 +55,6 @@ class TransferOptions {
     this.includes = const [],
     this.excludes = const [],
     this.filters = const [],
-    this.extraFlags = const [],
   });
 
   final TransferMode mode;
@@ -138,9 +147,6 @@ class TransferOptions {
   /// `--filter` rules.
   final List<String> filters;
 
-  /// Raw extra CLI flags for the preview, e.g. `--transfers 8`.
-  final List<String> extraFlags;
-
   TransferOptions copyWith({
     TransferMode? mode,
     bool? skipNewer,
@@ -167,7 +173,6 @@ class TransferOptions {
     List<String>? includes,
     List<String>? excludes,
     List<String>? filters,
-    List<String>? extraFlags,
   }) => TransferOptions(
     mode: mode ?? this.mode,
     skipNewer: skipNewer ?? this.skipNewer,
@@ -194,7 +199,6 @@ class TransferOptions {
     includes: includes ?? this.includes,
     excludes: excludes ?? this.excludes,
     filters: filters ?? this.filters,
-    extraFlags: extraFlags ?? this.extraFlags,
   );
 
   Map<String, dynamic> toJson() => {
@@ -226,7 +230,6 @@ class TransferOptions {
     'includes': includes,
     'excludes': excludes,
     'filters': filters,
-    'extraFlags': extraFlags,
   };
 
   factory TransferOptions.fromJson(Map<String, dynamic> j) {
@@ -264,7 +267,6 @@ class TransferOptions {
       includes: list(j['includes']),
       excludes: list(j['excludes']),
       filters: list(j['filters']),
-      extraFlags: list(j['extraFlags']),
     );
   }
 }
@@ -323,11 +325,6 @@ String rcloneCmdPreview(TransferOptions o, String src, String dst) {
     if (p.trim().isEmpty) continue;
     parts.add('--filter "${p.trim()}"');
   }
-  for (final f in o.extraFlags) {
-    if (f.trim().isEmpty) continue;
-    parts.add(f.trim());
-  }
-
   return parts.join(' ');
 }
 

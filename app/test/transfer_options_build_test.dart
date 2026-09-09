@@ -89,4 +89,43 @@ void main() {
       expect(back.checkers, 0);
     });
   });
+
+  group('the preview describes the run', () {
+    // The `rclone cmd` tab is the thing people copy out and run by hand, so a
+    // flag it shows that the dispatcher does not send is worse than showing no
+    // flags at all. `extraFlags` was exactly that: rendered into the preview,
+    // dropped by buildRcCall. Nothing ever wrote to it, so it never lied in
+    // practice — it was a trap for whoever wired up the next input. It is gone,
+    // and a saved task carrying the old key must not bring it back.
+    test('a dropped key in a saved task is ignored, not resurrected', () {
+      final o = TransferOptions.fromJson({
+        'mode': 'sync',
+        'extraFlags': ['--transfers 99', '--delete-during'],
+      });
+      final cmd = rcloneCmdPreview(o, 'a:', 'b:');
+      expect(cmd, isNot(contains('99')));
+      expect(cmd, isNot(contains('--delete-during')));
+      expect(o.toJson().containsKey('extraFlags'), isFalse);
+    });
+
+    test('and the run it describes is the one that is dispatched', () {
+      // Spot-check both directions on the flags that do exist: each one the
+      // preview prints has a _config counterpart, and vice versa.
+      const o = TransferOptions(
+        mode: TransferMode.sync,
+        transfers: 8,
+        maxDeleteFiles: 5,
+        compare: CompareMode.checksum,
+      );
+      final cmd = rcloneCmdPreview(o, 'a:', 'b:');
+      final config =
+          buildRcCall(o, 'a:', 'b:').params['_config']! as Map<String, dynamic>;
+      expect(cmd, contains('--transfers 8'));
+      expect(config['Transfers'], 8);
+      expect(cmd, contains('--max-delete 5'));
+      expect(config['MaxDelete'], 5);
+      expect(cmd, contains('--checksum'));
+      expect(config['Checksum'], true);
+    });
+  });
 }
