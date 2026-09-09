@@ -181,6 +181,54 @@ and at either **end** of a real list the dead one stays visible but disabled,
 because a control row that changes shape as you move through an album is harder
 to aim at with a D-pad than one that stays put.
 
+**"There is a small blue rectangle on the middle of the screen [that] do not
+disappear when we watch any movie."** Our own focus ring, but not for the reason
+it looks like. Two independent bugs stacked:
+
+1. `_video()` built its frame as a **loosely-fitted** `Stack`, and a loose Stack
+   takes the size of its largest NON-positioned child. While the loading spinner
+   was up, that child was the spinner: **36 x 36**. The `Positioned.fill` video
+   surface — media_kit's `Video`, and the `Focus(autofocus: true)` its controls
+   wrap it in — was therefore laid out to 36 px at dead centre until the first
+   frame arrived. No phone user could ever see this: the surface is black until
+   that frame anyway. It also shrank a *playing* video to 36 px for the length of
+   any mid-film buffering stall, on every platform.
+2. `TvFocusOverlay` measured the focused widget when **focus** moved, and only
+   then. media_kit's `Focus` takes focus the instant the preview opens — which,
+   over a cloud stream, is well inside the loading window — so the ring was
+   measured around that 36 px box. The surface then grew to fill the screen, but
+   a widget growing is not a focus change, so nothing re-measured. A 42 x 42,
+   3 px, radius-10 outline in the theme's primary blue, at screen centre, for the
+   whole film.
+
+`VideoSurfaceFrame` fixes the layout (`StackFit.expand`, spinner centred over the
+full-size surface). `TvFocusOverlay` gains two rules: it **re-measures after every
+frame while anything holds focus** (a post-frame callback does not request a
+frame, so an idle screen costs nothing, and any relayout is by definition inside
+a frame), and it **draws no ring for a target that covers the whole shell** —
+that is a page or a route's bare scope or a video surface, not a control, and a
+ring around it is four stray arcs in the corners that say nothing about where the
+D-pad is. A film now plays with no ring; the ring returns the moment focus moves
+to a real control.
+
+Covered by `app/test/tv_focus_overlay_test.dart`. The layout half is
+platform-neutral; nothing TV-specific was added outside `tv.dart`.
+
+### The gap that investigation exposed: a remote cannot control playback at all
+
+Confirmed in media_kit_video 1.3.1's own source, not inferred. `AdaptiveVideoControls`
+branches on `Theme.platform`, so **Android — and therefore Android TV — gets the
+TOUCH controls** (`material.dart`), never the desktop ones. Those controls contain
+**zero** key handling (`grep -cE 'KeyEvent|Shortcuts\(|LogicalKeyboardKey'` returns
+0, against 15 in `material_desktop.dart`), and they only appear at all from
+`onTap` (`material.dart:655-658`), which a D-pad never produces.
+
+So on a television a film plays and the only thing the remote can do is leave.
+**No play, no pause, no seek.** This is not a regression and it is not what the
+user reported — they reported the rectangle — but it is the larger problem, and
+it needs D-pad video controls of our own rather than a fix to these. Tracked
+separately.
+
 Covered by `app/test/tv_row_actions_test.dart` and
 `app/test/audio_skip_controls_test.dart`, both confirmed RED against the code
 with the fix removed. Neither could be verified on a physical television from

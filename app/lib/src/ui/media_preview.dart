@@ -279,23 +279,17 @@ class _MediaPreviewBodyState extends ConsumerState<MediaPreviewBody> {
   }
 
   /// Black-backed video surface filling the available space, with a loading
-  /// overlay until playback actually starts.
+  /// overlay until playback actually starts. The frame itself is
+  /// [VideoSurfaceFrame], which owns the one layout rule that matters here.
   ///
   /// The control bars are media_kit's own (they adapt to touch vs desktop);
   /// they are re-declared here only to append the repeat button, which is why
   /// each list starts from the package default rather than being written out.
   Widget _video(AircloneColors colors) {
     final controller = _controller;
-    return Container(
-      color: const Color(0xFF000000),
-      alignment: Alignment.center,
-      child: Stack(
-        alignment: Alignment.center,
-        children: [
-          if (controller != null) Positioned.fill(child: _surface(controller)),
-          if (_loading) const _Spinner(),
-        ],
-      ),
+    return VideoSurfaceFrame(
+      loading: _loading,
+      surface: controller == null ? null : _surface(controller),
     );
   }
 
@@ -632,6 +626,55 @@ class _RepeatToggle extends StatelessWidget {
     tooltip: _repeatTooltip(repeat),
     color: repeat ? activeColor : color,
     icon: Icon(_repeatIcon(repeat)),
+  );
+}
+
+/// The black frame a video plays in, with the loading spinner over it.
+///
+/// `StackFit.expand` is the whole point of this widget, and the reason it is a
+/// widget rather than three lines inside [MediaPreviewBody]: it is the layout
+/// rule a Google TV user's report came down to, and it needs a test that a
+/// libmpv-backed body cannot host.
+///
+/// With the default loose fit a Stack takes the size of its largest
+/// NON-positioned child, and while the spinner is up that child is the
+/// spinner: 36 by 36. The `Positioned.fill` surface — media_kit's `Video`, and
+/// the `Focus(autofocus: true)` its controls wrap it in — was laid out to those
+/// 36 pixels at the centre of the screen and only grew to the full frame when
+/// the first frame arrived. No phone user could see that: the surface is black
+/// until that frame anyway. A television could. `TvFocusOverlay` measures the
+/// focused widget when focus lands, which over a cloud stream is well inside
+/// the loading window, so it ringed a 36-pixel box at dead centre — and kept
+/// it there for the whole film, because a widget growing is not a focus change.
+/// That ring is the *"small blue rectangle on the middle of the screen [that]
+/// does not disappear when we watch any movie."*
+///
+/// The same collapse would have shrunk a PLAYING video to 36 pixels for the
+/// length of any mid-film buffering stall, on every platform.
+class VideoSurfaceFrame extends StatelessWidget {
+  const VideoSurfaceFrame({
+    super.key,
+    required this.surface,
+    required this.loading,
+  });
+
+  /// The video surface, or null before a player exists (the frame stays
+  /// black and, while [loading], shows only the spinner).
+  final Widget? surface;
+
+  /// Whether to show the spinner over the surface.
+  final bool loading;
+
+  @override
+  Widget build(BuildContext context) => ColoredBox(
+    color: const Color(0xFF000000),
+    child: Stack(
+      fit: StackFit.expand,
+      children: [
+        ?surface,
+        if (loading) const Center(child: _Spinner()),
+      ],
+    ),
   );
 }
 

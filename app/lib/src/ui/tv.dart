@@ -231,6 +231,25 @@ class _TvInitialFocusState extends State<TvInitialFocus> {
 /// later, so instead this tracks [FocusManager] and paints one ring over
 /// whatever currently holds focus. Rows, buttons, dialogs and anything added
 /// in future are covered without knowing this exists.
+///
+/// Two rules, both learned from a Google TV user watching a film:
+///
+///  * **The ring follows the widget, not just the focus.** Focus is not the
+///    only thing that moves a ring: the focused widget can be laid out again
+///    without any focus change, and a ring measured once is then a ring around
+///    where the widget USED to be. media_kit's video controls wrap the surface
+///    in a `Focus(autofocus: true)` that takes focus the instant a film opens,
+///    while the surface was still a 36px box under the loading spinner (see
+///    `VideoSurfaceFrame`); it grew to fill the screen with the first frame,
+///    and the ring stayed a "small blue rectangle in the middle of the screen"
+///    for two hours. So while anything holds focus this re-measures after
+///    every frame. A post-frame callback does not request a frame, so an idle
+///    screen costs nothing, and any relayout is by definition inside a frame.
+///  * **A target that covers the whole shell gets no ring.** That is the page,
+///    or a route's bare scope, or the video surface — not a control. Its ring
+///    would be off-screen but for four stray arcs in the corners, and it tells
+///    the user nothing about where the D-pad is. A film therefore plays with no
+///    ring at all; the ring returns the moment focus moves to a real control.
 class TvFocusOverlay extends StatefulWidget {
   const TvFocusOverlay({super.key, required this.child});
 
@@ -242,6 +261,7 @@ class TvFocusOverlay extends StatefulWidget {
 
 class _TvFocusOverlayState extends State<TvFocusOverlay> {
   Rect? _rect;
+  bool _measureScheduled = false;
 
   @override
   void initState() {
@@ -257,8 +277,16 @@ class _TvFocusOverlayState extends State<TvFocusOverlay> {
 
   // Post-frame: on a focus change the newly focused widget may not have been
   // laid out yet, and measuring it now would place the ring at its old size.
-  void _scheduleMeasure() =>
-      WidgetsBinding.instance.addPostFrameCallback((_) => _measure());
+  // Coalesced, because a focus change, a scroll and the per-frame re-arm can
+  // all ask within one frame and one measurement answers all of them.
+  void _scheduleMeasure() {
+    if (_measureScheduled) return;
+    _measureScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _measureScheduled = false;
+      _measure();
+    });
+  }
 
   void _measure() {
     if (!mounted) return;
@@ -269,12 +297,21 @@ class _TvFocusOverlayState extends State<TvFocusOverlay> {
       final box = focused.findRenderObject();
       if (box is RenderBox && box.hasSize && box.attached) {
         next = box.localToGlobal(Offset.zero, ancestor: self) & box.size;
+        if (_coversShell(next, self.size)) next = null;
       }
     }
-    // A text field owns the keyboard while focused; ringing it would be noise
-    // on top of its own caret and border.
     if (next != _rect) setState(() => _rect = next);
+    // Keep watching while something holds focus: the widget under the ring
+    // can move or resize with no focus change to tell us (class doc, rule 1).
+    if (focused != null) _scheduleMeasure();
   }
+
+  /// True when [target] spans the entire overlay (class doc, rule 2).
+  static bool _coversShell(Rect target, Size shell) =>
+      target.left <= 0 &&
+      target.top <= 0 &&
+      target.right >= shell.width &&
+      target.bottom >= shell.height;
 
   @override
   Widget build(BuildContext context) {
