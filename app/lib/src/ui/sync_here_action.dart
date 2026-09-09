@@ -64,7 +64,12 @@ Future<void> runMarkedSyncInto(
     // at the destination is surplus" once rclone is running.
     final int count;
     try {
-      final (n, _) = await ref.read(fileOpsProvider).folderSize(src.fs);
+      final n = await _withProgress(
+        context,
+        ref.read(fileOpsProvider).folderSize(src.fs).then((r) => r.$1),
+        label: 'Checking ${src.label}…',
+      );
+      if (n == null || !context.mounted) return; // cancelled or gone
       count = n;
     } catch (_) {
       if (!context.mounted) return;
@@ -104,10 +109,19 @@ Future<void> runMarkedSyncInto(
     // DELETED — never appeared. Answer it here instead, then offer to run.
     if (options.dryRun && options.mode != TransferMode.bisync) {
       final SyncPreview? preview;
+      final job = CompareJob();
       try {
-        preview = await _withProgress(
+        preview = await _withProgress<SyncPreview?>(
           context,
-          buildSyncPreview(ref, srcFs: src.fs, dstFs: dstFs, options: options),
+          buildSyncPreview(
+            ref,
+            srcFs: src.fs,
+            dstFs: dstFs,
+            options: options,
+            job: job,
+          ),
+          label: 'Working out what would change…',
+          onCancel: job.cancel,
         );
       } catch (e) {
         if (!context.mounted) return;
@@ -157,11 +171,24 @@ Future<void> runMarkedSyncInto(
   }
 }
 
-/// Runs [work] behind a modal spinner. The comparison behind a preview talks to
-/// both remotes and can take a while; without this the app looks frozen between
-/// pressing Dry run and the preview appearing.
-Future<T> _withProgress<T>(BuildContext context, Future<T> work) async {
+/// Runs [work] behind a modal spinner.
+///
+/// [label] says which phase is running, because these can take minutes and
+/// "working" without saying at what is indistinguishable from a hang. A user
+/// reported the menu item doing nothing at all: it was reading the source, with
+/// no indicator, before any dialog appeared.
+///
+/// [onCancel] makes the Cancel button real. Without it the only way out was to
+/// close the dialog, which abandoned the wait while the job carried on running
+/// on the engine - so the button has to stop the work, not just the waiting.
+Future<T?> _withProgress<T>(
+  BuildContext context,
+  Future<T> work, {
+  required String label,
+  Future<void> Function()? onCancel,
+}) async {
   final navigator = Navigator.of(context);
+  var cancelled = false;
   showDialog<void>(
     context: context,
     barrierDismissible: false,
@@ -184,22 +211,35 @@ Future<T> _withProgress<T>(BuildContext context, Future<T> work) async {
               const SizedBox(width: Space.x3),
               Expanded(
                 child: Text(
-                  'Working out what would change…',
+                  label,
                   style: TextStyle(color: c.textMuted, fontSize: 13),
                 ),
               ),
             ],
           ),
         ),
+        actions: onCancel == null
+            ? null
+            : [
+                TextButton(
+                  onPressed: () async {
+                    cancelled = true;
+                    await onCancel();
+                    if (ctx.mounted) Navigator.of(ctx).pop();
+                  },
+                  child: const Text('Cancel'),
+                ),
+              ],
       );
     },
   );
   try {
-    return await work;
+    final out = await work;
+    return cancelled ? null : out;
   } finally {
     // Pop the spinner whether the work succeeded or threw, or it becomes a
-    // permanent modal barrier over the app.
-    if (navigator.canPop()) navigator.pop();
+    // permanent modal barrier over the app. Cancel already popped it.
+    if (!cancelled && navigator.canPop()) navigator.pop();
   }
 }
 

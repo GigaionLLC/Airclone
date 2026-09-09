@@ -45,6 +45,22 @@ class _SyncPreviewDialog extends StatefulWidget {
 }
 
 class _SyncPreviewDialogState extends State<_SyncPreviewDialog> {
+  /// One controller per bucket, keyed by its id.
+  ///
+  /// A bare Scrollbar over a SingleChildScrollView renders a thumb you can
+  /// see and cannot drag: with no shared controller it has no scroll position
+  /// to move. Reported as "the scroll bar doesn't seem to let me click and
+  /// use it". Lazily created - only the expanded bucket is ever built.
+  final Map<String, ScrollController> _scrollers = {};
+
+  @override
+  void dispose() {
+    for (final sc in _scrollers.values) {
+      sc.dispose();
+    }
+    super.dispose();
+  }
+
   /// Which bucket's file list is open. At most one, so the dialog cannot grow
   /// past the screen on a plan with thousands of changes in several buckets.
   String? _open;
@@ -228,6 +244,7 @@ class _SyncPreviewDialogState extends State<_SyncPreviewDialog> {
     required List<String> files,
   }) {
     final expanded = _open == id;
+    final sc = _scrollers.putIfAbsent(id, ScrollController.new);
     return Padding(
       padding: const EdgeInsets.only(bottom: Space.x2),
       child: Disclosure(
@@ -245,7 +262,13 @@ class _SyncPreviewDialogState extends State<_SyncPreviewDialog> {
               borderRadius: BorderRadius.circular(Radii.sm),
             ),
             child: Scrollbar(
+              controller: sc,
+              // Both flags matter: the thumb must stay visible on a long list, and
+              // it must accept a drag rather than only reflect one.
+              thumbVisibility: true,
+              interactive: true,
               child: SingleChildScrollView(
+                controller: sc,
                 child: Text(
                   files.join('\n'),
                   style: TextStyle(color: color, fontSize: 11, height: 1.5),

@@ -17,6 +17,39 @@ String _parentOf(String path) {
   return i < 0 ? '' : path.substring(0, i);
 }
 
+/// Cancels a long [FileOps.compare].
+///
+/// A comparison over a large tree runs for minutes, and until now the dialog
+/// offered no way out: closing it left the job running on the engine. Holding
+/// the jobid is what makes a real cancel possible rather than a cosmetic one.
+class CompareJob {
+  RcloneClient? _client;
+  int? _jobid;
+  bool _cancelled = false;
+
+  /// True once [cancel] has been called. [FileOps.compare] returns null.
+  bool get cancelled => _cancelled;
+
+  void _attach(RcloneClient client, int jobid) {
+    _client = client;
+    _jobid = jobid;
+  }
+
+  /// Stops the running comparison. Safe before the job exists and safe twice.
+  Future<void> cancel() async {
+    _cancelled = true;
+    final c = _client;
+    final j = _jobid;
+    if (c == null || j == null) return;
+    try {
+      await c.rpc('job/stop', {'jobid': j});
+    } catch (_) {
+      // Best effort: the job may already have finished. The caller has stopped
+      // waiting either way, and a failed stop must not surface as an error.
+    }
+  }
+}
+
 /// Result of an `operations/check` comparison, bucketed by outcome. Each list
 /// holds remote-relative file paths. [usedHash] is false when rclone had no
 /// common hash to compare with (it then compared by size/modtime only, or by
@@ -123,16 +156,26 @@ class FileOps {
   /// `_filter` blocks. The dry-run preview supplies the SAME ones the transfer
   /// will run with: check honours both, so a comparison made under different
   /// rules describes a different operation than the one about to happen.
+  /// Pass a [CompareJob] to be able to cancel a long comparison.
+  ///
+  /// Runs ASYNC (`_async`) and polls `job/status`. The synchronous form could
+  /// not survive its own success: every rpc carries a 30-second timeout, and a
+  /// real tree does not answer inside it. A user comparing 13,356 files got
+  /// `TimeoutException after 0:00:30` — the feature failing precisely on the
+  /// trees big enough to need a preview. Each poll is a fast call, so there is
+  /// no wall to hit, and the jobid gives the caller something to cancel.
   Future<CompareResult?> compare(
     String srcFs,
     String dstFs, {
     bool download = false,
     Map<String, dynamic>? config,
     Map<String, dynamic>? filter,
+    CompareJob? job,
+    Duration pollEvery = const Duration(milliseconds: 400),
   }) async {
     final client = _client;
     if (client == null) return null;
-    final res = await client.rpc('operations/check', {
+    final params = <String, dynamic>{
       'srcFs': srcFs,
       'dstFs': dstFs,
       'download': download,
@@ -143,8 +186,34 @@ class FileOps {
       'error': true,
       if (config != null && config.isNotEmpty) '_config': config,
       if (filter != null && filter.isNotEmpty) '_filter': filter,
-    });
-    return CompareResult.fromRpc(res);
+      '_async': true,
+    };
+    final started = await client.rpc('operations/check', params);
+    final jobid = (started['jobid'] as num?)?.toInt();
+    // An engine that answered inline rather than with a jobid is still a valid
+    // answer - take it rather than insisting on the async shape.
+    if (jobid == null) return CompareResult.fromRpc(started);
+    job?._attach(client, jobid);
+    if (job?.cancelled ?? false) {
+      await job!.cancel(); // cancelled between dispatch and attach
+      return null;
+    }
+    while (true) {
+      await Future<void>.delayed(pollEvery);
+      if (job?.cancelled ?? false) return null;
+      final st = await client.rpc('job/status', {'jobid': jobid});
+      if (st['finished'] != true) continue;
+      if (st['success'] != true) {
+        final err = (st['error'] ?? '').toString();
+        // A stopped job reports failure; that is a cancel, not a fault.
+        if (job?.cancelled ?? false) return null;
+        throw RcloneException('operations/check', err.isEmpty ? 'failed' : err);
+      }
+      final out = st['output'];
+      return CompareResult.fromRpc(
+        out is Map ? out.cast<String, dynamic>() : const <String, dynamic>{},
+      );
+    }
   }
 
   /// File count + total byte size of [fs] (`operations/size`). [fs] is a full

@@ -117,6 +117,7 @@ Future<SyncPreview?> buildSyncPreview(
   required String srcFs,
   required String dstFs,
   required TransferOptions options,
+  CompareJob? job,
 }) async {
   final result = await ref
       .read(fileOpsProvider)
@@ -125,6 +126,7 @@ Future<SyncPreview?> buildSyncPreview(
         dstFs,
         config: previewConfig(options),
         filter: filterBlock(options),
+        job: job,
       );
   return result == null ? null : previewFrom(result, options);
 }
