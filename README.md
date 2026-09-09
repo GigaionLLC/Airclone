@@ -10,6 +10,14 @@
 </p>
 
 <p align="center">
+  <b>Get it from a store</b> (auto-updating, signed by the platform) —<br>
+  <a href="https://apps.apple.com/app/id6790176897">App Store</a> · iPhone, iPad &amp; Mac &nbsp;|&nbsp;
+  <a href="https://play.google.com/store/apps/details?id=com.gigaionllc.airclone">Google Play</a> · Android &nbsp;|&nbsp;
+  <a href="https://apps.microsoft.com/detail/9PJ6LRTS2B8X">Microsoft Store</a> · Windows<br>
+  <sub>or download a free build from <a href="https://github.com/GigaionLLC/Airclone/releases">Releases</a> — same app, see <a href="#-pricing">Pricing</a></sub>
+</p>
+
+<p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/explorer-hero-dark.png">
     <img alt="Airclone dual-pane cloud file explorer — dragging a file from Google Drive to OneDrive" src="docs/screenshots/explorer-hero.png" width="860">
@@ -127,7 +135,10 @@ docker compose run --rm flutter flutter analyze   # static analysis
 docker compose run --rm flutter flutter test      # unit tests
 ```
 
-**Downloads:** Windows/macOS/Linux/Android builds are published on the
+**Downloads:** the store listings above ([App Store](https://apps.apple.com/app/id6790176897) ·
+[Google Play](https://play.google.com/store/apps/details?id=com.gigaionllc.airclone) ·
+[Microsoft Store](https://apps.microsoft.com/detail/9PJ6LRTS2B8X)) are the auto-updating route.
+Windows/macOS/Linux/Android builds are also published on the
 [Releases](https://github.com/GigaionLLC/Airclone/releases) page (alpha/beta builds are marked
 pre-release; **Windows** builds are code-signed and **macOS** builds are signed + notarized).
 **Windows and Android** builds bundle the rclone engine (nothing to download on first launch); other
@@ -141,10 +152,19 @@ updates, through the Store.
 page is free to download and install (ad-hoc / sideload), and you can always build it from source
 yourself — no fees, no feature gates, no accounts.
 
-The one exception: the **Apple App Store, Google Play, and Microsoft Store** listings carry a small
-fee. That fee exists solely to fund the code-signing certificates and developer-program memberships
-those stores require — it buys convenience, not features. The store builds and the free builds are the
-same app.
+The one exception: the store listings carry a small fee. That fee exists solely to fund the
+code-signing certificates and developer-program memberships those stores require — it buys
+convenience, not features. The store builds and the free builds are the same app.
+
+| Store | Platforms | Listing |
+| :--- | :--- | :--- |
+| **Apple App Store** | iPhone, iPad (iOS 15+) and Mac (macOS 12+) — one purchase covers all three | [apps.apple.com](https://apps.apple.com/app/id6790176897) |
+| **Google Play** | Android (phone, tablet, Android TV) | [play.google.com](https://play.google.com/store/apps/details?id=com.gigaionllc.airclone) |
+| **Microsoft Store** | Windows 10/11 | [apps.microsoft.com](https://apps.microsoft.com/detail/9PJ6LRTS2B8X) |
+
+What the fee buys is the managed path: the store installs it, keeps it updated, and vouches for the
+signature. Everything else — Linux, and any platform you would rather install by hand — is on the
+[Releases](https://github.com/GigaionLLC/Airclone/releases) page for free, forever.
 
 ## 🗺️ Roadmap
 
