@@ -479,9 +479,17 @@ incoherent.
   - `[x]` **README corrected** — it promised scheduling with no platform
     distinction, which understated Windows and was simply wrong on a phone.
   - `[x]` **`feat-scheduling.md` written.**
-  - `[ ]` **From/To picker** — the two-pane requirement, and the prerequisite for
-    everything mobile. This is the remaining bulk of A.
-  - `[ ]` Mobile entry point behind it.
+  - `[x]` **From/To picker** — `ui/from_to_picker.dart`. The panes now only
+    pre-fill it; they are no longer a requirement, so the whole chain
+    Settings → Automation → Saved tasks → New task works in easy mode with one
+    pane. It refuses only the source-equals-destination case, with the reason
+    shown rather than just a disabled button.
+  - `[~]` **Mobile entry point.** Settings reaches a phone, so the door is
+    there. The blocker turned out NOT to be scheduling: `transfer_options_dialog`
+    is a hard-coded `SizedBox(width: 720, height: 560)` and overflows by 115 px
+    at 375×812 (measured 2026-09-09) — exactly the fixed-desktop-width dialog
+    problem `DialogBody` exists to solve. Tracked separately; it blocks task
+    creation on mobile generally, not just scheduling.
 - `[~]` **B — Safety for unattended runs `[S]`.** Half landed 2026-09-09:
   - `[x]` **Delete cap defaulted to 100 and not clearable** on a repeating sync.
     `withScheduledDeleteCap` in `state/transfer_options.dart` applies it at RUN

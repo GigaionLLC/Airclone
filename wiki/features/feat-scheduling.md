@@ -30,12 +30,14 @@ last outcome, surfaces a tripped circuit breaker (§5.2), and opens the full pan
 
 | Gate | Effect | Status |
 | :--- | :--- | :--- |
-| **Advanced mode** (`state/advanced_mode.dart`, default **off**) | The toolbar and command-palette doors to Saved tasks are behind `if (advanced)` (`ui/home_screen.dart`). | **Bypassed for viewing** — Settings → Automation is ungated and reaches the panel. Creating still needs it. |
-| **Shell width** | Below 700 dp there is no toolbar and no command palette. | Open. Settings → Automation reaches a phone, but §4 has nothing to offer it yet. |
-| **Two panes** | "New task" reads the source from the active pane and the destination from the other, so it refuses unless a dual-pane layout is arranged (`ui/tasks_panel.dart`). | Open — the From/To picker is the next piece. |
+| **Advanced mode** (`state/advanced_mode.dart`, default **off**) | The toolbar and command-palette doors to Saved tasks are behind `if (advanced)` (`ui/home_screen.dart`). | **Closed.** Settings → Automation is ungated and opens the panel, and nothing on the path from there to a saved, scheduled task reads advanced mode. The two old doors still exist for people who already use them. |
+| **Two panes** | "New task" used to read the source from the active pane and the destination from the other, and refuse if either was empty. | **Closed.** `ui/from_to_picker.dart` asks for both ends directly; the panes now only pre-fill it. |
+| **Shell width** | Below 700 dp there is no toolbar and no command palette. | **Bypassed** — Settings reaches a phone. But see the caveat below, and §4: there is no background execution on mobile to schedule *into* yet. |
 
-Until the rest lands, creating one is: **Settings → Advanced mode → on**, arrange two panes, then
-**Saved tasks → New task**.
+> **The remaining mobile blocker is not scheduling.** `ui/transfer_options_dialog.dart` is a
+> hard-coded `SizedBox(width: 720, height: 560)` rather than the shared `DialogBody`, and overflows
+> by 115 px at 375×812 (measured 2026-09-09). Everything either side of it fits; that one dialog is
+> what stops the chain on a phone.
 
 ### 1.1 One place decides what "scheduled" means
 
@@ -153,8 +155,8 @@ resumes it (`state/scheduler_pause.dart`).
 - **No background execution on macOS or Linux** (launchd / systemd-user: v0.8 Phase D).
 - **No background execution on mobile.** Android WorkManager is v0.8 Phase F; iOS background
   execution is explicitly out of scope.
-- **No way to create a task on a phone-sized shell** — Settings → Automation is reachable there and
-  tells the truth about it, but there is nothing behind it to schedule yet.
+- **No way to create a task on a phone-sized shell** — not because of scheduling, but because the
+  transfer options dialog does not fit (see §1). And nothing to schedule into if it did.
 - **No cron**, no filesystem watcher, no event triggers.
 - **No definition-time acknowledgement** that a repeating Sync is destructive, and **no refusal to
   run against a source that resolves empty**. Both are open items in Phase B of the plan; the cap
@@ -173,7 +175,9 @@ resumes it (`state/scheduler_pause.dart`).
 | Windows registration | `state/windows_task_scheduler.dart` |
 | Headless entry point and exit codes | `headless/headless_runner.dart` |
 | Tasks dialog, schedule editor, paused banner, Settings → Automation | `ui/tasks_panel.dart` |
+| From/To picker (replaces the two-pane requirement) | `ui/from_to_picker.dart` |
 
 Tests: `test/scheduler_tick_test.dart`, `test/schedule_test.dart`,
 `test/scheduling_policy_test.dart`, `test/scheduler_delete_cap_test.dart`,
-`test/scheduler_pause_ui_test.dart`, `test/windows_task_scheduler_test.dart`.
+`test/scheduler_pause_ui_test.dart`, `test/from_to_picker_test.dart`,
+`test/windows_task_scheduler_test.dart`.

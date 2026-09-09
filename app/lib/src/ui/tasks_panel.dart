@@ -18,6 +18,7 @@ import '../state/transfer_options.dart';
 import '../state/transfer_service.dart';
 import '../state/windows_task_scheduler.dart';
 import 'dialog_body.dart';
+import 'from_to_picker.dart';
 import 'theme/tokens.dart';
 import 'transfer_options_dialog.dart';
 
@@ -178,29 +179,29 @@ class _TasksDialog extends ConsumerWidget {
     ),
   );
 
+  /// New task: pick From and To, then options, then a name.
+  ///
+  /// This used to read the two browser panes and refuse if either was empty,
+  /// which made "save a task" depend on a layout the user had to arrange first
+  /// - and made it impossible on any shell that has no second pane. The panes
+  /// now only SEED the picker; they are no longer a requirement.
   Future<void> _newTask(BuildContext context, WidgetRef ref) async {
     final active = ref.read(activePaneProvider);
-    final src = ref.read(paneProvider(active));
-    final dst = ref.read(paneProvider(active == 0 ? 1 : 0));
-    final messenger = ScaffoldMessenger.of(context);
-    if (src.remote == null) {
-      messenger.showSnackBar(
-        const SnackBar(
-          content: Text('Open a source remote in the active pane first.'),
-        ),
-      );
-      return;
-    }
-    if (dst.remote == null) {
-      messenger.showSnackBar(
-        const SnackBar(
-          content: Text('Open a destination remote in the OTHER pane first.'),
-        ),
-      );
-      return;
-    }
-    final srcLabel = '${src.remote!.name}:${src.path}';
-    final dstLabel = '${dst.remote!.name}:${dst.path}';
+    final srcPane = ref.read(paneProvider(active));
+    final dstPane = ref.read(paneProvider(active == 0 ? 1 : 0));
+    final picked = await showFromToPicker(
+      context,
+      src: srcPane.remote == null
+          ? null
+          : (remote: srcPane.remote!, path: srcPane.path),
+      dst: dstPane.remote == null
+          ? null
+          : (remote: dstPane.remote!, path: dstPane.path),
+    );
+    if (picked == null || !context.mounted) return;
+
+    final srcLabel = '${picked.src.remote.name}:${picked.src.path}';
+    final dstLabel = '${picked.dst.remote.name}:${picked.dst.path}';
     final options = await showTransferOptionsDialog(
       context,
       fromLabel: srcLabel,
@@ -215,9 +216,9 @@ class _TasksDialog extends ConsumerWidget {
           TransferTask(
             id: TransferTask.newId(),
             name: name,
-            srcFs: '${src.remote!.fs}${src.path}',
+            srcFs: '${picked.src.remote.fs}${picked.src.path}',
             srcLabel: srcLabel,
-            dstFs: '${dst.remote!.fs}${dst.path}',
+            dstFs: '${picked.dst.remote.fs}${picked.dst.path}',
             dstLabel: dstLabel,
             options: options,
           ),
