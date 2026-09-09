@@ -380,14 +380,26 @@ jobs:
             echo '</dict></plist>'
           } > "$RUNNER_TEMP/export.plist"
           echo "--- export options ---"; cat "$RUNNER_TEMP/export.plist"
+          # -allowProvisioningUpdates and the API key go ONLY to the automatic
+          # experiment. They used to be passed on every mode, including the
+          # default. That flag is what authorises Xcode to create signing assets
+          # on the fly, and it is how ten certificates piled up against Apple's
+          # per-team cap before anyone noticed. `secrets` and `ephemeral` sign
+          # manually, from an identity already in the keychain with a profile
+          # already on disk - they need neither. mas-release.yml dropped these
+          # for the same reason; this lane had not caught up.
+          if [ "${{ inputs.signing }}" = "automatic" ]; then
+            set -- -allowProvisioningUpdates \
+              -authenticationKeyPath "$HOME/.appstoreconnect/private_keys/AuthKey_${KEY_ID}.p8" \
+              -authenticationKeyID "$KEY_ID" \
+              -authenticationKeyIssuerID "$ISSUER"
+          else
+            set --
+          fi
           xcodebuild -exportArchive \
             -archivePath "$RUNNER_TEMP/Airclone.xcarchive" \
             -exportPath "$RUNNER_TEMP/export" \
-            -exportOptionsPlist "$RUNNER_TEMP/export.plist" \
-            -allowProvisioningUpdates \
-            -authenticationKeyPath "$HOME/.appstoreconnect/private_keys/AuthKey_${KEY_ID}.p8" \
-            -authenticationKeyID "$KEY_ID" \
-            -authenticationKeyIssuerID "$ISSUER"
+            -exportOptionsPlist "$RUNNER_TEMP/export.plist" "$@"
           ls -lh "$RUNNER_TEMP/export"
 
       - uses: actions/upload-artifact@v6

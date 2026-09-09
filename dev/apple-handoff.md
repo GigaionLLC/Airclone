@@ -193,7 +193,7 @@ the version they signed is live.
 | Certificate | Signed | State |
 | :--- | :--- | :--- |
 | `YQF53PS6AW` | 0.6.8 build 118 | ✅ **revoked 2026-09-05** (0.6.8 was live) |
-| `3NWQMKV4UB` | 0.7.4 build 122 | ⛔ **do not revoke** while 0.7.5 is in review — see below |
+| `3NWQMKV4UB` | 0.7.4 build 122 | ✅ **revoked 2026-09-09** (0.7.5 live on both; 122 never shipped) |
 | `YDG7JN3B33` | the STORED identity, all future releases | ⛔ **never revoke** while it is in the secrets |
 
 Revoking no longer needs a machine with the `.p8` on it: CI already holds the key
@@ -202,18 +202,23 @@ typed twice and checked before the key is even written to disk. A live app is
 unaffected by revoking the certificate that signed it; a build still in review is
 not.
 
-⚠️ **The old condition on `3NWQMKV4UB` — "until 0.7.4 is live" — can never be
-met.** 0.7.4 was renamed to 0.7.5 rather than shipped, and 0.7.5 carries build
-**123**, not the 122 this certificate signed. So 122 is attached to nothing and
-will never ship, which reads like "safe to revoke now".
+**Three DEVELOPMENT certificates are still outstanding** — `K9HRGKWVT4`,
+`QF79989974`, `LN52H3LGTM`, all minted by the old per-run flow. They sign nothing
+that ships (a development certificate cannot sign an App Store build) and their
+private keys were discarded by the jobs that made them, so they can sign nothing
+at all. They cost only slots against the cap. Clear them with
+`apple-revoke-cert.yml` when convenient; nothing depends on the order.
 
-**Do not act on that reasoning while 0.7.5 is in review.** The cost of being
-wrong is not symmetric: revoking early is what returned INVALID BINARY on the
-first iOS submission, minutes after Add for Review, and it cannot be undone —
-whereas waiting costs nothing but a slot against a cap that is not currently
-full. Revisit once 0.7.5 is **live on both platforms**, and revoke only after
-confirming with `asc_ios_signing.py --list-certs` which id signs the shipped
-build.
+**How the 2026-09-09 revoke was decided, since the reasoning is the reusable
+part.** The old note said to revoke `3NWQMKV4UB` "once 0.7.4 is live" — a
+condition that could never be met, because 0.7.4 was renamed to 0.7.5 rather
+than shipped and 0.7.5 carries build **123**, not the 122 that certificate
+signed. A rule that cannot be satisfied gets read as "no longer applies", which
+is the dangerous failure mode: revoking early is what returned INVALID BINARY on
+the first iOS submission, minutes after Add for Review. The safe formulation is
+the one that was actually used — wait until the version is **live**, confirm with
+`asc_ios_signing.py --list-certs` which id signs the shipped build, and only then
+revoke. Both platforms read `READY_FOR_SALE` before this one went.
 
 ## Rules that are not negotiable here
 
