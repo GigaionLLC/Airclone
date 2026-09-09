@@ -48,6 +48,7 @@ import 'inspector_panel.dart';
 import 'jobs_dock.dart';
 import 'mobile_home.dart';
 import 'mount_panel.dart';
+import 'overflow_name.dart';
 import 'pane_drag.dart';
 import 'pane_split.dart';
 import 'paste_action.dart';
@@ -1421,12 +1422,16 @@ class _RemoteTile extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
+                  OverflowName(
                     remote.name,
-                    overflow: TextOverflow.ellipsis,
                     style: TextStyle(
                       color: fg,
                       fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                    ),
+                    overflowStyle: TextStyle(
+                      color: fg,
+                      fontSize: 11,
                       fontWeight: FontWeight.w600,
                     ),
                   ),
