@@ -190,6 +190,40 @@ Future<MergeReport> mergeRemotes({
   return MergeReport(created: created, replaced: replaced, failed: failed);
 }
 
+/// Deletes every remote in [names] through the live RC seam, one
+/// `config/delete` at a time, after [backup] has snapshotted the config.
+///
+/// Separate from [replaceViaRcd]'s prune phase because the intent is different:
+/// that one removes what an import made stale, this one is the user asking to
+/// start over. Same discipline though — back up FIRST (this is the single most
+/// destructive thing the app can do to a config, and the backup is the whole
+/// reason it is offerable at all), then attempt every remote independently so
+/// one failure cannot strand the rest half-deleted with no report.
+///
+/// Pure of Riverpod/engine wiring so the ordering and the per-remote reporting
+/// are unit-tested with a fake client.
+Future<({List<String> deleted, List<({String name, String error})> failed})>
+deleteAllRemotes({
+  required RcloneClient client,
+  required List<String> names,
+  required Future<void> Function() backup,
+}) async {
+  await backup();
+  final deleted = <String>[];
+  final failed = <({String name, String error})>[];
+  for (final name in names) {
+    try {
+      await client.rpc('config/delete', {'name': name});
+      deleted.add(name);
+    } on RcloneException catch (e) {
+      failed.add((name: name, error: e.message));
+    } catch (e) {
+      failed.add((name: name, error: '$e'));
+    }
+  }
+  return (deleted: deleted, failed: failed);
+}
+
 /// Applies a REPLACE through the live RC seam instead of a raw file write: create
 /// every incoming remote, then delete every existing remote that isn't in the
 /// incoming set, all via [client] (`config/create` + `config/delete`). This is
@@ -472,6 +506,37 @@ class ConfigTransferController {
 
   /// Merge apply: back up the active config, then `config/create` per decision.
   /// Returns the per-remote [MergeReport] and refreshes the remotes list.
+  /// Removes EVERY configured remote, after backing the config up.
+  ///
+  /// The one-by-one delete offered in the sidebar is fine for a mistake and
+  /// hopeless for a clean slate — this user had sixteen remotes, half of them
+  /// from a config they no longer wanted. Fails closed exactly like
+  /// [applyMerge]: with no locatable config file there is no backup, and without
+  /// a backup this is unrecoverable, so it refuses rather than proceeding.
+  Future<({List<String> deleted, List<({String name, String error})> failed})>
+  removeAllRemotes() async {
+    final client = _client;
+    if (client == null) {
+      throw const ConfigTransferError('The engine is not ready.');
+    }
+    final backups = await _ref.read(configBackupsProvider.future);
+    final active = await _activeConfigFile();
+    if (active == null) {
+      throw const ConfigTransferError(
+        "Couldn't locate the active config file to back up before removing "
+        'your remotes.',
+      );
+    }
+    final model = await activeConfigModel();
+    final result = await deleteAllRemotes(
+      client: client,
+      names: model.keys.toList(),
+      backup: () => backups.backupActiveConfig(active).then((_) {}),
+    );
+    _ref.invalidate(remotesProvider);
+    return result;
+  }
+
   Future<MergeReport> applyMerge(
     ConfigModel incoming,
     List<ImportDecision> plan,

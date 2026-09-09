@@ -42,6 +42,7 @@ import 'dialog_body.dart';
 import 'external_backup_dialogs.dart';
 import 'mount_options_editor.dart';
 import 'offline_qr_dialog.dart';
+import 'remove_all_remotes.dart';
 import 'scan_from_desktop_sheet.dart';
 import 'theme/tokens.dart';
 
@@ -1032,6 +1033,20 @@ class _ConfigToolsHookState extends ConsumerState<_ConfigToolsHook> {
               style: OutlinedButton.styleFrom(
                 foregroundColor: c.text,
                 side: BorderSide(color: c.borderStrong),
+                visualDensity: VisualDensity.compact,
+              ),
+            ),
+            // Danger-styled, and last. It belongs with the config actions
+            // because the backup it takes first is what makes starting over
+            // recoverable — but it is the only button here that removes
+            // anything, so it must not look like its neighbours.
+            OutlinedButton.icon(
+              onPressed: () => showRemoveAllRemotesDialog(context, ref),
+              icon: const Icon(Icons.delete_sweep_outlined, size: 16),
+              label: const Text('Remove all remotes'),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: c.error,
+                side: BorderSide(color: c.error.withValues(alpha: 0.5)),
                 visualDensity: VisualDensity.compact,
               ),
             ),
