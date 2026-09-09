@@ -117,6 +117,43 @@ Save. Listing edits do **not** require a new AAB and can ship independently of a
 - Complete the account-level **Data safety** form and **content rating** questionnaire (required for
   production) if not already done.
 
+## Android developer verification — both signing keys must be registered
+
+Google's requirement (announced 2026-07-15): every package distributed on Android must be registered
+by **2026-09-30**, together with **every key it is signed with — including keys used outside Play**.
+Play auto-registered our package on 2026-07-10, but auto-registration only covers the key *Play
+itself* distributes with. Airclone ships through **two** certificates:
+
+| Certificate | SHA-256 | Signs |
+| :--- | :--- | :--- |
+| Play **app signing** key (Google-managed) | `C7:66:4C:7D:34:1B:6A:6A:79:F5:02:02:59:4C:39:3D:CB:12:BB:5B:65:DE:4A:9D:27:53:8E:7E:65:BE:E5:2E` | what a **Play** install carries — Play re-signs the AAB server-side |
+| **Upload** key = the release keystore | `FA:32:10:49:80:AF:70:95:A7:D7:55:8B:D9:F7:F7:D5:5A:BA:04:A2:75:A9:5E:B7:05:71:EB:08:02:33:17:ED` | the AAB we upload **and every APK on the GitHub release** |
+
+The second is the easy miss. `release.yml` signs the per-ABI and universal APKs with the upload key, so
+a **sideloaded** install carries a certificate Play never sees — exactly the "additional keys for your
+Play apps that you use to sign them outside of Play" the Console banner asks for. Registered by hand on
+**2026-09-09**: Play Console → **Android developer verification** → the package row → **Add key**, paste
+the SHA-256. Fingerprint only — no PEM upload. A newly added key sits at **In review** before it flips
+to **Verified**.
+
+Reading the fingerprints back, when you need to check rather than trust:
+
+- Upload key, from the keystore: `keytool -list -v -keystore <keystore> -alias <alias>` (credentials in
+  `dev/secrets/`, never in the repo).
+- What a shipped APK **actually** carries: `apksigner verify --print-certs <apk>` — the honest check,
+  since it reads the artifact users install rather than the key we think CI used.
+- Both, from Play: Console → the app → **Protected with Play** → **App signing**. The page shows the
+  upload certificate directly; the app-signing SHA-256 is in the Digital Asset Links snippet at the
+  bottom. (The old **Test and release → App integrity** entry now just redirects here.)
+
+Enforcement is staged — participating stores on certified devices in Brazil, Indonesia, Singapore and
+Thailand from 2026-09-30, global from 2027 — but the **registration** deadline is the same date for
+everyone, so there is no version of this worth deferring.
+
+**If the upload key is ever reset** (Console offers "Request upload key reset"), the replacement
+fingerprint has to be registered here too, or GitHub-installed builds silently fall out of
+verification. Same for any future channel that re-signs our APKs, e.g. an F-Droid build.
+
 ## Gotchas
 
 - **versionCode must strictly increase** — the #1 cause of a failed upload.
