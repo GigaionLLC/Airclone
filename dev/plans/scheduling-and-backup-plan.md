@@ -579,9 +579,43 @@ incoherent.
   **before** shipping; surface the linger requirement.
 - `[ ]` **E — Backup as a first-class task `[M]`.** `TaskKind`; the constrained
   flow; backup vocabulary in the panel.
-- `[ ]` **F — Android background + photo backup `[L]`.** Application-scoped
-  channel first; WorkManager + `setForeground`; DCIM backup task; correct the
-  `BOOT_COMPLETED` guidance in the backlog.
+- `[~]` **F — Android background + photo backup `[L]`.** Landed 2026-09-09,
+  uncommitted:
+  - `[x]` **Application-scoped `airclone/native` channel** — `NativeChannel.kt`,
+    built on the application `Context` with the Activity as an optional
+    provider; `MainActivity` registers it and a worker registers the same
+    handler on its own headless engine. `AircloneApplication` also tracks
+    whether an Activity is on screen.
+  - `[x]` **WorkManager periodic wake** — our own `DueTasksWorker.kt`
+    (`CoroutineWorker`, no `workmanager` plugin): boots a second
+    `FlutterEngine`, runs `androidWorkEntrypoint` →
+    `runHeadlessInProcess(--run-due)`, promotes itself via `setForeground()`
+    reusing `TransferService`'s notification channel, yields when the app is on
+    screen (the in-app scheduler owns due tasks then), and stamps its outcome
+    for Settings. `WorkChannel.kt` + `state/android_work_channel.dart`
+    enqueue/update/cancel the one unique request; `android_work_registration.dart`
+    is the pure rule + reconciler (force-read from HomeScreen).
+  - `[x]` **Constraints as settings** — `android_work_settings.dart`: Wi-Fi-only
+    (default ON) and charging (default OFF); Settings → Automation →
+    "Background on this phone".
+  - `[x]` **Camera-roll backup** — `state/photo_backup.dart` +
+    `ui/photo_backup_section.dart`: a set of folders under internal storage
+    (DCIM default, add via the in-app folder picker — never SAF), mirrored into
+    `remote:Airclone/Photos/<device>/`, videos on their own toggle, copy-only
+    via `backupOptions`, `runWhileClosed: true`. Rules are an ORDERED
+    `--filter` list (video excludes, then folder includes, then `- **`) — a
+    mixed include/exclude would let the include win first.
+  - `[x]` **Headless path now enforces what the in-app path does** —
+    `headless_runner.dart` applies `backupOptions` / `withScheduledDeleteCap`
+    and the empty-source refusal; it used to dispatch raw options.
+  - `[x]` `BOOT_COMPLETED` guidance corrected in `dev/backlog/feature-backlog.md`
+    and `dev/plans/phase3-continuation-plan.md`.
+  - `[ ]` `scheduling_policy.dart` still says Android is `none` — Settings →
+    Automation's sentence and the "Also run while closed" checkbox do not know
+    the platform can run in the background yet (owned elsewhere; see the
+    Phase F report).
+  - `[ ]` Battery-optimisation state detection and explanation (never the
+    exemption request).
 
 **Explicitly not doing in v0.8:** cron; iOS background execution; iOS photo
 backup; `DocumentsProvider` / File Provider; a filesystem watcher; deleting source

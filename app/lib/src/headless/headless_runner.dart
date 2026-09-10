@@ -8,10 +8,13 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../state/config_password_vault.dart';
 import '../state/engine_controller.dart';
 import '../state/engine_flags.dart';
+import '../state/file_ops.dart';
 import '../state/jobs_controller.dart';
 import '../state/scheduler_controller.dart';
 import '../state/settings_controller.dart';
+import '../state/task_kind.dart';
 import '../state/tasks_controller.dart';
+import '../state/transfer_options.dart';
 import '../state/transfer_service.dart';
 
 /// The headless background entrypoint: `airclone --run-task <id>` runs one saved
@@ -154,6 +157,26 @@ class HeadlessTaskResult {
 
 // --- Runtime entrypoint (engine + process; not unit-tested) ------------------
 
+/// What a headless run produced: the exit [code], the one-line-per-task
+/// [summary] (stdout on desktop), and any [diagnostics] explaining a run that
+/// could not start or was cut short (stderr on desktop).
+///
+/// Returned rather than printed because the run does not always own a process
+/// whose stdout anyone reads: on Android it happens inside a WorkManager
+/// isolate, where the lines go back over a channel into logcat and Settings.
+@immutable
+class HeadlessOutcome {
+  const HeadlessOutcome({
+    required this.code,
+    required this.summary,
+    required this.diagnostics,
+  });
+
+  final int code;
+  final List<String> summary;
+  final List<String> diagnostics;
+}
+
 /// Boots a headless run for [args] and exits the process. Owns its own
 /// [WidgetsFlutterBinding] (plugins — path_provider / shared_preferences /
 /// flutter_secure_storage — need it) but never calls `runApp`: there is no
@@ -162,10 +185,29 @@ class HeadlessTaskResult {
 /// sequence has no window to tint and hangs before the first frame on mobile;
 /// see cc9d330 and `window_backdrop.dart`).
 Future<void> runHeadless(List<String> args) async {
+  final outcome = await runHeadlessInProcess(args);
+  for (final line in outcome.diagnostics) {
+    stderr.writeln(line);
+  }
+  for (final line in outcome.summary) {
+    stdout.writeln(line);
+  }
+  exit(outcome.code);
+}
+
+/// [runHeadless] without the `exit()`: the same engine boot, selection, run and
+/// cleanup, handing back what happened instead of ending the process.
+///
+/// This is the entrypoint a WorkManager worker uses (android_work_entrypoint.dart).
+/// It runs in a second Flutter engine inside the SAME OS process as the app, so
+/// calling `exit()` there would take the whole app down with it — the
+/// foreground Activity included, if the user happens to be in it.
+Future<HeadlessOutcome> runHeadlessInProcess(List<String> args) async {
   WidgetsFlutterBinding.ensureInitialized();
   final request = parseHeadlessArgs(args);
   final container = ProviderContainer();
   final summary = <String>[];
+  final diagnostics = <String>[];
   var code = kExitCannotStart;
   try {
     // Wrap the WHOLE run — engine boot included — under one outer deadline. The
@@ -180,44 +222,46 @@ Future<void> runHeadless(List<String> args) async {
       container,
       request,
       summary,
+      diagnostics,
     ).timeout(request.timeout + const Duration(minutes: 2));
   } on TimeoutException {
-    stderr.writeln(
+    diagnostics.add(
       'airclone: headless run exceeded its wall-clock cap (engine boot or '
       'dispatch wedged) — aborting.',
     );
     code = kExitFailed;
   } catch (e, s) {
-    stderr.writeln('airclone: headless run crashed: $e\n$s');
+    diagnostics.add('airclone: headless run crashed: $e\n$s');
     code = kExitCannotStart;
   } finally {
-    // Always stop the engine we may have spawned (a no-op if it never started),
-    // then flush the one-line-per-task summary to stdout before we exit.
+    // Always stop the engine we may have spawned (a no-op if it never started).
     try {
       await container.read(engineControllerProvider).client?.quit();
     } catch (_) {
       /* best-effort shutdown */
     }
-    for (final line in summary) {
-      stdout.writeln(line);
-    }
     container.dispose();
   }
-  exit(code);
+  return HeadlessOutcome(
+    code: code,
+    summary: summary,
+    diagnostics: diagnostics,
+  );
 }
 
-/// The body of [runHeadless], returning an exit code and appending summary
-/// lines. Split out so the finally in [runHeadless] owns cleanup regardless of
-/// which branch returns.
+/// The body of [runHeadlessInProcess], returning an exit code and appending
+/// summary and diagnostic lines. Split out so the finally in the caller owns
+/// cleanup regardless of which branch returns.
 Future<int> _runHeadless(
   ProviderContainer container,
   HeadlessRequest request,
   List<String> summary,
+  List<String> diagnostics,
 ) async {
   // A bare `--run-task` with no id can't target anything — fail before we pay
   // for an engine start (bad task id → 2).
   if (!request.runDue && request.taskId == null) {
-    stderr.writeln('airclone: $kRunTaskFlag requires a task id.');
+    diagnostics.add('airclone: $kRunTaskFlag requires a task id.');
     return kExitCannotStart;
   }
 
@@ -265,7 +309,7 @@ Future<int> _runHeadless(
         if (t.id == request.taskId) t,
     ];
     if (match.isEmpty) {
-      stderr.writeln('airclone: no saved task with id "${request.taskId}".');
+      diagnostics.add('airclone: no saved task with id "${request.taskId}".');
       return kExitCannotStart;
     }
     selected = match;
@@ -274,7 +318,7 @@ Future<int> _runHeadless(
   // There is work to do — bring the engine up now.
   final startError = await _startEngine(container);
   if (startError != null) {
-    stderr.writeln('airclone: $startError');
+    diagnostics.add('airclone: $startError');
     return kExitCannotStart;
   }
 
@@ -360,12 +404,42 @@ Future<int> _runSelected(
       // Stamp lastRun before dispatch (mirrors SchedulerController.tick) so a
       // later --run-due can't treat this slot as still pending.
       tasksCtrl.update(t.copyWith(lastRun: now));
+      // The same guard the in-app scheduler applies before a scheduled Sync
+      // (SchedulerController._sourceIsUnsafe): a source that lists empty or
+      // will not list at all is refused, because a Sync would delete the
+      // destination to match it. This path is unattended by definition, so
+      // "could not read the source" cannot be handed to a human to decide.
+      if (await _sourceIsUnsafe(container, t)) {
+        tasksCtrl.recordRun(
+          t.id,
+          TaskRunRecord(
+            at: DateTime.now(),
+            ok: false,
+            error: kEmptySourceRefusal,
+            duration: Duration.zero,
+          ),
+        );
+        results[t.id] = HeadlessTaskResult(
+          taskId: t.id,
+          name: t.name,
+          ok: false,
+          error: kEmptySourceRefusal,
+        );
+        return;
+      }
       final jobId = await svc.transferAdvancedRaw(
         srcFs: t.srcFs,
         dstFs: t.dstFs,
         srcLabel: t.srcLabel,
         dstLabel: t.dstLabel,
-        options: t.options,
+        // Enforced at run time exactly as SchedulerController._runAndRecord
+        // does, and for the same reason: a task saved before a constraint
+        // existed, or edited through the raw advanced dialog, must not run as
+        // something other than what its name says. A backup is copy-only with
+        // versions kept; a repeating Sync never runs uncapped.
+        options: t.kind == TaskKind.transfer
+            ? withScheduledDeleteCap(t.options)
+            : backupOptions(t.options),
       );
       // Reuse the scheduler's supervisor verbatim: it polls the job to terminal
       // and appends exactly one [TaskRunRecord] to the task's capped history.
@@ -431,6 +505,22 @@ Future<int> _runSelected(
     summary.add(r.summaryLine);
   }
   return exitCodeForRun([for (final r in ordered) r.ok], timedOut: timedOut);
+}
+
+/// Whether a headless run of [t] must be refused because its source has
+/// stopped answering the way a real folder does. Mirrors
+/// `SchedulerController._sourceIsUnsafe` (private there): only a one-way Sync
+/// of a plain transfer is checked, since only that deletes at the destination
+/// to match its source; a backup is copy-only by construction. Unreadable
+/// counts as unsafe.
+Future<bool> _sourceIsUnsafe(
+  ProviderContainer container,
+  TransferTask t,
+) async {
+  if (t.kind != TaskKind.transfer) return false;
+  if (t.options.mode != TransferMode.sync) return false;
+  final empty = await container.read(fileOpsProvider).isRootEmpty(t.srcFs);
+  return empty ?? true;
 }
 
 /// The newest [TaskRunRecord] for [id] (history is newest-first), or null when

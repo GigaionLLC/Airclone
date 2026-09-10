@@ -16,33 +16,60 @@ import android.os.IBinder
 /// of this app — so without this, backgrounding the app stalls every
 /// transfer. Type dataSync, with a live progress notification; started,
 /// updated, and stopped from Dart over the airclone/native channel.
+///
+/// The channel and the notification are exposed on the companion so the
+/// WorkManager worker (DueTasksWorker.kt) can promote ITSELF to the foreground
+/// with the same look. It cannot start this service — Android 12+ forbids a
+/// background start — but it can borrow the notification.
 class TransferService : Service() {
     companion object {
         const val CHANNEL_ID = "transfers"
         const val NOTIFICATION_ID = 1001
         const val EXTRA_TITLE = "title"
         const val EXTRA_TEXT = "text"
+
+        /// Idempotent: creating a channel that already exists is a no-op.
+        fun ensureChannel(context: Context) {
+            val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            manager.createNotificationChannel(
+                NotificationChannel(
+                    CHANNEL_ID,
+                    "Transfers",
+                    // Low importance: silent, no heads-up — it's a progress ticker.
+                    NotificationManager.IMPORTANCE_LOW
+                )
+            )
+        }
+
+        fun buildNotification(context: Context, title: String, text: String): Notification {
+            val tap = PendingIntent.getActivity(
+                context,
+                0,
+                context.packageManager.getLaunchIntentForPackage(context.packageName),
+                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+            )
+            return Notification.Builder(context, CHANNEL_ID)
+                .setSmallIcon(android.R.drawable.stat_sys_download)
+                .setContentTitle(title)
+                .setContentText(text)
+                .setContentIntent(tap)
+                .setOngoing(true)
+                .setOnlyAlertOnce(true)
+                .build()
+        }
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onCreate() {
         super.onCreate()
-        val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        manager.createNotificationChannel(
-            NotificationChannel(
-                CHANNEL_ID,
-                "Transfers",
-                // Low importance: silent, no heads-up — it's a progress ticker.
-                NotificationManager.IMPORTANCE_LOW
-            )
-        )
+        ensureChannel(this)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val title = intent?.getStringExtra(EXTRA_TITLE) ?: "Transferring files"
         val text = intent?.getStringExtra(EXTRA_TEXT) ?: ""
-        val notification = build(title, text)
+        val notification = buildNotification(this, title, text)
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 startForeground(
@@ -75,22 +102,5 @@ class TransferService : Service() {
 
     override fun onTimeout(startId: Int, fgsType: Int) {
         stopSelf()
-    }
-
-    private fun build(title: String, text: String): Notification {
-        val tap = PendingIntent.getActivity(
-            this,
-            0,
-            packageManager.getLaunchIntentForPackage(packageName),
-            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
-        )
-        return Notification.Builder(this, CHANNEL_ID)
-            .setSmallIcon(android.R.drawable.stat_sys_download)
-            .setContentTitle(title)
-            .setContentText(text)
-            .setContentIntent(tap)
-            .setOngoing(true)
-            .setOnlyAlertOnce(true)
-            .build()
     }
 }

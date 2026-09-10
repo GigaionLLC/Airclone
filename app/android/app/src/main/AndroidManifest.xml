@@ -1,4 +1,5 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
     <!-- Cloud remotes: the bundled rclone engine talks to storage providers. -->
     <uses-permission android:name="android.permission.INTERNET"/>
     <!-- Scanning the desktop's "Send to phone" QR (config-portability plan §5).
@@ -38,9 +39,13 @@
          loopback, where the on-device rclone engine serves file bytes. Android's
          media stack (MediaMetadataRetriever, used for video thumbnails) enforces
          this policy even for 127.0.0.1 and silently reads nothing without it. -->
+    <!-- AircloneApplication (not Flutter's default ${applicationName}): the
+         airclone/native channel is Application-scoped so a WorkManager worker's
+         headless engine can reach nativeLibraryDir, and the Application is what
+         tells that worker whether the app is on screen. -->
     <application
         android:label="airclone"
-        android:name="${applicationName}"
+        android:name=".AircloneApplication"
         android:icon="@mipmap/ic_launcher"
         android:banner="@drawable/tv_banner"
         android:allowBackup="false"
@@ -93,6 +98,14 @@
             android:name=".TransferService"
             android:exported="false"
             android:foregroundServiceType="dataSync" />
+        <!-- WorkManager's own foreground service, which DueTasksWorker promotes
+             itself into via setForeground(). Android 14+ requires the type to be
+             declared on THIS service, not just ours; tools:node="merge" adds the
+             attribute to the entry the library already declares. -->
+        <service
+            android:name="androidx.work.impl.foreground.SystemForegroundService"
+            android:foregroundServiceType="dataSync"
+            tools:node="merge" />
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
         <meta-data

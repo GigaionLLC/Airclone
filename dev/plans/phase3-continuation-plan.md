@@ -40,10 +40,16 @@ saved task now runs with Airclone closed. What is left is the other two desktop 
    "Deliberately deferred" below before touching it: the orphaned-task self-heal is still open, and
    an orphan re-fires forever.
 3. **macOS launchd / Linux systemd-user timers** (`Persistent=true` gives catch-up) — ~1–2 days each.
-4. **Android**: `workmanager` plugin + headless isolate; requires moving `nativeLibraryDir` + FGS
-   channel from MainActivity to an Application-scoped channel so a background isolate can exec
-   `librclone.so`; reuse `TransferService.kt` as the long-running worker; battery-optimization UX.
-   ~1–2 weeks.
+4. ~~**Android**: `workmanager` plugin + headless isolate~~ **DONE (v0.8 Phase F)**, without the
+   plugin: `app/android/.../DueTasksWorker.kt` is our own `CoroutineWorker` that boots a headless
+   `FlutterEngine` and runs `androidWorkEntrypoint` (`state/android_work_entrypoint.dart` →
+   `runHeadlessInProcess`). The prerequisite landed first — the `airclone/native` channel moved
+   out of `MainActivity` into the Application-scoped `NativeChannel.kt`, which the worker registers
+   on its own engine so `nativeLibraryDir` resolves with no Activity. `TransferService.kt` lends its
+   notification channel to the worker's `setForeground()` rather than being started from the
+   background (Android 12+ forbids that). No `BOOT_COMPLETED` receiver: WorkManager re-arms itself
+   after a reboot. Battery-optimization UX is still open — and must NOT request
+   `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` (Play policy); detect and explain instead.
 5. ~~**Cross-cutting prerequisite**: encrypted-config headless unlock~~ **DONE** — the config
    password comes from the OS vault (DPAPI / Keychain / Secret Service), opt-in, with
    `headless_runner.dart` falling back to an explicit vault read when the engine's own silent unlock

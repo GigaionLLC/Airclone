@@ -112,6 +112,14 @@ kotlin {
     }
 }
 
+dependencies {
+    // Background execution of scheduled tasks (DueTasksWorker.kt): one periodic
+    // request that boots a headless Flutter engine and runs `--run-due`. The
+    // -ktx artifact brings CoroutineWorker + setForeground(). 2.9+ is needed
+    // for WorkInfo.nextScheduleTimeMillis, which Settings shows as "next poll".
+    implementation("androidx.work:work-runtime-ktx:2.10.1")
+}
+
 flutter {
     source = "../.."
 }

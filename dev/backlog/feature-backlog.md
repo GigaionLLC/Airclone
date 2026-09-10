@@ -160,9 +160,14 @@ PREPARE_FOR_SUBMISSION):**
   real Task Scheduler job via `schtasks /Create /XML`, so a schedule fires with the app closed.
   `ui/tasks_panel.dart` gates the offer on `Platform.isWindows` (`_canOsSchedule`) and blocks it when the
   config is encrypted with no stored password, because every fire would otherwise exit 2 silently.
-  **Still open:** the macOS (`launchd`), Linux (`systemd --user` timer) **and Android**
-  (WorkManager + a `BOOT_COMPLETED` receiver) equivalents — `ui/tasks_panel.dart` gates the whole
-  feature on `Platform.isWindows`, so Android is as unbuilt as the other two.
+  **Android is built (v0.8 Phase F):** one `PeriodicWorkRequest` (`app/android/.../DueTasksWorker.kt`,
+  driven from `state/android_work_registration.dart`) boots a headless Flutter engine and runs the
+  same `--run-due` path, promoted to the foreground through WorkManager's `setForeground()` and
+  reusing `TransferService`'s notification. **There is deliberately NO `BOOT_COMPLETED` receiver** —
+  an earlier version of this entry called for one, and that was wrong: WorkManager persists its
+  requests and re-arms them after a reboot itself; a receiver of ours would be a second wakeup
+  source with nothing to add. **Still open:** the macOS (`launchd`) and Linux (`systemd --user`
+  timer) equivalents.
 - [x] **Run history** — `TaskRunRecord` (time · ok/failed · error · duration · bytes), newest-first and
   capped at 10, persisted with the task in `state/tasks_controller.dart`; `ui/tasks_panel.dart` shows the
   last outcome inline and the last five in a tooltip. **Cron is still open** — `ScheduleKind` is
@@ -323,10 +328,14 @@ Status verified against `app/lib` at v0.7.6. **✅ = built and in the shipping a
 - ⬜ `[M]` Android `DocumentsProvider` — verified absent (no `DOCUMENTS_PROVIDER` intent filter, no
   provider class). Remotes do **not** appear in the system Files app.
 - ⬜ `[M]` iOS File Provider extension — verified absent (no extension target in `app/ios/`).
-- ◐ `[M]` Foreground service **is built** — `TransferService.kt` with
+- ✅ `[M]` Foreground service **is built** — `TransferService.kt` with
   `android:foregroundServiceType="dataSync"`, which holds the process (and the engine child) alive
-  during a transfer. **Not built:** WorkManager scheduling and boot-resume (no `BOOT_COMPLETED`
-  receiver anywhere).
+  during a transfer. **WorkManager scheduling is built too** (v0.8 Phase F, `DueTasksWorker.kt`):
+  a periodic `--run-due` wake with Wi-Fi-only / charging constraints as settings, plus the
+  camera-roll photo backup on top of it (`state/photo_backup.dart`). Boot-resume needs no code of
+  ours — WorkManager re-arms its own requests after a reboot, and a `BOOT_COMPLETED` receiver (which
+  this entry used to ask for) would be redundant. Not requested on purpose:
+  `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` (Play policy).
 
 **App shell**
 - ⬜ `[D]` System tray + pinned quick actions — verified absent.

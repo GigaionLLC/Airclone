@@ -275,8 +275,15 @@ reporting rather than a configuration problem.
 ## 6. What this is not, yet
 
 - **No background execution on macOS or Linux** (launchd / systemd-user: v0.8 Phase D).
-- **No background execution on mobile.** Android WorkManager is v0.8 Phase F; iOS background
-  execution is explicitly out of scope.
+- **Android runs due tasks in the background; iOS does not.** On Android, one WorkManager
+  periodic request (15-minute floor, Wi-Fi-only by default, optionally charging-only — Settings →
+  Automation → "Background on this phone") wakes a headless engine that runs the same `--run-due`
+  selection. There are no exact-time triggers, so a daily task can start up to one wake late, and
+  Doze may hold a wake back. It reschedules itself across reboots — there is no `BOOT_COMPLETED`
+  receiver, on purpose. iOS background execution is explicitly out of scope.
+- **Camera-roll backup is Android-only** (`TaskKind.photos`, Settings → Automation → "Back up
+  your photos"): a set of folders under internal storage (DCIM by default), mirrored into
+  `remote:Airclone/Photos/<device>/`, copy only, videos on a separate toggle.
 - **No way to create a task on a phone-sized shell** — not because of scheduling, but because the
   transfer options dialog does not fit (see §1). And nothing to schedule into if it did.
 - **No cron**, no filesystem watcher, no event triggers.
@@ -295,6 +302,9 @@ reporting rather than a configuration problem.
 | Delete cap default and application | `state/transfer_options.dart` |
 | Circuit breaker state and error match | `state/scheduler_pause.dart` |
 | Windows registration | `state/windows_task_scheduler.dart` |
+| Android registration rule, reconciler, constraints | `state/android_work_registration.dart`, `state/android_work_settings.dart`, `state/android_work_channel.dart` |
+| Android background isolate (the `--run-due` of a WorkManager wake) | `state/android_work_entrypoint.dart`; native side `app/android/.../DueTasksWorker.kt`, `WorkChannel.kt`, `NativeChannel.kt` |
+| Photo backup model (folders → filter rules, destination, device folder) | `state/photo_backup.dart`; UI `ui/photo_backup_section.dart` |
 | Headless entry point and exit codes | `headless/headless_runner.dart` |
 | Tasks dialog, schedule editor, paused banner, Settings → Automation | `ui/tasks_panel.dart` |
 | From/To picker (replaces the two-pane requirement) | `ui/from_to_picker.dart` |

@@ -13,6 +13,7 @@ import '../rclone/rclone_client.dart';
 import '../state/advanced_mode.dart';
 import '../state/android_native.dart';
 import '../state/android_transfer_service.dart';
+import '../state/android_work_registration.dart';
 import '../state/app_info.dart';
 import '../state/bookmarks_controller.dart';
 import '../state/browser_controller.dart';
@@ -100,6 +101,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       ref.read(bookmarksProvider);
       // Android: foreground service keeps transfers alive when backgrounded.
       ref.read(transferForegroundServiceProvider);
+      // Android: keep WorkManager's periodic "run due tasks" wake in step with
+      // the saved tasks and the Wi-Fi/charging settings. No-op elsewhere.
+      ref.read(androidWorkReconcilerProvider);
       // Android: arm the outside-the-sandbox backup so it tracks config changes.
       // The restore OFFER is driven reactively from build(), not from here.
       ref.read(externalBackupProvider.notifier).ensureLoaded();
