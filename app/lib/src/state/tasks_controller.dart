@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'task_kind.dart';
 import 'task_schedule.dart';
 import 'transfer_options.dart';
 
@@ -95,6 +96,7 @@ class TransferTask {
     this.lastRun,
     this.history = const [],
     this.runWhileClosed = false,
+    this.kind = TaskKind.transfer,
   });
 
   /// Stable, per-task identity — the exact string a headless run targets
@@ -141,6 +143,14 @@ class TransferTask {
   /// silently acquiring a background registration.
   final bool runWhileClosed;
 
+  /// What this task IS — a raw transfer, a backup, or a photo backup.
+  ///
+  /// A discriminator rather than a subclass, so there stays one scheduler, one
+  /// run history and one set of safety guards. Defaults to
+  /// [TaskKind.transfer] and is omitted from JSON at that value, so every task
+  /// saved before this existed round-trips byte-identical.
+  final TaskKind kind;
+
   /// `schedule`/`lastRun` accept an explicit `null` to clear them (via the
   /// [_undef] sentinel) — `copyWith()` with neither keeps the current value.
   /// [id] is always preserved (identity never changes).
@@ -151,6 +161,7 @@ class TransferTask {
     Object? lastRun = _undef,
     List<TaskRunRecord>? history,
     bool? runWhileClosed,
+    TaskKind? kind,
   }) => TransferTask(
     id: id,
     name: name ?? this.name,
@@ -165,6 +176,7 @@ class TransferTask {
     lastRun: identical(lastRun, _undef) ? this.lastRun : lastRun as DateTime?,
     history: history ?? this.history,
     runWhileClosed: runWhileClosed ?? this.runWhileClosed,
+    kind: kind ?? this.kind,
   );
 
   Map<String, dynamic> toJson() => {
@@ -180,6 +192,7 @@ class TransferTask {
     if (lastRun != null) 'lastRun': lastRun!.toIso8601String(),
     if (history.isNotEmpty) 'history': [for (final r in history) r.toJson()],
     if (runWhileClosed) 'runWhileClosed': true,
+    if (kind != TaskKind.transfer) 'kind': kind.name,
   };
 
   factory TransferTask.fromJson(Map<String, dynamic> j) => TransferTask(
@@ -212,6 +225,12 @@ class TransferTask {
             .toList() ??
         const [],
     runWhileClosed: j['runWhileClosed'] == true,
+    // An unknown kind from a newer build reads as a plain transfer rather than
+    // throwing: the task still runs, it just loses its special vocabulary.
+    kind: TaskKind.values.firstWhere(
+      (k) => k.name == j['kind'],
+      orElse: () => TaskKind.transfer,
+    ),
   );
 }
 

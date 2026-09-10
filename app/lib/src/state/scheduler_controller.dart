@@ -11,6 +11,7 @@ import 'poll_cadence.dart';
 import 'jobs_controller.dart';
 import 'scheduler_pause.dart';
 import 'scheduler_registration.dart';
+import 'task_kind.dart';
 import 'task_schedule.dart';
 import 'tasks_controller.dart';
 import 'transfer_options.dart';
@@ -166,10 +167,15 @@ class SchedulerController extends Notifier<SchedulerStatus> {
       dstFs: t.dstFs,
       srcLabel: t.srcLabel,
       dstLabel: t.dstLabel,
-      // A repeating Sync never runs uncapped. Applied HERE rather than only at
-      // definition so tasks saved before the cap existed are covered - those are
-      // precisely the uncapped scheduled syncs already sitting in configs.
-      options: withScheduledDeleteCap(t.options),
+      // Two run-time enforcements, both for the same reason: a task saved
+      // before a constraint existed, or edited through the raw advanced dialog,
+      // must not be able to run as something other than what its name says.
+      //
+      // A backup is copy-only with versions kept, whatever its stored options
+      // say; a repeating Sync never runs uncapped.
+      options: t.kind == TaskKind.transfer
+          ? withScheduledDeleteCap(t.options)
+          : backupOptions(t.options),
     );
     await recordRunOutcome(
       readClient: () => ref.read(engineControllerProvider).client,
@@ -215,6 +221,9 @@ class SchedulerController extends Notifier<SchedulerStatus> {
   /// Automation surfaces, so it is not the silent stop this feature exists to
   /// prevent.
   Future<bool> _sourceIsUnsafe(TransferTask t) async {
+    // A backup is copy-only by construction, so it can never delete at the
+    // destination and an empty source is a harmless no-op rather than a wipe.
+    if (t.kind != TaskKind.transfer) return false;
     if (t.options.mode != TransferMode.sync) return false;
     final empty = await ref.read(fileOpsProvider).isRootEmpty(t.srcFs);
     return empty ?? true;
