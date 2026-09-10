@@ -1,0 +1,90 @@
+name: Store feedback
+
+# Why this is scheduled and not just a button.
+#
+# The GitHub repo has no watchers and effectively no issues; everyone running
+# Airclone is on a store. On 2026-09-09 a Google TV user sent a three-bug report
+# out of band - a persistent focus ring over every film, D-pad focus landing on
+# the row overflow menu, and no way to change track in the audio player - all
+# real, all fixed within the day, and none of it visible through any channel this
+# repo watched.
+#
+# Play serves roughly the LAST WEEK of reviews on this endpoint. A run that only
+# happens when someone remembers is therefore not a substitute for a scheduled
+# one: a review nobody fetched in time is a review nobody can ever read.
+#
+# It never fails the build on content by default. A one-star review is not a
+# broken pipeline, and a workflow that goes red for something you cannot fix by
+# pushing is a workflow people learn to ignore. Set `fail_at_or_below` by hand
+# when you want a run to shout.
+
+on:
+  schedule:
+    # 08:00 UTC daily. Comfortably inside Play's ~7-day window even if several
+    # consecutive runs are skipped, which GitHub does on a quiet repository.
+    - cron: '0 8 * * *'
+  workflow_dispatch:
+    inputs:
+      fail_at_or_below:
+        description: 'Fail the run if any review has this star rating or lower (0 = never fail)'
+        required: false
+        default: '0'
+        type: choice
+        options: ['0', '1', '2', '3', '4', '5']
+
+permissions:
+  contents: read
+
+jobs:
+  play:
+    name: Google Play reviews
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Google auth libraries
+        run: pip install --quiet google-auth requests
+
+      - name: Fetch reviews
+        # The service account JSON is written to a file rather than passed on a
+        # command line: an argument is visible in the process table, and this
+        # one can publish releases.
+        env:
+          PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+          # A `choice` input is constrained to the options above, so it cannot
+          # carry a flag or a shell metacharacter - but it still goes through the
+          # environment rather than being interpolated into the run block, which
+          # is the rule tool/check-workflows.py enforces.
+          FAIL_AT: ${{ inputs.fail_at_or_below || '0' }}
+        run: |
+          set -euo pipefail
+          if [ -z "${PLAY_SERVICE_ACCOUNT_JSON}" ]; then
+            echo "PLAY_SERVICE_ACCOUNT_JSON is not set; nothing to do." >&2
+            exit 0
+          fi
+          case "${FAIL_AT}" in
+            0|1|2|3|4|5) ;;
+            *) echo "fail_at_or_below must be 0-5, got: ${FAIL_AT}" >&2; exit 2 ;;
+          esac
+          printf '%s' "${PLAY_SERVICE_ACCOUNT_JSON}" > "${RUNNER_TEMP}/play.json"
+          export GOOGLE_APPLICATION_CREDENTIALS="${RUNNER_TEMP}/play.json"
+          {
+            echo '## Google Play reviews'
+            echo
+            echo '```'
+          } >> "${GITHUB_STEP_SUMMARY}"
+          # tee so the reviews land in the run summary as well as the log - the
+          # summary is what someone actually reads from a notification email.
+          set +e
+          python tool/play_reviews.py \
+            --package com.gigaionllc.airclone \
+            --fail-at-or-below "${FAIL_AT}" 2>&1 | tee -a "${GITHUB_STEP_SUMMARY}"
+          status=${PIPESTATUS[0]}
+          set -e
+          echo '```' >> "${GITHUB_STEP_SUMMARY}"
+          rm -f "${GOOGLE_APPLICATION_CREDENTIALS}"
+          exit "${status}"
