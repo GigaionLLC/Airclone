@@ -66,14 +66,16 @@ class DueTasksWorker(appContext: Context, params: WorkerParameters) :
         /// its argv, `log` for a line into logcat, `done` with the exit code.
         const val BG_CHANNEL = "airclone/work_bg"
 
-        /// The wall-clock cap handed to Dart as `--timeout-minutes`. Five hours
-        /// keeps a first full camera-roll backup under Android 15's ~6h/day
-        /// dataSync budget with room for the poll that follows it.
+        /// The wall-clock cap handed to Dart as `--timeout-minutes` when the
+        /// worker holds the foreground. Five hours keeps a first full
+        /// camera-roll backup under Android 15's ~6h/day dataSync budget with
+        /// room for the poll that follows it.
         const val DART_TIMEOUT_MINUTES = 300L
 
-        /// Our own hard stop, a little past Dart's: if the entrypoint never
-        /// reports back, the engine is torn down rather than left running.
-        private val HARD_TIMEOUT_MS = TimeUnit.MINUTES.toMillis(DART_TIMEOUT_MINUTES + 10)
+        /// The cap when the promotion was refused: a plain worker is stopped
+        /// after ~10 minutes, and the Dart run must finish — rclone quit,
+        /// outcome recorded — before that, not be killed by it.
+        const val UNPROMOTED_TIMEOUT_MINUTES = 8L
 
         /// Exit codes mirror headless_runner.dart — 0 ok, 1 a task failed,
         /// 2 could not start.
@@ -81,7 +83,11 @@ class DueTasksWorker(appContext: Context, params: WorkerParameters) :
     }
 
     override suspend fun doWork(): Result {
-        if (AircloneApplication.activityVisible) {
+        // The periodic wake yields to a visible app; a one-off the user asked
+        // for from inside the app ("Run due tasks in background now") does
+        // not — that button exists to show the background path working.
+        val userRequested = tags.contains(WorkChannel.UNIQUE_ONCE)
+        if (!userRequested && AircloneApplication.activityVisible) {
             Log.i(TAG, "skipped: the app is on screen, the in-app scheduler owns due tasks")
             return Result.success()
         }
@@ -94,22 +100,36 @@ class DueTasksWorker(appContext: Context, params: WorkerParameters) :
             return Result.failure()
         }
 
-        try {
+        // MEASURED, not assumed (Android 15 emulator, 2026-09-09): a periodic
+        // job started by JobScheduler with the app in the background is
+        // refused the promotion — "startForegroundService() not allowed due to
+        // mAllowStartForeground false". WorkManager's setForeground() is NOT
+        // one of the Android 12+ background-start exemptions for periodic
+        // work; only expedited work and a visible app are. So the promotion
+        // is attempted (it succeeds on Android 8–11, and on 12+ when the user
+        // launched the one-off from inside the app), and when it is refused
+        // the run is capped INSIDE the plain worker's ~10-minute budget so it
+        // ends cleanly — rclone quit, outcome recorded — rather than being
+        // torn down mid-copy by WorkManager. A big first backup then proceeds
+        // in slices, one per wake, resuming where it stopped: rclone copy
+        // skips what the destination already has.
+        val promoted = try {
             setForeground(foregroundInfo())
+            true
         } catch (e: Exception) {
-            // Android 14+ throws when the foreground-service budget is spent
-            // or the type is disallowed. Carry on without the promotion: the
-            // worker still gets its ten minutes, which covers a poll that
-            // finds nothing due.
             Log.w(TAG, "foreground promotion refused: ${e.message}")
+            false
         }
+        val dartTimeoutMinutes = if (promoted) DART_TIMEOUT_MINUTES else UNPROMOTED_TIMEOUT_MINUTES
 
-        val outcome = withTimeoutOrNull(HARD_TIMEOUT_MS) {
-            withContext(Dispatchers.Main) { runDart(handle) }
+        val outcome = withTimeoutOrNull(TimeUnit.MINUTES.toMillis(dartTimeoutMinutes + 2)) {
+            withContext(Dispatchers.Main) { runDart(handle, dartTimeoutMinutes) }
         } ?: (EXIT_CANNOT_START to "the Dart entrypoint did not report back within the cap")
 
-        stamp(prefs, outcome.first, outcome.second)
-        Log.i(TAG, "run-due finished with exit ${outcome.first}: ${outcome.second}")
+        val detail = if (promoted) outcome.second
+        else "${outcome.second}\n(ran without foreground promotion — Android 12+ refuses it to a background wake — so this run was capped at $UNPROMOTED_TIMEOUT_MINUTES min; a longer backup continues at the next wake)"
+        stamp(prefs, outcome.first, detail)
+        Log.i(TAG, "run-due finished with exit ${outcome.first} (promoted=$promoted): ${outcome.second}")
         // A failed task is recorded in that task's own history (TaskRunRecord);
         // there is nothing WorkManager could usefully retry. Success keeps the
         // period ticking; failure is visible in dumpsys and to the status call.
@@ -141,7 +161,7 @@ class DueTasksWorker(appContext: Context, params: WorkerParameters) :
     /// Boots a headless engine on the main thread, runs the registered Dart
     /// callback, and resumes with (exit code, detail) when Dart calls `done`.
     /// Must be called on the main thread: FlutterEngine is main-thread-only.
-    private suspend fun runDart(handle: Long): Pair<Int, String> =
+    private suspend fun runDart(handle: Long, timeoutMinutes: Long): Pair<Int, String> =
         suspendCancellableCoroutine { cont ->
             val main = Handler(Looper.getMainLooper())
             var engine: FlutterEngine? = null
@@ -190,7 +210,7 @@ class DueTasksWorker(appContext: Context, params: WorkerParameters) :
                                 "args" to listOf(
                                     "--run-due",
                                     "--timeout-minutes",
-                                    DART_TIMEOUT_MINUTES.toString(),
+                                    timeoutMinutes.toString(),
                                 ),
                             ),
                         )

@@ -45,7 +45,7 @@ void main() {
       // Linux land here until launchd and systemd-user are actually built, so
       // this is the test that stops a half-built platform from silently
       // promising background runs.
-      for (final os in ['macos', 'linux', 'android', 'ios', 'plan9']) {
+      for (final os in ['macos', 'linux', 'ios', 'plan9']) {
         for (final s in [_daily, _weekly, _interval]) {
           expect(
             registrationShapeFor(schedule: s, operatingSystem: os),
@@ -53,6 +53,19 @@ void main() {
             reason: '$os / ${s.kind}',
           );
         }
+      }
+    });
+
+    test('ANDROID IS ALWAYS THE SHARED POLLER, whatever the schedule says', () {
+      // It has one WorkManager worker and no per-task OS triggers, so the
+      // exact/shared split does not exist there. Promising a daily 09:00 an
+      // exact trigger would promise a fire WorkManager cannot make.
+      for (final s in [_daily, _weekly, _interval]) {
+        expect(
+          registrationShapeFor(schedule: s, operatingSystem: 'android'),
+          RegistrationShape.sharedPoller,
+          reason: '${s.kind}',
+        );
       }
     });
   });

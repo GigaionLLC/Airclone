@@ -2,6 +2,7 @@ import 'dart:ui' show DartPluginRegistrant;
 
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../headless/headless_runner.dart';
 
@@ -37,6 +38,22 @@ Future<void> androidWorkEntrypoint() async {
     final cfg = await channel.invokeMapMethod<String, Object?>('start');
     final args =
         (cfg?['args'] as List?)?.cast<String>() ?? const <String>[kRunDueFlag];
+    // One line of evidence about the store this isolate sees, BEFORE the run:
+    // a wake that reports "nothing due" is only diagnosable if it also says
+    // whether it could see the saved tasks at all. Keys only, never values.
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final keys = prefs.getKeys();
+      await channel.invokeMethod<void>('log', {
+        'line':
+            'background isolate sees ${keys.length} preference key(s); '
+            'saved tasks present: ${keys.contains('transfer_tasks')}',
+      });
+    } catch (e) {
+      await channel.invokeMethod<void>('log', {
+        'line': 'background isolate could not read preferences: $e',
+      });
+    }
     final outcome = await runHeadlessInProcess(args);
     code = outcome.code;
     lines = [...outcome.diagnostics, ...outcome.summary];

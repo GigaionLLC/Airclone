@@ -43,6 +43,11 @@ RegistrationShape registrationShapeFor({
   if (schedulingSupportFor(operatingSystem) != SchedulingSupport.background) {
     return RegistrationShape.unsupported;
   }
+  // Android has exactly ONE periodic worker and no per-task OS triggers, so the
+  // exact/shared split does not exist there — everything is served by the one
+  // wake. Saying otherwise would promise a 09:00 fire that WorkManager cannot
+  // make, on a platform whose floor is fifteen minutes anyway.
+  if (operatingSystem == 'android') return RegistrationShape.sharedPoller;
   return switch (schedule.kind) {
     // Names a wall-clock time: the OS can hit it exactly.
     ScheduleKind.daily || ScheduleKind.weekly => RegistrationShape.exactTrigger,
@@ -140,6 +145,14 @@ String registrationExplanation({
     return 'Runs only while Airclone is open, because "Also run while Airclone '
         'is closed" is off for this task. A run missed while it was closed '
         'starts once on next launch.';
+  }
+  // Only Windows exposes its registrations as named, inspectable entries. On
+  // Android the wake is WorkManager's and there is nothing for a user to open,
+  // so naming a place to look would send them hunting for one that is not there.
+  if (operatingSystem == 'android') {
+    return 'Android wakes Airclone about every $pollMinutes minutes and runs '
+        'this when it is due, so it can start late — and later still if the '
+        'phone is asleep, on battery saver, or off Wi-Fi.';
   }
   return switch (shape) {
     RegistrationShape.exactTrigger =>

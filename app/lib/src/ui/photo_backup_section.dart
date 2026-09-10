@@ -114,9 +114,8 @@ class PhotoBackupSection extends ConsumerWidget {
       SnackBar(
         content: Text(
           ok
-              ? 'Queued. Android runs it shortly — leave the app to let the '
-                    'background worker take it (while Airclone is on screen, '
-                    'the in-app scheduler runs due tasks itself).'
+              ? 'Queued. Android runs it in the background in a moment; the '
+                    'outcome lands in the task’s history and in the line above.'
               : 'Could not queue a background run.',
         ),
       ),
@@ -136,7 +135,9 @@ String _when(DateTime t) {
     if (d.inDays < 1) return 'in ${d.inHours}h';
     return 'in ${d.inDays}d';
   }
-  return '${relativeTime(t)} ago';
+  final r = relativeTime(t);
+  // relativeTime says "now" inside a minute; "now ago" is not a phrase.
+  return r == 'now' ? 'just now' : '$r ago';
 }
 
 class _Label extends StatelessWidget {

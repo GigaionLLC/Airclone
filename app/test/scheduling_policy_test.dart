@@ -27,10 +27,15 @@ void main() {
       }
     });
 
-    test('mobile has no scheduling at all', () {
-      for (final os in ['android', 'ios']) {
-        expect(schedulingSupportFor(os), SchedulingSupport.none, reason: os);
-      }
+    test('Android runs in the background since v0.8 Phase F', () {
+      // WorkManager + a headless FlutterEngine, proven on an emulator: an
+      // OS-timed wake with the app process dead ran a due task to completion.
+      expect(schedulingSupportFor('android'), SchedulingSupport.background);
+    });
+
+    test('iOS still has no scheduling at all', () {
+      // iOS does not permit what this needs, and is explicitly out of scope.
+      expect(schedulingSupportFor('ios'), SchedulingSupport.none);
     });
 
     test('an unknown platform gets none, not a guess', () {

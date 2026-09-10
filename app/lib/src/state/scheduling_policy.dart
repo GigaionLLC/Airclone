@@ -35,6 +35,10 @@ SchedulingSupport schedulingSupportFor(String operatingSystem) =>
     switch (operatingSystem) {
       // Windows Task Scheduler + the headless `--run-task` entry point.
       'windows' => SchedulingSupport.background,
+      // WorkManager + a headless FlutterEngine (v0.8 Phase F). Proven on an
+      // emulator: an OS-timed wake with the app process dead ran a due task to
+      // completion. The 15-minute floor is Android's, not ours.
+      'android' => SchedulingSupport.background,
       // launchd and systemd-user are planned, not built. Until they are, saying
       // "background" here would be a lie with a data-loss shape: a user would
       // close the app expecting their backup to run.

@@ -11,6 +11,7 @@ import '../state/engine_flags.dart';
 import '../state/file_ops.dart';
 import '../state/jobs_controller.dart';
 import '../state/scheduler_controller.dart';
+import '../state/scheduler_pause.dart';
 import '../state/settings_controller.dart';
 import '../state/task_kind.dart';
 import '../state/tasks_controller.dart';
@@ -286,12 +287,26 @@ Future<int> _runHeadless(
   //     engine's _platformSetup now awaits its own ensureLoaded() before reading
   //     the override, so this read is belt-and-suspenders rather than load-
   //     bearing, but keeping it warms the value here alongside the others.
+  //   • schedulerPausedProvider — the circuit breaker. A tripped breaker
+  //     stops EVERYTHING until a human resumes it (state/scheduler_pause.dart),
+  //     and "everything" has to include the runs nobody is watching: the
+  //     in-app tick already refuses while paused, and an OS wake that did not
+  //     would be the one run most likely to repeat the damage.
   container.read(tasksProvider);
   container.read(rememberConfigPasswordProvider);
   container.read(engineFlagsProvider);
   container.read(transferConcurrencyProvider);
   container.read(settingsControllerProvider);
+  container.read(schedulerPausedProvider);
   await SharedPreferences.getInstance();
+  final paused = container.read(schedulerPausedProvider);
+  if (paused != null) {
+    summary.add(
+      'scheduler paused since ${paused.at.toIso8601String()} '
+      '(${paused.taskName}): nothing run until it is resumed in Airclone.',
+    );
+    return kExitOk;
+  }
   final tasks = container.read(tasksProvider);
 
   // Resolve the selection BEFORE starting the engine, so an unknown id or an
@@ -299,6 +314,12 @@ Future<int> _runHeadless(
   final List<TransferTask> selected;
   if (request.runDue) {
     selected = dueTasks(tasks, DateTime.now());
+    // Counts first, so a run that did nothing can be told apart from a run
+    // that saw nothing: "0 saved" points at the store, "N saved, 0 due" at
+    // the schedules.
+    summary.add(
+      'run-due: ${tasks.length} saved task(s), ${selected.length} due.',
+    );
     if (selected.isEmpty) {
       summary.add('run-due: nothing due.');
       return kExitOk;

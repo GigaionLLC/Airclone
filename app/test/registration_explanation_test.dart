@@ -68,9 +68,9 @@ void main() {
   test(
     'a platform with no background scheduling does not blame a checkbox',
     () {
-      // There is no checkbox to blame on macOS or a phone, so pointing at one
+      // There is no checkbox to blame on macOS or iOS, so pointing at one
       // would send the user looking for a control that is not there.
-      for (final os in ['macos', 'linux', 'android', 'ios']) {
+      for (final os in ['macos', 'linux', 'ios']) {
         final s = explain(os: os, runWhileClosed: true);
         expect(s, contains('no background scheduling'), reason: os);
         expect(s, isNot(contains('Task Scheduler')), reason: os);
@@ -80,11 +80,42 @@ void main() {
   );
 
   test('unsupported wins over not-opted-in', () {
-    // Both are true on a phone; only one of them is useful to say.
+    // Both are true on iOS; only one of them is useful to say.
     expect(
-      explain(os: 'android', runWhileClosed: false),
+      explain(os: 'ios', runWhileClosed: false),
       contains('no background scheduling'),
     );
+  });
+
+  group('Android', () {
+    test('never names a place to look, because there is not one', () {
+      // Windows registrations are inspectable entries a user can open. The
+      // Android wake is WorkManager's; naming Task Scheduler there would send
+      // someone hunting for a screen that does not exist on their phone.
+      final s = explain(os: 'android', schedule: _daily);
+      expect(s, isNot(contains('Task Scheduler')));
+      expect(s, isNot(contains(kDueRunnerTaskName)));
+    });
+
+    test('admits the ways a phone makes a run later still', () {
+      // Someone comparing "it said 15 minutes" against a run four hours late
+      // needs doze, battery saver and Wi-Fi named, or they will reasonably
+      // conclude it is broken.
+      final s = explain(os: 'android', pollMinutes: 15);
+      expect(s, contains('15 minutes'));
+      expect(s.toLowerCase(), contains('asleep'));
+      expect(s.toLowerCase(), contains('battery'));
+      expect(s.toLowerCase(), contains('wi-fi'));
+    });
+
+    test('says the same for an exact schedule as an interval one', () {
+      // One periodic worker serves both, so promising a daily 09:00 anything
+      // more precise would be a lie WorkManager cannot honour.
+      expect(
+        explain(os: 'android', schedule: _daily),
+        explain(os: 'android', schedule: _interval),
+      );
+    });
   });
 
   test('every case produces a real sentence', () {
