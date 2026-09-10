@@ -108,3 +108,61 @@ int clampPollMinutes(int minutes) =>
   }
   return (exactTriggerIds: exact, needsPoller: poller);
 }
+
+/// Where a schedule is registered, named the way a user can go and check it.
+///
+/// A hybrid means there are now three different things that can run a saved
+/// task, and when one of them does not fire, "it did not run" is not a
+/// diagnosis. This is the sentence that turns it into one: it says which
+/// mechanism owns this schedule and, on a platform where that mechanism is
+/// inspectable, exactly what to open.
+///
+/// Deliberately concrete. "Runs in the background" tells a user nothing they can
+/// act on; "Task Scheduler → Airclone → Run due tasks" tells them where to look
+/// and what they should see there.
+String registrationExplanation({
+  required TaskSchedule schedule,
+  required String operatingSystem,
+  required bool runWhileClosed,
+  required int pollMinutes,
+  required String taskName,
+}) {
+  final shape = registrationShapeFor(
+    schedule: schedule,
+    operatingSystem: operatingSystem,
+  );
+  if (shape == RegistrationShape.unsupported) {
+    return 'Runs only while Airclone is open. This device has no background '
+        'scheduling yet, so a run missed while it was closed starts once on '
+        'next launch.';
+  }
+  if (!runWhileClosed) {
+    return 'Runs only while Airclone is open, because "Also run while Airclone '
+        'is closed" is off for this task. A run missed while it was closed '
+        'starts once on next launch.';
+  }
+  return switch (shape) {
+    RegistrationShape.exactTrigger =>
+      'Windows runs this at the exact time you chose, even with Airclone '
+          'closed. It appears in Task Scheduler under '
+          'Airclone \u2192 $taskName, and it is the only place to look if it '
+          'stops firing.',
+    RegistrationShape.sharedPoller =>
+      'Windows wakes Airclone every $pollMinutes minutes and runs this when it '
+          'is due, so it can start up to $pollMinutes minutes late. One shared '
+          'job covers every interval schedule: Task Scheduler \u2192 '
+          'Airclone \u2192 $kDueRunnerTaskName.',
+    // Handled above; listed so a future shape cannot fall through silently.
+    RegistrationShape.unsupported => '',
+  };
+}
+
+/// The OS-level name of the single shared job that runs whatever is due.
+///
+/// A fixed, known name rather than a generated one: it is the thing an uninstall
+/// has to find, the thing a reconcile has to recognise as already ours, and the
+/// thing [registrationExplanation] tells a user to go and look at.
+///
+/// Lives here rather than in the Windows scheduler so the platform-neutral
+/// explanation can name it without depending on `dart:io`.
+const String kDueRunnerTaskName = 'Run due tasks';

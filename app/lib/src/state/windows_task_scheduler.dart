@@ -161,12 +161,6 @@ String buildTaskXml({
       '</Task>\n';
 }
 
-/// The Task Scheduler name of the single shared job that runs whatever is due.
-///
-/// A fixed, known name rather than a generated one: it is the thing an uninstall
-/// has to find, and the thing a reconcile has to recognise as already ours.
-const String kDueRunnerTaskName = 'Run due tasks';
-
 /// Builds the definition for the shared `--run-due` job: one `TimeTrigger`
 /// repeating every [intervalMinutes], running the headless entry point that
 /// selects and runs whatever is due.

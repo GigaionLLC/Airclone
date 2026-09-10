@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io' show Platform;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -10,6 +11,8 @@ import '../state/config_password_vault.dart';
 import '../state/engine_controller.dart';
 import '../state/jobs_controller.dart';
 import '../state/scheduler_controller.dart';
+import '../state/poll_cadence.dart';
+import '../state/registration_policy.dart';
 import '../state/scheduler_pause.dart';
 import '../state/scheduling_policy.dart';
 import '../state/task_schedule.dart';
@@ -1432,11 +1435,29 @@ class _ScheduleDialogState extends ConsumerState<_ScheduleDialog> {
               const SizedBox(height: Space.x3),
               // Base-case caveat — suppressed once an OS Scheduled Task is opted in
               // above, where the closed-app behaviour no longer applies.
-              if (!(_canOsSchedule && _on && _runWhileClosed))
-                Text(
-                  schedulingSummary,
-                  style: TextStyle(color: c.textFaint, fontSize: 11),
-                ),
+              // Which of the three runners owns this schedule, named so it can
+              // be checked. "It runs in the background" is not something a user
+              // can act on when it stops.
+              Text(
+                _on
+                    ? registrationExplanation(
+                        schedule: TaskSchedule(
+                          kind: _kind,
+                          intervalMinutes: _interval,
+                          hour: _hour,
+                          minute: _minute,
+                          weekdays: _kind == ScheduleKind.weekly
+                              ? (_weekdays.toList()..sort())
+                              : const [],
+                        ),
+                        operatingSystem: Platform.operatingSystem,
+                        runWhileClosed: _canOsSchedule && _runWhileClosed,
+                        pollMinutes: ref.watch(pollCadenceProvider),
+                        taskName: widget.task.name,
+                      )
+                    : schedulingSummary,
+                style: TextStyle(color: c.textFaint, fontSize: 11),
+              ),
             ],
           ),
         ),

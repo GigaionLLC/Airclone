@@ -16,6 +16,10 @@ you set up once.
 > **Status: partial.** What is written below is what ships. The gaps are named in §6 rather than
 > glossed over, because the difference between "scheduled" and "scheduled *and it actually fires*"
 > is the whole feature, and it is not the same on every platform.
+>
+> **Something did not run?** Start at [§5.4](#54-three-things-can-run-a-task--know-which-one-owns-yours):
+> three different mechanisms can run a saved task, and knowing which one owns yours is most of the
+> diagnosis.
 
 ---
 
@@ -167,6 +171,66 @@ resumes it (`state/scheduler_pause.dart`).
 > It has **not** been verified against a real aborted run yet. If rclone's wording turns out to
 > vary, the fallback is to pause on any failure of a scheduled destructive sync — blunter, but it
 > cannot silently stop working, and silently-stopped-working is the failure this exists to prevent.
+
+### 5.4 Three things can run a task — know which one owns yours
+
+This is the first thing to establish when something did not run, because "it did
+not run" is not a diagnosis until you know **which** of these was supposed to run
+it.
+
+| Runner | Covers | Where it lives | How late it can be |
+| :--- | :--- | :--- | :--- |
+| **The in-app tick** | Every schedule, on every desktop, whenever Airclone is open | `SchedulerController` — a 30 s timer inside the app | Up to 30 s |
+| **An exact OS trigger** | **Daily and weekly** schedules, opted in, on Windows | Task Scheduler → `Airclone` → *the task's own name* | Not late — it fires at the time you chose |
+| **The shared poller** | **Interval** schedules ("every N hours"), opted in, on Windows | Task Scheduler → `Airclone` → `Run due tasks` | Up to one cadence (default 15 min) |
+
+The split is not arbitrary and it is not a setting: a schedule that names an
+exact time gets an exact trigger, because Task Scheduler can hit 09:00 exactly
+and a poller can only approximate it. A schedule that names only a gap is already
+polling by its nature, so it joins the shared job rather than adding a second
+wakeup source. See `state/registration_policy.dart`.
+
+**The app tells you which one owns a given schedule.** The schedule editor's
+footnote names the mechanism *and the Task Scheduler entry to open*, so it is
+something you can act on rather than a reassurance. `registrationExplanation()`
+produces it, and it is pinned by tests that check it stays actionable — a name
+you can find, a number you can compare against what you observed.
+
+### 5.5 When a scheduled run did not happen
+
+Work down this list; it is ordered by how often each one is the answer.
+
+1. **Was "Also run while Airclone is closed" actually ticked?** It is per task
+   and off by default. The editor's footnote says so in as many words when it is
+   off, naming the checkbox.
+2. **Was Airclone closed on a platform that has no background scheduling?**
+   macOS, Linux and mobile run schedules **only while the app is open** (§4). A
+   missed slot is caught up once on next launch — once, not replayed.
+3. **Is the scheduler paused?** A delete-cap trip stops *everything* until a
+   human resumes it (§5.3). Settings → Automation shows a banner naming the task
+   that tripped it and the engine's own error. This is deliberately global, so
+   one bad task stops the others too.
+4. **Did it refuse rather than fail?** A scheduled Sync whose source is empty or
+   unreadable does not run at all (§5.2). It records a failed run whose reason
+   says exactly that; Settings → Automation shows the last outcome per task.
+5. **Was the engine locked?** An encrypted config with no stored password cannot
+   unlock unattended. The in-app path records "a scheduled task was due while the
+   engine was locked"; a background run exits **2**, which Task Scheduler shows
+   as `0x2` in *Last Run Result*.
+6. **Was the machine asleep or off?** Both Windows jobs set
+   `StartWhenAvailable`, so the run catches up when the machine returns — but
+   once, and not at the original time.
+7. **Only then, look at Task Scheduler itself.** `Airclone` → the entry the
+   editor named. *Last Run Time* and *Last Run Result* are the ground truth about
+   whether Windows started the process at all. `0x0` means it ran and succeeded,
+   `0x1` means it ran and something failed (check the task's run history in
+   Airclone for the reason), `0x2` means it could not start — bad task id, or an
+   engine that would not come up.
+
+**A run that Windows started always leaves a trace in Airclone**, in that task's
+run history, whether it succeeded or failed. If Task Scheduler says a run
+happened and Airclone's history has nothing for it, that is a real bug worth
+reporting rather than a configuration problem.
 
 ## 6. What this is not, yet
 
