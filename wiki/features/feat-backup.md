@@ -2,7 +2,7 @@
 type: "feature"
 name: "Backup & Restore"
 status: "partial"
-platforms: ["desktop"]
+platforms: ["desktop", "android"]
 dependencies: ["07-state-context", "11-validation-standards", "15-security"]
 description: "A folder copied somewhere safe on a schedule, with old versions kept and prunable — and a restore that is just the file browser, so it inherits every guard rather than growing its own."
 ---
@@ -78,6 +78,11 @@ It is **not advanced-gated**. "Back up a folder" is a concept an ordinary user
 has; "a saved transfer task with a `TransferOptions` payload" is not, and that
 split is the whole reason the wizard exists separately from the task editor.
 
+It is reachable on **desktop and Android** alike — Settings reaches a phone, and
+the wizard has no platform gate. The Android-only sibling, **camera-roll
+backup** (`TaskKind.photos`, Settings → Automation → "Back up your photos"), is
+described in [Scheduling §6](feat-scheduling.md#6-what-this-is-not-yet).
+
 Two details worth knowing:
 
 - **It shows you the destination before creating anything**, so you do not have
@@ -131,11 +136,20 @@ is a write and it must ask before overwriting; a bespoke restore path would have
 had to grow its own version of that guard, and would have grown it later and
 worse.
 
-`state/backup_restore.dart` holds what is left: splitting `remote:path` (on the
-**first** colon — a path may legitimately contain one), finding the remote a task
-writes to and saying so plainly when it has since been deleted, and grouping a
-folder listing into restore points so a wall of `.replaced` files reads as
-"report.pdf, and 2 older versions".
+`state/backup_restore.dart` holds what is left, and it is three functions on
+purpose: `splitFs` splits `remote:path` on the **first** colon (a path may
+legitimately contain one); `restoreRemoteFor` finds the remote a task writes to
+and returns null when it has since been deleted, so the UI can say *"gdrive is
+gone"* rather than open an empty pane; `canRestoreFrom` decides which tasks get
+the offer at all.
+
+**Where restore lives:** the restore icon on a backup's row in **Saved tasks**
+(`ui/tasks_panel.dart`) calls `openBackupForRestore` in `ui/backup_actions.dart`,
+which opens the backup's destination in the **other** pane — deliberately, so the
+pane you were standing in stays available as the place to copy back to. Restoring
+is then an ordinary copy. There is no restore-point grouping: a wall of
+`.replaced` files is shown as the files they are, and the cleanup button on the
+same row (`showVersionCleanup`, same file) is where old versions are pruned.
 
 Restore is offered for backups and photo backups only. A plain transfer's
 destination has no version history and nothing promises the source is
@@ -146,8 +160,9 @@ recoverable, so offering "restore" there would claim something untrue.
 - **No scheduled prune.** The prune exists and is safe; nothing runs it on a
   timer yet, so retention is currently a thing you invoke rather than a thing
   that happens.
-- **No "versions are using X GB" figure in the UI.** `versionBytes()` computes
-  it; nothing displays it.
+- **No standing "versions are using X GB" figure.** The cleanup dialog shows
+  what one pass would remove — *"Delete N old versions (X MB)"*, from
+  `versionBytes()` — but nothing shows the total at rest until you open it.
 - **iOS photo backup.** Assets there are not files — they must be exported
   through `PHAssetResourceManager` first, doubling storage during a backup. Out
   of scope for v0.8.
@@ -160,8 +175,10 @@ recoverable, so offering "restore" there would claim something untrue.
 | Destination convention, task construction | `state/backup_task.dart` |
 | Version recognition, retention window, prune decision | `state/backup_retention.dart` |
 | Prune executor (lists, asks, deletes) | `state/backup_prune.dart` |
-| Restore addressing and grouping | `state/backup_restore.dart` |
+| Restore addressing (`splitFs`, `restoreRemoteFor`, `canRestoreFrom`) | `state/backup_restore.dart` |
+| Restore (open in the other pane) and the version-cleanup dialog | `ui/backup_actions.dart` |
 | The wizard | `ui/backup_wizard.dart` |
+| The row buttons (restore, cleanup), retention setting | `ui/tasks_panel.dart` |
 
 Tests: `test/task_kind_test.dart`, `test/backup_task_test.dart`,
 `test/backup_retention_test.dart`, `test/backup_prune_test.dart`,

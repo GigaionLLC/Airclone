@@ -3,8 +3,8 @@
 ## 📊 State Dashboard
 | Metric | Value |
 | :--- | :--- |
-| **Status** | `IN PROGRESS` — targets **v0.8**. **A and B complete; C complete bar one control.** The hybrid registration is built, wired, migrated and reconciled. **D, E and F are untouched** — and E/F are what the user's own clarification answers assumed v0.8 would contain, so the scope needs settling before this is called done. |
-| **Version** | `v1.1.0` |
+| **Status** | `IN PROGRESS` — targets **v0.8**. **A, B and E complete.** **C complete** bar the explicit "Remove all background scheduling" control (reconcile-on-launch, the hybrid registration, the migration and the Windows uninstall cleanup are all in). **F complete** bar the battery-optimisation UX — Android background execution and camera-roll backup ship in v0.8, with the measured caveat that a background wake is capped at 8 minutes (Phase 8). **D untouched** and slipping past v0.8. |
+| **Version** | `v1.2.0` |
 | **Active Persona** | `Builder` |
 | **Last Updated** | 2026-09-09 |
 
@@ -71,17 +71,23 @@ about. Settings must read **"Back up your files"** against the existing
 ## 3️⃣ Phase 3: User Clarification
 
 * **Open Questions:**
-  - `[ ]` Does "Saved tasks" leave advanced mode, or does a new **Backup** flow
+  - `[x]` Does "Saved tasks" leave advanced mode, or does a new **Backup** flow
     become the front door with tasks staying advanced? Leaning to the second:
     "back up a folder" is a concept a normal user has; "saved transfer task with a
-    `TransferOptions` payload" is not. → **Answer:**
-  - `[ ]` **One `--run-due` registration per user, or one OS task per saved task?**
+    `TransferOptions` payload" is not. → **Answer: the second, as built.**
+    Settings → Automation is ungated and "Back up a folder" (`ui/backup_wizard.dart`)
+    is its primary button; the raw task editor stays advanced.
+  - `[x]` **One `--run-due` registration per user, or one OS task per saved task?**
     Unified is simpler, makes uninstall cleanup a single known name, and is the
     only shape that fits launchd-under-sandbox. Cost: a power user can no longer
     see or disable an individual schedule from Windows Task Scheduler.
-    → **Answer:**
-  - `[ ]` If unified, what poll cadence? 15 min bounds lateness at 96 wakeups a
-    day; 5 min is punctual and expensive. → **Answer:**
+    → **Answer (user, 2026-09-09): neither — the HYBRID** in §7 C.
+    Daily/weekly get an exact trigger of their own; intervals share one poller
+    (`state/registration_policy.dart`).
+  - `[x]` If unified, what poll cadence? 15 min bounds lateness at 96 wakeups a
+    day; 5 min is punctual and expensive. → **Answer: the user's, default 15
+    min**, from 5/10/15/30/60 (`state/poll_cadence.dart`). Android has no choice:
+    WorkManager's 15-minute floor.
   - `[x]` **Should a scheduled sync be allowed at all without a `--max-delete`
     cap?** → **ANSWERED (user, 2026-09-09): no.** A repeating sync gets a cap with
     a sensible default, editable while setting the schedule up, and **tripping it
@@ -91,8 +97,10 @@ about. Settings must read **"Back up your files"** against the existing
     gate it off as Mount already is. → **Answer:**
   - `[ ]` Linux: is `loginctl enable-linger` acceptable? Without it a `--user`
     timer fires only while the user is logged in. → **Answer:**
-  - `[ ]` Photo destination convention? Proposal
-    `remote:Airclone/Photos/<device-name>/`. → **Answer:**
+  - `[x]` Photo destination convention? Proposal
+    `remote:Airclone/Photos/<device-name>/`. → **Answer: as proposed, built**
+    (`state/photo_backup.dart`; folder backups use
+    `Airclone/Backups/<device>/<source folder>`, `state/backup_task.dart`).
   - `[ ]` Should a failed unattended run raise an OS notification? Today its only
     trace is a `TaskRunRecord` inside a dialog behind advanced mode. → **Answer:**
 
@@ -163,7 +171,10 @@ is the only shape that fits macOS sandboxing and systemd user units.
   `TransferService.kt`, and constraints exposed as settings (unmetered, charging).
   **Do not add a `BOOT_COMPLETED` receiver** — WorkManager reschedules itself
   across reboot. The backlog and the phase3 plan both say to add one; both are
-  wrong and should be corrected in the same change.
+  wrong and should be corrected in the same change. *(Built as written, except
+  that the `setForeground()` promotion turned out to be **refused** for a
+  background-started periodic wake on Android 12+ — measured, see Phase 8 — so
+  a wake is capped at 8 minutes and a big backup runs in slices.)*
 - **iOS** — do not build. See Phase 5.
 
 ### 4.c Backup as a first-class object — `[M]`
@@ -424,8 +435,10 @@ Photo backup specifically:
     App Standby defer periodic work; a rarely-opened app lands in `RARE` or
     `RESTRICTED` and its 15-minute period becomes hours. Android 12+ forbids
     starting a foreground service from the background except through sanctioned
-    routes — WorkManager's `setForeground()` is one, which is why 4.b routes
-    through it. Android 15 caps `dataSync` runtime at roughly 6h/day, after which
+    routes — WorkManager's `setForeground()` was assumed to be one, which is why
+    4.b routes through it. **Measured wrong (2026-09-09, Phase 8):** for a
+    periodic wake started in the background the promotion is refused; only
+    expedited work and a visible app are exempt. Android 15 caps `dataSync` runtime at roughly 6h/day, after which
     `onTimeout()` fires, so a first full roll backup must be **resumable**, not
     restart-from-zero. **Do not request `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`** —
     Play policy restricts it, and risking the listing to shave scheduling latency
@@ -571,16 +584,31 @@ incoherent.
       provider HomeScreen force-reads at startup, so it cannot be skipped by a
       widget that never builds. It waits for the saved tasks to hydrate first;
       acting on the empty list `build()` returns would unregister everything.
-    - `[ ]` "Remove all background scheduling" as an explicit control.
-  - `[ ]` Reconcile-on-launch; "Remove all background scheduling"; GUI-live no-op
-    to close the prefs race.
-- `[ ]` **D — macOS launchd + Linux systemd-user `[M]`.** Pure builders with
-  golden tests first; verify the macOS headless launch shows no Dock icon
-  **before** shipping; surface the linger requirement.
-- `[ ]` **E — Backup as a first-class task `[M]`.** `TaskKind`; the constrained
-  flow; backup vocabulary in the panel.
-- `[~]` **F — Android background + photo backup `[L]`.** Landed 2026-09-09,
-  uncommitted:
+      (`test/reconcile_launch_test.dart`.)
+    - `[ ]` "Remove all background scheduling" as an explicit control — the
+      one piece of C still open.
+  - `[~]` **GUI-live no-op to close the prefs race.** Done on Android: the
+    periodic wake returns immediately when an Activity is on screen
+    (`DueTasksWorker.kt`). NOT done on Windows — `headless_runner.dart` still
+    documents the last-writer-wins race as accepted, and the shared poller now
+    fires every 15 minutes regardless.
+- `[ ]` **D — macOS launchd + Linux systemd-user `[M]`.** Untouched, and
+  slipping past v0.8. Pure builders with golden tests first; verify the macOS
+  headless launch shows no Dock icon **before** shipping; surface the linger
+  requirement.
+- `[x]` **E — Backup as a first-class task `[M]`.** Shipped, and further than
+  this line asked: `TaskKind {transfer, backup, photos}` with the three
+  constraints re-applied at run time (`state/task_kind.dart`); the wizard
+  (`ui/backup_wizard.dart`, not advanced-gated, desktop and Android); the
+  per-device destination (`state/backup_task.dart`); retention + the dry-run-by-
+  default prune with its 500 cap and keep-when-ambiguous rules
+  (`state/backup_retention.dart`, `state/backup_prune.dart`); restore as
+  open-in-the-other-pane (`ui/backup_actions.dart` → `openBackupForRestore`)
+  and the cleanup dialog that shows "Delete N old versions (X MB)" before it
+  does. Documented in `wiki/features/feat-backup.md`. Still open there: no
+  scheduled prune, no standing "versions are using X GB" figure.
+- `[x]` **F — Android background + photo backup `[L]`.** Shipped, bar the
+  battery-optimisation UX (last item). Landed 2026-09-09:
   - `[x]` **Application-scoped `airclone/native` channel** — `NativeChannel.kt`,
     built on the application `Context` with the Activity as an optional
     provider; `MainActivity` registers it and a worker registers the same
@@ -589,10 +617,11 @@ incoherent.
   - `[x]` **WorkManager periodic wake** — our own `DueTasksWorker.kt`
     (`CoroutineWorker`, no `workmanager` plugin): boots a second
     `FlutterEngine`, runs `androidWorkEntrypoint` →
-    `runHeadlessInProcess(--run-due)`, promotes itself via `setForeground()`
-    reusing `TransferService`'s notification channel, yields when the app is on
-    screen (the in-app scheduler owns due tasks then), and stamps its outcome
-    for Settings. `WorkChannel.kt` + `state/android_work_channel.dart`
+    `runHeadlessInProcess(--run-due)`, *attempts* `setForeground()` reusing
+    `TransferService`'s notification channel (refused on Android 12+ for a
+    background-started periodic wake — see Phase 8 — so the run is then capped
+    at 8 minutes and proceeds in slices), yields when the app is on screen (the
+    in-app scheduler owns due tasks then), and stamps its outcome for Settings. `WorkChannel.kt` + `state/android_work_channel.dart`
     enqueue/update/cancel the one unique request; `android_work_registration.dart`
     is the pure rule + reconciler (force-read from HomeScreen).
   - `[x]` **Constraints as settings** — `android_work_settings.dart`: Wi-Fi-only
@@ -610,12 +639,11 @@ incoherent.
     and the empty-source refusal; it used to dispatch raw options.
   - `[x]` `BOOT_COMPLETED` guidance corrected in `dev/backlog/feature-backlog.md`
     and `dev/plans/phase3-continuation-plan.md`.
-  - `[ ]` `scheduling_policy.dart` still says Android is `none` — Settings →
-    Automation's sentence and the "Also run while closed" checkbox do not know
-    the platform can run in the background yet (owned elsewhere; see the
-    Phase F report).
+  - `[x]` `scheduling_policy.dart` now maps `android` to `background`, so
+    Settings → Automation's sentence and the "Also run while closed" checkbox
+    (`canRunWhileClosed`) know the platform can run in the background.
   - `[ ]` Battery-optimisation state detection and explanation (never the
-    exemption request).
+    exemption request). **The one piece of F still open.**
 
 **Explicitly not doing in v0.8:** cron; iOS background execution; iOS photo
 backup; `DocumentsProvider` / File Provider; a filesystem watcher; deleting source
@@ -625,12 +653,18 @@ media after upload.
 
 * **Verification Status:** `PENDING`
 * **Report:**
-  - `[ ]` A schedule registered through the unified path **actually fires with the
+  - `[~]` A schedule registered through the OS path **actually fires with the
     app closed**, proven by the run landing in `TaskRunRecord` — not by the
     registration call returning 0. A clean exit code proved nothing in the
-    mount-tuning plan either.
-  - `[ ]` Uninstall (Windows) and delete-the-app (macOS, Linux) leave **no**
-    registration behind. Check the real locations, not the app's own state.
+    mount-tuning plan either. **Android: proven** (the last two items below).
+    **Windows: not recorded here** — nothing in this plan cites a run that
+    Task Scheduler started landing in a task's history.
+  - `[x]` Uninstall (Windows) leaves **no** registration behind — verified
+    against a real Task Scheduler (Phase 7 C, `RemoveScheduledTasks` in
+    `airclone.iss`; the two things that did not work are in
+    `dev/windows-signing-and-store.md`).
+  - `[ ]` Delete-the-app (macOS, Linux) leaves **no** registration behind.
+    Not applicable until Phase D registers anything there.
   - `[ ]` Golden-string tests pin the plist and unit-file output before any
     `launchctl` or `systemctl` is spawned.
   - `[x]` A repeating `sync` cannot be saved without a delete cap. Covered by
@@ -642,8 +676,28 @@ media after upload.
     real rclone abort**, not a synthesised error string. This is the one that
     matters and the one still outstanding — see the caveat in Phase 7 B.
   - `[ ]` macOS: a `--run-due` launch shows no Dock icon and steals no focus.
-  - `[ ]` Android: a periodic run survives reboot with no `BOOT_COMPLETED`
-    receiver, confirming the correction to the backlog.
+  - `[x]` Android: a periodic run survives reboot with no `BOOT_COMPLETED`
+    receiver, confirming the correction to the backlog. **Verified 2026-09-09
+    on the API 35 emulator:** `adb reboot`, then WorkManager's own diagnostics
+    (`am broadcast -a androidx.work.diagnostics.REQUEST_DIAGNOSTICS`) list
+    `DueTasksWorker · ENQUEUED · airclone.run-due` and `dumpsys jobscheduler`
+    holds `androidx.work.systemjobscheduler:u0aNNN/3`; the only
+    `BOOT_COMPLETED` receivers on the package are WorkManager's
+    `RescheduleReceiver` and the profile installer's.
+  - `[x]` Android: the background worker actually runs a due task with NO
+    Activity: proven 2026-09-09 — the headless engine reached
+    `nativeLibraryDir`, spawned rclone, and logged
+    `[OK  ] Photo backup [photo-test-1] — 181555 bytes` with exactly the four
+    JPGs mirrored under `…/Photos/<device>/DCIM/Camera/` and the `.mp4`
+    excluded. **Measured, contradicting §4.b / Phase 5:** Android 15 REFUSES
+    `setForeground()` to a periodic wake started in the background
+    (`startForegroundService() not allowed due to mAllowStartForeground
+    false`) — it is not one of the 12+ exemptions; only expedited work and a
+    visible app are. A background wake therefore runs inside the plain
+    worker's ~10-minute budget (the Dart run is capped at 8 min so it ends
+    cleanly), and a big first backup proceeds in slices, one per wake,
+    resuming where it stopped. The promotion does succeed for the one-off the
+    user launches from inside the app.
 
 ## 9️⃣ Phase 9: User Verification
 

@@ -2,9 +2,9 @@
 type: "feature"
 name: "Scheduling & Automation"
 status: "partial"
-platforms: ["desktop"]
+platforms: ["desktop", "android"]
 dependencies: ["07-state-context", "11-validation-standards", "14-performance-standards"]
-description: "Saved tasks that run on an interval, daily or weekly — in-app everywhere, with the app closed on Windows — and the delete cap and circuit breaker that keep an unattended Sync from emptying a destination."
+description: "Saved tasks that run on an interval, daily or weekly — in-app everywhere, with the app closed on Windows and Android — and the delete cap and circuit breaker that keep an unattended Sync from emptying a destination."
 ---
 
 # ⏰ Scheduling & Automation
@@ -17,8 +17,8 @@ you set up once.
 > glossed over, because the difference between "scheduled" and "scheduled *and it actually fires*"
 > is the whole feature, and it is not the same on every platform.
 >
-> **Something did not run?** Start at [§5.4](#54-three-things-can-run-a-task--know-which-one-owns-yours):
-> three different mechanisms can run a saved task, and knowing which one owns yours is most of the
+> **Something did not run?** Start at [§5.4](#54-four-things-can-run-a-task--know-which-one-owns-yours):
+> four different mechanisms can run a saved task, and knowing which one owns yours is most of the
 > diagnosis.
 
 ---
@@ -36,7 +36,7 @@ last outcome, surfaces a tripped circuit breaker (§5.3), and opens the full pan
 | :--- | :--- | :--- |
 | **Advanced mode** (`state/advanced_mode.dart`, default **off**) | The toolbar and command-palette doors to Saved tasks are behind `if (advanced)` (`ui/home_screen.dart`). | **Closed.** Settings → Automation is ungated and opens the panel, and nothing on the path from there to a saved, scheduled task reads advanced mode. The two old doors still exist for people who already use them. |
 | **Two panes** | "New task" used to read the source from the active pane and the destination from the other, and refuse if either was empty. | **Closed.** `ui/from_to_picker.dart` asks for both ends directly; the panes now only pre-fill it. |
-| **Shell width** | Below 700 dp there is no toolbar and no command palette. | **Bypassed** — Settings reaches a phone. But see the caveat below, and §4: there is no background execution on mobile to schedule *into* yet. |
+| **Shell width** | Below 700 dp there is no toolbar and no command palette. | **Bypassed** — Settings reaches a phone. But see the caveat below. On Android there is now a background poll to schedule *into* (§4.2); on iOS there is not. |
 
 > **The remaining mobile blocker is not scheduling.** `ui/transfer_options_dialog.dart` is a
 > hard-coded `SizedBox(width: 720, height: 560)` rather than the shared `DialogBody`, and overflows
@@ -63,52 +63,78 @@ never wired is the failure the file exists to prevent.
 | **Daily** | At a wall-clock time. |
 | **Weekly** | At a wall-clock time, on chosen weekdays. |
 
-**Missed slots are caught up once, not replayed.** `isDue` is
+**Missed slots are caught up once, not replayed.** For **daily and weekly**, `isDue` is
 `now >= slot && lastRun < slot`, so a machine that was off for three days runs the task once on
-next launch rather than three times. A task run manually stamps `lastRun` before it dispatches, so
-the next tick does not fire a second copy behind it.
+next launch rather than three times. An **interval** schedule has no slot: it is due when at least
+N minutes have elapsed since `lastRun`, and due immediately when it has never run
+(`lastRun == null`). A task run manually stamps `lastRun` before it dispatches, so the next tick
+does not fire a second copy behind it.
 
 Each task keeps its **last 10 run outcomes** (`TaskRunRecord`, capped in `state/tasks_controller.dart`)
 so a failure that happened while nobody was watching is still there afterwards.
 
-## 3. Running while the app is open — every desktop platform
+## 3. Running while the app is open — every platform
 
 `SchedulerController` (`state/scheduler_controller.dart`) arms one app-lifetime timer that ticks
 every 30 s and dispatches whatever is due through the ordinary transfer path. The provider is
-force-read once at launch, because Riverpod providers are lazy and a scheduler nobody reads is a
-scheduler that never runs.
+force-read once at launch (in `HomeScreen`'s `initState`, before the shell is chosen, so a phone
+ticks too), because Riverpod providers are lazy and a scheduler nobody reads is a scheduler that
+never runs.
 
 If the engine is not ready when a slot comes up — still starting, config locked, crashed — nothing
 is dispatched and the tick records `skippedWhileUnavailable`, which the tasks dialog surfaces as
 *"A scheduled task was due while the engine was locked — unlock to let it run."* A due slot that
 silently evaporates is the failure this replaced.
 
-## 4. Running with the app closed — Windows only, today
+## 4. Running with the app closed — Windows and Android
 
-The schedule editor offers **"Also run while Airclone is closed"** on Windows. It registers a
-Windows Scheduled Task (`schtasks /Create /XML … /F`, so it doubles as an update on an edited
-schedule) pointing at the headless entry point:
+The schedule editor offers **"Also run while Airclone is closed"** wherever `schedulingSupport`
+is `background` (§1.1) — Windows and Android today. The opt-in is **persisted on the task**
+(`TransferTask.runWhileClosed`); how the OS registrations are kept in step with it is §5.4a.
+
+### 4.1 Windows — Task Scheduler
+
+A daily or weekly schedule registers a Windows Scheduled Task of its own (`schtasks /Create /XML
+… /F`, so it doubles as an update on an edited schedule) pointing at the headless entry point;
+an interval schedule joins one shared polling job instead (§5.4):
 
 ```
 airclone --run-task <id>
+airclone --run-due
 ```
 
 `headless/headless_runner.dart` runs the same task through the same code path with no UI and
 exits with a code the OS scheduler can read: **0** ran and succeeded, **1** ran and something
 failed, **2** could not start at all (bad or missing task id, engine unavailable).
 
-Two things it refuses to do, both on purpose:
+One thing it refuses to do, on purpose: **an encrypted config with no stored password** blocks
+the checkbox. Every background fire would exit 2 unattended with no history entry, so Save stops
+and points at *Settings → Remember config password* instead.
 
-- **An encrypted config with no stored password** blocks the checkbox. Every background fire would
-  exit 2 unattended with no history entry, so Save stops and points at *Settings → Remember config
-  password* instead.
-- **A slow probe cannot clobber a fresh tick.** Task Scheduler is the source of truth (nothing about
-  the registration is persisted on the task model), so the editor probes `schtasks /Query` on open;
-  Save stays disabled until that resolves, or a fast Save would take the unregister branch on a
-  stale default and delete a registration the user meant to keep.
+### 4.2 Android — a WorkManager poll
 
-macOS and Linux get the in-app scheduler and an honest footnote. launchd and systemd-user are Phase
-D of the v0.8 plan.
+Android runs due tasks with the app closed too, but by **polling only**. One
+`PeriodicWorkRequest` (15-minute floor — Android's, not ours; Wi-Fi-only by default, optionally
+charging-only, under Settings → Automation → "Background on this phone") wakes a headless engine
+that runs the same `--run-due` selection. There are **no exact-time triggers**, so a daily 09:00
+task starts up to one wake late, and Doze may hold a wake back further. The wake yields when the
+app is on screen, because the in-app tick owns due tasks then. It survives reboots with no
+`BOOT_COMPLETED` receiver of ours — WorkManager re-arms itself.
+
+> **A background wake is short, and a big first backup runs in slices.** Measured on an Android
+> 15 emulator (2026-09-09): Android 12+ **refuses** `setForeground()` to a periodic wake started
+> in the background (`startForegroundService() not allowed due to mAllowStartForeground false`)
+> — WorkManager's promotion is not one of the sanctioned exemptions for periodic work. So the
+> wake runs inside the plain worker's budget, and the Dart run is capped at **8 minutes**
+> (`UNPROMOTED_TIMEOUT_MINUTES` in `DueTasksWorker.kt`) so it ends cleanly — rclone quit, outcome
+> recorded — rather than being torn down mid-copy. A large first backup therefore proceeds **one
+> slice per wake**, resuming where it stopped (`copy` skips what the destination already has).
+> Someone expecting a 40 GB camera roll to finish overnight should expect days of wakes instead.
+> A run that starts while the app is on screen is not under this cap: the in-app scheduler runs
+> it as an ordinary transfer.
+
+macOS, Linux and iOS get the in-app scheduler and an honest footnote. launchd and systemd-user
+are Phase D of the plan, now expected after v0.8; iOS background execution is out of scope (§6).
 
 ## 5. Unattended safety: the delete cap and the circuit breaker
 
@@ -131,8 +157,9 @@ which **aborts the run** rather than exceed it.
 - A cap the user chose is never overridden, **including a deliberate 0** ("abort on the first
   delete"), which is a real choice and not an absent one.
 - Copy and Move never delete at the destination, so they get no cap. A two-way sync caps by
-  *percent* (`--max-delete-percent`, default 50) — a different setting, in the transfer options
-  dialog.
+  *percent*: bisync's own `--max-delete`, which rclone reads as a percentage there (default 50,
+  sent as `maxDelete` on the bisync request) — a different setting, in the transfer options
+  dialog. There is no `--max-delete-percent` flag.
 
 ### 5.2 The other half: a source that has stopped answering
 
@@ -172,7 +199,7 @@ resumes it (`state/scheduler_pause.dart`).
 > vary, the fallback is to pause on any failure of a scheduled destructive sync — blunter, but it
 > cannot silently stop working, and silently-stopped-working is the failure this exists to prevent.
 
-### 5.4 Three things can run a task — know which one owns yours
+### 5.4 Four things can run a task — know which one owns yours
 
 This is the first thing to establish when something did not run, because "it did
 not run" is not a diagnosis until you know **which** of these was supposed to run
@@ -180,9 +207,10 @@ it.
 
 | Runner | Covers | Where it lives | How late it can be |
 | :--- | :--- | :--- | :--- |
-| **The in-app tick** | Every schedule, on every desktop, whenever Airclone is open | `SchedulerController` — a 30 s timer inside the app | Up to 30 s |
+| **The in-app tick** | Every schedule, on every platform, whenever Airclone is open | `SchedulerController` — a 30 s timer inside the app | Up to 30 s |
 | **An exact OS trigger** | **Daily and weekly** schedules, opted in, on Windows | Task Scheduler → `Airclone` → *the task's own name* | Not late — it fires at the time you chose |
 | **The shared poller** | **Interval** schedules ("every N hours"), opted in, on Windows | Task Scheduler → `Airclone` → `Run due tasks` | Up to one cadence (default 15 min) |
+| **The Android poll** | **Every** opted-in schedule on Android, with the app closed (§4.2) | WorkManager → `DueTasksWorker`; Settings → Automation → "Background on this phone" | Up to one wake (15 min floor) plus whatever Doze adds; and a wake is capped at 8 min |
 
 The split is not arbitrary and it is not a setting: a schedule that names an
 exact time gets an exact trigger, because Task Scheduler can hit 09:00 exactly
@@ -244,7 +272,7 @@ Work down this list; it is ordered by how often each one is the answer.
    and off by default. The editor's footnote says so in as many words when it is
    off, naming the checkbox.
 2. **Was Airclone closed on a platform that has no background scheduling?**
-   macOS, Linux and mobile run schedules **only while the app is open** (§4). A
+   macOS, Linux and iOS run schedules **only while the app is open** (§4). A
    missed slot is caught up once on next launch — once, not replayed.
 3. **Is the scheduler paused?** A delete-cap trip stops *everything* until a
    human resumes it (§5.3). Settings → Automation shows a banner naming the task
@@ -260,7 +288,12 @@ Work down this list; it is ordered by how often each one is the answer.
 6. **Was the machine asleep or off?** Both Windows jobs set
    `StartWhenAvailable`, so the run catches up when the machine returns — but
    once, and not at the original time.
-7. **Only then, look at Task Scheduler itself.** `Airclone` → the entry the
+7. **On Android, was the wake late, or just short?** A poll fires at best every
+   15 minutes, Doze can hold it back, and a background wake is capped at 8
+   minutes (§4.2) — a big backup that "did not finish" is usually one that is
+   still proceeding a slice per wake. Settings → Automation shows the last
+   wake's outcome.
+8. **Only then, look at Task Scheduler itself.** `Airclone` → the entry the
    editor named. *Last Run Time* and *Last Run Result* are the ground truth about
    whether Windows started the process at all. `0x0` means it ran and succeeded,
    `0x1` means it ran and something failed (check the task's run history in
@@ -274,22 +307,23 @@ reporting rather than a configuration problem.
 
 ## 6. What this is not, yet
 
-- **No background execution on macOS or Linux** (launchd / systemd-user: v0.8 Phase D).
-- **Android runs due tasks in the background; iOS does not.** On Android, one WorkManager
-  periodic request (15-minute floor, Wi-Fi-only by default, optionally charging-only — Settings →
-  Automation → "Background on this phone") wakes a headless engine that runs the same `--run-due`
-  selection. There are no exact-time triggers, so a daily task can start up to one wake late, and
-  Doze may hold a wake back. It reschedules itself across reboots — there is no `BOOT_COMPLETED`
-  receiver, on purpose. iOS background execution is explicitly out of scope.
+- **No background execution on macOS or Linux** (launchd / systemd-user: Phase D of the plan,
+  now expected after v0.8).
+- **Android runs due tasks in the background; iOS does not.** The Android path is §4.2 — a
+  WorkManager poll with no exact-time triggers, and a background wake capped at 8 minutes, so a
+  large first backup lands in slices across wakes. iOS background execution is explicitly out of
+  scope. **No battery-optimisation detection yet:** a phone that has put Airclone in a restricted
+  bucket stretches the 15-minute period to hours, and nothing in the app says so.
 - **Camera-roll backup is Android-only** (`TaskKind.photos`, Settings → Automation → "Back up
   your photos"): a set of folders under internal storage (DCIM by default), mirrored into
   `remote:Airclone/Photos/<device>/`, copy only, videos on a separate toggle.
 - **No way to create a task on a phone-sized shell** — not because of scheduling, but because the
-  transfer options dialog does not fit (see §1). And nothing to schedule into if it did.
+  transfer options dialog does not fit (see §1). The backup wizard and the photo-backup section do
+  fit, so on Android what a phone can schedule today is a backup, not an arbitrary task.
 - **No cron**, no filesystem watcher, no event triggers.
-- **No definition-time acknowledgement** that a repeating Sync is destructive, and **no refusal to
-  run against a source that resolves empty**. Both are open items in Phase B of the plan; the cap
-  and the breaker are what stand there today.
+- **No definition-time acknowledgement** that a repeating Sync is destructive. That is the one
+  open item from Phase B of the plan; the empty-source refusal (§5.2), the cap (§5.1) and the
+  breaker (§5.3) are what stand there today.
 
 ## 7. Where the code is
 
@@ -301,7 +335,10 @@ reporting rather than a configuration problem.
 | Task model, run history | `state/tasks_controller.dart` |
 | Delete cap default and application | `state/transfer_options.dart` |
 | Circuit breaker state and error match | `state/scheduler_pause.dart` |
-| Windows registration | `state/windows_task_scheduler.dart` |
+| Which OS shape a schedule gets — exact trigger vs shared poller — and `desiredRegistrations` | `state/registration_policy.dart` |
+| The shared poller's cadence (default 15 min; 5/10/15/30/60, clamped not snapped) | `state/poll_cadence.dart` |
+| Reconcile-on-launch and the one-time `runWhileClosed` seeding (`seedRunWhileClosed`) | `state/scheduler_registration.dart` |
+| Windows registration, `listRegistered`, `reconcile` | `state/windows_task_scheduler.dart` |
 | Android registration rule, reconciler, constraints | `state/android_work_registration.dart`, `state/android_work_settings.dart`, `state/android_work_channel.dart` |
 | Android background isolate (the `--run-due` of a WorkManager wake) | `state/android_work_entrypoint.dart`; native side `app/android/.../DueTasksWorker.kt`, `WorkChannel.kt`, `NativeChannel.kt` |
 | Photo backup model (folders → filter rules, destination, device folder) | `state/photo_backup.dart`; UI `ui/photo_backup_section.dart` |
@@ -311,5 +348,10 @@ reporting rather than a configuration problem.
 
 Tests: `test/scheduler_tick_test.dart`, `test/schedule_test.dart`,
 `test/scheduling_policy_test.dart`, `test/scheduler_delete_cap_test.dart`,
-`test/scheduler_pause_ui_test.dart`, `test/from_to_picker_test.dart`,
-`test/windows_task_scheduler_test.dart`.
+`test/scheduler_empty_source_test.dart`, `test/scheduler_pause_ui_test.dart`,
+`test/from_to_picker_test.dart`, `test/windows_task_scheduler_test.dart`,
+`test/due_runner_task_test.dart`; the hybrid — `test/registration_policy_test.dart`,
+`test/registration_explanation_test.dart`, `test/registration_seed_test.dart`,
+`test/reconcile_plan_test.dart`, `test/reconcile_exec_test.dart`,
+`test/reconcile_launch_test.dart`; Android — `test/android_work_registration_test.dart`,
+`test/photo_backup_test.dart`, `test/photo_backup_dialog_test.dart`.

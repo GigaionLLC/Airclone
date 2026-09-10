@@ -3,8 +3,8 @@
 ## 📊 State Dashboard
 | Metric | Value |
 | :--- | :--- |
-| **Status** | `PROPOSED` — targets **v0.8**, alongside [scheduling-and-backup-plan.md](scheduling-and-backup-plan.md). |
-| **Version** | `v1.0.0` |
+| **Status** | `SHIPPED` — **v0.8**, alongside [scheduling-and-backup-plan.md](scheduling-and-backup-plan.md). Phases A–E built and tested (`ui/tree_view.dart`, `state/tree_state.dart`; `test/tree_state_test.dart`, `test/tree_controller_test.dart`, `test/tree_node_paths_test.dart`). What §4.f wanted that is **not** built, and one thing built that §1 had scoped out, are recorded in Phase 6. |
+| **Version** | `v1.1.0` |
 | **Active Persona** | `Architect` |
 | **Last Updated** | 2026-09-09 |
 
@@ -33,6 +33,7 @@ selection and the existing right-click actions working from a tree node.
 - Tree in the mobile shell. A phone has no room for indentation plus three
   columns; the touch shell keeps its own navigation.
 - Drag-and-drop *within* the tree. See §5 — the selection model has to settle first.
+  *(As shipped this IS built — see Phase 6 — and it is untested.)*
 
 ## 2️⃣ Phase 2: Requirements & Context
 
@@ -69,19 +70,23 @@ first.
 ## 3️⃣ Phase 3: User Clarification
 
 * **Open Questions:**
-  - `[ ]` **Does the tree replace the pane, or sit beside it?** Rclone Browser
+  - `[x]` **Does the tree replace the pane, or sit beside it?** Rclone Browser
     gives the whole pane to the tree. A separate always-present tree rail (the
     Explorer left pane) is a different feature and a bigger one. Recommendation:
-    a view mode, matching the ask. → **Answer:**
-  - `[ ]` **Does expansion state persist across restarts?** Per-remote view mode
+    a view mode, matching the ask. → **Answer: a view mode**, as built —
+    `ViewMode.tree`, offered from View ▾ on the desktop shell only.
+  - `[x]` **Does expansion state persist across restarts?** Per-remote view mode
     already does. Persisting expansion means storing a set of paths per remote —
     cheap, but a tree that reopens 40 folders costs 40 listings on launch.
-    Recommendation: persist within the session only. → **Answer:**
-  - `[ ]` **Should a folder's size be shown?** Rclone Browser leaves it blank for
+    Recommendation: persist within the session only. → **Answer: session only**
+    (`TreeState.expanded` is never persisted; it survives switching modes within
+    a tab and is dropped when the remote changes).
+  - `[x]` **Should a folder's size be shown?** Rclone Browser leaves it blank for
     folders and offers "Get Size" per selection. Computing it eagerly is
     `operations/size` per folder — a recursive walk each, and exactly the mistake
     just fixed in the sync preflight. Recommendation: blank, with an explicit
-    per-folder action. → **Answer:**
+    per-folder action. → **Answer: blank**, as the flat list already leaves it.
+    No per-folder "Get size" action was added.
   - `[x]` **Can a selection span folders?** → **ANSWERED (user, 2026-09-09): yes.**
     So §4.D is in scope and is the largest single piece of this plan. Transfers
     group by source folder — the shape `_uploadLocal` already uses for an OS drop
@@ -154,19 +159,63 @@ first.
 
 ## 6️⃣ Phase 6: Implementation Checklist
 
-- `[ ]` **A** tree state + lazy per-node load, with a per-node superseded guard.
-- `[ ]` **B** flattened list view with the three columns.
-- `[ ]` **C** node-relative operations, with the deep-node path test written first.
-- `[ ]` **D** selection, grouped per source folder through the existing preflight.
-- `[ ]` **E** keyboard expand/collapse.
+- `[x]` **A** tree state + lazy per-node load, with a per-node superseded guard
+  (`state/tree_state.dart`; `expandNode` / `collapseNode` / `toggleExpand` in
+  `state/browser_controller.dart`).
+- `[x]` **B** flattened list view with the three columns (`ui/tree_view.dart` —
+  one `ListView.builder` over `flattenTree`, indentation capped so the Name
+  column keeps 140 px).
+- `[x]` **C** node-relative operations, with the deep-node path test written first
+  (`test/tree_node_paths_test.dart` — every row carries `TreeRow.parentPath`).
+- `[x]` **D** selection, grouped per source folder through the existing preflight
+  (`groupByParent`; `TreeState.selected` is a set of full paths, separate from
+  the flat `selected`).
+- `[x]` **E** keyboard expand/collapse (Up/Down/Home/End, Left/Right, Enter/Space,
+  Delete, F2, Ctrl+C / Ctrl+X — `_TreeViewState._onKey`).
+
+### 6.1 What §4.f wanted and what shipped — honestly
+
+Built: the Ctrl+F filter is a **same-level filter over what is loaded** and says
+so (`flattenTree(filter:)` keeps an expanded ancestor whose loaded descendant
+matches and never opens a collapsed folder); the current folder is where the tree
+roots itself (`flattenTree(rootPath: state.path, …)`), so switching list → tree
+does not dump the user at the remote's root. Whether hidden files and sort order
+are applied per parent exactly as the flat list applies them was not re-verified
+when this plan was closed out.
+
+**Not built:**
+
+- **Expand / collapse all under a node.** No such action exists; expansion is
+  one folder at a time (arrow, double-click, Right).
+- **Middle-click / modifier to open a folder in the other pane.** No tertiary-
+  button handling anywhere in the tree; the other pane is reached through the
+  existing *Open in other pane* context-menu action
+  (`FileMenuAction.openInOtherPane`) only.
+- **Type-to-jump follows into the tree only for the root's entries.**
+  `_typeaheadJump` in `ui/home_screen.dart` searches `visibleEntries` — the
+  root's listing — and `selectOnly` maps the hit onto the top-level tree row. A
+  name three levels deep is not found by typing it.
+
+**Built despite §1 scoping it out:** drag-and-drop *within* the tree. Every tree
+row is both a drag source (`FileRow.dragData`, carrying the selected rows that
+share the dragged row's folder — never rows from another parent) and a drop
+target (`onDropInto`, routed through the pane's existing drop path). There is no
+test for a drag that starts and ends inside the tree; `tree_node_paths_test`
+covers the same path-resolution rule for the other operations, but not this one.
 
 ## 7️⃣ Phase 7: Verification
 
-- `[ ]` An operation on a node three levels deep resolves against **that node's**
-  parent while `state.path` is the root.
-- `[ ]` Expanding a folder issues exactly one listing, and collapsing then
-  re-expanding issues none (cached).
-- `[ ]` A rapid expand/collapse/expand does not render the older listing.
-- `[ ]` A selection spanning two folders produces one conflict prompt per source
-  folder and copies both correctly.
-- `[ ]` Switching tree → list → tree keeps the expansion set within the session.
+- `[x]` An operation on a node three levels deep resolves against **that node's**
+  parent while `state.path` is the root — `test/tree_node_paths_test.dart`
+  (rename, delete, and a deep selection that never surfaces through
+  `selectedEntries`).
+- `[x]` Expanding a folder issues exactly one listing, and collapsing then
+  re-expanding issues none (cached) — `test/tree_controller_test.dart`.
+- `[x]` A rapid expand/collapse/expand does not render the older listing —
+  `test/tree_controller_test.dart` (in-flight and superseded-reload cases).
+- `[x]` A selection spanning two folders produces one conflict prompt per source
+  folder and copies both correctly — `test/tree_node_paths_test.dart`.
+- `[x]` Switching tree → list → tree keeps the expansion set within the session
+  — `test/tree_controller_test.dart`.
+- `[ ]` A drag from one tree row dropped on another moves the right files into
+  the right folder — **no test**; see §6.1.

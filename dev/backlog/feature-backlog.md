@@ -129,8 +129,8 @@ PREPARE_FOR_SUBMISSION):**
   View · Filter) — Explorer-style two-row header — a14.
 - [x] **Tabs** — multiple open locations per pane, each its own path history + view mode + selection — a17.
 - [x] **View presets** — Extra-large / Large / Medium / Small icons · List · Media (via View ▾) — a14.
-  `ViewMode` is `{list, grid, media}` (`state/browser_controller.dart`), so **Tiles / Content** are
-  still open. The **Details pane** did ship, as the toggleable right-rail Inspector
+  `ViewMode` is `{list, grid, media, tree}` (`state/browser_controller.dart`) — the **tree** view
+  landed in v0.8 (`ui/tree_view.dart`, desktop only) — so **Tiles / Content** are still open. The **Details pane** did ship, as the toggleable right-rail Inspector
   (`inspectorVisibleProvider` in `ui/inspector_panel.dart`, Ctrl+I, with Overview/More tabs); a docked
   **Preview pane** is still open — preview today is a modal (`ui/preview_dialog.dart`) plus Quick Look.
 - [x] **Native per-OS look** as default + a **skin selector** — `state/skin.dart` persists the choice and
@@ -158,12 +158,18 @@ PREPARE_FOR_SUBMISSION):**
   entry used to carry: `app/lib/src/headless/headless_runner.dart` gives the app a headless
   `--run-task <id>` / `--run-due` entrypoint, and `state/windows_task_scheduler.dart` registers it as a
   real Task Scheduler job via `schtasks /Create /XML`, so a schedule fires with the app closed.
-  `ui/tasks_panel.dart` gates the offer on `Platform.isWindows` (`_canOsSchedule`) and blocks it when the
-  config is encrypted with no stored password, because every fire would otherwise exit 2 silently.
+  `ui/tasks_panel.dart` gates the offer on `canRunWhileClosed` (`state/scheduling_policy.dart` —
+  Windows and Android today) and blocks it when the config is encrypted with no stored password,
+  because every fire would otherwise exit 2 silently.
   **Android is built (v0.8 Phase F):** one `PeriodicWorkRequest` (`app/android/.../DueTasksWorker.kt`,
   driven from `state/android_work_registration.dart`) boots a headless Flutter engine and runs the
-  same `--run-due` path, promoted to the foreground through WorkManager's `setForeground()` and
-  reusing `TransferService`'s notification. **There is deliberately NO `BOOT_COMPLETED` receiver** —
+  same `--run-due` path. It *attempts* WorkManager's `setForeground()` (reusing `TransferService`'s
+  notification channel), but — **measured on Android 15, 2026-09-09** — Android 12+ refuses that
+  promotion to a periodic wake started in the background (`mAllowStartForeground false`; only
+  expedited work and a visible app are exempt). A background wake therefore runs inside the plain
+  worker's budget, with the Dart run capped at **8 minutes** so it ends cleanly, and a large first
+  backup proceeds in slices, one per wake, resuming where it stopped. The promotion does succeed for
+  the one-off the user launches from inside the app. **There is deliberately NO `BOOT_COMPLETED` receiver** —
   an earlier version of this entry called for one, and that was wrong: WorkManager persists its
   requests and re-arms them after a reboot itself; a receiver of ours would be a second wakeup
   source with nothing to add. **Still open:** the macOS (`launchd`) and Linux (`systemd --user`

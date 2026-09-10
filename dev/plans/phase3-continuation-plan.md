@@ -46,9 +46,13 @@ saved task now runs with Airclone closed. What is left is the other two desktop 
    `runHeadlessInProcess`). The prerequisite landed first — the `airclone/native` channel moved
    out of `MainActivity` into the Application-scoped `NativeChannel.kt`, which the worker registers
    on its own engine so `nativeLibraryDir` resolves with no Activity. `TransferService.kt` lends its
-   notification channel to the worker's `setForeground()` rather than being started from the
-   background (Android 12+ forbids that). No `BOOT_COMPLETED` receiver: WorkManager re-arms itself
-   after a reboot. Battery-optimization UX is still open — and must NOT request
+   notification channel to the worker's `setForeground()` attempt — but, **measured on Android 15
+   (2026-09-09)**, Android 12+ refuses that promotion to a periodic wake started in the background
+   (`mAllowStartForeground false`; WorkManager's promotion is not one of the exemptions for
+   periodic work). So a background wake runs inside the plain worker's ~10-minute budget, with the
+   Dart run capped at 8 minutes so it ends cleanly, and a large first backup proceeds in slices,
+   one per wake, resuming where it stopped. No `BOOT_COMPLETED` receiver: WorkManager re-arms
+   itself after a reboot. Battery-optimization UX is still open — and must NOT request
    `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` (Play policy); detect and explain instead.
 5. ~~**Cross-cutting prerequisite**: encrypted-config headless unlock~~ **DONE** — the config
    password comes from the OS vault (DPAPI / Keychain / Secret Service), opt-in, with

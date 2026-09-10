@@ -3,7 +3,6 @@ import 'dart:convert';
 import 'package:airclone/src/headless/headless_runner.dart';
 import 'package:airclone/src/state/scheduler_pause.dart';
 import 'package:airclone/src/state/task_schedule.dart';
-import 'package:airclone/src/state/tasks_controller.dart';
 import 'package:airclone/src/state/transfer_options.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';

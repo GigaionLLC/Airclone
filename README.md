@@ -38,8 +38,21 @@ experience**, and brings it to the desktop *and* the phone:
   as a live job. Easy one-click sync, and a dry-run mode that runs a job without writing anything.
 - ⏰ **Sync & schedule** — Copy, Move, Sync (make the destination match) or Two-way; mark a folder as
   the sync source, then later sync it INTO wherever you are standing. Save a job and run it on a
-  schedule *(desktop; on **Windows** a schedule also fires with Airclone closed, elsewhere it runs
-  while the app is open — see [Scheduling](wiki/features/feat-scheduling.md))*.
+  schedule *(on **Windows** and **Android** a schedule also fires with Airclone closed — Task
+  Scheduler, or a WorkManager poll on the phone; on macOS, Linux and iOS it runs while the app is
+  open — see [Scheduling](wiki/features/feat-scheduling.md))*. A repeating Sync always carries a
+  delete cap, and tripping it pauses every schedule until you look.
+- 🗄️ **Back up & restore** — *Back up a folder* asks three things (what, where, how often) and
+  creates a copy-only task that keeps overwritten files as versions, with a retention window and a
+  cleanup that shows what it would delete before it does. Restore is the file browser opened at the
+  backup, so copying back goes through the same overwrite guard as everything else. Desktop and
+  Android — see [Backup & Restore](wiki/features/feat-backup.md).
+- 📷 **Camera-roll backup** *(Android)* — DCIM, plus any folders you add, mirrored to a remote on
+  the background schedule: Wi-Fi-only by default, videos on their own toggle, never deleting from
+  the phone.
+- 🌲 **Tree view** *(desktop)* — a fourth view mode beside list, grid and media: expand folders in
+  place, several at once, with the Details columns; selection and every right-click action work
+  from a node.
 - 💽 **Make it local** — mount a remote as a drive on desktop, or hand any file straight to another
   app from your phone with **Open in another app** and the share sheet.
 - 🔒 **Free, open-source, and private** — local-only, no telemetry. All manual power stays free.
