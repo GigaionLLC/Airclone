@@ -527,10 +527,23 @@ incoherent.
   is to pause on any failure of a scheduled destructive sync — blunter, but it
   cannot silently stop working, and silently-stopped-working is the failure this
   whole feature exists to prevent.
-- `[ ]` **C — Unify on `--run-due` and clean up after ourselves `[M]`.** One
-  registration; migrate and remove per-task Windows registrations;
-  `[UninstallRun]`; reconcile-on-launch; "Remove all background scheduling";
-  GUI-live no-op to close the prefs race.
+- `[~]` **C — Unify on `--run-due` and clean up after ourselves `[M]`.**
+  - `[x]` **Uninstall leaves no scheduled tasks behind.** `RemoveScheduledTasks`
+    in `windows/installer/airclone.iss` clears the whole `Airclone\` task folder
+    at `usPostUninstall`, unconditionally. Shape-independent — it is the right
+    cleanup whether registration stays per-task or becomes unified — so it landed
+    without waiting on that decision. Verified against a real Task Scheduler, not
+    reasoned about; see `dev/windows-signing-and-store.md` for the two things
+    that did not work.
+  - `[ ]` One `--run-due` registration replacing the per-task ones, and the
+    migration that unregisters the old entries. **Blocked on the open question in
+    Phase 3** — unified is recommended there and is the only shape that fits
+    launchd under sandboxing, but it is a user-visible trade (a power user loses
+    the ability to see or disable one schedule from Task Scheduler) and it turns
+    the editor's per-task "Also run while Airclone is closed" checkbox into a
+    single app-level switch. Not a change to make on an assumption.
+  - `[ ]` Reconcile-on-launch; "Remove all background scheduling"; GUI-live no-op
+    to close the prefs race.
 - `[ ]` **D — macOS launchd + Linux systemd-user `[M]`.** Pure builders with
   golden tests first; verify the macOS headless launch shows no Dock icon
   **before** shipping; surface the linger requirement.

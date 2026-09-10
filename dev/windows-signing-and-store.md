@@ -660,6 +660,29 @@ product:
   map reads as failure. Hence the `-and $_.Name -notlike 'unins*'` filter. **Assert the uninstaller
   exit code is 0**, not just that the directory is gone.
 
+- **Files are not the only residue.** A schedule the user set up registers a Windows Scheduled Task
+  under the `Airclone\` folder pointing at `{app}\airclone.exe --run-task <id>`. Uninstalling
+  deletes that exe and left the registration behind, so Task Scheduler went on firing it forever and
+  logging a failure every time — the same *shape* as the 10.2.7 finding, on a machine the user
+  believes is clean. `RemoveScheduledTasks` (v0.8) removes them at `usPostUninstall`,
+  **unconditionally** and before the opt-in data prompt: the data question is "do you want to keep
+  your settings?", and a task pointing at a deleted executable is not something anyone wants kept.
+
+  Verified 2026-09-09 by creating real probe tasks under `Airclone\` and running the uninstaller's
+  exact command line through `CreateProcess` semantics — both tasks and the folder gone, exit 0.
+  `Get-ScheduledTask | Unregister-ScheduledTask` cannot remove the now-empty folder, which is why
+  the `Schedule.Service` COM `DeleteFolder` call follows it.
+
+  **`schtasks /Delete /TN "Airclone\*" /F` does NOT work** — tried first, and it fails with
+  *"The system cannot find the file specified"*; the wildcard does not expand inside a task folder.
+
+  **Do not verify an Inno `Exec` command line through Git Bash.** Doing that here produced a
+  convincing false positive: bash's own handling expanded `$ErrorActionPreference` to `Continue` and
+  `$s` to nothing, which reads exactly like PowerShell pre-interpolating the script. Inno's `Exec`
+  calls `CreateProcess` with no shell in between, so `$` is safe — as the shipped
+  `TerminateProcessesInAppDir` above already demonstrates. Test it with `Start-Process
+  -ArgumentList '<the exact string>'`, which has the same semantics.
+
 Process notes for the next round:
 - **Expand every collapsed row** in the certification report before starting work, and grab
   **Supporting files → Download ZIP** — the collapsed summary line ("we found the following

@@ -185,6 +185,42 @@ begin
   RemoveDir(ExpandConstant('{localappdata}\{#AppPublisher}'));
 end;
 
+// Remove Airclone's Windows Scheduled Tasks.
+//
+// A schedule the user set up registers a task under the `Airclone\` folder
+// pointing at {app}irclone.exe --run-task <id>. Uninstalling deletes that exe
+// and leaves the registration behind, so Task Scheduler goes on firing it
+// forever and logging a failure every time — residue on a machine the user
+// believes is clean, and the same class of finding as Store policy 10.2.7.
+//
+// UNCONDITIONAL, and deliberately not part of the opt-in user-data prompt: the
+// data question is "do you want to keep your settings?", whereas a task pointing
+// at a deleted executable is not something anyone wants kept.
+//
+// Verified 2026-09-09 against a real Task Scheduler: a task created under
+// `Airclone\` and then put through exactly these two steps leaves neither the
+// task nor the folder.
+//
+// Best-effort like TerminateProcessesInAppDir: SilentlyContinue throughout (the
+// folder does not exist unless a schedule was registered), and nothing here may
+// block the uninstall. Get-ScheduledTask/Unregister-ScheduledTask ship in-box
+// from Windows 8; DeleteFolder drops the now-empty folder, which the cmdlets
+// cannot do.
+procedure RemoveScheduledTasks;
+var
+  Params: String;
+  ResultCode: Integer;
+begin
+  Params :=
+    '-NoProfile -NonInteractive -Command "' +
+    '$ErrorActionPreference = ''SilentlyContinue''; ' +
+    'Get-ScheduledTask -TaskPath ''\Airclone\'' | ' +
+    'Unregister-ScheduledTask -Confirm:$false; ' +
+    '$s = New-Object -ComObject Schedule.Service; $s.Connect(); ' +
+    '$s.GetFolder(''\'').DeleteFolder(''Airclone'', 0)"';
+  Exec('powershell.exe', Params, '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+end;
+
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 begin
   if CurUninstallStep = usPostUninstall then
@@ -199,6 +235,9 @@ begin
       TerminateProcessesInAppDir;
       DelTree(ExpandConstant('{app}\*'), False, True, True);
     end;
+    // Before the data prompt, and regardless of how it is answered: a task
+    // pointing at an executable that no longer exists is residue, not data.
+    RemoveScheduledTasks;
     RemoveUserDataIfConfirmed;
   end;
 end;
