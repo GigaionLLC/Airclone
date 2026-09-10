@@ -104,6 +104,41 @@ List<RcloneFile> prunableVersions({
   ];
 }
 
+/// The parent folder of a remote-relative path, or `''` at the root.
+String parentOf(String path) {
+  final i = path.lastIndexOf('/');
+  return i < 0 ? '' : path.substring(0, i);
+}
+
+/// [prunableVersions] over a RECURSIVE listing, grouped by folder.
+///
+/// The trap this exists to close: [prunableVersions] decides whether a version
+/// is the last copy of its file by looking for a live file of that name **in the
+/// same listing**. Hand it a recursive listing and `a/report.pdf` vouches for
+/// `b/report.replaced.pdf` — a version in a completely different folder is then
+/// judged redundant and deleted, when it may be the only copy left.
+///
+/// Grouping by parent restores the rule to what it means: a version is redundant
+/// only when its live file sits **beside** it.
+List<RcloneFile> prunableVersionsRecursive({
+  required List<RcloneFile> entries,
+  required int retentionDays,
+  required DateTime now,
+}) {
+  final byFolder = <String, List<RcloneFile>>{};
+  for (final e in entries) {
+    (byFolder[parentOf(e.path)] ??= []).add(e);
+  }
+  return [
+    for (final group in byFolder.values)
+      ...prunableVersions(
+        entries: group,
+        retentionDays: retentionDays,
+        now: now,
+      ),
+  ];
+}
+
 /// Total bytes held by versions in [entries], so the cost is not invisible.
 int versionBytes(List<RcloneFile> entries) => entries
     .where((e) => !e.isDir && isReplacedVersion(e.name))

@@ -200,6 +200,83 @@ void main() {
     });
   });
 
+  group('prunableVersionsRecursive', () {
+    RcloneFile at(String path, {DateTime? modTime}) => RcloneFile(
+      name: path.split('/').last,
+      path: path,
+      isDir: false,
+      size: 10,
+      modTime: modTime,
+    );
+
+    test('A LIVE FILE IN ANOTHER FOLDER DOES NOT VOUCH FOR A VERSION', () {
+      // The trap. prunableVersions decides "is this the last copy?" by looking
+      // for a live file of that name in the SAME listing. Over a recursive
+      // listing, a/report.pdf would vouch for b/report.replaced.pdf - and that
+      // version, which is the only copy of b's report, would be deleted.
+      final out = prunableVersionsRecursive(
+        entries: [
+          at('a/report.pdf'),
+          at('b/report.replaced.pdf', modTime: old),
+        ],
+        retentionDays: 30,
+        now: now,
+      );
+      expect(
+        out,
+        isEmpty,
+        reason: 'b/ has no live report.pdf, so its version is the last copy',
+      );
+    });
+
+    test('a version IS pruned when its live file sits beside it', () {
+      final out = prunableVersionsRecursive(
+        entries: [
+          at('a/report.pdf'),
+          at('a/report.replaced.pdf', modTime: old),
+          at('b/other.txt'),
+        ],
+        retentionDays: 30,
+        now: now,
+      );
+      expect(out.map((e) => e.path), ['a/report.replaced.pdf']);
+    });
+
+    test('folders are handled independently, not merged', () {
+      final out = prunableVersionsRecursive(
+        entries: [
+          at('a/x.txt'),
+          at('a/x.replaced.txt', modTime: old),
+          at('b/x.txt'),
+          at('b/x.replaced.txt', modTime: recent),
+        ],
+        retentionDays: 30,
+        now: now,
+      );
+      expect(out.map((e) => e.path), ['a/x.replaced.txt']);
+    });
+
+    test('the root counts as a folder', () {
+      final out = prunableVersionsRecursive(
+        entries: [
+          at('x.txt'),
+          at('x.replaced.txt', modTime: old),
+        ],
+        retentionDays: 30,
+        now: now,
+      );
+      expect(out.map((e) => e.path), ['x.replaced.txt']);
+    });
+  });
+
+  group('parentOf', () {
+    test('splits a path from its last segment', () {
+      expect(parentOf('a/b/c.txt'), 'a/b');
+      expect(parentOf('c.txt'), '');
+      expect(parentOf(''), '');
+    });
+  });
+
   group('versionBytes', () {
     test('counts versions only, so the cost is visible', () {
       expect(
