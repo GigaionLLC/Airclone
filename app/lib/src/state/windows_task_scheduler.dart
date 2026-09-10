@@ -297,6 +297,161 @@ class WindowsTaskScheduler {
     }
   }
 
+  /// Every entry currently in our Task Scheduler folder, by leaf name.
+  ///
+  /// `schtasks /Query` over the whole machine, filtered by
+  /// [parseRegisteredNames] — there is no "list one folder" form, and asking
+  /// for a folder that does not exist is an error rather than an empty list.
+  /// An empty set on any failure, so a reconcile that cannot see what is there
+  /// creates what it needs and deletes nothing.
+  Future<Set<String>> listRegistered() async {
+    if (!Platform.isWindows) return const {};
+    try {
+      final res = await _run('schtasks', ['/Query', '/FO', 'CSV', '/NH']);
+      if (res.exitCode != 0) return const {};
+      return parseRegisteredNames('${res.stdout}');
+    } catch (_) {
+      return const {};
+    }
+  }
+
+  /// Makes Task Scheduler match [tasks], and returns what it changed.
+  ///
+  /// Reconciliation rather than register/unregister, because under the hybrid a
+  /// single edit is not a single operation: turning a daily schedule into an
+  /// interval one must delete that task's exact entry AND create the shared
+  /// poller, and neither is a fact about the task being edited.
+  ///
+  /// [refresh] names entries whose DEFINITION must be rewritten even though they
+  /// are already registered — the task whose schedule was just edited, or every
+  /// entry when the poll cadence changed. Left empty, an entry that already
+  /// exists is not touched at all. That restraint is deliberate: `schtasks
+  /// /Create /F` replaces a task, which resets its trigger state, and a
+  /// repeating trigger whose start boundary is in the past then fires straight
+  /// away. Rewriting everything on every launch would turn opening the app into
+  /// a background run.
+  ///
+  /// Deletes run before creates, so a shape change never leaves both forms
+  /// registered at once.
+  ///
+  /// Never throws. A failure is returned with the `schtasks` message, the same
+  /// contract [register] has, because the schedule editor surfaces it inline.
+  Future<({bool ok, String? error, List<String> created, List<String> deleted})>
+  reconcile({
+    required List<TransferTask> tasks,
+    required int pollMinutes,
+    Set<String> refresh = const {},
+  }) async {
+    if (!Platform.isWindows) {
+      return (
+        ok: true,
+        error: null,
+        created: const <String>[],
+        deleted: const <String>[],
+      );
+    }
+    final desired = desiredRegistrations(
+      tasks: [for (final t in tasks) (id: t.id, schedule: t.schedule)],
+      runWhileClosed: {
+        for (final t in tasks)
+          if (t.runWhileClosed) t.id,
+      },
+      operatingSystem: Platform.operatingSystem,
+    );
+    final existing = await listRegistered();
+    final plan = planReconcile(desired: desired, existing: existing);
+
+    final deleted = <String>[];
+    for (final name in plan.toDelete) {
+      await unregister(name);
+      deleted.add(name);
+    }
+
+    // Everything missing, plus anything the caller says has changed underneath
+    // a name that already exists.
+    final write = <String>{
+      ...plan.toCreate,
+      ...refresh.where(
+        (n) =>
+            desired.exactTriggerIds.contains(n) ||
+            (desired.needsPoller && n == kDueRunnerTaskName),
+      ),
+    }.toList()..sort();
+
+    final created = <String>[];
+    for (final name in write) {
+      final String xml;
+      if (name == kDueRunnerTaskName) {
+        xml = buildDueRunnerXml(
+          intervalMinutes: pollMinutes,
+          exePath: Platform.resolvedExecutable,
+        );
+      } else {
+        final match = [
+          for (final t in tasks)
+            if (t.id == name && t.schedule != null) t,
+        ];
+        // A wanted id with no task behind it cannot happen — the desired set is
+        // derived from these same tasks — but skipping beats writing a
+        // definition for something that does not exist.
+        if (match.isEmpty) continue;
+        xml = buildTaskXml(
+          schedule: match.first.schedule!,
+          id: match.first.id,
+          exePath: Platform.resolvedExecutable,
+        );
+      }
+      final res = await _writeDefinition(name, xml);
+      if (!res.ok) {
+        return (
+          ok: false,
+          error: res.error,
+          created: created,
+          deleted: deleted,
+        );
+      }
+      created.add(name);
+    }
+    return (ok: true, error: null, created: created, deleted: deleted);
+  }
+
+  /// Writes one task definition under [name] via `schtasks /Create /XML … /F`.
+  ///
+  /// Shared by [register] and [reconcile]. `/F` replaces an existing definition,
+  /// so this is create-or-update. The XML goes to a UTF-16 file because
+  /// `schtasks /XML` reads a file rather than stdin and the declared encoding
+  /// has to match.
+  Future<RegisterResult> _writeDefinition(String name, String xml) async {
+    // Keyed by a filesystem-safe form of the name so two concurrent writes
+    // cannot collide on one temp file. The shared job's name has spaces in it.
+    final safe = name.replaceAll(RegExp(r'[^A-Za-z0-9._-]'), '_');
+    final file = File(
+      '${Directory.systemTemp.path}${Platform.pathSeparator}'
+      'airclone-task-$safe.xml',
+    );
+    try {
+      await file.writeAsBytes(_utf16leBytes(xml), flush: true);
+      final res = await _run('schtasks', [
+        '/Create',
+        '/TN',
+        taskName(name),
+        '/XML',
+        file.path,
+        '/F',
+      ]);
+      if (res.exitCode != 0) return (ok: false, error: _schtasksError(res));
+      return _ok;
+    } catch (e) {
+      return (ok: false, error: e.toString());
+    } finally {
+      try {
+        if (file.existsSync()) file.deleteSync();
+      } catch (_) {
+        // A leftover temp file is not worth failing a registration over.
+      }
+    }
+  }
+
   /// Whether a Scheduled Task is currently registered for [id], probed via the
   /// exit code of `schtasks /Query`. False on non-Windows or any error.
   Future<bool> isRegistered(String id) async {

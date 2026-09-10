@@ -196,6 +196,46 @@ something you can act on rather than a reassurance. `registrationExplanation()`
 produces it, and it is pinned by tests that check it stays actionable — a name
 you can find, a number you can compare against what you observed.
 
+### 5.4a How the registrations are kept honest
+
+Airclone does not register or unregister one task at a time; it **reconciles**.
+The hybrid made a per-task answer impossible — turning a daily schedule into an
+interval one has to delete that task's exact entry *and* create the shared
+poller, and neither of those is a fact about the task being edited.
+
+So `reconcile()` asks what the whole set should be, asks Task Scheduler what it
+currently holds, and makes the second match the first. It runs at launch and
+after any edit.
+
+Three properties worth knowing, because they explain behaviour you might
+otherwise read as a bug:
+
+- **An entry that is already correct is not touched.** `schtasks /Create /F`
+  *replaces* a task, which resets its trigger state, and a repeating trigger
+  whose start boundary is in the past then fires immediately. If reconcile
+  rewrote everything it saw, opening Airclone would start a background run. Only
+  entries that are missing — or that the caller explicitly flags as changed, such
+  as the task you just edited — get written.
+- **Deletes happen before creates**, so a schedule changing shape never leaves
+  both forms registered at once.
+- **If it cannot see what is registered, it deletes nothing.** A failed query
+  returns an empty set, and a reconcile that treated that as "the folder is
+  empty" would take out every working schedule.
+
+**Upgrading from a build before the hybrid** is handled by the same machinery.
+Your old per-task entry for an interval schedule is simply not wanted any more,
+so it is removed and the shared job is created in its place — your daily and
+weekly entries are left exactly as they were, because those are still the right
+shape. Nothing about that path is version-specific.
+
+The one thing that *is* special about the upgrade: whether you wanted background
+runs at all used to be inferred by asking Task Scheduler whether your task had an
+entry. Under the hybrid an interval schedule has no entry of its own, so that
+question stopped being answerable and the answer moved onto the task itself. Any
+task that is currently registered is marked as opted-in once, before anything is
+reconciled — otherwise the first reconcile after upgrading would read "nobody
+wants this" and unregister everything.
+
 ### 5.5 When a scheduled run did not happen
 
 Work down this list; it is ordered by how often each one is the answer.

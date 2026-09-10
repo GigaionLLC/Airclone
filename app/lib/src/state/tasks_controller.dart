@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
 
@@ -93,6 +94,7 @@ class TransferTask {
     this.schedule,
     this.lastRun,
     this.history = const [],
+    this.runWhileClosed = false,
   });
 
   /// Stable, per-task identity — the exact string a headless run targets
@@ -126,6 +128,19 @@ class TransferTask {
       '${DateTime.now().millisecondsSinceEpoch.toRadixString(36)}'
       '-${_rng.nextInt(1 << 24).toRadixString(36)}';
 
+  /// Whether the user asked for this to run with Airclone closed.
+  ///
+  /// **Persisted rather than probed**, which is a change from how it used to
+  /// work. It was read back from Task Scheduler on demand, because every
+  /// scheduled task had its own entry there to ask about. Under the hybrid an
+  /// interval schedule has no entry of its own — it is served by the one shared
+  /// job — so there is nothing to probe and the intent has to live on the model.
+  ///
+  /// Defaults to false, and old persisted JSON has no key for it, so every task
+  /// saved before this existed round-trips as "in-app only" rather than
+  /// silently acquiring a background registration.
+  final bool runWhileClosed;
+
   /// `schedule`/`lastRun` accept an explicit `null` to clear them (via the
   /// [_undef] sentinel) — `copyWith()` with neither keeps the current value.
   /// [id] is always preserved (identity never changes).
@@ -135,6 +150,7 @@ class TransferTask {
     Object? schedule = _undef,
     Object? lastRun = _undef,
     List<TaskRunRecord>? history,
+    bool? runWhileClosed,
   }) => TransferTask(
     id: id,
     name: name ?? this.name,
@@ -148,6 +164,7 @@ class TransferTask {
         : schedule as TaskSchedule?,
     lastRun: identical(lastRun, _undef) ? this.lastRun : lastRun as DateTime?,
     history: history ?? this.history,
+    runWhileClosed: runWhileClosed ?? this.runWhileClosed,
   );
 
   Map<String, dynamic> toJson() => {
@@ -162,6 +179,7 @@ class TransferTask {
     if (schedule != null) 'schedule': schedule!.toJson(),
     if (lastRun != null) 'lastRun': lastRun!.toIso8601String(),
     if (history.isNotEmpty) 'history': [for (final r in history) r.toJson()],
+    if (runWhileClosed) 'runWhileClosed': true,
   };
 
   factory TransferTask.fromJson(Map<String, dynamic> j) => TransferTask(
@@ -193,12 +211,23 @@ class TransferTask {
             )
             .toList() ??
         const [],
+    runWhileClosed: j['runWhileClosed'] == true,
   );
 }
 
 /// Persisted list of saved [TransferTask]s.
 class TasksController extends Notifier<List<TransferTask>> {
   static const _key = 'transfer_tasks';
+
+  final _hydrated = Completer<void>();
+
+  /// Completes once the saved tasks have been read from disk.
+  ///
+  /// [build] returns an empty list and fills it in asynchronously, so anything
+  /// that acts on the WHOLE set — reconciling OS registrations, above all — has
+  /// to wait. Acting on the empty list would read as "the user has no scheduled
+  /// tasks" and unregister every one of them.
+  Future<void> get ready => _hydrated.future;
 
   @override
   List<TransferTask> build() {
@@ -223,7 +252,22 @@ class TasksController extends Notifier<List<TransferTask>> {
       if (backfilled) await _persist();
     } catch (_) {
       // keep empty
+    } finally {
+      // Always, including on the error path: a waiter that never wakes is worse
+      // than one that wakes to an empty list, which is also the honest answer
+      // when the store could not be read.
+      if (!_hydrated.isCompleted) _hydrated.complete();
     }
+  }
+
+  /// Replaces the whole list at once and persists it.
+  ///
+  /// For a change that spans tasks — the one-time seeding of [
+  /// TransferTask.runWhileClosed] from what is actually registered with the OS
+  /// — where updating them one at a time would persist the file once per task.
+  Future<void> replaceAll(List<TransferTask> tasks) async {
+    state = tasks;
+    await _persist();
   }
 
   Future<void> _persist() async {

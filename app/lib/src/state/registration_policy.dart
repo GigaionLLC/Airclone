@@ -166,3 +166,67 @@ String registrationExplanation({
 /// Lives here rather than in the Windows scheduler so the platform-neutral
 /// explanation can name it without depending on `dart:io`.
 const String kDueRunnerTaskName = 'Run due tasks';
+
+/// What the OS scheduler should be changed to, given what it currently holds.
+///
+/// Reconciliation rather than "register this one thing", because the hybrid made
+/// a per-task answer impossible: turning a daily schedule into an interval one
+/// must DELETE its exact entry and create the shared poller, and neither of
+/// those is a fact about the task being edited.
+///
+/// It is also where the migration lives, without being a migration. A user who
+/// set up an interval schedule under the old build has a private per-task entry
+/// for it; under the hybrid that entry is simply *not desired*, so it appears in
+/// [toDelete] like any other stale registration. There is no version check and
+/// no one-shot upgrade step to get wrong — the same code that keeps things right
+/// every day is the code that cleans that up, the first time it runs.
+///
+/// [existing] is every entry currently in our folder, by its leaf name: a task
+/// id for an exact trigger, or [kDueRunnerTaskName] for the shared job.
+///
+/// Anything in our folder that is neither wanted nor recognised is deleted. The
+/// folder is ours, so an entry we did not put there is residue — most likely
+/// ours from an older build under a name we no longer use.
+({List<String> toCreate, List<String> toDelete}) planReconcile({
+  required ({Set<String> exactTriggerIds, bool needsPoller}) desired,
+  required Set<String> existing,
+}) {
+  final want = {
+    ...desired.exactTriggerIds,
+    if (desired.needsPoller) kDueRunnerTaskName,
+  };
+  // Sorted so the plan is deterministic — a test can assert it, and a log of
+  // what changed reads the same way twice.
+  final toCreate = want.difference(existing).toList()..sort();
+  final toDelete = existing.difference(want).toList()..sort();
+  return (toCreate: toCreate, toDelete: toDelete);
+}
+
+/// The leaf names currently registered in our folder, parsed from
+/// `schtasks /Query /FO CSV /NH`.
+///
+/// Each row is `"\Airclone\<name>","<next run time>","<status>"`. Pure, so the
+/// parsing is tested without a Task Scheduler; the caller does the spawning.
+///
+/// Rows for anything outside [folder] are ignored rather than trusted — the
+/// caller may hand us the unfiltered output of a query over every task on the
+/// machine, and deleting one of those would be catastrophic.
+Set<String> parseRegisteredNames(String csv, {String folder = 'Airclone'}) {
+  final prefix = '\\$folder\\';
+  final names = <String>{};
+  for (final line in csv.split('\n')) {
+    final row = line.trim();
+    if (row.isEmpty) continue;
+    // Only the first CSV field matters, and it is always quoted.
+    if (!row.startsWith('"')) continue;
+    final end = row.indexOf('"', 1);
+    if (end < 1) continue;
+    final full = row.substring(1, end);
+    if (!full.startsWith(prefix)) continue;
+    final leaf = full.substring(prefix.length);
+    // A nested folder is not one of ours; we only ever create leaves.
+    if (leaf.isEmpty || leaf.contains('\\')) continue;
+    names.add(leaf);
+  }
+  return names;
+}

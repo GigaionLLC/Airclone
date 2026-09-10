@@ -7,12 +7,15 @@ import '../rclone/models/job.dart';
 import '../rclone/rclone_client.dart';
 import 'engine_controller.dart';
 import 'file_ops.dart';
+import 'poll_cadence.dart';
 import 'jobs_controller.dart';
 import 'scheduler_pause.dart';
+import 'scheduler_registration.dart';
 import 'task_schedule.dart';
 import 'tasks_controller.dart';
 import 'transfer_options.dart';
 import 'transfer_service.dart';
+import 'windows_task_scheduler.dart';
 
 /// The snapshot the scheduler republishes on every tick so the UI can re-time
 /// its due/next/last-ran labels and warn when a run had to be held back. Purely
@@ -77,6 +80,20 @@ class SchedulerController extends Notifier<SchedulerStatus> {
   SchedulerStatus build() {
     _timer = Timer.periodic(const Duration(seconds: 30), (_) => tick());
     ref.onDispose(() => _timer?.cancel());
+    // Make the OS registrations match the saved tasks, once, at launch. This is
+    // also where the one-time seeding of `runWhileClosed` happens - see
+    // state/scheduler_registration.dart - so it must run before anything else
+    // reconciles, which is why it lives in the provider that HomeScreen
+    // force-reads at startup rather than in a widget that may never build.
+    unawaited(
+      reconcileRegistrations(
+        notifier: ref.read(tasksProvider.notifier),
+        readTasks: () => ref.read(tasksProvider),
+        os: ref.read(windowsTaskSchedulerProvider),
+        pollMinutes: ref.read(pollCadenceProvider),
+        seed: true,
+      ),
+    );
     return const SchedulerStatus();
   }
 

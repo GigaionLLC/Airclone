@@ -552,9 +552,26 @@ incoherent.
       value is honoured if sane. It only bounds lateness for the schedules that
       reach the poller at all — a daily 09:00 task is unaffected, which is worth
       saying in the UI before someone turns it down to 5 for no benefit.
-    - `[ ]` Reconciling the desired set against what is registered, persisting
-      per-task opt-in on the model (the poller has no per-task entry to probe),
-      and migrating existing per-task registrations.
+    - `[x]` **Reconciling, and the migration inside it.**
+      `WindowsTaskScheduler.reconcile` makes Task Scheduler match the saved
+      tasks; `planReconcile` decides what to create and delete. The migration is
+      not a migration: a per-task entry for an interval schedule is simply *not
+      desired* any more, so it appears in `toDelete` like any other stale
+      registration. No version check, no one-shot upgrade step to get wrong, and
+      the code that keeps things right every day is the code that cleans it up.
+    - `[x]` **`TransferTask.runWhileClosed`, persisted.** It used to be probed
+      from Task Scheduler, which worked only while every task had its own entry.
+      Absent from old JSON, so it loads false — and a reconcile against that
+      reads "nobody wants background runs" and deletes the lot. `seedRunWhileClosed`
+      runs first at launch and carries the opt-in forward from what is actually
+      registered. It only ever turns the flag **on**: a failed `listRegistered()`
+      returns an empty set, and inferring opt-out from that would undo a choice
+      rather than recover one.
+    - `[x]` **Reconcile-on-launch**, from `SchedulerController.build()` — the
+      provider HomeScreen force-reads at startup, so it cannot be skipped by a
+      widget that never builds. It waits for the saved tasks to hydrate first;
+      acting on the empty list `build()` returns would unregister everything.
+    - `[ ]` "Remove all background scheduling" as an explicit control.
   - `[ ]` Reconcile-on-launch; "Remove all background scheduling"; GUI-live no-op
     to close the prefs race.
 - `[ ]` **D — macOS launchd + Linux systemd-user `[M]`.** Pure builders with

@@ -14,6 +14,7 @@ import '../state/scheduler_controller.dart';
 import '../state/poll_cadence.dart';
 import '../state/registration_policy.dart';
 import '../state/scheduler_pause.dart';
+import '../state/scheduler_registration.dart';
 import '../state/scheduling_policy.dart';
 import '../state/task_schedule.dart';
 import '../state/tasks_controller.dart';
@@ -1028,19 +1029,7 @@ class _ScheduleDialogState extends ConsumerState<_ScheduleDialog> {
   /// while Airclone is closed. Task Scheduler itself is the source of truth (we
   /// persist nothing on the model), so the box is seeded from an [isRegistered]
   /// probe on open.
-  bool _runWhileClosed = false;
-
-  /// True once the user has toggled the checkbox themselves. The async
-  /// [isRegistered] probe (a real `schtasks /Query` process spawn, 100ms–1s+)
-  /// must NOT overwrite a fresh user tick with its result, so it only seeds
-  /// [_runWhileClosed] while this is false.
-  bool _userTouchedClosed = false;
-
-  /// True while the open-time [isRegistered] probe is still in flight. Save is
-  /// disabled until it resolves so a fast Save can't take the unregister branch
-  /// on the stale `false` default and silently delete a task the user meant to
-  /// keep (the probe hadn't yet learned the true registration state).
-  bool _probing = false;
+  late bool _runWhileClosed;
 
   /// A short `schtasks` failure surfaced under the checkbox (never crashes the
   /// dialog); null while healthy.
@@ -1078,31 +1067,17 @@ class _ScheduleDialogState extends ConsumerState<_ScheduleDialog> {
       text: (widget.task.options.maxDeleteFiles ?? kDefaultScheduledDeleteCap)
           .toString(),
     );
-    if (_canOsSchedule) {
-      _probing = true;
-      unawaited(_probeRegistered());
-    }
+    // Read from the model rather than probed from Task Scheduler. Under the
+    // hybrid an interval schedule has no entry of its own to ask about, so the
+    // intent lives on the task - which also removes the open-time `schtasks
+    // /Query` spawn and the Save-disabled-while-probing state it needed.
+    _runWhileClosed = widget.task.runWhileClosed;
   }
 
   @override
   void dispose() {
     _cap.dispose();
     super.dispose();
-  }
-
-  /// Reflects an already-registered Scheduled Task into the checkbox so re-opening
-  /// the editor shows the true current state. Only seeds the box when the user
-  /// hasn't already toggled it (so a slow probe can't clobber a fresh tick), and
-  /// always clears [_probing] so Save re-enables.
-  Future<void> _probeRegistered() async {
-    final reg = await ref
-        .read(windowsTaskSchedulerProvider)
-        .isRegistered(widget.task.id);
-    if (!mounted) return;
-    setState(() {
-      _probing = false;
-      if (!_userTouchedClosed) _runWhileClosed = reg;
-    });
   }
 
   /// Whether enabling "run while closed" right now would produce a background
@@ -1156,46 +1131,45 @@ class _ScheduleDialogState extends ConsumerState<_ScheduleDialog> {
         options: _capApplies
             ? widget.task.options.copyWith(maxDeleteFiles: _capValue)
             : widget.task.options,
+        runWhileClosed: _canOsSchedule && _runWhileClosed,
         // Reset the clock so a slot already past today doesn't fire instantly.
         lastRun: DateTime.now(),
       );
     }
-    // Reconcile the OS Scheduled Task BEFORE persisting the model, so a schtasks
-    // failure (or a blocked encrypted config) can't leave the in-app schedule
-    // committed while the OS registration diverges — and a Cancel afterwards
-    // then wouldn't have an already-saved schedule to run behind a stale/absent
-    // OS task. An enabled schedule with the box ticked (re-)registers (/Create
-    // /F overwrites, so this also picks up an edited schedule); anything else
-    // (schedule off, or box unticked) unregisters. Failures surface inline and
-    // keep the dialog open rather than silently losing the choice.
-    if (_canOsSchedule) {
-      final os = ref.read(windowsTaskSchedulerProvider);
-      if (_on && _runWhileClosed) {
-        // Refuse to register a background task for an encrypted config with no
-        // stored password: every fire would exit 2 unattended with no history
-        // entry. Block Save and point the user at "Remember config password".
-        if (await _refreshBgPasswordGate()) return;
-        setState(() {
-          _osBusy = true;
-          _osError = null;
-        });
-        final res = await os.register(updated);
-        if (!res.ok) {
-          if (mounted) {
-            setState(() {
-              _osBusy = false;
-              _osError = res.error;
-            });
-          }
-          return;
-        }
-      } else {
-        await os.unregister(widget.task.id);
-      }
+    // Refuse a background task for an encrypted config with no stored password:
+    // every fire would exit 2 unattended with no history entry. Block Save and
+    // point the user at "Remember config password".
+    if (updated.runWhileClosed && _on) {
+      if (await _refreshBgPasswordGate()) return;
     }
 
-    // OS side reconciled cleanly — now commit the model change and close.
+    // The model is committed FIRST now, which is a reversal, and the reason is
+    // the hybrid: reconciling reads the whole task list, so this task's new
+    // state has to be in that list to be acted on. The old code registered one
+    // task and could do it before saving; a reconcile cannot.
+    //
+    // Committing first is safe in a way it would not have been before, because
+    // reconcile is idempotent and runs again at launch: the worst case is a
+    // registration that lags the model until then, rather than a schedule the
+    // user cannot see running behind a stale entry.
     notifier.update(updated);
+
+    if (_canOsSchedule) {
+      setState(() {
+        _osBusy = true;
+        _osError = null;
+      });
+      // `refresh` because the definition may have changed under an unchanged
+      // name — a daily schedule moved from 09:00 to 10:00 registers no new
+      // entry, so nothing else would rewrite it.
+      await reconcileRegistrations(
+        notifier: notifier,
+        readTasks: () => ref.read(tasksProvider),
+        os: ref.read(windowsTaskSchedulerProvider),
+        pollMinutes: ref.read(pollCadenceProvider),
+        refresh: {updated.id},
+      );
+    }
     if (mounted) Navigator.of(context).pop();
   }
 
@@ -1382,7 +1356,6 @@ class _ScheduleDialogState extends ConsumerState<_ScheduleDialog> {
                     value: _runWhileClosed,
                     onChanged: (v) {
                       setState(() {
-                        _userTouchedClosed = true;
                         _runWhileClosed = v ?? false;
                         if (!_runWhileClosed) _bgPasswordError = null;
                       });
@@ -1473,7 +1446,6 @@ class _ScheduleDialogState extends ConsumerState<_ScheduleDialog> {
           // is in flight, or with a weekly schedule and no weekday chosen.
           onPressed:
               (_osBusy ||
-                  _probing ||
                   (_on && _kind == ScheduleKind.weekly && _weekdays.isEmpty))
               ? null
               : () => _save(),
