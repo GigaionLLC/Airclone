@@ -21,6 +21,9 @@ import '../state/tasks_controller.dart';
 import '../state/transfer_options.dart';
 import '../state/transfer_service.dart';
 import '../state/windows_task_scheduler.dart';
+import '../state/backup_restore.dart';
+import '../state/backup_retention.dart';
+import 'backup_actions.dart';
 import 'backup_wizard.dart';
 import 'dialog_body.dart';
 import 'from_to_picker.dart';
@@ -333,6 +336,43 @@ class AutomationSettingsSection extends ConsumerWidget {
               ],
             ),
           ),
+        // Only shown once a backup exists: a retention window with nothing to
+        // retain is a setting asking about a thing the user has not done yet.
+        if (ref.watch(tasksProvider).any(canRestoreFrom)) ...[
+          const SizedBox(height: Space.x3),
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'Keep replaced file versions for',
+                  style: TextStyle(color: c.textMuted, fontSize: 12),
+                ),
+              ),
+              const SizedBox(width: Space.x2),
+              DropdownButton<int>(
+                value: ref.watch(backupRetentionProvider),
+                dropdownColor: c.surfaceRaised,
+                borderRadius: BorderRadius.circular(Radii.md),
+                items: [
+                  for (final d in kRetentionDayChoices)
+                    DropdownMenuItem(
+                      value: d,
+                      child: Text(d == 0 ? 'no versions' : '$d days'),
+                    ),
+                ],
+                onChanged: (v) => v == null
+                    ? null
+                    : ref.read(backupRetentionProvider.notifier).set(v),
+              ),
+            ],
+          ),
+          Text(
+            'A file that gets overwritten is kept beside the new one so you '
+            'can restore it. Cleaning them up is per backup, from the button '
+            'on its row — nothing is deleted on a timer.',
+            style: TextStyle(color: c.textFaint, fontSize: 11),
+          ),
+        ],
         const SizedBox(height: Space.x3),
         Wrap(
           spacing: Space.x2,
@@ -615,6 +655,38 @@ class _TaskRow extends ConsumerWidget {
               color: c.textFaint,
               tooltip: 'Re-establish baseline…',
             ),
+          // Backups only: the destination is an ordinary folder, so restoring
+          // is opening it and copying back through the preflight everything
+          // else already uses.
+          if (canRestoreFrom(task)) ...[
+            IconButton(
+              onPressed: () async {
+                final messenger = ScaffoldMessenger.of(context);
+                final problem = await openBackupForRestore(ref, task);
+                if (problem != null) {
+                  messenger.showSnackBar(SnackBar(content: Text(problem)));
+                } else {
+                  messenger.showSnackBar(
+                    const SnackBar(
+                      content: Text(
+                        'Backup opened in the other pane. Copy from it to '
+                        'restore.',
+                      ),
+                    ),
+                  );
+                }
+              },
+              icon: const Icon(Icons.restore, size: 18),
+              color: c.textFaint,
+              tooltip: 'Restore from this backup…',
+            ),
+            IconButton(
+              onPressed: () => showVersionCleanup(context, ref, task),
+              icon: const Icon(Icons.cleaning_services_outlined, size: 18),
+              color: c.textFaint,
+              tooltip: 'Clean up old versions…',
+            ),
+          ],
           IconButton(
             onPressed: () => showScheduleDialog(context, ref, task),
             icon: Icon(

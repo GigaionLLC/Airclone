@@ -13,7 +13,6 @@
 library;
 
 import '../rclone/models/remote.dart';
-import 'backup_retention.dart';
 import 'task_kind.dart';
 import 'tasks_controller.dart';
 
@@ -56,44 +55,3 @@ Remote? restoreRemoteFor(TransferTask task, List<Remote> remotes) {
 /// "restore" there would be claiming something untrue.
 bool canRestoreFrom(TransferTask task) =>
     task.kind == TaskKind.backup || task.kind == TaskKind.photos;
-
-/// One restorable thing in a backup folder: the current file, plus any older
-/// versions kept beside it.
-///
-/// Grouping is what turns a folder full of `report.replaced.pdf` noise into
-/// "report.pdf, and 3 older versions" — which is the question a person restoring
-/// is actually asking.
-typedef RestorePoint = ({String liveName, List<String> versions});
-
-/// Groups a backup folder's listing into what a user can restore.
-///
-/// [names] is a flat list of file names in one folder. Versions are attached to
-/// the live file they belong to; a version whose live file is gone becomes a
-/// restore point in its own right, because it is then the only copy left and is
-/// precisely what someone comes here for.
-///
-/// Sorted by name so the list is stable between calls; versions newest-last is
-/// not knowable from names alone, so the caller orders them by modification
-/// time when it has it.
-List<RestorePoint> restorePoints(List<String> names) {
-  final live = <String>{};
-  final versionsFor = <String, List<String>>{};
-  for (final n in names) {
-    if (isReplacedVersion(n)) {
-      final owner = liveNameFor(n);
-      if (owner != null) (versionsFor[owner] ??= []).add(n);
-    } else {
-      live.add(n);
-    }
-  }
-  final points = <RestorePoint>[
-    for (final n in live) (liveName: n, versions: [...?versionsFor[n]]..sort()),
-    // A version with no live file: the current copy was deleted at the source
-    // and the backup carried that forward. It still needs to be restorable.
-    for (final entry in versionsFor.entries)
-      if (!live.contains(entry.key))
-        (liveName: entry.key, versions: [...entry.value]..sort()),
-  ];
-  points.sort((a, b) => a.liveName.compareTo(b.liveName));
-  return points;
-}
