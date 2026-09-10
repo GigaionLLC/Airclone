@@ -535,13 +535,26 @@ incoherent.
     without waiting on that decision. Verified against a real Task Scheduler, not
     reasoned about; see `dev/windows-signing-and-store.md` for the two things
     that did not work.
-  - `[ ]` One `--run-due` registration replacing the per-task ones, and the
-    migration that unregisters the old entries. **Blocked on the open question in
-    Phase 3** — unified is recommended there and is the only shape that fits
-    launchd under sandboxing, but it is a user-visible trade (a power user loses
-    the ability to see or disable one schedule from Task Scheduler) and it turns
-    the editor's per-task "Also run while Airclone is closed" checkbox into a
-    single app-level switch. Not a change to make on an assumption.
+  - `[~]` **HYBRID, decided by the user 2026-09-09** — not unified, and not
+    per-task either. The rule is in `state/registration_policy.dart` and it is a
+    rule rather than a preference: **a schedule that names an exact time gets an
+    exact OS trigger; one that names only a gap joins a single shared poller.**
+    A daily 09:00 task should fire at 09:00, which Task Scheduler does for free
+    with no wakeups in between and a poller can only approximate; an "every two
+    hours" task is already polling by nature, so a private OS entry buys nothing
+    and adds a second wakeup source to keep in sync. This also keeps what the
+    unified shape would have cost — a power user can still see and disable their
+    daily and weekly schedules individually in Task Scheduler.
+    - `[x]` The rule, `desiredRegistrations` (both halves decided together, so
+      the poller cannot be orphaned), and `buildDueRunnerXml`.
+    - `[x]` **Cadence is the user's, default 15 minutes**, choosable from
+      5/10/15/30/60 and clamped rather than snapped so a hand-edited or legacy
+      value is honoured if sane. It only bounds lateness for the schedules that
+      reach the poller at all — a daily 09:00 task is unaffected, which is worth
+      saying in the UI before someone turns it down to 5 for no benefit.
+    - `[ ]` Reconciling the desired set against what is registered, persisting
+      per-task opt-in on the model (the poller has no per-task entry to probe),
+      and migrating existing per-task registrations.
   - `[ ]` Reconcile-on-launch; "Remove all background scheduling"; GUI-live no-op
     to close the prefs race.
 - `[ ]` **D — macOS launchd + Linux systemd-user `[M]`.** Pure builders with

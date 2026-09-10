@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'registration_policy.dart';
 import 'task_schedule.dart';
 import 'tasks_controller.dart';
 
@@ -155,6 +156,74 @@ String buildTaskXml({
       '    <Exec>\n'
       '      <Command>$exe</Command>\n'
       '      <Arguments>$args</Arguments>\n'
+      '    </Exec>\n'
+      '  </Actions>\n'
+      '</Task>\n';
+}
+
+/// The Task Scheduler name of the single shared job that runs whatever is due.
+///
+/// A fixed, known name rather than a generated one: it is the thing an uninstall
+/// has to find, and the thing a reconcile has to recognise as already ours.
+const String kDueRunnerTaskName = 'Run due tasks';
+
+/// Builds the definition for the shared `--run-due` job: one `TimeTrigger`
+/// repeating every [intervalMinutes], running the headless entry point that
+/// selects and runs whatever is due.
+///
+/// The counterpart to [buildTaskXml], which builds an EXACT trigger for one
+/// task. Which of the two a schedule gets is `registrationShapeFor`'s decision,
+/// not this file's — see `state/registration_policy.dart`.
+///
+/// Settings are deliberately identical to the per-task ones, because the
+/// reasons are identical: catch up a run missed while the machine was off, do
+/// not skip because a laptop is on battery, and never stack a slow run under
+/// the next tick. The one difference is the description, which has to explain a
+/// job the user never created by name.
+///
+/// Pure and side-effect free, for the same reason as [buildTaskXml].
+String buildDueRunnerXml({
+  required int intervalMinutes,
+  required String exePath,
+}) {
+  final exe = _xmlEscape(exePath);
+  final minutes = clampPollMinutes(intervalMinutes);
+  return '<?xml version="1.0" encoding="UTF-16"?>\n'
+      '<Task version="1.2" xmlns="$_taskXmlns">\n'
+      '  <RegistrationInfo>\n'
+      '    <Author>Airclone</Author>\n'
+      '    <Description>Airclone background scheduler. Wakes every $minutes '
+      'minutes and runs any saved task whose schedule is due, while Airclone '
+      'is closed.</Description>\n'
+      '  </RegistrationInfo>\n'
+      '  <Triggers>\n'
+      '    <TimeTrigger>'
+      '<Repetition>'
+      '<Interval>PT${minutes}M</Interval>'
+      '<StopAtDurationEnd>false</StopAtDurationEnd>'
+      '</Repetition>'
+      '<StartBoundary>${_boundaryDate}T00:00:00</StartBoundary>'
+      '<Enabled>true</Enabled>'
+      '</TimeTrigger>\n'
+      '  </Triggers>\n'
+      '  <Principals>\n'
+      '    <Principal id="Author">\n'
+      '      <LogonType>InteractiveToken</LogonType>\n'
+      '      <RunLevel>LeastPrivilege</RunLevel>\n'
+      '    </Principal>\n'
+      '  </Principals>\n'
+      '  <Settings>\n'
+      '    <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>\n'
+      '    <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>\n'
+      '    <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>\n'
+      '    <StartWhenAvailable>true</StartWhenAvailable>\n'
+      '    <Enabled>true</Enabled>\n'
+      '    <ExecutionTimeLimit>PT6H</ExecutionTimeLimit>\n'
+      '  </Settings>\n'
+      '  <Actions Context="Author">\n'
+      '    <Exec>\n'
+      '      <Command>$exe</Command>\n'
+      '      <Arguments>--run-due</Arguments>\n'
       '    </Exec>\n'
       '  </Actions>\n'
       '</Task>\n';
