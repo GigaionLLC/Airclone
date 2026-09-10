@@ -3,7 +3,7 @@
 ## 📊 State Dashboard
 | Metric | Value |
 | :--- | :--- |
-| **Status** | `IN PROGRESS` — targets **v0.8**. Phase B's two safety items (delete cap + circuit breaker) landed 2026-09-09; Phase A (visibility) is next. v0.7.7 shipped clean. |
+| **Status** | `IN PROGRESS` — targets **v0.8**. **A and B complete; C complete bar one control.** The hybrid registration is built, wired, migrated and reconciled. **D, E and F are untouched** — and E/F are what the user's own clarification answers assumed v0.8 would contain, so the scope needs settling before this is called done. |
 | **Version** | `v1.1.0` |
 | **Active Persona** | `Builder` |
 | **Last Updated** | 2026-09-09 |
