@@ -35,8 +35,8 @@ import 'destination_picker.dart';
 import 'file_grid.dart';
 import 'file_icon.dart';
 import 'file_op_dialogs.dart';
+import 'file_row.dart';
 import 'folder_tools.dart';
-import 'format.dart';
 import 'inspector_panel.dart';
 import 'media_gallery.dart';
 import 'native_drag.dart';
@@ -54,7 +54,7 @@ import 'tab_strip.dart';
 import 'theme/tokens.dart';
 import 'touch.dart';
 import 'transfer_options_dialog.dart';
-import 'tv_row_actions.dart';
+import 'tree_view.dart';
 
 /// Builds the [ThumbRequest] for a single file, or null when it isn't
 /// thumbnailable (a directory, an unsupported kind, or no engine/remote).
@@ -306,6 +306,21 @@ class BrowserPane extends ConsumerWidget {
     // retains the old entries until the reload lands), so the RefreshIndicator's
     // own inline spinner stays mounted instead of the content blanking out.
     final initialLoad = state.loading && state.visibleEntries.isEmpty;
+    // The tree's rows, flattened once per build. Under a filter an expanded
+    // folder with a matching descendant stays even when its own name does not
+    // match, so "nothing to show" is judged on the rows, not on the root.
+    final isTree = state.viewMode == ViewMode.tree;
+    final treeRows = isTree
+        ? flattenTree(
+            rootPath: state.path,
+            rootEntries: state.entries,
+            tree: state.tree,
+            filter: state.filter,
+          )
+        : const <TreeRow>[];
+    final nothingToShow = isTree
+        ? treeRows.isEmpty
+        : state.visibleEntries.isEmpty;
     Widget content;
     if (initialLoad) {
       content = const Center(
@@ -327,7 +342,7 @@ class BrowserPane extends ConsumerWidget {
           ),
         ),
       );
-    } else if (state.visibleEntries.isEmpty) {
+    } else if (nothingToShow) {
       content = _pullableMessage(
         physics,
         // "Empty folder" is a claim, and over a crypt remote holding the wrong
@@ -354,14 +369,16 @@ class BrowserPane extends ConsumerWidget {
       ThumbRequest? thumbReqFor(RcloneFile f) =>
           thumbsOn ? buildThumbRequest(state, client, f) : null;
 
-      // Open the immersive Quick Look on [f], navigable across the listing.
-      void quickLook(RcloneFile f) => showQuickLook(
-        context,
-        state.remote!,
-        state.path,
-        visible,
-        visible.indexOf(f),
+      // Where an entry of the FLAT listing lives: the pane's folder.
+      _EntryLoc flatLoc(RcloneFile f) => _EntryLoc(
+        parentPath: state.path,
+        file: f,
+        siblings: state.entries,
+        visibleSiblings: visible,
       );
+
+      // Open the immersive Quick Look on [f], navigable across the listing.
+      void quickLook(RcloneFile f) => _preview(context, state, flatLoc(f));
 
       switch (state.viewMode) {
         case ViewMode.grid:
@@ -374,7 +391,7 @@ class BrowserPane extends ConsumerWidget {
             onToggle: (f) => ctrl.toggleSelect(f.name),
             onPreview: quickLook,
             onContextMenu: (f, pos) =>
-                _showFileMenu(context, ref, state, f, pos),
+                _showFileMenu(context, ref, state, flatLoc(f), pos),
             onDropInto: (f, data) => _dropOnto(
               context,
               ref,
@@ -397,7 +414,7 @@ class BrowserPane extends ConsumerWidget {
             onSwitchToList: () => ctrl.setViewMode(ViewMode.list),
             onPreview: quickLook,
             onContextMenu: (f, pos) =>
-                _showFileMenu(context, ref, state, f, pos),
+                _showFileMenu(context, ref, state, flatLoc(f), pos),
             onDropInto: (f, data) => _dropOnto(
               context,
               ref,
@@ -409,21 +426,29 @@ class BrowserPane extends ConsumerWidget {
             physics: physics,
           );
         case ViewMode.list:
+          final selectionMode = isTouchPrimary && state.selected.isNotEmpty;
           content = ListView.builder(
             controller: ref.watch(paneScrollProvider(index)),
             physics: physics,
             itemCount: visible.length,
             itemBuilder: (_, i) {
               final f = visible[i];
-              return _FileRow(
+              final selected = state.isSelected(f.name);
+              return FileRow(
                 file: f,
-                state: state,
-                paneRemote: state.remote!,
+                selected: selected,
+                selectionMode: selectionMode,
+                // Dragging a selected row carries the whole selection.
+                dragData: PaneDragData(
+                  state.remote!,
+                  state.path,
+                  selected ? state.selectedEntries : <RcloneFile>[f],
+                ),
                 onOpen: () => ctrl.enterDir(f),
                 onToggle: () => ctrl.toggleSelect(f.name),
                 onPreview: () => quickLook(f),
                 onContextMenu: (pos) =>
-                    _showFileMenu(context, ref, state, f, pos),
+                    _showFileMenu(context, ref, state, flatLoc(f), pos),
                 onDropInto: (data) => _dropOnto(
                   context,
                   ref,
@@ -433,6 +458,28 @@ class BrowserPane extends ConsumerWidget {
                 ),
               );
             },
+          );
+        case ViewMode.tree:
+          // Every callback resolves the row's folder from the ROW — the tree
+          // holds many folders' listings at once and `state.path` is only the
+          // root, so building from it would recreate the v0.5.0 stale-path
+          // bug three levels down.
+          content = TreeView(
+            index: index,
+            state: state,
+            rows: treeRows,
+            paneRemote: state.remote!,
+            scrollController: ref.watch(paneScrollProvider(index)),
+            physics: physics,
+            onPreview: (row) => _preview(context, state, _treeLoc(state, row)),
+            onContextMenu: (row, pos) =>
+                _showFileMenu(context, ref, state, _treeLoc(state, row), pos),
+            onDropInto: (row, data) =>
+                _dropOnto(context, ref, data, state.remote!, row.path),
+            onDeleteKey: () => _deleteSelection(context, ref, index),
+            onRenameKey: () => _renameSelection(context, ref, index),
+            onClipKey: ({required bool cut}) =>
+                _stageSelection(context, ref, index, cut: cut),
           );
       }
     }
@@ -453,7 +500,8 @@ class BrowserPane extends ConsumerWidget {
         children: [
           if (!state.loading &&
               state.error == null &&
-              state.viewMode == ViewMode.list)
+              (state.viewMode == ViewMode.list ||
+                  state.viewMode == ViewMode.tree))
             ColumnHeader(
               sortKey: state.sortKey,
               ascending: state.ascending,
@@ -544,19 +592,39 @@ class BrowserPane extends ConsumerWidget {
 
   // ── context-menu dispatch ────────────────────────────────────────────────────
 
-  List<RcloneFile> _targetFiles(BrowserState state, RcloneFile file) =>
-      state.isSelected(file.name) && state.selected.isNotEmpty
-      ? state.selectedEntries
-      : [file];
+  /// What a menu action acts on: the selection, grouped by source folder,
+  /// when the clicked entry is part of it — else just the clicked entry, in
+  /// its own folder. In the flat views that is one group; in the tree it may
+  /// be several, and each carries its own parent.
+  List<_Group> _targetGroups(BrowserState state, _EntryLoc loc) {
+    final inSelection = state.viewMode == ViewMode.tree
+        ? state.isTreeSelected(loc.path)
+        : state.isSelected(loc.file.name);
+    if (inSelection) {
+      final groups = _selectionGroups(state);
+      if (groups.isNotEmpty) return groups;
+    }
+    return [
+      _Group(loc.parentPath, [loc.file]),
+    ];
+  }
+
+  /// The group of [groups] the user actually clicked in, first — for the
+  /// actions that can only take one source folder (clipboard, compress).
+  _Group _clickedGroup(List<_Group> groups, _EntryLoc loc) => groups.firstWhere(
+    (g) => g.parentPath == loc.parentPath,
+    orElse: () => groups.first,
+  );
 
   Future<void> _showFileMenu(
     BuildContext context,
     WidgetRef ref,
     BrowserState state,
-    RcloneFile file,
+    _EntryLoc loc,
     Offset pos,
   ) async {
     if (state.remote == null) return;
+    final file = loc.file;
     final clip = ref.read(clipboardControllerProvider);
     final hasOther = ref.read(paneProvider(_other)).remote != null;
     // Read the cached backend capability synchronously — never block the menu on
@@ -581,49 +649,51 @@ class BrowserPane extends ConsumerWidget {
           : '',
     );
     if (action == null || state.remote == null) return;
-    final files = _targetFiles(state, file);
-    final clipCtrl = ref.read(clipboardControllerProvider.notifier);
+    final groups = _targetGroups(state, loc);
+    final ctrl = ref.read(paneProvider(index).notifier);
     switch (action) {
       case FileMenuAction.select:
         // Enter multi-select on touch: pick this item; the phone selection bar
         // takes over and tapping other rows toggles them.
-        ref.read(paneProvider(index).notifier).toggleSelect(file.name);
-      case FileMenuAction.open:
-        if (file.isDir) ref.read(paneProvider(index).notifier).enterDir(file);
-      case FileMenuAction.preview:
-        if (!file.isDir && context.mounted) {
-          await showQuickLook(
-            context,
-            state.remote!,
-            state.path,
-            state.visibleEntries,
-            state.visibleEntries.indexOf(file),
-          );
+        if (state.viewMode == ViewMode.tree) {
+          ctrl.toggleTreeSelect(loc.path);
+        } else {
+          ctrl.toggleSelect(file.name);
         }
+      case FileMenuAction.open:
+        // A folder opens as the pane's folder — in the tree that re-roots the
+        // tree at it (expanding is the arrow, double-click, or Right).
+        if (file.isDir) await ctrl.navigateTo(loc.path);
+      case FileMenuAction.preview:
+        if (!file.isDir && context.mounted) await _preview(context, state, loc);
       case FileMenuAction.openExternal:
         if (!file.isDir && context.mounted) {
           await openFileInAnotherApp(
             context,
             ref,
             state.remote!,
-            state.path,
+            loc.parentPath,
             file,
           );
         }
       case FileMenuAction.openWith:
-        await _openLocal(ref, state, file);
+        await _openLocal(ref, state, loc);
       case FileMenuAction.revealInFolder:
-        await _revealLocal(ref, state, file);
+        await _revealLocal(ref, state, loc);
       case FileMenuAction.copyPath:
-        await _copyPath(ref, state, file);
+        await _copyPath(ref, state, loc);
       case FileMenuAction.checksums:
-        if (context.mounted) await _checksums(context, ref, state, file);
+        if (context.mounted) await _checksums(context, ref, state, loc);
       case FileMenuAction.download:
-        if (context.mounted) await _download(context, ref, state, files);
+        if (context.mounted) await _download(context, ref, state, groups);
       case FileMenuAction.copy:
-        clipCtrl.copy(state.remote!, state.path, files);
+        if (context.mounted) {
+          _stageGroups(context, ref, state.remote!, groups, loc, cut: false);
+        }
       case FileMenuAction.cut:
-        clipCtrl.cut(state.remote!, state.path, files);
+        if (context.mounted) {
+          _stageGroups(context, ref, state.remote!, groups, loc, cut: true);
+        }
       case FileMenuAction.paste:
         if (context.mounted) {
           await _paste(
@@ -631,55 +701,51 @@ class BrowserPane extends ConsumerWidget {
             ref,
             state,
             state.remote!,
-            file.isDir ? joinPath(state.path, file.name) : state.path,
+            file.isDir ? loc.path : loc.parentPath,
           );
         }
       case FileMenuAction.copyTo:
-        if (context.mounted) await _copyToPicker(context, ref, state, file);
+        if (context.mounted) await _copyToPicker(context, ref, state, loc);
       case FileMenuAction.moveTo:
-        if (context.mounted) await _moveToPicker(context, ref, state, file);
+        if (context.mounted) await _moveToPicker(context, ref, state, loc);
       case FileMenuAction.openInOtherPane:
-        await _openInOtherPane(ref, state, file);
+        await _openInOtherPane(ref, state, loc);
       case FileMenuAction.rename:
-        if (context.mounted) await _rename(context, ref, state, file);
+        if (context.mounted) await _rename(context, ref, state, loc);
       case FileMenuAction.delete:
-        if (context.mounted) await _delete(context, ref, state, file);
+        if (context.mounted) await _delete(context, ref, state, loc);
       case FileMenuAction.publicLink:
-        if (context.mounted) await _publicLink(context, ref, state, file);
+        if (context.mounted) await _publicLink(context, ref, state, loc);
       case FileMenuAction.compress:
-        if (context.mounted) await _compress(context, ref, state, file);
+        if (context.mounted) {
+          await _compress(context, ref, state, _clickedGroup(groups, loc), loc);
+        }
       case FileMenuAction.extractHere:
         // Extract into a NEW subfolder named after the archive (not the current
         // folder) so members can never silently overwrite same-named files here.
-        final dirPrefix = state.path.isEmpty ? '' : '${state.path}/';
+        final dirPrefix = loc.parentPath.isEmpty ? '' : '${loc.parentPath}/';
         await _extract(
           ref,
           state,
-          file,
+          loc,
           dest: '${state.remote!.fs}$dirPrefix${_archiveLeaf(file)}',
         );
         if (context.mounted) _archiveStarted(context, 'Extracting…');
       case FileMenuAction.extractTo:
-        if (context.mounted) await _extractTo(context, ref, state, file);
+        if (context.mounted) await _extractTo(context, ref, state, loc);
       case FileMenuAction.listArchive:
         if (context.mounted) {
           await showArchiveContentsDialog(
             context,
             ref,
-            archivePath:
-                '${state.remote!.fs}${joinPath(state.path, file.name)}',
+            archivePath: '${state.remote!.fs}${loc.path}',
           );
         }
       // Both are offered on folder rows only (see showFileContextMenu), so the
       // target is this row's subfolder rather than the pane's current folder.
       case FileMenuAction.setSyncSource:
         if (context.mounted) {
-          _markSyncSource(
-            context,
-            ref,
-            state.remote!,
-            joinPath(state.path, file.name),
-          );
+          _markSyncSource(context, ref, state.remote!, loc.path);
         }
       case FileMenuAction.syncToHere:
         if (context.mounted) {
@@ -687,7 +753,7 @@ class BrowserPane extends ConsumerWidget {
             context,
             ref,
             destRemote: state.remote!,
-            destPath: joinPath(state.path, file.name),
+            destPath: loc.path,
             paneIndex: index,
           );
         }
@@ -695,21 +761,24 @@ class BrowserPane extends ConsumerWidget {
   }
 
   /// Compress the selection (or the clicked item) into a new archive. A single
-  /// item archives directly; multiple items archive the current folder scoped by
-  /// `--include` filters for each selected name.
+  /// item archives directly; multiple items archive their folder scoped by
+  /// `--include` filters for each selected name — which is why this takes ONE
+  /// [group]: the filters are relative to one source folder.
   Future<void> _compress(
     BuildContext context,
     WidgetRef ref,
     BrowserState state,
-    RcloneFile file,
+    _Group group,
+    _EntryLoc loc,
   ) async {
     final remote = state.remote!;
-    final targets = _targetFiles(state, file);
+    final targets = group.files;
+    final parent = group.parentPath;
     final single = targets.length == 1;
-    final dirPrefix = state.path.isEmpty ? '' : '${state.path}/';
+    final dirPrefix = parent.isEmpty ? '' : '$parent/';
     final leaf = single
         ? _archiveLeaf(targets.first)
-        : (state.path.isEmpty ? remote.name : state.path.split('/').last);
+        : (parent.isEmpty ? remote.name : parent.split('/').last);
     final choice = await showCompressDialog(
       context,
       initialDest: '${remote.fs}$dirPrefix$leaf${ArchiveFormat.zip.ext}',
@@ -722,9 +791,9 @@ class BrowserPane extends ConsumerWidget {
     final String source;
     final extraFlags = <String>[];
     if (single) {
-      source = '${remote.fs}${joinPath(state.path, targets.first.name)}';
+      source = '${remote.fs}${joinPath(parent, targets.first.name)}';
     } else {
-      source = '${remote.fs}${state.path}';
+      source = '${remote.fs}$parent';
       for (final t in targets) {
         // The name is a literal, but --include is a GLOB — escape metacharacters
         // so e.g. `data[1].csv` archives itself, not `data1.csv`.
@@ -750,10 +819,11 @@ class BrowserPane extends ConsumerWidget {
     BuildContext context,
     WidgetRef ref,
     BrowserState state,
-    RcloneFile file,
+    _EntryLoc loc,
   ) async {
     final remote = state.remote!;
-    final dirPrefix = state.path.isEmpty ? '' : '${state.path}/';
+    final file = loc.file;
+    final dirPrefix = loc.parentPath.isEmpty ? '' : '${loc.parentPath}/';
     final into = '${remote.fs}$dirPrefix${_archiveLeaf(file)}';
     final dest = await showExtractToDialog(
       context,
@@ -761,17 +831,17 @@ class BrowserPane extends ConsumerWidget {
       what: 'Extracting "${file.name}"',
     );
     if (dest == null) return;
-    await _extract(ref, state, file, dest: dest);
+    await _extract(ref, state, loc, dest: dest);
     if (context.mounted) _archiveStarted(context, 'Extracting…');
   }
 
   Future<void> _extract(
     WidgetRef ref,
     BrowserState state,
-    RcloneFile file, {
+    _EntryLoc loc, {
     required String dest,
   }) async {
-    final source = '${state.remote!.fs}${joinPath(state.path, file.name)}';
+    final source = '${state.remote!.fs}${loc.path}';
     final cmd = buildArchiveCommand(
       op: ArchiveOp.extract,
       source: source,
@@ -888,31 +958,22 @@ class BrowserPane extends ConsumerWidget {
     BuildContext context,
     WidgetRef ref,
     BrowserState state,
-    RcloneFile f,
+    _EntryLoc loc,
   ) async {
-    final name = await showRenameDialog(
-      context,
-      f.name,
-      taken: {
-        for (final e in state.entries)
-          if (e.name != f.name) e.name,
-      },
-    );
-    if (name == null || name == f.name || state.remote == null) return;
-    await ref.read(fileOpsProvider).rename(state.remote!, f.path, name);
-    await ref.read(paneProvider(index).notifier).refresh();
+    if (state.remote == null) return;
+    await _renameEntry(context, ref, index, state.remote!, loc);
   }
 
   Future<void> _delete(
     BuildContext context,
     WidgetRef ref,
     BrowserState state,
-    RcloneFile f,
+    _EntryLoc loc,
   ) async {
-    final ok = await showDeleteConfirm(context, f.name, isDir: f.isDir);
-    if (!ok || state.remote == null) return;
-    await ref.read(fileOpsProvider).deleteEntry(state.remote!, f, state.path);
-    await ref.read(paneProvider(index).notifier).refresh();
+    if (state.remote == null) return;
+    await _deleteGroups(context, ref, index, state.remote!, [
+      _Group(loc.parentPath, [loc.file]),
+    ]);
   }
 
   /// "Copy to…" / "Move to…" both go through [transferNamesIntoFolder] — the
@@ -927,7 +988,7 @@ class BrowserPane extends ConsumerWidget {
     BuildContext context,
     WidgetRef ref,
     BrowserState state,
-    RcloneFile f,
+    _EntryLoc loc,
   ) async {
     final dst = await showDestinationPicker(context, title: 'Copy to…');
     if (dst == null || state.remote == null || !context.mounted) return;
@@ -935,8 +996,8 @@ class BrowserPane extends ConsumerWidget {
       context,
       ref,
       srcRemote: state.remote!,
-      srcParentPath: state.path,
-      names: [f.name],
+      srcParentPath: loc.parentPath,
+      names: [loc.file.name],
       destRemote: dst.remote,
       destPath: dst.path,
       type: JobType.copy,
@@ -947,32 +1008,33 @@ class BrowserPane extends ConsumerWidget {
     BuildContext context,
     WidgetRef ref,
     BrowserState state,
-    RcloneFile f,
+    _EntryLoc loc,
   ) async {
     final dst = await showDestinationPicker(context, title: 'Move to…');
     if (dst == null || state.remote == null || !context.mounted) return;
-    // refreshPaneIndex: the source pane loses the entry on a move, so it has to
-    // re-list — and only after the transfer is actually dispatched.
-    await transferNamesIntoFolder(
+    // The source folder loses the entry on a move, so it has to re-list — and
+    // only after the transfer is actually dispatched. In the tree that is the
+    // row's own folder, not necessarily the root the helper would refresh.
+    final ran = await transferNamesIntoFolder(
       context,
       ref,
       srcRemote: state.remote!,
-      srcParentPath: state.path,
-      names: [f.name],
+      srcParentPath: loc.parentPath,
+      names: [loc.file.name],
       destRemote: dst.remote,
       destPath: dst.path,
       type: JobType.move,
-      refreshPaneIndex: index,
     );
+    if (ran) await _reloadFolders(ref, index, [loc.parentPath]);
   }
 
   Future<void> _download(
     BuildContext context,
     WidgetRef ref,
     BrowserState state,
-    List<RcloneFile> files,
+    List<_Group> groups,
   ) async {
-    if (state.remote == null || files.isEmpty) return;
+    if (state.remote == null || groups.isEmpty) return;
     final dir = await resolveDownloadDir(ref); // prompts / uses saved default
     if (dir == null || !context.mounted) return; // cancelled
     final local = Remote(
@@ -985,12 +1047,11 @@ class BrowserPane extends ConsumerWidget {
     // overwrites by default, so downloading a file you already have used to
     // destroy the local copy without asking. destPath is empty because the
     // local Remote's fs already points AT the chosen download folder.
-    await transferNamesIntoFolder(
+    await _transferGroups(
       context,
       ref,
       srcRemote: state.remote!,
-      srcParentPath: state.path,
-      names: [for (final f in files) f.name],
+      groups: groups,
       destRemote: local,
       destPath: '',
       type: JobType.copy,
@@ -1004,31 +1065,42 @@ class BrowserPane extends ConsumerWidget {
     Remote dstRemote,
     String dstPath,
   ) async {
-    // Pasting into the current folder can reuse its loaded listing to detect
-    // collisions; a subfolder target is listed by the helper.
-    final known = dstPath == state.path
-        ? state.entries.map((e) => e.name)
-        : null;
-    await pasteClipboardIntoFolder(
+    // Pasting into a folder whose listing is loaded (the pane's folder, or an
+    // expanded tree folder) reuses it to detect collisions; anything else is
+    // listed by the helper. The pasted-into folder is re-listed afterwards —
+    // in the tree that is the one folder, not the whole forest.
+    final known = state.childrenOf(dstPath)?.map((e) => e.name);
+    final clip = ref.read(clipboardControllerProvider);
+    if (clip.isEmpty || clip.remote == null) return;
+    final ran = await transferNamesIntoFolder(
       context,
       ref,
+      srcRemote: clip.remote!,
+      srcParentPath: clip.parentPath,
+      names: clip.files.map((f) => f.name).toList(),
       destRemote: dstRemote,
       destPath: dstPath,
-      refreshPaneIndex: index,
+      type: clip.isCut ? JobType.move : JobType.copy,
       knownNames: known,
     );
+    if (!ran) return;
+    final touched = [dstPath];
+    if (clip.isCut) {
+      ref.read(clipboardControllerProvider.notifier).clear();
+      // A cut from this pane's remote emptied its source folder too.
+      if (clip.remote == state.remote) touched.add(clip.parentPath);
+    }
+    await _reloadFolders(ref, index, touched);
   }
 
   Future<void> _openInOtherPane(
     WidgetRef ref,
     BrowserState state,
-    RcloneFile f,
+    _EntryLoc loc,
   ) async {
     final otherCtrl = ref.read(paneProvider(_other).notifier);
     await otherCtrl.open(state.remote!);
-    await otherCtrl.navigateTo(
-      f.isDir ? joinPath(state.path, f.name) : state.path,
-    );
+    await otherCtrl.navigateTo(loc.file.isDir ? loc.path : loc.parentPath);
     ref.read(activePaneProvider.notifier).state = _other;
   }
 
@@ -1036,7 +1108,7 @@ class BrowserPane extends ConsumerWidget {
     BuildContext context,
     WidgetRef ref,
     BrowserState state,
-    RcloneFile f,
+    _EntryLoc loc,
   ) async {
     final client = ref.read(engineControllerProvider).client;
     if (client == null || state.remote == null) return;
@@ -1044,8 +1116,8 @@ class BrowserPane extends ConsumerWidget {
       context,
       client,
       fs: state.remote!.fs,
-      remote: joinPath(state.path, f.name),
-      name: f.name,
+      remote: loc.path,
+      name: loc.file.name,
     );
   }
 
@@ -1053,7 +1125,7 @@ class BrowserPane extends ConsumerWidget {
     BuildContext context,
     WidgetRef ref,
     BrowserState state,
-    RcloneFile f,
+    _EntryLoc loc,
   ) async {
     final client = ref.read(engineControllerProvider).client;
     if (client == null || state.remote == null) return;
@@ -1062,27 +1134,27 @@ class BrowserPane extends ConsumerWidget {
       client,
       remoteInfo: state.remote!,
       fs: state.remote!.fs,
-      remote: joinPath(state.path, f.name),
-      name: f.name,
+      remote: loc.path,
+      name: loc.file.name,
       // Local files are hashed by reading them — restrict to the common types
       // so the stat doesn't compute ~13 hashes over the whole file.
       hashTypes: state.remote!.isLocal ? localHashTypes : null,
     );
   }
 
-  /// The real on-disk path for [f] on a local-disk remote (else null).
-  String? _localOsPath(BrowserState state, RcloneFile f) {
+  /// The real on-disk path for [loc] on a local-disk remote (else null).
+  String? _localOsPath(BrowserState state, _EntryLoc loc) {
     final remote = state.remote;
     if (remote == null || !remote.isLocal) return null;
-    return '${remote.fs}${joinPath(state.path, f.name)}';
+    return '${remote.fs}${loc.path}';
   }
 
   Future<void> _openLocal(
     WidgetRef ref,
     BrowserState state,
-    RcloneFile f,
+    _EntryLoc loc,
   ) async {
-    final p = _localOsPath(state, f);
+    final p = _localOsPath(state, loc);
     if (p == null) return;
     await ref.read(osIntegrationProvider).openWithDefaultApp(p);
   }
@@ -1090,9 +1162,9 @@ class BrowserPane extends ConsumerWidget {
   Future<void> _revealLocal(
     WidgetRef ref,
     BrowserState state,
-    RcloneFile f,
+    _EntryLoc loc,
   ) async {
-    final p = _localOsPath(state, f);
+    final p = _localOsPath(state, loc);
     if (p == null) return;
     await ref.read(osIntegrationProvider).revealInFileManager(p);
   }
@@ -1100,12 +1172,10 @@ class BrowserPane extends ConsumerWidget {
   Future<void> _copyPath(
     WidgetRef ref,
     BrowserState state,
-    RcloneFile f,
+    _EntryLoc loc,
   ) async {
     // Local → OS path; cloud → the rclone `remote:path` form.
-    final p =
-        _localOsPath(state, f) ??
-        '${state.remote!.name}:${joinPath(state.path, f.name)}';
+    final p = _localOsPath(state, loc) ?? '${state.remote!.name}:${loc.path}';
     await ref.read(osIntegrationProvider).copyToClipboard(p);
   }
 
@@ -1188,6 +1258,357 @@ class BrowserPane extends ConsumerWidget {
   }
 }
 
+// ── where an entry lives, and what a selection is ────────────────────────────
+
+/// Where a clicked entry lives: the folder it was LISTED FROM. In the flat
+/// views that is the pane's folder; in the tree it is the row's own parent —
+/// which may be three levels below `state.path` (tree-view plan §2.2). Every
+/// per-entry operation resolves its target from this, never from the pane.
+class _EntryLoc {
+  const _EntryLoc({
+    required this.parentPath,
+    required this.file,
+    required this.siblings,
+    required this.visibleSiblings,
+  });
+
+  final String parentPath;
+  final RcloneFile file;
+
+  /// The full loaded listing of [parentPath] (for "name already taken").
+  final List<RcloneFile> siblings;
+
+  /// The listing as shown (after the filter), for Quick Look navigation.
+  final List<RcloneFile> visibleSiblings;
+
+  String get path => joinPath(parentPath, file.name);
+}
+
+/// A tree row as an entry location: its parent is the folder it was flattened
+/// out of, and its siblings are that folder's cached listing.
+_EntryLoc _treeLoc(BrowserState state, TreeRow row) {
+  final siblings = state.childrenOf(row.parentPath) ?? const <RcloneFile>[];
+  return _EntryLoc(
+    parentPath: row.parentPath,
+    file: row.file,
+    siblings: siblings,
+    visibleSiblings: siblings,
+  );
+}
+
+/// Some entries that share ONE source folder — the unit every transfer and
+/// bulk operation takes. A selection spanning folders is a list of these.
+class _Group {
+  const _Group(this.parentPath, this.files);
+  final String parentPath;
+  final List<RcloneFile> files;
+  List<String> get names => [for (final f in files) f.name];
+}
+
+/// The pane's selection as one group per source folder. Flat views yield one
+/// group at the pane's folder; the tree yields one per folder its selected
+/// rows live in (plan §4.D). Empty when nothing is selected.
+List<_Group> _selectionGroups(BrowserState state) {
+  if (state.viewMode == ViewMode.tree) {
+    return [
+      for (final e in groupByParent(state.selectedTreeRows).entries)
+        _Group(e.key, e.value),
+    ];
+  }
+  final files = state.selectedEntries;
+  return files.isEmpty ? const [] : [_Group(state.path, files)];
+}
+
+/// Quick Look [loc], navigable across the folder it lives in.
+Future<void> _preview(BuildContext context, BrowserState state, _EntryLoc loc) {
+  final remote = state.remote;
+  if (remote == null) return Future<void>.value();
+  return showQuickLook(
+    context,
+    remote,
+    loc.parentPath,
+    loc.visibleSiblings,
+    loc.visibleSiblings.indexOf(loc.file),
+  );
+}
+
+/// Re-list the folders an operation touched. The flat views hold one folder,
+/// so that is a refresh; the tree re-lists each folder by itself rather than
+/// the whole forest.
+Future<void> _reloadFolders(
+  WidgetRef ref,
+  int index,
+  Iterable<String> folders,
+) async {
+  final ctrl = ref.read(paneProvider(index).notifier);
+  if (ref.read(paneProvider(index)).viewMode != ViewMode.tree) {
+    await ctrl.refresh();
+    return;
+  }
+  for (final f in folders.toSet()) {
+    await ctrl.reloadTreeFolder(f);
+  }
+}
+
+/// Move/copy [groups] into [destPath] through the conflict preflight, once
+/// per source folder — the same shape `_uploadLocal` uses for an OS drop
+/// from several folders, and the honest one: each group is a different
+/// source, so each gets its own "N of M already exist" answer.
+///
+/// With more than one group the destination is listed ONCE up front (fail
+/// closed, like the helper) and the names each group dispatches are added to
+/// that set before the next group is checked: the transfers run async, so a
+/// re-list between groups could miss a file the previous group is still
+/// writing — and a same-named file from the second folder would then land on
+/// it without a word. Returns true when anything actually ran.
+Future<bool> _transferGroups(
+  BuildContext context,
+  WidgetRef ref, {
+  required Remote srcRemote,
+  required List<_Group> groups,
+  required Remote destRemote,
+  required String destPath,
+  required JobType type,
+  Iterable<String>? knownNames,
+}) async {
+  if (groups.isEmpty) return false;
+  if (groups.length == 1) {
+    return transferNamesIntoFolder(
+      context,
+      ref,
+      srcRemote: srcRemote,
+      srcParentPath: groups.single.parentPath,
+      names: groups.single.names,
+      destRemote: destRemote,
+      destPath: destPath,
+      type: type,
+      knownNames: knownNames,
+    );
+  }
+  final Set<String> known;
+  if (knownNames != null) {
+    known = knownNames.toSet();
+  } else {
+    final client = ref.read(engineControllerProvider).client;
+    if (client == null) return false;
+    try {
+      final res = await client.rpc(
+        'operations/list',
+        destRemote.listParams(destPath),
+      );
+      known = {
+        for (final it in (res['list'] as List? ?? const []))
+          ((it as Map)['Name'] ?? '').toString(),
+      };
+    } catch (_) {
+      if (!context.mounted) return false;
+      ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+        const SnackBar(
+          content: Text(
+            "Couldn't check the destination folder, so nothing was "
+            'copied — check the connection and try again.',
+          ),
+        ),
+      );
+      return false;
+    }
+  }
+  var ran = false;
+  for (final g in groups) {
+    if (!context.mounted) return ran;
+    final r = await transferNamesIntoFolder(
+      context,
+      ref,
+      srcRemote: srcRemote,
+      srcParentPath: g.parentPath,
+      names: g.names,
+      destRemote: destRemote,
+      destPath: destPath,
+      type: type,
+      knownNames: known,
+    );
+    if (r) {
+      ran = true;
+      known.addAll(g.names);
+    }
+  }
+  return ran;
+}
+
+/// Stage [groups] on the clipboard for a later paste. The clipboard holds ONE
+/// source folder (its names are joined to one parent on paste), so a
+/// selection spanning folders stages the group the user clicked in and says
+/// what was left out — rather than silently pairing the other names with the
+/// wrong parent.
+void _stageGroups(
+  BuildContext context,
+  WidgetRef ref,
+  Remote remote,
+  List<_Group> groups,
+  _EntryLoc? clicked, {
+  required bool cut,
+}) {
+  if (groups.isEmpty) return;
+  final g = clicked == null
+      ? groups.first
+      : groups.firstWhere(
+          (g) => g.parentPath == clicked.parentPath,
+          orElse: () => groups.first,
+        );
+  final clip = ref.read(clipboardControllerProvider.notifier);
+  cut
+      ? clip.cut(remote, g.parentPath, g.files)
+      : clip.copy(remote, g.parentPath, g.files);
+  if (groups.length > 1) {
+    final left =
+        groups.fold<int>(0, (n, x) => n + x.files.length) - g.files.length;
+    final where = g.parentPath.isEmpty ? remote.name : g.parentPath;
+    ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+      SnackBar(
+        content: Text(
+          '${cut ? 'Cut' : 'Copied'} ${g.files.length} from $where — the '
+          'clipboard holds one folder at a time, so $left selected elsewhere '
+          'were left out.',
+        ),
+      ),
+    );
+  }
+}
+
+/// Delete every entry in [groups] after one confirm, each from its own folder,
+/// then re-list the folders touched.
+Future<void> _deleteGroups(
+  BuildContext context,
+  WidgetRef ref,
+  int index,
+  Remote remote,
+  List<_Group> groups,
+) async {
+  final files = [for (final g in groups) ...g.files];
+  if (files.isEmpty) return;
+  final ok = await showDeleteConfirm(
+    context,
+    files.length == 1 ? files.first.name : '${files.length} items',
+    isDir: files.length == 1 && files.first.isDir,
+  );
+  if (!ok) return;
+  final ops = ref.read(fileOpsProvider);
+  for (final g in groups) {
+    for (final f in g.files) {
+      await ops.deleteEntry(remote, f, g.parentPath);
+    }
+  }
+  await _reloadFolders(ref, index, groups.map((g) => g.parentPath));
+}
+
+/// Rename [loc] in place, then re-list its folder.
+Future<void> _renameEntry(
+  BuildContext context,
+  WidgetRef ref,
+  int index,
+  Remote remote,
+  _EntryLoc loc,
+) async {
+  final f = loc.file;
+  final name = await showRenameDialog(
+    context,
+    f.name,
+    taken: {
+      for (final e in loc.siblings)
+        if (e.name != f.name) e.name,
+    },
+  );
+  if (name == null || name == f.name) return;
+  await ref.read(fileOpsProvider).rename(remote, loc.path, name);
+  await _reloadFolders(ref, index, [loc.parentPath]);
+}
+
+// ── selection-driven verbs (toolbar, keyboard) ───────────────────────────────
+
+Future<void> _deleteSelection(
+  BuildContext context,
+  WidgetRef ref,
+  int index,
+) async {
+  final state = ref.read(paneProvider(index));
+  if (state.remote == null) return;
+  await _deleteGroups(
+    context,
+    ref,
+    index,
+    state.remote!,
+    _selectionGroups(state),
+  );
+}
+
+/// F2 / the Rename button: exactly one selected entry, wherever it lives.
+Future<void> _renameSelection(
+  BuildContext context,
+  WidgetRef ref,
+  int index,
+) async {
+  final state = ref.read(paneProvider(index));
+  if (state.remote == null) return;
+  final groups = _selectionGroups(state);
+  final files = [for (final g in groups) ...g.files];
+  if (files.length != 1) return;
+  final g = groups.single;
+  final loc = _EntryLoc(
+    parentPath: g.parentPath,
+    file: files.single,
+    siblings: state.childrenOf(g.parentPath) ?? const [],
+    visibleSiblings: const [],
+  );
+  await _renameEntry(context, ref, index, state.remote!, loc);
+}
+
+void _stageSelection(
+  BuildContext context,
+  WidgetRef ref,
+  int index, {
+  required bool cut,
+}) {
+  final state = ref.read(paneProvider(index));
+  if (state.remote == null) return;
+  _stageGroups(
+    context,
+    ref,
+    state.remote!,
+    _selectionGroups(state),
+    null,
+    cut: cut,
+  );
+}
+
+/// "Copy / Move to other pane": the selection, one conflict-checked transfer
+/// per source folder, into the other pane's folder.
+Future<void> _transferSelectionToOther(
+  BuildContext context,
+  WidgetRef ref,
+  int index,
+  JobType type,
+) async {
+  final from = ref.read(paneProvider(index));
+  final to = ref.read(paneProvider(index == 0 ? 1 : 0));
+  if (from.remote == null || to.remote == null) return;
+  final groups = _selectionGroups(from);
+  final ran = await _transferGroups(
+    context,
+    ref,
+    srcRemote: from.remote!,
+    groups: groups,
+    destRemote: to.remote!,
+    destPath: to.path,
+    type: type,
+    // The other pane's listing is already loaded - collision-check for free.
+    knownNames: to.entries.map((e) => e.name),
+  );
+  // Only on a real dispatch: a cancelled conflict prompt should leave the
+  // selection alone so the user can retry without re-selecting. The panes
+  // re-list through the jobs-done auto-refresh, as before.
+  if (ran) ref.read(paneProvider(index).notifier).clearSelection();
+}
+
 /// Toolbar above a pane: nav buttons + editable path bar + selection actions.
 /// Icon-size presets for the View menu (label → grid `maxCrossAxisExtent`).
 const List<(String, double)> _viewSizePresets = [
@@ -1227,10 +1648,14 @@ class _ViewSegmented extends StatelessWidget {
   final ValueChanged<ViewMode> onChanged;
   final AircloneColors c;
 
-  static const _segments = <(ViewMode, IconData, String)>[
+  // Not const: the touch gate is a runtime value. Desktop only for the tree —
+  // the controller never enters tree mode on touch, so a segment there would
+  // be a button that does nothing visible.
+  static final _segments = <(ViewMode, IconData, String)>[
     (ViewMode.list, Icons.format_list_bulleted, 'List'),
     (ViewMode.grid, Icons.grid_view_rounded, 'Icons'),
     (ViewMode.media, Icons.photo_library_outlined, 'Gallery'),
+    if (!isTouchPrimary) (ViewMode.tree, Icons.account_tree_outlined, 'Tree'),
   ];
 
   @override
@@ -1451,8 +1876,8 @@ class _PaneToolbar extends ConsumerWidget {
   Widget _commandRow(BuildContext context, WidgetRef ref, AircloneColors c) {
     final ctrl = ref.read(paneProvider(index).notifier);
     final hasRemote = state.remote != null;
-    final hasSel = state.selected.isNotEmpty;
-    final oneSel = state.selected.length == 1;
+    final hasSel = state.hasSelection;
+    final oneSel = state.selectionCount == 1;
     final clipFull = ref.watch(clipboardControllerProvider).isNotEmpty;
     final other = ref.watch(paneProvider(index == 0 ? 1 : 0));
     final chrome = AircloneTheme.chromeOf(context);
@@ -1507,14 +1932,14 @@ class _PaneToolbar extends ConsumerWidget {
                           Icons.content_cut,
                           'Cut',
                           enabled: hasSel,
-                          onTap: () => _clip(ref, cut: true),
+                          onTap: () => _clip(context, ref, cut: true),
                         ),
                         _cmd(
                           c,
                           Icons.copy_outlined,
                           'Copy',
                           enabled: hasSel,
-                          onTap: () => _clip(ref, cut: false),
+                          onTap: () => _clip(context, ref, cut: false),
                         ),
                         _cmd(
                           c,
@@ -1560,7 +1985,7 @@ class _PaneToolbar extends ConsumerWidget {
                 ),
                 if (hasSel) ...[
                   Text(
-                    '${state.selected.length} selected',
+                    '${state.selectionCount} selected',
                     style: TextStyle(
                       color: c.primary,
                       fontSize: 11,
@@ -1664,7 +2089,7 @@ class _PaneToolbar extends ConsumerWidget {
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: Space.x1),
               child: Text(
-                '${state.selected.length} selected',
+                '${state.selectionCount} selected',
                 style: TextStyle(
                   color: c.primary,
                   fontSize: 11,
@@ -1703,8 +2128,8 @@ class _PaneToolbar extends ConsumerWidget {
   Widget _unifiedRow(BuildContext context, WidgetRef ref, AircloneColors c) {
     final ctrl = ref.read(paneProvider(index).notifier);
     final hasRemote = state.remote != null;
-    final hasSel = state.selected.isNotEmpty;
-    final oneSel = state.selected.length == 1;
+    final hasSel = state.hasSelection;
+    final oneSel = state.selectionCount == 1;
     final clipFull = ref.watch(clipboardControllerProvider).isNotEmpty;
     final other = ref.watch(paneProvider(index == 0 ? 1 : 0));
     return SizedBox(
@@ -1799,12 +2224,12 @@ class _PaneToolbar extends ConsumerWidget {
         item(
           Icons.content_cut,
           'Cut',
-          hasSel ? () => _clip(ref, cut: true) : null,
+          hasSel ? () => _clip(context, ref, cut: true) : null,
         ),
         item(
           Icons.copy_outlined,
           'Copy',
-          hasSel ? () => _clip(ref, cut: false) : null,
+          hasSel ? () => _clip(context, ref, cut: false) : null,
         ),
         item(
           Icons.content_paste,
@@ -2095,6 +2520,12 @@ class _PaneToolbar extends ConsumerWidget {
           onPressed: () => ctrl.setViewMode(ViewMode.media),
           child: const Text('Media gallery'),
         ),
+        if (!isTouchPrimary)
+          MenuItemButton(
+            leadingIcon: _check(c, state.viewMode == ViewMode.tree),
+            onPressed: () => ctrl.setViewMode(ViewMode.tree),
+            child: const Text('Tree'),
+          ),
         const Divider(height: 8),
         MenuItemButton(
           leadingIcon: _check(c, thumbsOn),
@@ -2154,76 +2585,26 @@ class _PaneToolbar extends ConsumerWidget {
     await ref.read(paneProvider(index).notifier).refresh();
   }
 
-  void _clip(WidgetRef ref, {required bool cut}) {
-    if (state.remote == null || state.selectedEntries.isEmpty) return;
-    final clip = ref.read(clipboardControllerProvider.notifier);
-    final files = state.selectedEntries;
-    cut
-        ? clip.cut(state.remote!, state.path, files)
-        : clip.copy(state.remote!, state.path, files);
-  }
+  // The selection verbs are the shared, tree-aware routines: in the tree the
+  // selection may span folders and each entry resolves from its own parent.
+  void _clip(BuildContext context, WidgetRef ref, {required bool cut}) =>
+      _stageSelection(context, ref, index, cut: cut);
 
   Future<void> _paste(BuildContext context, WidgetRef ref) async {
     await pasteClipboardInto(context, ref, dest: state, paneIndex: index);
   }
 
-  Future<void> _rename(BuildContext context, WidgetRef ref) async {
-    final files = state.selectedEntries;
-    if (files.length != 1 || state.remote == null) return;
-    final f = files.first;
-    final name = await showRenameDialog(
-      context,
-      f.name,
-      taken: {
-        for (final e in state.entries)
-          if (e.name != f.name) e.name,
-      },
-    );
-    if (name == null || name == f.name) return;
-    await ref.read(fileOpsProvider).rename(state.remote!, f.path, name);
-    await ref.read(paneProvider(index).notifier).refresh();
-  }
+  Future<void> _rename(BuildContext context, WidgetRef ref) =>
+      _renameSelection(context, ref, index);
 
-  Future<void> _delete(BuildContext context, WidgetRef ref) async {
-    final files = state.selectedEntries;
-    if (files.isEmpty || state.remote == null) return;
-    final ok = await showDeleteConfirm(
-      context,
-      files.length == 1 ? files.first.name : '${files.length} items',
-      isDir: files.length == 1 && files.first.isDir,
-    );
-    if (!ok) return;
-    final ops = ref.read(fileOpsProvider);
-    for (final f in files) {
-      await ops.deleteEntry(state.remote!, f, state.path);
-    }
-    await ref.read(paneProvider(index).notifier).refresh();
-  }
+  Future<void> _delete(BuildContext context, WidgetRef ref) =>
+      _deleteSelection(context, ref, index);
 
   Future<void> _transferToOther(
     BuildContext context,
     WidgetRef ref,
     JobType type,
-  ) async {
-    final from = ref.read(paneProvider(index));
-    final to = ref.read(paneProvider(index == 0 ? 1 : 0));
-    if (from.remote == null || to.remote == null) return;
-    final ran = await transferNamesIntoFolder(
-      context,
-      ref,
-      srcRemote: from.remote!,
-      srcParentPath: from.path,
-      names: [for (final f in from.selectedEntries) f.name],
-      destRemote: to.remote!,
-      destPath: to.path,
-      type: type,
-      // The other pane's listing is already loaded - collision-check for free.
-      knownNames: to.entries.map((e) => e.name),
-    );
-    // Only on a real dispatch: a cancelled conflict prompt should leave the
-    // selection alone so the user can retry without re-selecting.
-    if (ran) ref.read(paneProvider(index).notifier).clearSelection();
-  }
+  ) => _transferSelectionToOther(context, ref, index, type);
 }
 
 /// Opens the advanced Copy/Move/Sync (and Two-way) options dialog for pane
@@ -2257,7 +2638,12 @@ Future<void> runAdvancedTransfer(
   }
   if (!context.mounted) return;
 
-  final selected = from.selectedEntries;
+  // The selection as (folder, entry) pairs — one folder in the flat views, and
+  // in the tree whichever folders the selected rows live in.
+  final selected = [
+    for (final g in _selectionGroups(from))
+      for (final f in g.files) (parent: g.parentPath, file: f),
+  ];
   final whole = selected.isEmpty; // no selection ⇒ whole-folder (Sync) transfer
   final options = await showTransferOptionsDialog(
     context,
@@ -2304,211 +2690,16 @@ Future<void> runAdvancedTransfer(
       options: options,
     );
   } else {
-    for (final f in selected) {
+    for (final s in selected) {
       await svc.transferAdvanced(
         srcRemote: from.remote!,
-        srcPath: joinPath(from.path, f.name),
+        srcPath: joinPath(s.parent, s.file.name),
         dstRemote: dstRemote,
-        dstPath: joinPath(dstPath, f.name),
+        dstPath: joinPath(dstPath, s.file.name),
         options: options,
       );
     }
     ref.read(paneProvider(index).notifier).clearSelection();
-  }
-}
-
-class _FileRow extends ConsumerStatefulWidget {
-  const _FileRow({
-    required this.file,
-    required this.state,
-    required this.paneRemote,
-    required this.onOpen,
-    required this.onToggle,
-    required this.onPreview,
-    required this.onContextMenu,
-    required this.onDropInto,
-  });
-  final RcloneFile file;
-  final BrowserState state;
-  final Remote paneRemote;
-  final VoidCallback onOpen;
-  final VoidCallback onToggle;
-  final VoidCallback onPreview;
-  final void Function(Offset globalPosition) onContextMenu;
-  final void Function(PaneDragData) onDropInto;
-
-  @override
-  ConsumerState<_FileRow> createState() => _FileRowState();
-}
-
-class _FileRowState extends ConsumerState<_FileRow> {
-  bool _hover = false;
-
-  /// The row's ⋯ button, kept out of D-pad traversal on a television — see
-  /// [tvSkippableFocusNode] for why.
-  late final FocusNode _menuFocus = tvSkippableFocusNode('file row actions');
-
-  @override
-  void dispose() {
-    _menuFocus.dispose();
-    super.dispose();
-  }
-
-  void _setHover(bool v) {
-    if (_hover != v) setState(() => _hover = v);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final file = widget.file;
-    final state = widget.state;
-    final paneRemote = widget.paneRemote;
-    final onOpen = widget.onOpen;
-    final onToggle = widget.onToggle;
-    final onPreview = widget.onPreview;
-    final onContextMenu = widget.onContextMenu;
-    final onDropInto = widget.onDropInto;
-
-    final c = AircloneTheme.of(context);
-    final t = AircloneTheme.tokensOf(context);
-    final widths = ref.watch(columnWidthsProvider);
-    final selected = state.isSelected(file.name);
-    // In touch selection mode, a plain tap toggles the row (folders included)
-    // instead of opening/previewing — the phone multi-select convention.
-    final selectionMode = isTouchPrimary && state.selected.isNotEmpty;
-
-    // What gets dragged: the whole selection if this row is selected, else just this row.
-    final dragFiles = selected ? state.selectedEntries : <RcloneFile>[file];
-    final payload = PaneDragData(paneRemote, state.path, dragFiles);
-
-    // Skins with dividers (Airclone) use a flat full-width fill + bottom line;
-    // divider-less skins (Explorer/Finder) use a rounded selection + hover fill.
-    final Color? rowColor = selected
-        ? c.primary.withValues(alpha: 0.12)
-        : (_hover ? c.surfaceSunken.withValues(alpha: 0.7) : null);
-
-    final base = MouseRegion(
-      onEnter: (_) => _setHover(true),
-      onExit: (_) => _setHover(false),
-      child: GestureDetector(
-        onSecondaryTapUp: (d) => onContextMenu(d.globalPosition),
-        // Touch: long-press = the row's context menu (no right button), and a
-        // single tap opens/previews (phone file-manager convention) instead of
-        // toggling selection.
-        onLongPressStart: (d) => onContextMenu(d.globalPosition),
-        child: InkWell(
-          onTap: selectionMode
-              ? onToggle
-              : (file.isDir ? onOpen : (isTouchPrimary ? onPreview : onToggle)),
-          // Touch: no double-tap — a registered recognizer would delay every
-          // single tap ~300 ms while the arena waits for a second tap.
-          onDoubleTap: isTouchPrimary
-              ? null
-              : (file.isDir ? onOpen : onPreview),
-          child: Container(
-            height: t.rowHeight,
-            padding: const EdgeInsets.symmetric(horizontal: Space.x3),
-            decoration: BoxDecoration(
-              color: rowColor,
-              borderRadius: t.rowDividers
-                  ? null
-                  : BorderRadius.circular(t.selectionRadius),
-              border: t.rowDividers
-                  ? Border(
-                      bottom: BorderSide(
-                        color: c.border.withValues(alpha: 0.4),
-                      ),
-                    )
-                  : null,
-            ),
-            child: Row(
-              children: [
-                SizedBox(
-                  width: 22,
-                  child: selected
-                      ? Icon(Icons.check_box, size: 16, color: c.primary)
-                      : Icon(
-                          iconFor(file),
-                          size: 17,
-                          color: iconColorFor(file, c),
-                        ),
-                ),
-                const SizedBox(width: Space.x2),
-                Expanded(
-                  child: Text(
-                    file.name,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(color: c.text, fontSize: t.bodySize),
-                  ),
-                ),
-                const SizedBox(width: Space.x2),
-                SizedBox(
-                  width: widths.size,
-                  child: Text(
-                    file.isDir ? '' : humanSize(file.size),
-                    textAlign: TextAlign.right,
-                    style: TextStyle(color: c.textFaint, fontSize: 12),
-                  ),
-                ),
-                const SizedBox(width: Space.x2),
-                SizedBox(
-                  width: widths.modified,
-                  child: Text(
-                    relativeTime(file.modTime),
-                    textAlign: TextAlign.right,
-                    style: TextStyle(color: c.textFaint, fontSize: 12),
-                  ),
-                ),
-                SizedBox(
-                  width: 28,
-                  child: Builder(
-                    builder: (bctx) => IconButton(
-                      // A television reported the D-pad drifting onto this
-                      // button while moving through the list. Directional
-                      // traversal picks by geometry, and a second focusable in
-                      // a right-hand column is a second thing UP/DOWN can land
-                      // on - so on a TV this stops being a traversal stop and
-                      // the row answers RIGHT instead (see [_tvRowKey]). It
-                      // stays visible and clickable for a pointer.
-                      focusNode: _menuFocus,
-                      icon: Icon(Icons.more_vert, size: 15, color: c.textFaint),
-                      tooltip: 'Actions',
-                      padding: EdgeInsets.zero,
-                      visualDensity: VisualDensity.compact,
-                      onPressed: () {
-                        final box = bctx.findRenderObject() as RenderBox?;
-                        final pos = box == null
-                            ? Offset.zero
-                            : box.localToGlobal(box.size.center(Offset.zero));
-                        onContextMenu(pos);
-                      },
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-
-    // Folders accept in-app drops (copy INTO the folder). The whole row is the
-    // drag source — drop it in-app OR onto the OS (local files copy out).
-    Widget row = base;
-    if (file.isDir) {
-      row = NativePaneDropRegion(
-        onDrop: onDropInto,
-        highlightColor: c.primary,
-        child: base,
-      );
-    }
-
-    // TV only: RIGHT opens this row's actions, replacing the arrow-key route to
-    // the ⋯ that [tvSkippableFocusNode] just removed. A no-op everywhere else.
-    return TvRowMenuKey(
-      onMenu: onContextMenu,
-      child: NativePaneDraggable(data: payload, child: row),
-    );
   }
 }
 

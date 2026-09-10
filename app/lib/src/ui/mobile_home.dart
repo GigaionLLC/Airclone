@@ -700,20 +700,23 @@ class _MobilePaneHeader extends ConsumerWidget {
     );
   }
 
+  // The tree is desktop-only and the controller never enters it on touch, so
+  // the phone never sees ViewMode.tree; the arms below only keep the switches
+  // exhaustive and pick the list if it ever did.
   IconData _viewIcon(ViewMode m) => switch (m) {
-    ViewMode.list => Icons.view_list_outlined,
+    ViewMode.list || ViewMode.tree => Icons.view_list_outlined,
     ViewMode.grid => Icons.grid_view_outlined,
     ViewMode.media => Icons.photo_library_outlined,
   };
 
   ViewMode _nextView(ViewMode m) => switch (m) {
-    ViewMode.list => ViewMode.grid,
+    ViewMode.list || ViewMode.tree => ViewMode.grid,
     ViewMode.grid => ViewMode.media,
     ViewMode.media => ViewMode.list,
   };
 
   String _viewLabel(ViewMode m) => switch (m) {
-    ViewMode.list => 'List',
+    ViewMode.list || ViewMode.tree => 'List',
     ViewMode.grid => 'Grid',
     ViewMode.media => 'Gallery',
   };

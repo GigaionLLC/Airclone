@@ -1,3 +1,5 @@
+import 'dart:async' show unawaited;
+
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -5,14 +7,22 @@ import '../rclone/models/rclone_file.dart';
 import '../rclone/models/remote.dart';
 import '../ui/column_header.dart' show SortKey, compareRcloneFiles;
 import '../ui/file_icon.dart' show isGalleryMedia;
+import '../ui/pane_drag.dart' show joinPath;
+import '../ui/touch.dart' show isTouchPrimary;
 import 'console/console_controller.dart';
 import 'engine_controller.dart';
+import 'tree_state.dart';
 import 'undecryptable_names.dart';
 import 'view_memory.dart';
 
+export 'tree_state.dart';
+
 /// How a pane renders its directory: classic detail list, icon/thumbnail grid,
-/// or a date-grouped media gallery (images + video only).
-enum ViewMode { list, grid, media }
+/// a date-grouped media gallery (images + video only), or an expandable tree
+/// rooted at the pane's folder ([BrowserState.tree]; desktop only — the touch
+/// shell keeps its own navigation, so [BrowserController.setViewMode] never
+/// enters it there).
+enum ViewMode { list, grid, media, tree }
 
 /// Default grid tile target width (px). Tunable live via the density slider.
 const double kDefaultGridSize = 112;
@@ -56,11 +66,26 @@ class BrowserState {
     this.tabs = const [],
     this.activeTab = 0,
     this.hiddenUndecryptable = 0,
+    this.tree = TreeState.empty,
   });
 
   final Remote? remote;
+
+  /// The pane's folder. In [ViewMode.tree] this is the folder the tree is
+  /// ROOTED at — the address bar, breadcrumb and tab label all describe it —
+  /// and NOT the folder any given row lives in. A row's folder is its own
+  /// [TreeRow.parentPath]; nothing may build a deep row's path from here.
   final String path;
+
+  /// The listing of [path]. In the tree it is the top level; deeper levels
+  /// live in [tree].
   final List<RcloneFile> entries;
+
+  /// The tree view's forest: cached listings, expansion, and its own
+  /// selection. Survives switching view modes within the tab and survives
+  /// navigation (keys are full paths, so they stay valid); cleared when the
+  /// remote changes.
+  final TreeState tree;
   final bool loading;
   final String? error;
   final SortKey sortKey;
@@ -110,8 +135,58 @@ class BrowserState {
 
   bool isSelected(String name) => selected.contains(name);
 
-  List<RcloneFile> get selectedEntries =>
-      entries.where((e) => selected.contains(e.name)).toList();
+  /// The flat views' selection, resolved against [entries].
+  ///
+  /// **Empty in the tree view, always.** Every consumer of this getter builds
+  /// a target as `path + entry.name` (Delete, F2, Ctrl+C, the inspector, Quick
+  /// Look), which is correct for one flat folder and WRONG for a row three
+  /// levels down — the Delete key would purge `root/name` instead of
+  /// `A/B/C/name`. A tree selection therefore never surfaces here; it lives in
+  /// [tree.selected] as full paths and is reached through [selectedTreeRows],
+  /// whose rows carry their own parent. Consumers that only know this getter
+  /// see no selection in tree mode, which is the safe failure.
+  List<RcloneFile> get selectedEntries => viewMode == ViewMode.tree
+      ? const []
+      : entries.where((e) => selected.contains(e.name)).toList();
+
+  /// Whether anything is selected in whichever view is showing.
+  bool get hasSelection => viewMode == ViewMode.tree
+      ? tree.selected.isNotEmpty
+      : selected.isNotEmpty;
+
+  /// How many items are selected in whichever view is showing.
+  int get selectionCount =>
+      viewMode == ViewMode.tree ? tree.selected.length : selected.length;
+
+  /// The loaded listing of [folder]: the root's is [entries], any deeper
+  /// folder's is its cached tree listing. Null when it has not been listed.
+  List<RcloneFile>? childrenOf(String folder) =>
+      folder == path ? entries : tree.children[folder];
+
+  bool isTreeSelected(String fullPath) => tree.selected.contains(fullPath);
+
+  /// The tree selection as rows, each carrying the folder it was listed from.
+  /// A selected path whose folder is no longer loaded is dropped rather than
+  /// guessed at — an operation must never run on an entry it cannot see.
+  List<TreeRow> get selectedTreeRows {
+    if (viewMode != ViewMode.tree) return const [];
+    final rootDepth = segments.length;
+    final out = <TreeRow>[];
+    for (final p in tree.selected) {
+      final parent = parentOf(p);
+      final name = leafOf(p);
+      final siblings = childrenOf(parent);
+      if (siblings == null) continue;
+      for (final f in siblings) {
+        if (f.name == name) {
+          final depth = p.split('/').length - rootDepth - 1;
+          out.add(TreeRow.entry(entry: f, parentPath: parent, depth: depth));
+          break;
+        }
+      }
+    }
+    return out;
+  }
 
   /// Entries after applying [filter] (what the list actually shows).
   List<RcloneFile> get visibleEntries {
@@ -135,6 +210,7 @@ class BrowserState {
     List<TabInfo>? tabs,
     int? activeTab,
     int? hiddenUndecryptable,
+    TreeState? tree,
   }) => BrowserState(
     remote: remote ?? this.remote,
     path: path ?? this.path,
@@ -150,6 +226,7 @@ class BrowserState {
     tabs: tabs ?? this.tabs,
     activeTab: activeTab ?? this.activeTab,
     hiddenUndecryptable: hiddenUndecryptable ?? this.hiddenUndecryptable,
+    tree: tree ?? this.tree,
   );
 }
 
@@ -163,6 +240,16 @@ class _Session {
   int idx = 0;
   PaneKind kind = PaneKind.browser;
   String consoleId = '';
+
+  /// Per-node superseded guard for tree listings (the per-folder form of the
+  /// remote+path check in `_load`). Every tree listing takes the next
+  /// [treeSeq] and records it under its folder; a response whose number is no
+  /// longer the one on record was overtaken — by a reload, a refresh, or the
+  /// remote changing — and commits nothing. One counter for the whole session
+  /// (not per folder) so a cleared map can never hand an old response a
+  /// number that matches again.
+  int treeSeq = 0;
+  final Map<String, int> treeGen = {};
 }
 
 /// Drives ONE browser pane with **tabs**: each tab is an independent session
@@ -263,12 +350,17 @@ class BrowserController extends Notifier<BrowserState> {
   void clear() {
     _s.history = [''];
     _s.idx = 0;
+    // A fresh BrowserState carries an empty tree; forgetting the generation
+    // map as well strands any listing still in flight for the old remote.
+    _s.treeGen.clear();
     _set(BrowserState(viewMode: state.viewMode, gridSize: state.gridSize));
   }
 
   Future<void> open(Remote remote) async {
     _s.history = [''];
     _s.idx = 0;
+    // Tree keys are paths on ONE remote — they mean nothing on another.
+    _s.treeGen.clear();
     // Restore how this remote was last viewed; otherwise keep the pane's
     // current view preference (list/grid + density + sort) across remotes.
     final saved = ref.read(viewMemoryProvider)[remote.name];
@@ -276,9 +368,9 @@ class BrowserController extends Notifier<BrowserState> {
       BrowserState(
         remote: remote,
         loading: true,
-        viewMode: saved != null
-            ? _viewModeFrom(saved.viewMode)
-            : state.viewMode,
+        viewMode: _allowedHere(
+          saved != null ? _viewModeFrom(saved.viewMode) : state.viewMode,
+        ),
         gridSize: saved?.gridSize ?? state.gridSize,
         sortKey: saved != null ? _sortKeyFrom(saved.sortKey) : state.sortKey,
         ascending: saved?.ascending ?? state.ascending,
@@ -291,6 +383,13 @@ class BrowserController extends Notifier<BrowserState> {
     (v) => v.name == name,
     orElse: () => ViewMode.list,
   );
+
+  /// The tree is desktop-only (plan §1: a phone has no room for indentation
+  /// plus three columns, and the touch shell keeps its own navigation). A
+  /// remote remembered in tree mode on a desktop opens as a list on a phone,
+  /// so `viewMode == tree` always means "the tree is what is showing".
+  static ViewMode _allowedHere(ViewMode mode) =>
+      mode == ViewMode.tree && isTouchPrimary ? ViewMode.list : mode;
 
   static SortKey _sortKeyFrom(String name) => SortKey.values.firstWhere(
     (v) => v.name == name,
@@ -368,6 +467,9 @@ class BrowserController extends Notifier<BrowserState> {
     // pane shows a loading spinner (initialLoad = loading && no entries) instead
     // of the previous folder's list until the new listing lands. refresh() below
     // deliberately does NOT clear — a same-folder reload keeps its list on screen.
+    // The tree's cached listings and expansion are keyed by full path, so
+    // they stay valid across navigation and are kept; its selection referred
+    // to rows under the old root and goes the same way the flat one does.
     _set(
       state.copyWith(
         path: path,
@@ -375,44 +477,134 @@ class BrowserController extends Notifier<BrowserState> {
         loading: true,
         selected: const {},
         filter: '',
+        tree: state.tree.copyWith(selected: const {}, clearCursor: true),
       ),
     );
     await _load();
   }
 
+  /// Re-list the pane. In the tree view that is the root plus every expanded
+  /// folder the user can see — bounded by what they opened, never the whole
+  /// forest — while listings of folders that are NOT on screen are dropped so
+  /// their next expand re-lists them fresh. Each visible folder keeps its old
+  /// rows until its new listing lands, as the root does.
   Future<void> refresh() async {
     if (state.remote == null) return;
     _set(state.copyWith(loading: true));
+    if (state.viewMode == ViewMode.tree) {
+      final visible = visibleExpandedFolders(state.path, state.tree);
+      final tree = state.tree;
+      _set(
+        state.copyWith(
+          tree: tree.copyWith(
+            children: {
+              for (final p in visible)
+                if (tree.children[p] != null) p: tree.children[p]!,
+            },
+            errors: const {},
+          ),
+        ),
+      );
+      for (final p in visible) {
+        // Deliberately not awaited: the visible folders list in parallel with
+        // the root rather than one after another.
+        unawaited(_loadTreeFolder(p));
+      }
+    }
     await _load();
   }
 
   void setFilter(String value) => _set(state.copyWith(filter: value));
 
+  /// Toggle [name] (a root-level entry) in the selection. In the tree view the
+  /// root's children are the top-level rows, so this lands in the tree
+  /// selection as the full path — the flat set stays empty there.
   void toggleSelect(String name) {
+    if (state.viewMode == ViewMode.tree) {
+      toggleTreeSelect(joinPath(state.path, name));
+      return;
+    }
     final next = Set<String>.from(state.selected);
     next.contains(name) ? next.remove(name) : next.add(name);
     _set(state.copyWith(selected: next));
   }
 
-  void clearSelection() => _set(state.copyWith(selected: const {}));
+  void clearSelection() => _set(
+    state.copyWith(
+      selected: const {},
+      tree: state.tree.copyWith(selected: const {}),
+    ),
+  );
 
-  /// Replace the selection with just [name] (used by type-to-navigate).
-  void selectOnly(String name) => _set(state.copyWith(selected: {name}));
+  /// Replace the selection with just [name] (used by type-to-navigate and the
+  /// search dialog's reveal). Both hand over a root-level name, so in the tree
+  /// this selects the top-level row and moves the cursor to it — type-to-jump
+  /// follows into the tree rather than quietly stopping there (plan §4.f).
+  void selectOnly(String name) {
+    if (state.viewMode == ViewMode.tree) {
+      selectTreeOnly(joinPath(state.path, name));
+      return;
+    }
+    _set(state.copyWith(selected: {name}));
+  }
 
   /// Select everything CURRENTLY DISPLAYED in this pane. In the media Gallery
   /// view that's the images/videos only — never the folders/other files the
   /// gallery hides, since selecting those would let a later bulk Delete
-  /// recursively purge items the user can't see.
+  /// recursively purge items the user can't see. In the tree it is every
+  /// entry row on screen (expanded, and passing the filter), for the same
+  /// reason: a collapsed folder's contents are not on screen.
   void selectAll() {
+    if (state.viewMode == ViewMode.tree) {
+      final rows = flattenTree(
+        rootPath: state.path,
+        rootEntries: state.entries,
+        tree: state.tree,
+        filter: state.filter,
+      );
+      _set(
+        state.copyWith(
+          tree: state.tree.copyWith(
+            selected: {
+              for (final r in rows)
+                if (r.isEntry) r.path,
+            },
+          ),
+        ),
+      );
+      return;
+    }
     final displayed = state.viewMode == ViewMode.media
         ? state.visibleEntries.where(isGalleryMedia)
         : state.visibleEntries;
     _set(state.copyWith(selected: displayed.map((e) => e.name).toSet()));
   }
 
-  /// Switch this pane between list and grid rendering.
+  /// Switch this pane's rendering. Expansion survives a round trip through
+  /// another mode (plan §7); the selection is carried across where it can be
+  /// — root-level rows exist in both worlds — and dropped where it cannot (a
+  /// deep tree selection has no flat equivalent).
   void setViewMode(ViewMode mode) {
-    _set(state.copyWith(viewMode: mode));
+    mode = _allowedHere(mode);
+    final was = state.viewMode;
+    var next = state.copyWith(viewMode: mode);
+    if (mode == ViewMode.tree && was != ViewMode.tree) {
+      next = next.copyWith(
+        selected: const {},
+        tree: state.tree.copyWith(
+          selected: {for (final n in state.selected) joinPath(state.path, n)},
+        ),
+      );
+    } else if (mode != ViewMode.tree && was == ViewMode.tree) {
+      next = next.copyWith(
+        selected: {
+          for (final p in state.tree.selected)
+            if (parentOf(p) == state.path) leafOf(p),
+        },
+        tree: state.tree.copyWith(selected: const {}, clearCursor: true),
+      );
+    }
+    _set(next);
     _rememberView();
   }
 
@@ -422,13 +614,177 @@ class BrowserController extends Notifier<BrowserState> {
     _rememberView();
   }
 
-  /// Sort by [key]; tapping the active column flips direction.
+  /// Sort by [key]; tapping the active column flips direction. The tree's
+  /// cached listings are re-sorted too, each within its own parent — a sort
+  /// that flattened the hierarchy is the first thing a user would notice.
   void setSort(SortKey key) {
     final asc = key == state.sortKey ? !state.ascending : true;
-    final sorted = [...state.entries]
-      ..sort((a, b) => compareRcloneFiles(a, b, key, asc));
-    _set(state.copyWith(sortKey: key, ascending: asc, entries: sorted));
+    int cmp(RcloneFile a, RcloneFile b) => compareRcloneFiles(a, b, key, asc);
+    final sorted = [...state.entries]..sort(cmp);
+    final tree = state.tree;
+    _set(
+      state.copyWith(
+        sortKey: key,
+        ascending: asc,
+        entries: sorted,
+        tree: tree.children.isEmpty
+            ? tree
+            : tree.copyWith(
+                children: {
+                  for (final e in tree.children.entries)
+                    e.key: [...e.value]..sort(cmp),
+                },
+              ),
+      ),
+    );
     _rememberView();
+  }
+
+  // ── tree view ──────────────────────────────────────────────────────────────
+
+  /// Open [folder] (a full path). Lists it on its FIRST expand only; a folder
+  /// whose listing is cached or already in flight costs nothing.
+  Future<void> expandNode(String folder) async {
+    final tree = state.tree;
+    if (!tree.expanded.contains(folder)) {
+      _setTree(_s, (t) => t.copyWith(expanded: {...t.expanded, folder}));
+    }
+    if (tree.children[folder] == null && !tree.loading.contains(folder)) {
+      await _loadTreeFolder(folder);
+    }
+  }
+
+  /// Close [folder]. Its listing stays cached. Selected rows beneath it leave
+  /// the selection — they are no longer on screen, and a later bulk Delete
+  /// must not purge what the user cannot see; the cursor climbs to the folder.
+  void collapseNode(String folder) {
+    _setTree(_s, (t) {
+      final cursor = t.cursor;
+      return t.copyWith(
+        expanded: {...t.expanded}..remove(folder),
+        selected: {
+          for (final p in t.selected)
+            if (!isUnder(p, folder)) p,
+        },
+        cursor: cursor != null && isUnder(cursor, folder) ? folder : cursor,
+      );
+    });
+  }
+
+  Future<void> toggleExpand(String folder) async {
+    if (state.tree.expanded.contains(folder)) {
+      collapseNode(folder);
+    } else {
+      await expandNode(folder);
+    }
+  }
+
+  /// Re-list ONE folder after an operation touched it — the root through the
+  /// ordinary load, anything deeper through its own. A collapsed folder just
+  /// forgets its listing so the next expand fetches it fresh.
+  Future<void> reloadTreeFolder(String folder) async {
+    if (folder == state.path) {
+      await refresh();
+      return;
+    }
+    if (!state.tree.expanded.contains(folder)) {
+      _setTree(
+        _s,
+        (t) => t.copyWith(
+          children: {...t.children}..remove(folder),
+          errors: {...t.errors}..remove(folder),
+        ),
+      );
+      return;
+    }
+    await _loadTreeFolder(folder);
+  }
+
+  void toggleTreeSelect(String fullPath) {
+    _setTree(_s, (t) {
+      final next = Set<String>.from(t.selected);
+      next.contains(fullPath) ? next.remove(fullPath) : next.add(fullPath);
+      return t.copyWith(selected: next, cursor: fullPath);
+    });
+  }
+
+  /// Replace the tree selection with [fullPath] and put the cursor on it.
+  void selectTreeOnly(String fullPath) =>
+      _setTree(_s, (t) => t.copyWith(selected: {fullPath}, cursor: fullPath));
+
+  void setTreeCursor(String? fullPath) => _setTree(
+    _s,
+    (t) => fullPath == null
+        ? t.copyWith(clearCursor: true)
+        : t.copyWith(cursor: fullPath),
+  );
+
+  /// Commit a tree change to [ses] — which may no longer be the active tab by
+  /// the time an async listing lands, so the emit is conditional. `copyWith`
+  /// drops `error` unless it is passed; a tree change must not clear the
+  /// root's error message.
+  void _setTree(_Session ses, TreeState Function(TreeState) fn) {
+    final s = ses.state;
+    ses.state = s.copyWith(tree: fn(s.tree), error: s.error);
+    if (identical(ses, _s)) state = _emit();
+  }
+
+  /// One `operations/list` for [folder], committed to the tab that asked for
+  /// it — and only if nothing overtook it (see `_Session.treeGen`).
+  Future<void> _loadTreeFolder(String folder) async {
+    final ses = _s;
+    final remote = ses.state.remote;
+    final client = ref.read(engineControllerProvider).client;
+    if (remote == null) return;
+    if (client == null) {
+      _setTree(
+        ses,
+        (t) => t.copyWith(errors: {...t.errors, folder: 'Engine not ready'}),
+      );
+      return;
+    }
+    final gen = ++ses.treeSeq;
+    ses.treeGen[folder] = gen;
+    _setTree(
+      ses,
+      (t) => t.copyWith(
+        loading: {...t.loading, folder},
+        errors: {...t.errors}..remove(folder),
+      ),
+    );
+    bool superseded() =>
+        ses.state.remote != remote || ses.treeGen[folder] != gen;
+    try {
+      final res = await client.rpc(
+        'operations/list',
+        remote.listParams(folder),
+      );
+      if (superseded()) return;
+      final sortKey = ses.state.sortKey;
+      final asc = ses.state.ascending;
+      final list =
+          (res['list'] as List? ?? const [])
+              .cast<Map<String, dynamic>>()
+              .map(RcloneFile.fromJson)
+              .toList()
+            ..sort((a, b) => compareRcloneFiles(a, b, sortKey, asc));
+      _setTree(
+        ses,
+        (t) => t.copyWith(
+          children: {...t.children, folder: list},
+          loading: {...t.loading}..remove(folder),
+        ),
+      );
+    } catch (e) {
+      if (superseded()) return;
+      _setTree(
+        ses,
+        (t) => t.copyWith(
+          errors: {...t.errors, folder: '$e'},
+          loading: {...t.loading}..remove(folder),
+        ),
+      );
+    }
   }
 
   Future<void> _load() async {
