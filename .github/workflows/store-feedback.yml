@@ -36,6 +36,42 @@ permissions:
   contents: read
 
 jobs:
+  serving:
+    name: What Play is serving
+    # "Which version are users actually on?" should be one click, not archaeology
+    # across workflow run timestamps. Establishing that v0.7.7 never reached a
+    # store - every submission predated the tag - took reconstructing it from
+    # three separate workflows' start times, which is exactly the kind of digging
+    # monitoring exists to prevent.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install Google auth libraries
+        run: pip install --quiet google-auth requests
+      - name: Report every track
+        env:
+          PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+        run: |
+          set -euo pipefail
+          if [ -z "${PLAY_SERVICE_ACCOUNT_JSON}" ]; then
+            echo "PLAY_SERVICE_ACCOUNT_JSON is not set; nothing to do." >&2
+            exit 0
+          fi
+          printf '%s' "${PLAY_SERVICE_ACCOUNT_JSON}" > "${RUNNER_TEMP}/play.json"
+          export GOOGLE_APPLICATION_CREDENTIALS="${RUNNER_TEMP}/play.json"
+          {
+            echo '## What Google Play is serving'
+            echo
+            echo '```'
+          } >> "${GITHUB_STEP_SUMMARY}"
+          python tool/play_tracks.py --package com.gigaionllc.airclone 2>&1 |
+            tee -a "${GITHUB_STEP_SUMMARY}"
+          echo '```' >> "${GITHUB_STEP_SUMMARY}"
+          rm -f "${GOOGLE_APPLICATION_CREDENTIALS}"
+
   play:
     name: Google Play reviews
     runs-on: ubuntu-latest
