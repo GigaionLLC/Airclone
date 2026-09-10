@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../rclone/models/job.dart';
 import '../rclone/rclone_client.dart';
 import 'engine_controller.dart';
+import 'file_ops.dart';
 import 'jobs_controller.dart';
 import 'scheduler_pause.dart';
 import 'task_schedule.dart';
@@ -129,6 +130,20 @@ class SchedulerController extends Notifier<SchedulerStatus> {
     TasksController tasks,
     TransferTask t,
   ) async {
+    // The guard the delete cap cannot be: a cap of 100 still lets a destination
+    // of 80 files be wiped. Nothing else catches that.
+    if (await _sourceIsUnsafe(t)) {
+      tasks.recordRun(
+        t.id,
+        TaskRunRecord(
+          at: DateTime.now(),
+          ok: false,
+          error: kEmptySourceRefusal,
+          duration: Duration.zero,
+        ),
+      );
+      return;
+    }
     final jobId = await svc.transferAdvancedRaw(
       srcFs: t.srcFs,
       dstFs: t.dstFs,
@@ -162,7 +177,40 @@ class SchedulerController extends Notifier<SchedulerStatus> {
       },
     );
   }
+
+  /// Whether a scheduled run of [t] must be refused because its source has
+  /// stopped answering the way a real folder does.
+  ///
+  /// This is the guard the delete cap cannot be. A cap of 100 still lets a
+  /// destination holding 80 files be wiped, and the case that produces both —
+  /// a source that vanished or emptied — is the same one. The two together
+  /// cover the range; neither covers it alone.
+  ///
+  /// Only a one-way **Sync** is checked, because only a Sync deletes at the
+  /// destination to match the source. Copy and Move from a vanished source are
+  /// no-ops, and a two-way sync caps by percentage instead.
+  ///
+  /// **Unreadable counts as unsafe, and that is a deliberate difference from
+  /// the interactive preflight.** A human watching a preview can be told "could
+  /// not read that" and decide; a timer at 3am cannot. If the engine will not
+  /// list the source, the safe answer is not to run something destructive
+  /// against it — and the refusal lands in the run history that Settings →
+  /// Automation surfaces, so it is not the silent stop this feature exists to
+  /// prevent.
+  Future<bool> _sourceIsUnsafe(TransferTask t) async {
+    if (t.options.mode != TransferMode.sync) return false;
+    final empty = await ref.read(fileOpsProvider).isRootEmpty(t.srcFs);
+    return empty ?? true;
+  }
 }
+
+/// Recorded instead of running when a scheduled Sync's source will not answer.
+///
+/// A whole sentence rather than a code, because it is read in a list of run
+/// outcomes by someone working out why last night did nothing.
+const String kEmptySourceRefusal =
+    'Refused to run: the source is empty or could not be read, and a Sync '
+    'would have deleted the destination to match it.';
 
 /// Default cadence for the supervised outcome poll — matches [JobsController]'s
 /// own 1 s `job/status` poll so supervising a run costs no more engine traffic

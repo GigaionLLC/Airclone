@@ -502,9 +502,24 @@ incoherent.
     `recordRunOutcome`'s single terminal path, checked at the top of `tick()`,
     and surfaced as a banner with the engine's verbatim error plus a Resume
     button at the top of the tasks dialog.
-  - `[ ]` Definition-time destructive acknowledgement.
-  - `[ ]` Empty-source refusal.
-  - `[ ]` A failure trace outside advanced mode.
+  - `[x]` **Empty-source refusal.** `SchedulerController._sourceIsUnsafe` — a
+    scheduled one-way Sync lists its source before dispatching and refuses if it
+    is empty **or unreadable**. Unreadable counting as unsafe is a deliberate
+    difference from the interactive preflight: a human watching a preview can be
+    told "could not read that" and decide, a timer at 3am cannot. The refusal is
+    recorded as a failed run so it shows up in Settings → Automation rather than
+    being the silent stop this whole feature exists to prevent. Copy, Move and
+    bisync are not gated — none of them deletes at the destination to match a
+    source.
+  - `[x]` **A failure trace outside advanced mode.** The Automation section's
+    per-task row shows the last run's outcome with the engine's error verbatim.
+  - `[ ]` Definition-time destructive acknowledgement. **Reconsider before
+    building:** the schedule editor already states, at definition time, that Sync
+    deletes whatever the source no longer has, that an empty source means the
+    whole destination, and the exact cap number it will stop at. A separate
+    "I understand" checkbox on top of that is a click-through, and click-throughs
+    train people to dismiss the warning that matters. Decide whether this item
+    still earns its place.
 
   **Still unverified:** `isDeleteCapError` is a text match against rclone's
   error string (the RC gives no exit code) and has NOT been checked against a

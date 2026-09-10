@@ -23,7 +23,7 @@ you set up once.
 
 **Settings → Automation** is the front door, and it is behind no gate at all. It states what a
 schedule means on this platform (§3–§4), lists every scheduled task with its cadence, next run and
-last outcome, surfaces a tripped circuit breaker (§5.2), and opens the full panel.
+last outcome, surfaces a tripped circuit breaker (§5.3), and opens the full panel.
 
 **Creating** a schedule is still gated, and these are the gates being removed across v0.8 — see
 [the scheduling and backup plan](../../dev/plans/scheduling-and-backup-plan.md) §4.a:
@@ -130,7 +130,25 @@ which **aborts the run** rather than exceed it.
   *percent* (`--max-delete-percent`, default 50) — a different setting, in the transfer options
   dialog.
 
-### 5.2 The breaker
+### 5.2 The other half: a source that has stopped answering
+
+The cap is a blast-radius limiter, not a veto — a cap of 100 still lets a
+destination holding 80 files be wiped. So a scheduled one-way Sync lists its
+source before it dispatches, and **refuses to run at all** if that source is
+empty or unreadable (`SchedulerController._sourceIsUnsafe`). The two guards
+together cover the range; neither covers it alone.
+
+Unreadable counts as unsafe, which is deliberately different from the
+interactive sync preview. A human watching a preview can be told "could not read
+that" and decide for themselves; a timer at 3 a.m. cannot. The refusal is
+recorded as a failed run, so it appears in Settings → Automation with its reason
+rather than being the silent stop this feature exists to prevent.
+
+Copy, Move and two-way sync are not gated on this — none of them deletes at the
+destination to match a source, so refusing would stop a legitimate no-op and
+teach the user that the guard fires for no reason.
+
+### 5.3 The breaker
 
 When a scheduled run aborts on the cap, Airclone **pauses the entire scheduler** until a human
 resumes it (`state/scheduler_pause.dart`).
