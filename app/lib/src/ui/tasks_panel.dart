@@ -21,6 +21,7 @@ import '../state/tasks_controller.dart';
 import '../state/transfer_options.dart';
 import '../state/transfer_service.dart';
 import '../state/windows_task_scheduler.dart';
+import 'backup_wizard.dart';
 import 'dialog_body.dart';
 import 'from_to_picker.dart';
 import 'theme/tokens.dart';
@@ -333,13 +334,23 @@ class AutomationSettingsSection extends ConsumerWidget {
             ),
           ),
         const SizedBox(height: Space.x3),
-        Align(
-          alignment: Alignment.centerLeft,
-          child: OutlinedButton.icon(
-            onPressed: () => showTasksDialog(context),
-            icon: const Icon(Icons.checklist_rounded, size: 16),
-            label: const Text('Saved tasks'),
-          ),
+        Wrap(
+          spacing: Space.x2,
+          runSpacing: Space.x2,
+          children: [
+            // The primary door, and deliberately first: "back up a folder" is a
+            // concept an ordinary user has, where "saved task" is not.
+            FilledButton.icon(
+              onPressed: () => showBackupWizard(context),
+              icon: const Icon(Icons.backup_outlined, size: 16),
+              label: const Text('Back up a folder'),
+            ),
+            OutlinedButton.icon(
+              onPressed: () => showTasksDialog(context),
+              icon: const Icon(Icons.checklist_rounded, size: 16),
+              label: const Text('Saved tasks'),
+            ),
+          ],
         ),
       ],
     );
