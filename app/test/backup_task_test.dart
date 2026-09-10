@@ -182,7 +182,15 @@ void main() {
         schedule: daily,
       );
       expect(t.lastRun, isNull);
-      expect(isDue(daily, now: DateTime.now(), lastRun: t.lastRun), isTrue);
+      // A FIXED time past the 02:00 slot, not DateTime.now(). The first version
+      // of this used the wall clock and passed locally in the afternoon, then
+      // failed on CI at 01:59 UTC because that day's slot had not arrived yet -
+      // a test whose result depended on what time it was run.
+      final afterTheSlot = DateTime(2026, 9, 9, 12);
+      expect(isDue(daily, now: afterTheSlot, lastRun: t.lastRun), isTrue);
+      // And the property that actually matters is lastRun being null: the same
+      // instant with a stamped lastRun is NOT due.
+      expect(isDue(daily, now: afterTheSlot, lastRun: afterTheSlot), isFalse);
     });
 
     test('it survives a JSON round trip as a backup', () {
