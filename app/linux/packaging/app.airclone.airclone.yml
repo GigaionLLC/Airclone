@@ -91,6 +91,11 @@ modules:
   - name: libplacebo
     buildsystem: meson
     config-opts:
+      # meson picks lib64 on this runtime, which puts libplacebo.pc outside the
+      # PKG_CONFIG_PATH flatpak-builder sets (/app/lib/pkgconfig). mpv then
+      # reports "Dependency libplacebo not found" for a library that built and
+      # installed perfectly well two modules earlier.
+      - --libdir=lib
       - -Ddemos=false
       - -Dtests=false
       # Vulkan would pull a larger dependency set for no gain here: media_kit
@@ -111,6 +116,8 @@ modules:
   - name: mpv
     buildsystem: meson
     config-opts:
+      # Same reason as libplacebo: keep libmpv.so where the app will look.
+      - --libdir=lib
       # The LIBRARY, not the player: media_kit loads libmpv, and nothing here
       # needs an mpv binary, a manual page, or a scripting runtime.
       - -Dlibmpv=true
