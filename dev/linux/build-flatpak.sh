@@ -29,7 +29,7 @@ BUNDLE="${1:-$REPO/app/build/linux/x64/release/bundle}"
 OUTPUT="${2:-$REPO/airclone.flatpak}"
 PKG="$REPO/app/linux/packaging"
 APP_ID="app.airclone.airclone"
-RUNTIME_VERSION="${FLATPAK_RUNTIME_VERSION:-47}"
+RUNTIME_VERSION="${FLATPAK_RUNTIME_VERSION:-48}"
 WORK="${FLATPAK_WORK:-$(mktemp -d)}"
 
 say() { printf '\n== %s\n' "$*"; }
@@ -54,6 +54,17 @@ flatpak install --user --noninteractive flathub \
   echo "Set FLATPAK_RUNTIME_VERSION to a version Flathub still offers." >&2
   exit 1
 }
+
+say "What the runtime already provides"
+# The Flutter binary hard-links libmpv (media preview) and libsecret (the
+# credential store). The AppImage gets them by copying from the build host;
+# a Flatpak cannot — the sandbox has no access to the host's libraries, so
+# anything the runtime lacks has to be BUILT as a module in the manifest.
+# Printing it makes that a fact rather than a guess, and shows when a runtime
+# bump changes the answer.
+flatpak run --user --command=sh "org.gnome.Sdk//$RUNTIME_VERSION" -c \
+  'ldconfig -p | grep -E "libmpv|libplacebo|libass|libsecret|libavcodec" || true' \
+  2>/dev/null | sed 's/^/  /' || echo "  (could not inspect the runtime)"
 
 say "Staging the build context"
 CTX="$WORK/context"

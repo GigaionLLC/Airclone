@@ -508,6 +508,15 @@ jobs:
             fi
           fi
           rm -rf squashfs-root
+      # Uploaded BEFORE the Flatpak work: the AppImage is verified and done by
+      # this point, and a Flatpak that fails should not take a good artifact
+      # down with it.
+      - uses: actions/upload-artifact@v6
+        with:
+          name: airclone-linux-x64
+          path: |
+            app/airclone-linux-x64.tar.gz
+            app/Airclone-x86_64.AppImage
       # An AppImage is a file you run; a Flatpak is an app the desktop installs,
       # updates and shows in its software centre. They are not redundant — which
       # one a Linux user wants is a matter of how their distribution works.
@@ -541,11 +550,8 @@ jobs:
           fi
       - uses: actions/upload-artifact@v6
         with:
-          name: airclone-linux-x64
-          path: |
-            app/airclone-linux-x64.tar.gz
-            app/Airclone-x86_64.AppImage
-            app/airclone.flatpak
+          name: airclone-linux-flatpak
+          path: app/airclone.flatpak
       - name: Upload to release
         if: startsWith(github.ref, 'refs/tags/')
         env:
