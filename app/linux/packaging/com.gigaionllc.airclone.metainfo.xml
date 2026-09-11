@@ -4,7 +4,7 @@
      fails the build rather than shipping an app with no description. The file
      name must match the app ID exactly. -->
 <component type="desktop-application">
-  <id>app.airclone.airclone</id>
+  <id>com.gigaionllc.airclone</id>
 
   <name>Airclone</name>
   <summary>Browse, transfer and sync your cloud storage</summary>
@@ -44,7 +44,7 @@
     </p>
   </description>
 
-  <launchable type="desktop-id">app.airclone.airclone.desktop</launchable>
+  <launchable type="desktop-id">com.gigaionllc.airclone.desktop</launchable>
 
   <url type="homepage">https://github.com/GigaionLLC/Airclone</url>
   <url type="bugtracker">https://github.com/GigaionLLC/Airclone/issues</url>

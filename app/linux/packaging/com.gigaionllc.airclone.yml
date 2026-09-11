@@ -8,7 +8,7 @@
 #
 # The bundle is staged into a build context by that script; `type: dir` below
 # reads it.
-app-id: app.airclone.airclone
+app-id: com.gigaionllc.airclone
 runtime: org.gnome.Platform
 runtime-version: '48'
 sdk: org.gnome.Sdk
@@ -147,12 +147,12 @@ modules:
       - cp -a bundle/. /app/airclone/
       - chmod +x /app/airclone/airclone
       - install -Dm755 airclone-launcher /app/bin/airclone
-      - install -Dm644 app.airclone.airclone.desktop -t /app/share/applications/
-      - install -Dm644 app.airclone.airclone.metainfo.xml -t /app/share/metainfo/
-      - install -Dm644 icons/64.png /app/share/icons/hicolor/64x64/apps/app.airclone.airclone.png
-      - install -Dm644 icons/128.png /app/share/icons/hicolor/128x128/apps/app.airclone.airclone.png
-      - install -Dm644 icons/256.png /app/share/icons/hicolor/256x256/apps/app.airclone.airclone.png
-      - install -Dm644 icons/512.png /app/share/icons/hicolor/512x512/apps/app.airclone.airclone.png
+      - install -Dm644 com.gigaionllc.airclone.desktop -t /app/share/applications/
+      - install -Dm644 com.gigaionllc.airclone.metainfo.xml -t /app/share/metainfo/
+      - install -Dm644 icons/64.png /app/share/icons/hicolor/64x64/apps/com.gigaionllc.airclone.png
+      - install -Dm644 icons/128.png /app/share/icons/hicolor/128x128/apps/com.gigaionllc.airclone.png
+      - install -Dm644 icons/256.png /app/share/icons/hicolor/256x256/apps/com.gigaionllc.airclone.png
+      - install -Dm644 icons/512.png /app/share/icons/hicolor/512x512/apps/com.gigaionllc.airclone.png
     sources:
       - type: dir
         path: .

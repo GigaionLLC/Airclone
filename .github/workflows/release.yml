@@ -541,8 +541,8 @@ jobs:
         # permissions in the manifest are enough to reach a window at all.
         run: |
           flatpak install --user --noninteractive ./airclone.flatpak
-          flatpak info --user app.airclone.airclone
-          xvfb-run -a timeout 20 flatpak run app.airclone.airclone > flatpak-run.log 2>&1 &
+          flatpak info --user com.gigaionllc.airclone
+          xvfb-run -a timeout 20 flatpak run com.gigaionllc.airclone > flatpak-run.log 2>&1 &
           pid=$!
           sleep 15
           if kill -0 "$pid" 2>/dev/null; then

@@ -16,7 +16,7 @@
 # toolchain, and teaching the manifest to fetch one so it can rebuild what CI
 # just built serves nobody for a direct download. FLATHUB WOULD DIFFER: it
 # requires a source build or `extra-data` with checksums, and it would also
-# question the app ID — `app.airclone.airclone` implies the airclone.app domain,
+# question the app ID — `com.gigaionllc.airclone` implies the airclone.app domain,
 # and Flathub wants an ID you demonstrably control (otherwise
 # `io.github.gigaionllc.Airclone`). Changing it is not free: APPLICATION_ID in
 # linux/CMakeLists.txt is what the running window reports, so the ID, the
@@ -28,7 +28,7 @@ REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 BUNDLE="${1:-$REPO/app/build/linux/x64/release/bundle}"
 OUTPUT="${2:-$REPO/airclone.flatpak}"
 PKG="$REPO/app/linux/packaging"
-APP_ID="app.airclone.airclone"
+APP_ID="com.gigaionllc.airclone"
 RUNTIME_VERSION="${FLATPAK_RUNTIME_VERSION:-48}"
 WORK="${FLATPAK_WORK:-$(mktemp -d)}"
 

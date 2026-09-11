@@ -96,11 +96,11 @@ say "Installing desktop entry and icons"
 # mismatch here is why a running app sometimes shows a generic cog in the dock
 # instead of its own icon: the shell matches the window's class to a .desktop
 # file by name.
-install -Dm644 "$PKG/app.airclone.airclone.desktop" \
-  "$APPDIR/usr/share/applications/app.airclone.airclone.desktop"
+install -Dm644 "$PKG/com.gigaionllc.airclone.desktop" \
+  "$APPDIR/usr/share/applications/com.gigaionllc.airclone.desktop"
 for size in 64 128 256 512; do
   install -Dm644 "$PKG/icons/$size.png" \
-    "$APPDIR/usr/share/icons/hicolor/${size}x${size}/apps/app.airclone.airclone.png"
+    "$APPDIR/usr/share/icons/hicolor/${size}x${size}/apps/com.gigaionllc.airclone.png"
 done
 
 say "Resolving shared libraries"
@@ -134,9 +134,9 @@ done
 "$TOOLS/linuxdeploy" \
   --appdir "$APPDIR" \
   --executable "$APPDIR/usr/bin/airclone" \
-  --desktop-file "$APPDIR/usr/share/applications/app.airclone.airclone.desktop" \
+  --desktop-file "$APPDIR/usr/share/applications/com.gigaionllc.airclone.desktop" \
   --icon-file "$PKG/icons/256.png" \
-  --icon-filename app.airclone.airclone \
+  --icon-filename com.gigaionllc.airclone \
   "${EXTRA[@]}"
 
 say "Checking the libraries a distro may not have are really inside"

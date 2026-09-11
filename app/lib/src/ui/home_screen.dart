@@ -17,6 +17,7 @@ import '../state/android_work_registration.dart';
 import '../state/app_info.dart';
 import '../state/bookmarks_controller.dart';
 import '../state/browser_controller.dart';
+import '../state/build_flavor.dart';
 import '../state/bw_schedule_controller.dart';
 import '../state/clipboard_controller.dart';
 import '../state/engine_controller.dart';
@@ -584,12 +585,17 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           keywords: 'http webdav share network',
           run: () => showServeDialog(context),
         ),
-      if (advanced && ref.read(mountEnabledProvider))
+      // In a Flatpak the action stays listed but explains itself: hiding it
+      // reads as "Airclone cannot do this", when the truth is that this PACKAGE
+      // cannot and the AppImage can. See showMountUnavailableInFlatpakDialog.
+      if (advanced && (ref.read(mountEnabledProvider) || kRunningInFlatpak))
         PaletteAction(
           label: 'Mount as a drive',
           icon: Icons.usb,
           keywords: 'drive letter winfsp vfs',
-          run: () => showMountDialog(context),
+          run: () => ref.read(mountEnabledProvider)
+              ? showMountDialog(context)
+              : showMountUnavailableInFlatpakDialog(context),
         ),
       for (final r in remotes)
         PaletteAction(
@@ -955,10 +961,15 @@ class _TopBar extends ConsumerWidget {
               tooltip: 'Serve / Share on LAN',
               color: c.textMuted,
             ),
-          // Mount manager — advanced-gated AND hidden when disabled by policy.
-          if (advanced && ref.watch(mountEnabledProvider))
+          // Mount manager — advanced-gated AND hidden when disabled by policy,
+          // except in a Flatpak, where it stays and explains why it cannot work
+          // there and which package to use instead.
+          if (advanced &&
+              (ref.watch(mountEnabledProvider) || kRunningInFlatpak))
             IconButton(
-              onPressed: () => showMountDialog(context),
+              onPressed: () => ref.read(mountEnabledProvider)
+                  ? showMountDialog(context)
+                  : showMountUnavailableInFlatpakDialog(context),
               icon: const Icon(Icons.usb, size: 18),
               tooltip: 'Mount as a drive',
               color: c.textMuted,

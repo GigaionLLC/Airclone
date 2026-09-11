@@ -17,6 +17,76 @@ import 'theme/tokens.dart';
 Future<void> showMountDialog(BuildContext context) =>
     showDialog<void>(context: context, builder: (_) => const _MountDialog());
 
+/// Why mounting is missing in a Flatpak, and what to use instead.
+///
+/// Shown rather than hiding the button, because hiding it reads as "Airclone
+/// cannot do this" when the truth is "this PACKAGE cannot, and another one can".
+///
+/// There is deliberately no "grant a permission" instruction, because no
+/// permission delivers it. `--device=all` would expose /dev/fuse, but a Flatpak
+/// has its own MOUNT NAMESPACE: a drive mounted inside the sandbox is visible
+/// only to Airclone, and the entire point of mounting is that OTHER programs —
+/// a file manager, an editor — can open the files. The only way out is
+/// `--talk-name=org.freedesktop.Flatpak`, which lets the app run arbitrary
+/// commands on the host and is a sandbox escape in everything but name. Trading
+/// the sandbox away for one feature that two other packages already provide
+/// would be a bad bargain, so the answer is the other package.
+Future<void> showMountUnavailableInFlatpakDialog(BuildContext context) {
+  final c = AircloneTheme.of(context);
+  return showDialog<void>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      backgroundColor: c.surfaceRaised,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(Radii.lg),
+      ),
+      title: Row(
+        children: [
+          Icon(Icons.usb_off_outlined, size: 20, color: c.primary),
+          const SizedBox(width: Space.x2),
+          Expanded(
+            child: Text(
+              'Mounting needs a different package',
+              style: TextStyle(
+                color: c.text,
+                fontSize: 17,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
+      ),
+      content: DialogBody(
+        width: 460,
+        child: Text(
+          'This is the Flatpak build, and it runs in a sandbox with its own view '
+          'of the filesystem. A drive mounted inside it would be visible only to '
+          'Airclone — not to your file manager, your editor, or anything else — '
+          'which is the whole point of mounting one. No permission setting '
+          'changes that.\n\n'
+          'To mount a remote as a drive, use the AppImage or the tar.gz from the '
+          'releases page instead. Everything else Airclone does works here, and '
+          'browsing a remote in Airclone needs no mount at all — it is usually '
+          'faster than one.',
+          style: TextStyle(color: c.textMuted, fontSize: 13, height: 1.45),
+        ),
+      ),
+      actionsPadding: const EdgeInsets.fromLTRB(
+        Space.x4,
+        0,
+        Space.x4,
+        Space.x4,
+      ),
+      actions: [
+        FilledButton(
+          onPressed: () => Navigator.of(ctx).pop(),
+          child: const Text('Got it'),
+        ),
+      ],
+    ),
+  );
+}
+
 class _MountDialog extends ConsumerStatefulWidget {
   const _MountDialog();
   @override
