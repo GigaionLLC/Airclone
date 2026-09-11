@@ -42,6 +42,15 @@
       your own storage providers, those connections stay on your device, and
       every transfer runs between your device and the provider.
     </p>
+    <p>
+      One limitation of this Flatpak: it cannot mount a remote as a drive for
+      other applications to use. A sandboxed application has its own view of the
+      filesystem, so a drive mounted inside it would be visible only to Airclone
+      — which is the point of mounting one. Browsing, transfers, sync, backup and
+      previews all work normally, and browsing a remote in Airclone needs no
+      mount. If you specifically want a mounted drive, use the AppImage or the
+      tar.gz from the project's releases page instead.
+    </p>
   </description>
 
   <launchable type="desktop-id">com.gigaionllc.airclone.desktop</launchable>

@@ -215,7 +215,7 @@ Three ways, all on the Releases page. Pick by how your desktop likes to install 
 | Download | What it is |
 | :--- | :--- |
 | `Airclone-x86_64.AppImage` | One file. `chmod +x` it and run it — it carries its own libraries, so nothing needs installing. **Start here if you are not sure.** |
-| `airclone.flatpak` | `flatpak install --user ./airclone.flatpak`. Integrates with your software centre and updates like any other app. |
+| `airclone.flatpak` | `flatpak install --user ./airclone.flatpak`. Integrates with your software centre and updates like any other app. **Cannot mount a remote as a drive** — the sandbox makes a mount visible only to Airclone. Everything else works. |
 | `airclone-linux-x64.tar.gz` | The raw files, for packaging it yourself or putting it where you want. Needs `libmpv`, `libsecret-1` and `libasound2` installed already — the other two carry their own. |
 
 The rclone engine is included in all three; there is nothing else to download. The

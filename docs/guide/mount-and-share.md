@@ -40,9 +40,25 @@ Mounting needs a filesystem driver that only a desktop operating system provides
 |---|---|---|
 | Windows | Yes | Needs WinFsp installed first. See below. |
 | macOS (downloaded build) | Yes | Needs a FUSE driver installed separately. |
-| Linux | Yes | Needs FUSE installed separately. |
+| Linux — AppImage or tar.gz | Yes | Needs FUSE installed separately. |
+| Linux — **Flatpak** | No | The button is there and explains why when pressed. See below. |
 | macOS from the Mac App Store | No | Hidden entirely. The App Sandbox cannot run FUSE, so the button and the Settings → Mounts group do not appear rather than failing when pressed. |
 | Android, iOS | No | Not supported. |
+
+### The Flatpak cannot mount, and no setting changes that
+
+If you installed Airclone as a Flatpak — from a software centre, or with
+`flatpak install` — mounting is the one feature you do not have. Pressing **Mount as a drive**
+explains this rather than failing.
+
+It is not a permission you can grant, so there is nothing to look for in Flatseal. A Flatpak runs
+with its own view of the filesystem, so a drive mounted inside it would be visible **only to
+Airclone** — not to your file manager, not to your editor — and other programs seeing the files is
+the entire reason to mount one.
+
+If you want a mounted drive on Linux, use the **AppImage** or the **tar.gz** instead; both can. If
+you only want to work with your files inside Airclone, you do not need a mount at all — browsing a
+remote directly is usually faster than one (see [below](#why-the-in-app-explorer-is-usually-faster)).
 
 Two things about the button that are worth knowing before you hunt for it:
 
