@@ -209,6 +209,31 @@ for lib in libmpv.so.2 libsecret-1.so.0; do
   fi
 done
 
+say "Checking the rclone engine is where the app will look for it"
+# Deliberately NOT a find-anywhere check like the loop above. RcloneEngine
+# resolves a bundled engine relative to its OWN binary
+# (bundledDesktopBinary(): exeDir + "/rclone"), so a copy that linuxdeploy had
+# relocated into usr/lib would satisfy `find` and be invisible to the app.
+#
+# Why fatal: without it the engine search falls through to `which rclone` and
+# picks up whatever version happens to be on the user's PATH — or, on a machine
+# with none, sits on first run downloading one. Both were reported on Ubuntu
+# 24.04 against v0.8.3, which shipped no binary at all.
+if [ -s "$APPDIR/usr/bin/rclone" ] && [ -x "$APPDIR/usr/bin/rclone" ]; then
+  echo "  rclone is beside the executable ($(stat -c %s "$APPDIR/usr/bin/rclone") bytes)"
+else
+  echo "usr/bin/rclone is missing, empty or not executable — this AppImage would" >&2
+  echo "download an engine on first run instead of using the bundled one." >&2
+  exit 1
+fi
+# librclone.so is the in-process engine and is genuinely optional: the binary
+# above is the fallback, so note its absence rather than failing the build.
+if [ -s "$APPDIR/usr/bin/librclone.so" ]; then
+  echo "  librclone.so is beside the executable (in-process engine available)"
+else
+  echo "  NOTE: no librclone.so — this AppImage ships the binary engine only."
+fi
+
 say "Checking nothing is left unresolved"
 # The failure this catches is the expensive one: an AppImage that builds, ships,
 # and then refuses to start on a machine that happens to lack one library. Run it

@@ -492,6 +492,44 @@ jobs:
           name: librclone-linux
           path: app/linux/librclone
       - run: flutter build linux --release
+      # Bundle the rclone BINARY, the way the Windows and Android jobs do.
+      #
+      # Until now the Linux packages carried only librclone.so, the in-process
+      # engine. That made the README's "the rclone engine is inside all three"
+      # false in the one case that matters: when the in-process engine is not
+      # usable, `auto` falls through to the binary, finds none, and a first run
+      # on a fresh Ubuntu sits there downloading rclone — which is precisely
+      # what a user reported on 24.04. A bundled binary is also the fallback
+      # that makes the in-process engine optional rather than load-bearing.
+      #
+      # It goes INSIDE the Flutter bundle, beside the executable, because that
+      # is where RcloneEngine.bundledDesktopBinary() looks. From there it flows
+      # into all three packages for free: the tarball is the bundle, the
+      # AppImage copies the bundle into usr/bin, and the Flatpak does
+      # `cp -a bundle/. /app/airclone/`.
+      #
+      # Checksum-verified against upstream's SHA256SUMS, and FATAL on any
+      # failure. Shipping an unverified engine is worse than shipping none, and
+      # a soft failure here would put us straight back to a silent download.
+      - name: Bundle rclone into the Linux build (verified)
+        run: |
+          set -euo pipefail
+          ver="${RCLONE_VERSION}"
+          zip="rclone-${ver}-linux-amd64.zip"
+          base="https://downloads.rclone.org/${ver}"
+          curl -fsSL --retry 3 -o "$zip" "$base/$zip"
+          curl -fsSL --retry 3 -o SHA256SUMS.txt "$base/SHA256SUMS"
+          expected="$(awk -v f="$zip" '{ n=$NF; sub(/^[*.\/]+/, "", n); if (n == f) { print $1; exit } }' SHA256SUMS.txt)"
+          [ -n "$expected" ] || { echo "no checksum for $zip in SHA256SUMS"; exit 1; }
+          actual="$(sha256sum "$zip" | awk '{print $1}')"
+          [ "$actual" = "$expected" ] || { echo "rclone checksum mismatch (expected $expected, got $actual)"; exit 1; }
+          unzip -q "$zip" -d rclone-extract
+          dest="build/linux/x64/release/bundle"
+          install -Dm755 "rclone-extract/rclone-${ver}-linux-amd64/rclone" "$dest/rclone"
+          # Assert the packaged output, and that it actually runs on this arch.
+          test -s "$dest/rclone" || { echo "rclone was not copied into $dest"; exit 1; }
+          "$dest/rclone" version | head -1
+          echo "Bundled rclone $ver into $dest for the tarball, AppImage and Flatpak."
       # The Web UI's interface files, for `airclone --webui` and
       # Settings -> Remote access. Built here rather than shipped as a Flutter
       # asset on purpose: ~40 MB of CanvasKit inside the APK and the IPA would
