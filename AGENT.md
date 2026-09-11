@@ -55,6 +55,7 @@ Store shapes, contexts, and data models.
 | Adding an input field, a console/CLI surface, or a destructive action | [Validation Standards](wiki/core/11-validation-standards.md) | [Security](wiki/core/15-security.md) |
 | Anything that reads file **content**, spawns a process, or polls | [Performance & Reliability Standards](wiki/core/14-performance-standards.md) | [External Integrations](wiki/core/10-external-integrations.md) |
 | Native / platform build work (Android jniLibs, librclone, FUSE, channels) | [External Integrations](wiki/core/10-external-integrations.md) | [dev hub](dev/README.md) → `dev/android/`, `dev/desktop/` |
+| Replying to a bug report on a GitHub issue | [Bug-report replies](dev/bug-reports.md) | Plain and short, and close the issue with it. The mechanism goes in the commit message, not the reply |
 | Cutting a release | [dev hub](dev/README.md) (Release checklist) | [`dev/releases/`](dev/releases/) — notes must exist **before** the tag |
 | Submitting to a store (Microsoft / Play / Apple) | [Store submissions index](docs/store/README.md) | [Windows](dev/windows-signing-and-store.md) · [Play](dev/google-play-store.md) · [Apple/macOS runbook](dev/apple-appstore-and-macos.md) + [Apple current state & traps](dev/apple-handoff.md) |
 | Writing, moving, or removing a doc | [Docs Blueprint](wiki/core/17-docs-blueprint.md) | [Knowledge Capture](wiki/core/18-knowledge-capture.md) — then `python tool/check-docs.py`, a CI gate: a broken relative link (into `wiki/`, `dev/`, `docs/` **or** `app/` source) or a control byte fails the build |
