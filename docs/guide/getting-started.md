@@ -16,7 +16,7 @@ first cloud connection, and checking that it works.
 | :--- | :--- |
 | Windows 10/11 | Microsoft Store, or a direct download |
 | macOS | App Store, or a direct download (signed and notarised) |
-| Linux | Direct download only |
+| Linux | Direct download — an AppImage, a Flatpak, or a tarball |
 | Android (phone, tablet, TV) | Google Play, or a direct download |
 | iPhone / iPad | App Store only |
 
@@ -36,7 +36,7 @@ your platform.
 | :--- | :--- |
 | Windows | The engine ships with the app. Nothing to download. |
 | Android | The engine ships inside the app. Nothing to download. |
-| Linux | The `.tar.gz` normally includes the engine as a library (`librclone.so`), so Airclone runs straight away with nothing to download. If it finds an `rclone` on your machine it prefers that instead. |
+| Linux | All three downloads include the engine as a library (`librclone.so`), so Airclone runs straight away with nothing to fetch. If it finds an `rclone` on your machine it prefers that instead. |
 | macOS (direct download) | Airclone looks for an rclone on your machine. If it does not find one, it shows a card headed **Set up the rclone engine** with a **Download rclone engine** button. Press it once; there is nothing else to install. |
 | iPhone, iPad, Mac App Store | The engine runs inside the app itself. Nothing to download. |
 

@@ -208,6 +208,18 @@ What the fee buys is the managed path: the store installs it, keeps it updated, 
 signature. Everything else — Linux, and any platform you would rather install by hand — is on the
 [Releases](https://github.com/GigaionLLC/Airclone/releases) page for free, forever.
 
+### 🐧 On Linux
+
+Three ways, all on the Releases page. Pick by how your desktop likes to install things:
+
+| Download | What it is |
+| :--- | :--- |
+| `Airclone-x86_64.AppImage` | One file. `chmod +x` it and run it — it carries its own libraries, so nothing needs installing. **Start here if you are not sure.** |
+| `airclone.flatpak` | `flatpak install --user ./airclone.flatpak`. Integrates with your software centre and updates like any other app. |
+| `airclone-linux-x64.tar.gz` | The raw files, for packaging it yourself or putting it where you want. Needs `libmpv`, `libsecret-1` and `libasound2` already present — the other two do not. |
+
+The rclone engine is included in all three; there is nothing else to download.
+
 ## 🗺️ Roadmap
 
 **Phase 0** spikes → **Phase 1** desktop MVP → **Phase 2** mobile are **shipped**, iOS included; most
