@@ -41,7 +41,94 @@ finish-args:
   # libsecret, for the config-password vault (flutter_secure_storage_linux).
   - --talk-name=org.freedesktop.secrets
 
+# WHY THERE ARE FOUR MODULES BEFORE THE APP.
+#
+# The Flutter binary links libmpv (media_kit, for image/video/audio preview) and
+# libsecret (the config-password vault). The AppImage gets both by copying them
+# off the build machine — an AppImage may do that; a Flatpak may not, because the
+# sandbox has no access to host libraries. So anything the runtime does not carry
+# has to be built here.
+#
+# The build asks the runtime what it has rather than assuming (see
+# dev/linux/build-flatpak.sh). On org.gnome.Platform 48 the answer is:
+#
+#   libsecret-1.so.0   PRESENT   -> nothing to do
+#   libavcodec.so.61   PRESENT   -> ffmpeg is there, which is the expensive one
+#   libmpv             MISSING   -> build it
+#   libplacebo         MISSING   -> mpv 0.38+ requires it
+#   libass             MISSING   -> mpv requires it for subtitles
+#
+# Re-run that probe after a runtime bump: if a later GNOME runtime starts
+# shipping libmpv, three of these modules become dead weight.
 modules:
+  # Build-time only. libplacebo generates its OpenGL loader with glad, which is a
+  # Python tool that imports Jinja2, and the GNOME SDK does not ship it. Network
+  # is enabled for this one module because pip needs it; nothing it installs ends
+  # up in the final app (see `cleanup` below).
+  - name: python3-jinja2
+    buildsystem: simple
+    build-options:
+      build-args:
+        - --share=network
+    build-commands:
+      - pip3 install --prefix=/app jinja2
+    cleanup:
+      - '*'
+
+  - name: libass
+    buildsystem: autotools
+    config-opts:
+      - --disable-static
+    sources:
+      - type: archive
+        url: https://github.com/libass/libass/releases/download/0.17.3/libass-0.17.3.tar.xz
+        sha256: eae425da50f0015c21f7b3a9c7262a910f0218af469e22e2931462fed3c50959
+    cleanup:
+      - /include
+      - /lib/pkgconfig
+      - '*.la'
+
+  - name: libplacebo
+    buildsystem: meson
+    config-opts:
+      - -Ddemos=false
+      - -Dtests=false
+      # Vulkan would pull a larger dependency set for no gain here: media_kit
+      # drives libmpv through its OpenGL render API.
+      - -Dvulkan=disabled
+      - -Dopengl=enabled
+    sources:
+      # git rather than a release tarball ON PURPOSE: libplacebo keeps glad as a
+      # submodule under 3rdparty/, and GitHub's generated tarballs do not contain
+      # submodules — the build then fails looking for a loader it cannot generate.
+      - type: git
+        url: https://code.videolan.org/videolan/libplacebo.git
+        tag: v7.349.0
+    cleanup:
+      - /include
+      - /lib/pkgconfig
+
+  - name: mpv
+    buildsystem: meson
+    config-opts:
+      # The LIBRARY, not the player: media_kit loads libmpv, and nothing here
+      # needs an mpv binary, a manual page, or a scripting runtime.
+      - -Dlibmpv=true
+      - -Dcplayer=false
+      - -Dmanpage-build=disabled
+      - -Dlua=disabled
+      - -Djavascript=disabled
+      - -Dlibarchive=disabled
+    sources:
+      - type: archive
+        url: https://github.com/mpv-player/mpv/archive/refs/tags/v0.39.0.tar.gz
+        sha256: 2ca92437affb62c2b559b4419ea4785c70d023590500e8a52e95ea3ab4554683
+    cleanup:
+      - /include
+      - /lib/pkgconfig
+      - /share/applications
+      - /share/icons
+
   - name: airclone
     buildsystem: simple
     build-commands:
