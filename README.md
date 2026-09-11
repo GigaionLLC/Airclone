@@ -91,15 +91,41 @@ experience**, and brings it to the desktop *and* the phone:
 ### 📱 On your phone
 
 <p align="center">
-  <img src="docs/screenshots/android-files.png" alt="Airclone on Android — local locations and cloud remotes" width="270">
-  &nbsp;&nbsp;&nbsp;
-  <img src="docs/screenshots/android-browser.png" alt="Airclone on Android — browsing a cloud remote" width="270">
+  <img src="docs/screenshots/android-files.png" alt="Airclone on Android — local locations and cloud remotes" width="250">
+  &nbsp;&nbsp;
+  <img src="docs/screenshots/android-browser.png" alt="Airclone on Android — cloud photos with thumbnails" width="250">
+  &nbsp;&nbsp;
+  <img src="docs/screenshots/android-automation.png" alt="Airclone on Android — a scheduled backup in Settings → Automation" width="250">
 </p>
 
 <p align="center">
   <sub>The full rclone engine ships <b>inside the APK</b> — browse every remote with a touch-first UI,
   run transfers in the background with a live notification, and hand any file to another app with
-  <b>Open in another app</b> or the share sheet.</sub>
+  <b>Open in another app</b> or the share sheet. Scheduled tasks and backups keep running with
+  Airclone closed.</sub>
+</p>
+
+### 🗄️ Back up a folder, on a schedule
+
+<p align="center">
+  <img src="docs/screenshots/android-backup-wizard.png" alt="The backup wizard: what to back up, where to keep it, how often — and the exact destination path shown before anything is created" width="300">
+</p>
+
+<p align="center">
+  <sub>Three answers — what, where, how often — and it shows you the folder your files will land in
+  <b>before</b> creating anything. A backup only ever <b>copies</b>: never a sync, never a move, never
+  a dry run, and a file it replaces is kept beside the new one as a version you can restore.</sub>
+</p>
+
+### 📐 The same app on a tablet
+
+<p align="center">
+  <img src="docs/screenshots/tablet-shell.png" alt="Airclone on an Android tablet, running the full desktop shell" width="860">
+</p>
+
+<p align="center">
+  <sub>Above 700dp Airclone switches to the desktop shell — sidebar, dual panes, transfers dock — so a
+  tablet gets the same app a PC does rather than a stretched phone layout.</sub>
 </p>
 
 ## 📚 Documentation
