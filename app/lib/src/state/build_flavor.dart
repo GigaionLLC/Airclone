@@ -29,6 +29,37 @@ import 'dart:io';
 /// True only in a Mac App Store build (`--dart-define=AIRCLONE_MAS=true`).
 const bool kMacAppStoreBuild = bool.fromEnvironment('AIRCLONE_MAS');
 
+/// True when this process is running inside a Flatpak sandbox.
+///
+/// Flatpak exports `FLATPAK_ID` into every sandboxed process; nothing outside
+/// one sets it. Read at call time rather than cached at startup so a test can
+/// exercise both, via [runningInFlatpak].
+bool get kRunningInFlatpak => runningInFlatpak(Platform.environment);
+
+/// [kRunningInFlatpak] against an explicit environment, so it is testable.
+bool runningInFlatpak(Map<String, String> environment) =>
+    (environment['FLATPAK_ID'] ?? '').isNotEmpty;
+
+/// Whether mounting a remote as a drive can work here.
+///
+/// Pure and parameterised, like the rest of this file.
+///
+/// Mounting is FUSE, and FUSE needs `/dev/fuse` plus the privileges to use it.
+/// Two shipped builds cannot have that, and both would otherwise offer a button
+/// that fails:
+///  - the **Mac App Store** build, where the App Sandbox forbids FUSE outright,
+///  - a **Flatpak**, whose manifest
+///    (`app/linux/packaging/app.airclone.airclone.yml`) deliberately does not
+///    request `--device=all`. Asking for blanket device access to mount a drive
+///    is a far bigger permission than the feature is worth, so the feature goes
+///    rather than the sandbox.
+///
+/// Gating it here means every entry point — the toolbar button, the dialog, and
+/// `MountController.mount()` — already honours it, and the build hides the
+/// feature instead of failing at run time.
+bool mountPossibleFor({required bool macAppStore, required bool flatpak}) =>
+    !macAppStore && !flatpak;
+
 /// Whether a live QR scan is possible here, for importing a config by camera.
 ///
 /// Pure and parameterised so the rule is unit-testable off-device, like every

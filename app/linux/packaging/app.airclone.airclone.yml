@@ -1,0 +1,64 @@
+# Flatpak manifest for Airclone.
+#
+# Built from the ALREADY-BUILT Flutter bundle rather than from source: the
+# Flutter SDK is not in the GNOME SDK, and vendoring a toolchain into a manifest
+# to rebuild what CI has already produced buys nothing for a direct download.
+# (Flathub wants source builds or checksummed extra-data — see
+# dev/linux/build-flatpak.sh for what changes if we go there.)
+#
+# The bundle is staged into a build context by that script; `type: dir` below
+# reads it.
+app-id: app.airclone.airclone
+runtime: org.gnome.Platform
+runtime-version: '47'
+sdk: org.gnome.Sdk
+command: airclone
+
+# Every permission here is one the app genuinely cannot work without, and the
+# list is deliberately short for the same reason the Mac App Store entitlements
+# are: each one has to be defensible, and a permission nobody needs is not merely
+# untidy.
+finish-args:
+  # A window, and hardware rendering for it.
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+
+  # rclone talks to cloud provider APIs. Outbound; there is no server of ours.
+  - --share=network
+
+  # Audio and video preview play through the app.
+  - --socket=pulseaudio
+
+  # THE BIG ONE, and it is the whole product: Airclone is a file manager. Its job
+  # is to move files between the user's disk and the user's cloud storage, and
+  # "which files" is decided by the user at run time. Portals cannot express that
+  # — they hand back one file at a time, chosen through a dialog, which is not
+  # what "sync this folder every night" means.
+  - --filesystem=host
+
+  # libsecret, for the config-password vault (flutter_secure_storage_linux).
+  - --talk-name=org.freedesktop.secrets
+
+modules:
+  - name: airclone
+    buildsystem: simple
+    build-commands:
+      # The WHOLE bundle stays together under /app/airclone: a Flutter Linux app
+      # resolves data/ and lib/ relative to its own binary, so splitting them
+      # across /app/bin and /app/lib produces a build that installs cleanly and
+      # then fails to start. /app/bin/airclone is a two-line launcher instead.
+      - install -d /app/airclone
+      - cp -a bundle/. /app/airclone/
+      - chmod +x /app/airclone/airclone
+      - install -Dm755 airclone-launcher /app/bin/airclone
+      - install -Dm644 app.airclone.airclone.desktop -t /app/share/applications/
+      - install -Dm644 app.airclone.airclone.metainfo.xml -t /app/share/metainfo/
+      - install -Dm644 icons/64.png /app/share/icons/hicolor/64x64/apps/app.airclone.airclone.png
+      - install -Dm644 icons/128.png /app/share/icons/hicolor/128x128/apps/app.airclone.airclone.png
+      - install -Dm644 icons/256.png /app/share/icons/hicolor/256x256/apps/app.airclone.airclone.png
+      - install -Dm644 icons/512.png /app/share/icons/hicolor/512x512/apps/app.airclone.airclone.png
+    sources:
+      - type: dir
+        path: .

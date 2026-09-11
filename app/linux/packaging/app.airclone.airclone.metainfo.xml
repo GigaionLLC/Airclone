@@ -1,0 +1,88 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- AppStream metadata. Flatpak requires this for an app to appear properly in a
+     software centre, and `flatpak-builder` validates it, so a malformed file
+     fails the build rather than shipping an app with no description. The file
+     name must match the app ID exactly. -->
+<component type="desktop-application">
+  <id>app.airclone.airclone</id>
+
+  <name>Airclone</name>
+  <summary>Browse, transfer and sync your cloud storage</summary>
+
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>AGPL-3.0-or-later</project_license>
+
+  <developer id="com.gigaion">
+    <name>Gigaion, LLC</name>
+  </developer>
+
+  <description>
+    <p>
+      Airclone is a file manager for cloud storage. It connects straight from
+      your computer to the storage accounts you tell it about — Google Drive,
+      OneDrive, Dropbox, S3, SFTP, WebDAV and dozens more — and lets you browse
+      them, copy files between them, and keep folders backed up.
+    </p>
+    <p>
+      It is a graphical front end for rclone, and the rclone engine is built in,
+      so there is no command line and nothing else to install.
+    </p>
+    <p>Features:</p>
+    <ul>
+      <li>Browse every remote like a local folder, with two panes side by side</li>
+      <li>Copy or move files directly between two clouds</li>
+      <li>Copy, move, sync or two-way sync, with a dry run that shows exactly what would change</li>
+      <li>Back up a folder on a schedule, keeping replaced files as versions you can restore</li>
+      <li>Image and video thumbnails over any remote, cached encrypted on your device</li>
+      <li>Nothing is overwritten silently — every collision asks first</li>
+      <li>A built-in rclone command console</li>
+    </ul>
+    <p>
+      There is no Airclone account and no server of ours involved. You sign in to
+      your own storage providers, those connections stay on your device, and
+      every transfer runs between your device and the provider.
+    </p>
+  </description>
+
+  <launchable type="desktop-id">app.airclone.airclone.desktop</launchable>
+
+  <url type="homepage">https://github.com/GigaionLLC/Airclone</url>
+  <url type="bugtracker">https://github.com/GigaionLLC/Airclone/issues</url>
+  <url type="vcs-browser">https://github.com/GigaionLLC/Airclone</url>
+
+  <categories>
+    <category>Utility</category>
+    <category>Network</category>
+    <category>FileTools</category>
+  </categories>
+
+  <keywords>
+    <keyword>cloud</keyword>
+    <keyword>rclone</keyword>
+    <keyword>sync</keyword>
+    <keyword>backup</keyword>
+    <keyword>storage</keyword>
+  </keywords>
+
+  <supports>
+    <control>pointing</control>
+    <control>keyboard</control>
+  </supports>
+
+  <recommends>
+    <display_length compare="ge">768</display_length>
+  </recommends>
+
+  <content_rating type="oars-1.1" />
+
+  <releases>
+    <release version="0.8.1" date="2026-09-10">
+      <description>
+        <p>
+          Fixes a freeze when scrolling a folder containing many photos or
+          videos, and adds this Linux package.
+        </p>
+      </description>
+    </release>
+  </releases>
+</component>

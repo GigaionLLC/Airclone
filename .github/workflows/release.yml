@@ -500,12 +500,43 @@ jobs:
             fi
           fi
           rm -rf squashfs-root
+      # An AppImage is a file you run; a Flatpak is an app the desktop installs,
+      # updates and shows in its software centre. They are not redundant — which
+      # one a Linux user wants is a matter of how their distribution works.
+      - name: Install Flatpak tooling
+        run: sudo apt-get install -y flatpak flatpak-builder
+      - name: Build Flatpak
+        run: bash ../dev/linux/build-flatpak.sh
+          build/linux/x64/release/bundle
+          "$GITHUB_WORKSPACE/app/airclone.flatpak"
+      - name: Verify the Flatpak installs and starts
+        # Same standard as the AppImage: install the bundle exactly as a user
+        # would and run it. This is also the only check that the sandbox
+        # permissions in the manifest are enough to reach a window at all.
+        run: |
+          flatpak install --user --noninteractive ./airclone.flatpak
+          flatpak info --user app.airclone.airclone
+          xvfb-run -a timeout 20 flatpak run app.airclone.airclone > flatpak-run.log 2>&1 &
+          pid=$!
+          sleep 15
+          if kill -0 "$pid" 2>/dev/null; then
+            echo "still running after 15s — it started"
+            kill "$pid" 2>/dev/null || true
+          else
+            wait "$pid" && rc=0 || rc=$?
+            if [ "${rc:-0}" -ne 124 ]; then
+              echo "::error::Flatpak exited early (rc=${rc:-0})"
+              cat flatpak-run.log
+              exit 1
+            fi
+          fi
       - uses: actions/upload-artifact@v6
         with:
           name: airclone-linux-x64
           path: |
             app/airclone-linux-x64.tar.gz
             app/Airclone-x86_64.AppImage
+            app/airclone.flatpak
       - name: Upload to release
         if: startsWith(github.ref, 'refs/tags/')
         env:
@@ -513,6 +544,7 @@ jobs:
         run: |
           gh release upload "$GITHUB_REF_NAME" airclone-linux-x64.tar.gz --clobber --repo "$GITHUB_REPOSITORY"
           gh release upload "$GITHUB_REF_NAME" Airclone-x86_64.AppImage --clobber --repo "$GITHUB_REPOSITORY"
+          gh release upload "$GITHUB_REF_NAME" airclone.flatpak --clobber --repo "$GITHUB_REPOSITORY"
 
   macos:
     runs-on: macos-latest

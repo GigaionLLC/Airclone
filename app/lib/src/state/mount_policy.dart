@@ -12,4 +12,12 @@ import 'build_flavor.dart';
 /// Gating it at this one provider means every existing entry point already
 /// honours it, and a MAS build hides the UI rather than failing at runtime.
 /// See state/build_flavor.dart and dev/plans/apple-appstore-plan.md Gate C1.
-final mountEnabledProvider = Provider<bool>((ref) => !kMacAppStoreBuild);
+/// A **Flatpak** is folded in for the same reason: our manifest does not request
+/// `--device=all`, so there is no `/dev/fuse` inside the sandbox and mounting
+/// cannot work however the UI is dressed. See [mountPossibleFor].
+final mountEnabledProvider = Provider<bool>(
+  (ref) => mountPossibleFor(
+    macAppStore: kMacAppStoreBuild,
+    flatpak: kRunningInFlatpak,
+  ),
+);
