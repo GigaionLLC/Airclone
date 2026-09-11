@@ -3,7 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 
-import 'package:flutter/foundation.dart' show kDebugMode;
+import 'package:flutter/foundation.dart' show kDebugMode, visibleForTesting;
 import 'package:http/http.dart' as http;
 
 import '../state/diagnostics.dart';
@@ -201,36 +201,64 @@ class HttpRcloneClient implements RcloneClient {
 
   Uri _uri(String method) => Uri.parse('http://127.0.0.1:$_port/$method');
 
-  /// Marker recording the PID of the `rcd` child WE last spawned, so a fresh
-  /// launch can reap a leftover from a force-killed prior run. Only ever holds
-  /// our own single recorded PID — never a broad process-name match.
-  File get _markerFile => File('${Directory.systemTemp.path}/airclone_rcd.pid');
+  /// Marker recording the PID of the `rcd` child WE spawned, so a fresh launch
+  /// can reap a leftover from a force-killed prior run.
+  ///
+  /// Named for OUR OWN process id. It used to be one shared file, which made
+  /// running two copies of Airclone actively destructive: the second one read
+  /// the marker the first had written and killed the first one's live engine,
+  /// then overwrote the marker so the first one's clean exit deleted a record
+  /// that now pointed at the second one's child. One file per owner means two
+  /// instances cannot confuse each other's children.
+  File get _markerFile =>
+      File('${Directory.systemTemp.path}/airclone_rcd_$pid.pid');
 
-  /// Best-effort kill of the `rcd` child from a previous run that was orphaned
-  /// by a hard exit. Targets only the single PID we recorded in the marker, so
-  /// it cannot touch the user's other rclone processes. Skipped on Android:
-  /// systemTemp resolves to /data/local/tmp (not app-writable), and Android
-  /// kills the app's process group anyway.
+  /// Held for this process's lifetime while we are the only Airclone running.
+  ///
+  /// Reaping is only ever safe when nothing else owns a live engine, and
+  /// "is another copy of this app running?" is exactly what an advisory file
+  /// lock answers — without enumerating processes, and correctly on all three
+  /// desktops.
+  RandomAccessFile? _reapLock;
+
+  File get _reapLockFile =>
+      File('${Directory.systemTemp.path}/airclone_rcd.lock');
+
+  /// Best-effort kill of `rcd` children orphaned by a hard exit.
+  ///
+  /// Runs ONLY when we can take the exclusive lock, i.e. when no other Airclone
+  /// is running. If another instance holds it, every marker on disk belongs to
+  /// a live sibling and killing any of them would break a window the user is
+  /// looking at. When we do hold it, any marker present is an orphan by
+  /// definition — nobody else is alive to own one — so all of them are reaped,
+  /// not just the most recent.
+  ///
+  /// Skipped on Android: systemTemp resolves to /data/local/tmp (not
+  /// app-writable), and Android kills the app's process group anyway.
   Future<void> _reapPreviousRcd() async {
     if (HostPlatform.isAndroid) return;
-    final marker = _markerFile;
+    _reapLock = await reapOrphanedRcd(
+      tempDir: Directory(Directory.systemTemp.path),
+      lockFile: _reapLockFile,
+      ownPid: pid,
+      kill: (p) => Process.killPid(p, ProcessSignal.sigkill),
+    );
+  }
+
+  /// Release the single-instance lock, if we took it.
+  void _releaseReapLock() {
+    final lock = _reapLock;
+    _reapLock = null;
+    if (lock == null) return;
     try {
-      if (!await marker.exists()) return;
-      final pid = int.tryParse((await marker.readAsString()).trim());
-      if (pid != null) {
-        try {
-          Process.killPid(pid, ProcessSignal.sigkill);
-        } catch (_) {
-          /* stale or already gone; ignore */
-        }
-      }
-      try {
-        await marker.delete();
-      } catch (_) {
-        /* ignore */
-      }
+      lock.unlockSync();
     } catch (_) {
-      /* ignore unreadable/missing marker */
+      /* ignore */
+    }
+    try {
+      lock.closeSync();
+    } catch (_) {
+      /* ignore */
     }
   }
 
@@ -607,6 +635,7 @@ class HttpRcloneClient implements RcloneClient {
     } catch (_) {
       /* already gone; ignore */
     }
+    _releaseReapLock();
   }
 
   @override
@@ -641,4 +670,69 @@ class HttpRcloneClient implements RcloneClient {
     final bytes = List<int>.generate(24, (_) => rng.nextInt(256));
     return base64Url.encode(bytes).replaceAll('=', '');
   }
+}
+
+/// Kills `rcd` children orphaned by a hard exit, and returns the single-instance
+/// lock to hold for the process lifetime (null when it was not taken).
+///
+/// Runs ONLY when the exclusive lock can be taken, i.e. when no other Airclone
+/// is running. If another instance holds it, every marker on disk belongs to a
+/// live sibling and killing any of them would break a window the user is
+/// looking at — which is exactly what the previous single-shared-marker
+/// version did. When the lock IS held, any marker present is an orphan by
+/// definition, because nobody else is alive to own one, so all of them are
+/// reaped rather than only the most recent.
+///
+/// Separated from [HttpRcloneClient] and given injectable paths and a [kill]
+/// callback so the sibling-safety rule can be tested without spawning a real
+/// engine.
+@visibleForTesting
+Future<RandomAccessFile?> reapOrphanedRcd({
+  required Directory tempDir,
+  required File lockFile,
+  required int ownPid,
+  required void Function(int pid) kill,
+}) async {
+  RandomAccessFile lock;
+  try {
+    lock = lockFile.openSync(mode: FileMode.write);
+  } catch (_) {
+    // Cannot even open the lock (read-only temp, exotic filesystem). Reaping is
+    // best-effort and the Windows Job Object already covers the common case, so
+    // decline rather than risk killing a sibling's engine.
+    return null;
+  }
+  try {
+    lock.lockSync(FileLock.exclusive); // non-blocking; throws when held
+  } on FileSystemException {
+    lock.closeSync();
+    return null; // another Airclone is running
+  }
+
+  try {
+    await for (final entry in tempDir.list(followLinks: false)) {
+      final name = entry.path.split(Platform.pathSeparator).last;
+      if (entry is! File ||
+          !name.startsWith('airclone_rcd_') ||
+          !name.endsWith('.pid')) {
+        continue;
+      }
+      try {
+        final orphan = int.tryParse((await entry.readAsString()).trim());
+        if (orphan != null && orphan != ownPid) {
+          try {
+            kill(orphan);
+          } catch (_) {
+            /* stale or already gone; ignore */
+          }
+        }
+        await entry.delete();
+      } catch (_) {
+        /* unreadable or vanished; ignore */
+      }
+    }
+  } catch (_) {
+    /* temp dir unreadable; reaping is best-effort */
+  }
+  return lock;
 }
