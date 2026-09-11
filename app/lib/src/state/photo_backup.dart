@@ -1,7 +1,4 @@
-import 'dart:io';
-
 import 'package:flutter/foundation.dart';
-import 'package:flutter/services.dart';
 
 import 'archive_command.dart' show escapeRcloneGlob;
 import 'local_locations.dart' show fsRoot;
@@ -225,26 +222,4 @@ TransferTask buildPhotoBackupTask({
     runWhileClosed: true,
     kind: TaskKind.photos,
   );
-}
-
-/// The phone's own name, for the per-device folder. Asked natively
-/// (`Settings.Global.DEVICE_NAME`, falling back to make + model); off Android
-/// the host name stands in, and any failure yields a usable placeholder rather
-/// than an exception in a setup flow.
-Future<String> photoBackupDeviceName() async {
-  if (!Platform.isAndroid) {
-    try {
-      return Platform.localHostname;
-    } catch (_) {
-      return 'device';
-    }
-  }
-  try {
-    const channel = MethodChannel('airclone/native');
-    final name = await channel.invokeMethod<String>('deviceName');
-    if (name != null && name.trim().isNotEmpty) return name;
-  } catch (_) {
-    // an old native build without the method
-  }
-  return 'Android';
 }

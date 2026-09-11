@@ -1,9 +1,8 @@
-import 'dart:io' show Platform;
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../state/backup_task.dart';
+import '../state/device_name.dart';
 import '../state/poll_cadence.dart';
 import '../state/scheduler_registration.dart';
 import '../state/scheduling_policy.dart';
@@ -58,6 +57,23 @@ class _BackupWizardState extends ConsumerState<_BackupWizard> {
 
   bool _busy = false;
 
+  /// This device's per-device path segment, resolved once.
+  ///
+  /// Asked of the platform rather than taken from `Platform.localHostname`,
+  /// which on Android is the constant `localhost` — so every Android phone
+  /// would back up into the same folder, which is the merge the segment exists
+  /// to prevent. [backupDeviceName] is the one answer camera-roll backup uses
+  /// too, deliberately.
+  String? _deviceName;
+
+  @override
+  void initState() {
+    super.initState();
+    backupDeviceName().then((n) {
+      if (mounted) setState(() => _deviceName = n);
+    });
+  }
+
   /// Where this backup will write, shown before anything is created.
   ///
   /// A user should be able to see the folder their files are about to land in
@@ -65,17 +81,19 @@ class _BackupWizardState extends ConsumerState<_BackupWizard> {
   String? get _destinationPreview {
     final s = _source;
     final d = _dest;
-    if (s == null || d == null) return null;
+    final device = _deviceName;
+    if (s == null || d == null || device == null) return null;
     final path = backupDestinationPath(
       destPath: d.path,
-      deviceName: Platform.localHostname,
+      deviceName: device,
       sourceRemoteName: s.remote.name,
       sourcePath: s.path,
     );
     return '${d.remote.name}:$path';
   }
 
-  bool get _ready => _source != null && _dest != null && !_busy;
+  bool get _ready =>
+      _source != null && _dest != null && _deviceName != null && !_busy;
 
   TaskSchedule get _schedule => TaskSchedule(
     kind: _kind,
@@ -116,7 +134,7 @@ class _BackupWizardState extends ConsumerState<_BackupWizard> {
 
     final destPath = backupDestinationPath(
       destPath: d.path,
-      deviceName: Platform.localHostname,
+      deviceName: _deviceName!,
       sourceRemoteName: s.remote.name,
       sourcePath: s.path,
     );

@@ -10,6 +10,7 @@ import '../state/android_work_settings.dart';
 import '../state/engine_controller.dart';
 import '../state/jobs_controller.dart';
 import '../state/local_locations.dart';
+import '../state/device_name.dart';
 import '../state/photo_backup.dart';
 import '../state/poll_cadence.dart';
 import '../state/scheduler_controller.dart';
@@ -403,7 +404,7 @@ class _PhotoBackupDialogState extends ConsumerState<_PhotoBackupDialog> {
         ? s!.intervalMinutes
         : kPhotoBackupDefaultSchedule.intervalMinutes;
     unawaited(
-      photoBackupDeviceName().then((n) {
+      backupDeviceName().then((n) {
         if (mounted) setState(() => _deviceName = n);
       }),
     );

@@ -122,6 +122,28 @@ int clampPollMinutes(int minutes) =>
 /// mechanism owns this schedule and, on a platform where that mechanism is
 /// inspectable, exactly what to open.
 ///
+/// One line for the "Also run while Airclone is closed" checkbox, describing
+/// what ticking it actually arranges **on this OS**.
+///
+/// Separate from [registrationExplanation] because it describes the mechanism
+/// rather than one task's registration, and it has to read sensibly before a
+/// schedule is chosen. It exists at all because the checkbox used to carry the
+/// Windows sentence verbatim on every platform, so an Android user was told
+/// Airclone would register "a Windows Scheduled Task" and that missed runs
+/// would start "as soon as the PC is available".
+String backgroundRegistrationBlurb(String operatingSystem) =>
+    switch (operatingSystem) {
+      'windows' =>
+        'Registers a Windows Scheduled Task that runs this task in the '
+            'background; missed runs start as soon as the PC is available.',
+      'android' =>
+        'Lets Android wake Airclone in the background to run this task; a '
+            'missed run starts at the next wake.',
+      _ =>
+        'This device cannot run tasks with Airclone closed, so a missed run '
+            'starts once on next launch.',
+    };
+
 /// Deliberately concrete. "Runs in the background" tells a user nothing they can
 /// act on; "Task Scheduler → Airclone → Run due tasks" tells them where to look
 /// and what they should see there.

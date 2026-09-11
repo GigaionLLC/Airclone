@@ -144,8 +144,12 @@ class _TasksDialog extends ConsumerWidget {
                     const SizedBox(width: Space.x2),
                     Expanded(
                       child: Text(
-                        'Scheduled tasks run only while Airclone is open. A run '
-                        'missed while it was closed starts once on next launch.',
+                        // Per-platform, not a fixed sentence: on Windows and
+                        // Android a schedule DOES fire with the app closed, and
+                        // this panel used to tell those users the opposite —
+                        // contradicting the Settings section a few pixels away,
+                        // which has always used this same helper.
+                        schedulingSummary,
                         style: TextStyle(color: c.textFaint, fontSize: 11),
                       ),
                     ),
@@ -1431,9 +1435,12 @@ class _ScheduleDialogState extends ConsumerState<_ScheduleDialog> {
                     controlAffinity: ListTileControlAffinity.leading,
                     title: const Text('Also run while Airclone is closed'),
                     subtitle: Text(
-                      'Registers a Windows Scheduled Task that runs this task in '
-                      'the background; missed runs start as soon as the PC is '
-                      'available.',
+                      // Windows registers a Scheduled Task; Android is woken by
+                      // WorkManager and has no "PC". This line was the Windows
+                      // sentence on every platform, so an Android user read
+                      // about a Windows Scheduled Task — directly above the
+                      // correct Android explanation.
+                      backgroundRegistrationBlurb(Platform.operatingSystem),
                       style: TextStyle(color: c.textFaint, fontSize: 11),
                     ),
                     value: _runWhileClosed,
