@@ -68,4 +68,60 @@ void main() {
       expect(l.remote.isLocal, isTrue);
     }
   });
+
+  group("the reporter's machine: E:/ is an empty card reader", () {
+    // Verbatim from the diagnostics report on issue #3, Windows 10 Pro for
+    // Workstations 19045, Airclone 0.8.1:
+    //
+    //   FileSystemException: Exists failed, path = 'E:/'
+    //       (OS Error: The device is not ready, errno = 21)
+    //
+    // errno 21 is ERROR_NOT_READY. Reproduced here by making the stat throw for
+    // exactly that letter, which is the only honest way to test it without an
+    // empty card reader plugged into the build machine.
+    bool statWithEmptyDriveAtE(String path) {
+      if (path == 'E:/') {
+        throw const FileSystemException(
+          'Exists failed',
+          'E:/',
+          OSError('The device is not ready', 21),
+        );
+      }
+      return path == 'C:/' || path == 'D:/';
+    }
+
+    test('the sweep survives it instead of taking the app down', () {
+      expect(
+        () => windowsDrives(existsSync: statWithEmptyDriveAtE),
+        returnsNormally,
+      );
+    });
+
+    test('the unreadable letter is skipped, the readable ones are kept', () {
+      final drives = windowsDrives(existsSync: statWithEmptyDriveAtE);
+      final letters = drives.map((d) => d.remote.fs).toList();
+      expect(letters, ['C:/', 'D:/']);
+      expect(letters, isNot(contains('E:/')));
+    });
+
+    test('a drive that throws does not stop the ones after it', () {
+      // E comes before the rest of the alphabet: the old loop died at E and
+      // never reached F..Z, so "skipped" has to mean skipped, not stopped.
+      final drives = windowsDrives(
+        existsSync: (p) => p == 'E:/'
+            ? throw const FileSystemException('Exists failed', 'E:/')
+            : p == 'Z:/',
+      );
+      expect(drives.map((d) => d.remote.fs), ['Z:/']);
+    });
+
+    test('every letter failing yields an empty list, not an exception', () {
+      expect(
+        windowsDrives(
+          existsSync: (p) => throw FileSystemException('Exists failed', p),
+        ),
+        isEmpty,
+      );
+    });
+  });
 }

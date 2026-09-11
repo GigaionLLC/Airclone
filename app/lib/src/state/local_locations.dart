@@ -112,9 +112,20 @@ String _basename(String path) {
 ///
 /// A path we cannot stat is simply not offered. "I could not look" and "it is
 /// not there" lead to the same UI, and neither is worth a crash.
-bool _dirExists(String path) {
+bool _dirExists(String path) => _statTotal(_rawExists, path);
+
+/// The real, throwing stat. Named so the guarded path below can be handed a
+/// fake one in a test without also faking away the guard.
+bool _rawExists(String path) => Directory(path).existsSync();
+
+/// Runs [stat] and treats a refusal to answer as "not there".
+///
+/// [Directory.existsSync] is typed as a plain bool and reads like a total
+/// function, but it is not one: on Windows the OS can refuse the question
+/// outright and it throws instead of returning false.
+bool _statTotal(bool Function(String) stat, String path) {
   try {
-    return Directory(path).existsSync();
+    return stat(path);
   } catch (_) {
     return false;
   }
@@ -249,6 +260,56 @@ List<LocalLocation> buildDefaultUserFolders() {
   return out;
 }
 
+/// The Windows drive letters that answer, C through Z.
+///
+/// Takes its stat as a parameter so the awkward half is testable without an
+/// awkward machine. A user on Windows 10 reported Airclone opening completely
+/// blank, and their diagnostics report named the cause exactly:
+///
+/// ```
+/// FileSystemException: Exists failed, path = 'E:/'
+///     (OS Error: The device is not ready, errno = 21)
+///   #3  _Sidebar.build      (home_screen.dart)
+///   #3  _HomeViewState.build (home_view.dart)
+/// ```
+///
+/// `errno 21` is `ERROR_NOT_READY` — a card reader or optical drive sitting
+/// empty. Stat'ing it throws rather than answering, the throw escaped this
+/// sweep into [drivesProvider], and because a synchronous provider has no
+/// `AsyncValue` to park an error in, every `ref.watch` rethrew it into the
+/// watching widget's build. Three widgets watch it, so the sidebar and both file
+/// panes became Flutter's release error box — a flat grey rectangle with no
+/// text. An empty card reader blanked the application.
+///
+/// A letter that cannot be stat'ed is simply not offered. One unreadable drive
+/// costs that drive, not the window.
+@visibleForTesting
+List<LocalLocation> windowsDrives({bool Function(String)? existsSync}) {
+  // Deliberately the RAW stat, guarded here by _statTotal: a seam that took the
+  // already-guarded _dirExists would let a test inject a throw that never
+  // reaches the try/catch, and would prove nothing about the drive sweep.
+  final stat = existsSync ?? _rawExists;
+  final out = <LocalLocation>[];
+  for (var ch = 'C'.codeUnitAt(0); ch <= 'Z'.codeUnitAt(0); ch++) {
+    final letter = String.fromCharCode(ch);
+    final root = '$letter:/';
+    if (_statTotal(stat, root)) {
+      out.add(
+        LocalLocation(
+          remote: Remote(
+            name: 'Disk ($letter:)',
+            type: 'local',
+            fs: root,
+            isLocal: true,
+          ),
+          kind: LocalKind.drive,
+        ),
+      );
+    }
+  }
+  return out;
+}
+
 /// Auto-detected disk drives (Windows letters, or `/` on POSIX). Not editable.
 final drivesProvider = Provider<List<LocalLocation>>((ref) {
   final out = <LocalLocation>[];
@@ -269,23 +330,7 @@ final drivesProvider = Provider<List<LocalLocation>>((ref) {
     return out;
   }
   if (Platform.isWindows) {
-    for (var ch = 'C'.codeUnitAt(0); ch <= 'Z'.codeUnitAt(0); ch++) {
-      final letter = String.fromCharCode(ch);
-      final root = '$letter:/';
-      if (_dirExists(root)) {
-        out.add(
-          LocalLocation(
-            remote: Remote(
-              name: 'Disk ($letter:)',
-              type: 'local',
-              fs: root,
-              isLocal: true,
-            ),
-            kind: LocalKind.drive,
-          ),
-        );
-      }
-    }
+    out.addAll(windowsDrives());
   } else if (!bookmarksRequired && !Platform.isIOS) {
     // "/" is unbrowsable under the sandbox and no grant can ever cover it, so a
     // MAS build must not offer it. On iOS it is not browsable by anyone at any
