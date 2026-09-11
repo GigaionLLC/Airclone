@@ -239,8 +239,15 @@ jobs:
           Copy-Item -Recurse build/web $dest
           # Debug symbol maps: ~7 MB, never read at runtime.
           Get-ChildItem -Recurse $dest -Filter '*.symbols' | Remove-Item -Force
-          if (-not (Test-Path "$dest/index.html")) {
-            throw "Web UI files were not bundled into $dest."
+          # Assert the PACKAGED OUTPUT, never the exit code of the copy. A copy
+          # that copies nothing succeeds just as cheerfully as one that works,
+          # and a `continue-on-error` on a bundling step is exactly how an
+          # rclone-less Windows build shipped green across v0.5.0-v0.5.2.
+          foreach ($must in @('index.html', 'main.dart.js', 'canvaskit/canvaskit.wasm')) {
+            $p = Join-Path $dest $must
+            if (-not (Test-Path $p) -or (Get-Item $p).Length -eq 0) {
+              throw "Web UI bundle is missing or empty: $must"
+            }
           }
           Write-Output "Web UI bundled OK"
       # HARD GATE: the build must be self-contained with respect to the MSVC
@@ -506,8 +513,13 @@ jobs:
           rm -rf "$dest"
           cp -r build/web "$dest"
           find "$dest" -name '*.symbols' -delete
-          test -f "$dest/index.html" || { echo "Web UI files missing"; exit 1; }
-          echo "Web UI bundled OK"
+          # Assert the PACKAGED OUTPUT, never the copy's exit code: a step that
+          # copies nothing succeeds too. -s rather than -f because a zero-byte
+          # file is the failure mode that actually happens.
+          for must in index.html main.dart.js canvaskit/canvaskit.wasm; do
+            test -s "$dest/$must" || { echo "Web UI bundle missing or empty: $must"; exit 1; }
+          done
+          echo "Web UI bundled OK ($(du -sh "$dest" | cut -f1))"
       - name: Note whether librclone bundled
         run: |
           if [ -f build/linux/x64/release/bundle/librclone.so ]; then
@@ -701,8 +713,13 @@ jobs:
           mkdir -p "$APP/Contents/Resources"
           cp -r build/web "$dest"
           find "$dest" -name '*.symbols' -delete
-          test -f "$dest/index.html" || { echo "Web UI files missing"; exit 1; }
-          echo "Web UI bundled OK"
+          # Assert the PACKAGED OUTPUT, never the copy's exit code: a step that
+          # copies nothing succeeds too. -s rather than -f because a zero-byte
+          # file is the failure mode that actually happens.
+          for must in index.html main.dart.js canvaskit/canvaskit.wasm; do
+            test -s "$dest/$must" || { echo "Web UI bundle missing or empty: $must"; exit 1; }
+          done
+          echo "Web UI bundled OK ($(du -sh "$dest" | cut -f1))"
       - name: Bundle librclone into the app (Frameworks)
         # Tolerant of a missing dylib (a failed/ skipped librclone build): the app
         # then ships binary-engine-only rather than failing the release. Runs
