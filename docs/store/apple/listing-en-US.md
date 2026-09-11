@@ -79,7 +79,9 @@ WHAT YOU CAN DO
 • Browse every cloud like a local folder. Your Mac's folders and all of your cloud remotes sit side by side, with familiar rows, previews and right-click actions.
 • Move and copy between clouds directly. Send a file from one cloud to another — the transfer runs as a background job you can watch or cancel, and you can pause the queue so nothing new starts.
 • Sync and back up folders. Mirror, copy, move or two-way sync, with a dry-run preview that shows exactly what will change before anything happens.
+• Back up a folder. Three answers — what, where, how often — and it copies only, never syncing or moving. A file the backup replaces is kept beside the new one, so restoring an earlier version is a copy back out of the backup folder. Scheduled tasks run while Airclone is open, and a run missed while it was closed starts once on next launch.
 • See your photos and videos. Image and video thumbnails load right in the app for any remote, cached on your Mac.
+• Open a folder as a tree. A pane can switch to an expandable hierarchy, loaded one folder at a time, so a deep structure is one window instead of ten.
 • Stay in control. Nothing is overwritten silently — every collision asks first: skip, replace, or keep both.
 
 YOUR FILES STAY YOURS
@@ -145,7 +147,7 @@ Notes (4,000 max):
 ```
 Airclone is a file manager for cloud storage that the user already owns. There is no Airclone account, no sign-in and no server of ours involved — the app talks directly to whichever storage the user configures, using their own credentials, which stay on the Mac.
 
-To try it without configuring a real cloud account: the sidebar's local folders work immediately. Use the + button beside "Locations" to grant access to any folder, then browse, copy and move files within it — this exercises the same transfer engine used for cloud remotes.
+To try it without configuring a real cloud account: the "Locations" list starts empty, which is deliberate — a sandboxed build seeds no folders of its own, because under the sandbox the home directory is redirected into the app's container and a seeded entry would point somewhere that is not the user's folder. Use the + button beside "Locations" to grant access to any folder through the standard macOS panel, then browse, copy and move files within it — this exercises the same transfer engine used for cloud remotes.
 
 To try a cloud remote, use the + button beside "Cloud" and pick any provider; the app walks through that provider's normal setup.
 

@@ -9,22 +9,35 @@ by design** — real IDs, key paths and account state live in the encrypted vaul
 (`python tool/vault.py unlock`, then
 `dev/vault/notes/apple-appstore-setup-record.md`).
 
-## State (2026-09-09): 0.7.5 IS LIVE; 0.7.6 RECORDS CREATED, BUILDS UPLOADING
+## State: last written 2026-09-09 — 0.7.5 IS LIVE; 0.7.6 RECORDS CREATED, BUILDS UPLOADING
+
+**`v0.7.7` and `v0.8.0` have been tagged since this was written** (`app/pubspec.yaml` is
+`0.8.0+126`), and no Apple version record for either is recorded here. Nothing in this repo can tell
+you what became of the ⏳ rows below either — only App Store Connect knows, so **ask it before acting
+on this table**:
+
+```bash
+gh workflow run asc-version.yml -f platform=MAC_OS -f mode=report   # the version record and its state
+gh workflow run asc-version.yml -f platform=MAC_OS -f mode=builds   # did the upload register? is it VALID?
+```
+
+Both are read-only — nothing writes without `mode=apply` — and both want running per platform.
 
 | | macOS | iOS |
 | :--- | :--- | :--- |
 | Version 0.7.5 | **READY_FOR_SALE** | **READY_FOR_SALE** |
 | Version 0.7.6 | **PREPARE_FOR_SUBMISSION** | **PREPARE_FOR_SUBMISSION** |
 | 0.7.6 `releaseType` | MANUAL, set at creation | MANUAL, set at creation |
-| Build 124 attached | ⏳ lane still uploading | ⏳ lane still uploading |
-| 0.7.6 audited / submitted | ⛔ not yet | ⛔ not yet |
+| Build 124 attached | ⏳ lane was still uploading | ⏳ lane was still uploading |
+| 0.7.6 audited / submitted | ⛔ not as of this line | ⛔ not as of this line |
+| Versions 0.7.7 / 0.8.0 | ❓ no record created from here | ❓ no record created from here |
 
 0.7.6 was created per platform with
 `asc-version.yml -f platform=<IOS|MAC_OS> -f mode=create -f version=0.7.6`, which
 printed `created … version 0.7.6  state=PREPARE_FOR_SUBMISSION  releaseType=MANUAL`
 on both. `ios-release.yml` and `mas-release.yml` were dispatched for build **124**
-in the same window and had not finished, so **nothing is attached and nothing is
-submitted**. The rest of the sequence is the ordinary one: confirm the build
+in the same window and had not finished, so at that point **nothing was attached
+and nothing was submitted**. The rest of the sequence is the ordinary one: confirm the build
 registered (`asc-version.yml -f mode=builds` — `UPLOAD SUCCEEDED` is not evidence
 on its own), attach it with `mode=apply`, then
 `asc-submit-review.yml -f mode=submit -f confirm_version=0.7.6`.

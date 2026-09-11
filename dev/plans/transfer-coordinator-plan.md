@@ -1,10 +1,19 @@
 # Transfer Coordinator plan: one safety policy, enforced where transfers actually run
 
-**Status:** proposed (design) — genuinely unbuilt, re-checked 2026-09-06: there is no
+**Status:** proposed (design) — still unbuilt at v0.8.0: there is no
 `TransferCoordinator` anywhere in `app/lib/`, and `showCopyConflictDialog` still has the single
 caller described below. **Closes:** hardening audit [H-03](../backlog/hardening-audit-2026-07-15.md) (P0), [H-02](../backlog/hardening-audit-2026-07-15.md) (P0), and the H-04 hook for a reviewable dry run.
 **Owner interface:** a new `TransferCoordinator` in `app/lib/src/state/` — the ONE door to [`TransferService`](../../app/lib/src/state/transfer_service.dart).
 **Reuses:** [`showCopyConflictDialog`](../../app/lib/src/ui/copy_conflict_dialog.dart) · [`planPaste`/`name_conflict.dart`](../../app/lib/src/state/name_conflict.dart) · [`JobsController`](../../app/lib/src/state/jobs_controller.dart) queue · [`TransferOptions`](../../app/lib/src/state/transfer_service.dart)
+
+**Two of the gaps below have since closed by other means — read those passages as history, not as
+the current code.** (1) *The attended half, v0.7.6:* every interactive route now funnels through
+`transferNamesIntoFolder` in `ui/paste_action.dart`, and that funnel is the one caller of
+`showCopyConflictDialog` — so the single-caller test still passes while meaning the opposite of what
+§1 reads it as, and the "no" rows in the entry-point table describe 2026-09-06. (2) *The
+`--max-delete` floor and an empty-source refusal, v0.8:* see §2.4. Still open as written:
+`skipExisting` by default and a persisted destructive approval for unattended runs (§2.4), the
+cancel race (§2.5), and the single owning type this plan is named for.
 
 ---
 
@@ -29,7 +38,11 @@ transfer calls `TransferService.transfer()` directly and cannot prompt, because 
 | Scheduled task | `state/scheduler_controller.dart` | no (and no destructive confirm) |
 | Headless `--run-task` | `headless/headless_runner.dart` | no (and no destructive confirm) |
 
-"Copy to…" a folder that already holds that name overwrites it, silently, today.
+"Copy to…" a folder that already holds that name overwrote it, silently.
+
+*Table as of 2026-09-06.* The seven interactive **no** rows closed in v0.7.6 — they all route
+through `transferNamesIntoFolder`, which prompts and fails closed on a destination it cannot read.
+The two unattended rows at the bottom are still true, and are what the rest of this plan is for.
 
 **One fail-open is already fixed** (commit preceding this plan): an unreadable destination in
 `paste_action.dart` used to collapse to an empty name set — reading as "no collisions" — and dispatch
@@ -93,8 +106,13 @@ Scheduled and headless runs have no user to prompt, so they get:
 - **Destructive runs require persisted approval.** A saved one-way Sync (which deletes at the
   destination) may only run unattended if its task record carries an explicit approval flag, set when
   the user saved it. No flag → the run refuses and records why in the job row.
-- **A conservative `--max-delete` floor.** An empty MaxDelete field currently means *no cap*; for
-  unattended runs it must mean a default cap, not unlimited.
+- **A conservative `--max-delete` floor.** ✅ **Shipped in v0.8.** `withScheduledDeleteCap`
+  (`state/transfer_options.dart`) applies a default cap of 100 at RUN time to any scheduled one-way
+  Sync whose `maxDeleteFiles` is null, from both `state/scheduler_controller.dart` and
+  `headless/headless_runner.dart`, so tasks saved before the cap existed are covered too. A
+  scheduled Sync additionally refuses a source that lists empty or unreadable
+  (`SchedulerController._sourceIsUnsafe`), and tripping the cap pauses the whole scheduler until a
+  human resumes it.
 
 ### 2.5 Cancel becomes honest (H-02)
 

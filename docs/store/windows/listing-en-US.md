@@ -9,10 +9,12 @@ line to avoid trademark/impersonation rejections.
 submission by cloning the last published one — listing copy, screenshots, age rating
 and pricing all carry over untouched, and only the packages change. Editing this file
 therefore changes nothing in the Store until someone pastes the block into Partner
-Center. **Pending paste as of 2026-09-06:** the transfers bullet no longer claims a
+Center. **Pending paste as of 2026-09-10:** the transfers bullet no longer claims a
 running transfer can be paused — only the *queue* can be
-(`jobs_panel.dart`: *"queued transfers wait; running ones finish"*) — and the
-"What's new" block below was rewritten.
+(`jobs_panel.dart`: *"queued transfers wait; running ones finish"*); scheduled tasks,
+folder backup and the tree view are now in the Description and in Product features,
+because v0.8 shipped all three while this copy still described a 0.7 app; and the
+"What's new" block below was rewritten for 0.8.0.
 
 > **DO NOT reorder the first two lines of the Description.** Store policy
 > **10.2.4.1** requires any dependency on non-integrated software to be disclosed
@@ -21,6 +23,18 @@ running transfer can be paused — only the *queue* can be
 > app-local so the dependency is genuinely gone — line 2 keeps the reviewer from
 > having to take that on faith. The **CLEAN REMOVAL** paragraph likewise answers
 > policy **10.2.7** from the same report.
+>
+> ⚠️ **CLEAN REMOVAL is an EXE-channel promise today.** A schedule registers a
+> Windows Scheduled Task under `Airclone\` (`app/lib/src/state/windows_task_scheduler.dart`),
+> and the only code that removes those is `RemoveScheduledTasks` in the Inno
+> uninstaller (`app/windows/installer/airclone.iss`) — which a Store MSIX never
+> runs. Nothing gates the registration on the install channel either, so the
+> packaged product can create entries it has no uninstall path to remove: the same
+> 10.2.7 shape as the 2026-07-29 finding. Settle that before pasting a Description
+> that says "removes Airclone completely". Walk the new scheduling bullet on a
+> packaged install while you are there — registration points Task Scheduler at the
+> executable inside `WindowsApps`, and nothing on record says a background run has
+> ever been seen to fire from there.
 
 ---
 
@@ -36,7 +50,10 @@ WHAT YOU CAN DO
 • Browse every cloud like a local folder. Your PC's storage and all of your cloud remotes appear side by side in one window, with familiar rows, previews, and right-click actions.
 • Move and copy files between clouds. Send a file straight from one cloud to another — the transfer runs as a background job you can watch or cancel, and you can pause the queue so nothing new starts.
 • Sync and back up folders. Mirror, copy, move, or two-way sync, with a dry-run preview that shows exactly what will change before anything happens.
+• Run it on a schedule. Give a sync or a backup a time — daily, weekly, or every few hours — and Windows runs it even with Airclone closed. Every scheduled task shows its next run and how the last one ended.
+• Back up a folder. Three answers — what, where, how often — and it copies only, never syncing or moving. A file that gets replaced is kept beside the new one, so restoring an earlier version is a copy back out of the backup folder.
 • See your photos and videos. Image and video thumbnails load right in the app for any remote, cached on your device.
+• Open a folder as a tree. A pane can switch to an expandable hierarchy, loaded one folder at a time, so a deep structure is one window instead of ten.
 • Work faster with power tools. A built-in rclone command console plus archive create and extract are a click away.
 • Stay in control. Nothing is overwritten silently — every file collision asks first: skip, replace, or keep both.
 
@@ -66,7 +83,13 @@ the generic line from `store-release-notes.txt` rather than leaving the last one
 place.
 
 ```
-Browse, transfer, and sync files across 70+ cloud storage services from one clean desktop app — the full rclone engine and the Visual C++ runtime are built in, so there's no command line and nothing else to install.
+Backups, and a scheduler you can find.
+
+• Back up a folder, from Settings → Automation. Three answers — what, where, how often — and it copies only, never syncing or moving, so a file lost at the source is still in the backup.
+• Files a backup replaces are kept, and restoring one is the file browser you already use: a backup destination is an ordinary folder, and copying back out of it asks before it overwrites anything.
+• Settings → Automation is a new home for scheduled tasks — what a schedule means on your PC, every task with its next run and how the last one ended, and a way in that no longer needs two panes arranged first.
+• Daily and weekly schedules now fire at the time you picked rather than at the next poll, and a repeating sync always carries a delete cap that pauses the scheduler if it trips.
+• An optional tree view: one pane as an expandable folder hierarchy, loaded one folder at a time.
 
 Full release notes: https://github.com/GigaionLLC/Airclone/releases
 ```
@@ -84,6 +107,9 @@ Manage 70+ cloud storage services from one app
 Browse every cloud like a local folder
 Copy and move files directly between clouds
 Sync and back up with a dry-run preview
+Run syncs and backups on a schedule, even with Airclone closed
+Folder backup that keeps replaced files so you can restore one
+Tree view for deep folder structures
 Photo and video thumbnails for any remote
 Built-in rclone command console
 Create and extract archives

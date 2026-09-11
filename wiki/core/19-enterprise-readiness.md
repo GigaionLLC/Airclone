@@ -38,8 +38,7 @@ posture before you design it.
 - **Customer owns the control plane.** Fleet management, audit aggregation, and SSO target endpoints
   the *customer* operates. Airclone ships no default remote endpoint.
 - **Opt-in egress only.** Update checks, crash reports, telemetry, and audit forwarding are
-  default-OFF and point only at customer-configured destinations. Empty config ⇒ zero egress (a CI
-  test asserts this).
+  default-OFF and point only at customer-configured destinations. Empty config ⇒ zero egress.
 - **MDM + policy files are the baseline; a server is the upgrade.** ~80% of "central management" value
   (kill-switches, allow/deny lists, forced encryption, pre-provisioned remotes) ships via OS-native
   managed config with **no server at all**.
@@ -245,7 +244,7 @@ top ones:
 | **`selfupdate` breaks air-gap / pinning** | Hard-disable by policy; pin + verify rclone **fail-closed**; ship internal mirror spec. |
 | **Secrets leakage** (plaintext conf / obscure-only / AppConfig) | Default encrypted config + keystore; external refs at spawn; never push secrets via AppConfig; biometric gate. |
 | **Control plane = breach/compliance surface** if built early | Defer until a design partner commits; self-hosted-first/opt-in; SOC 2 scoped to the plane only. |
-| **Accidental phone-home** (default-on endpoints) | All egress default-OFF; no hardcoded endpoints; CI asserts zero outbound on clean config. |
+| **Accidental phone-home** (default-on endpoints) | All egress default-OFF; the only hardcoded endpoints are the Airclone update check and the rclone engine download, and a store-managed build makes neither request. Nothing asserts that mechanically yet — a test that fails the build on a new outbound endpoint is open work. |
 | **SSO-tax / brand damage** | Keep SSO/MFA/encryption/on-device audit/MDM free; paywall only fleet scale + export + assurance. |
 
 ---

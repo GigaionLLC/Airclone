@@ -13,10 +13,11 @@ never raw hex**, and all semantic colours have light and dark values.
 
 **The tokens are Dart, and [`ui/theme/tokens.dart`](../../app/lib/src/ui/theme/tokens.dart) is the
 implementation this page describes** — `Space.x1…x8` (there is no `x7`), `Radii.sm/md/lg/full`, and
-`AircloneTheme.of(context)`, a `ThemeExtension` returning the `AircloneColors` palette, which most of
-the UI already reads. The `--color-*` / `--space-*` names below are the *semantic vocabulary* the code
-mirrors, not identifiers you can type; take the value from `tokens.dart`, and add it there first if it
-is missing.
+the `AircloneTheme` `ThemeExtension` with its three lookups, which most of the UI already reads:
+`AircloneTheme.of(context)` for the `AircloneColors` palette, `.tokensOf(context)` for the active
+skin's `SkinTokens`, and `.chromeOf(context)` for its `SkinChrome`. The `--color-*` / `--space-*`
+names below are the *semantic vocabulary* the code mirrors, not identifiers you can type; take the
+value from `tokens.dart`, and add it there first if it is missing.
 
 **When to read this:** before you write or change any UI — a screen, dialog, row, button, chip or
 status indicator — and any time you are about to pick a colour, size, spacing, radius or focus
@@ -76,12 +77,24 @@ changed = `--color-warning`, only-in-source = `--color-diff-only-a`, only-in-des
 ### Skins
 
 The palette is not the whole visual identity. A **skin** — `enum Skin { airclone, windows, macos,
-gnome }` — selects the per-OS axes the real file managers actually differ on (`SkinTokens`: font
-family + fallbacks, body size, row height, `VisualDensity`, selection radius, row dividers), on top of
-the same light/dark palette. A new install defaults to `Skin.forHost()`, so the app reads like the
-file manager the user already knows — Windows Explorer, macOS Finder, GNOME Files; Android and iOS get
-the brand look, since the phone shell has its own Material grammar. A persisted choice always wins
-(`skinProvider` in [07-state-context.md](07-state-context.md)).
+gnome }` — is three things at once, all installed together by
+[`AppTheme.build(skin, brightness)`](../../app/lib/src/ui/theme/app_theme.dart):
+
+- **`AircloneColors.forSkin`** — the palette above, in that skin's light and dark.
+- **`SkinTokens.of`** — the per-OS axes the real file managers differ on: font family + fallbacks,
+  body size, row height, `VisualDensity`, selection radius, row dividers.
+- **`SkinChrome.of`** — the largest of the three, and the one most likely to be what you need:
+  fourteen per-skin layout switches (sidebar selection style, section-header style, coloured folder
+  icons, tile subtitle, sidebar inset, active-pane dot, New-button label, always-visible search,
+  Details toggle, hoisted toolbar, compact branding, segmented view switcher, unified Finder toolbar,
+  status-bar view toggles), read through `AircloneTheme.chromeOf(context)`.
+
+So **never branch on `Platform.isWindows` for looks** — the host OS only chooses the *default* skin,
+and the active one is a setting. Add a `SkinChrome` field instead — the rule
+[DESIGN.md](../../DESIGN.md) already states. A new install defaults to `Skin.forHost()`, so the app
+reads like the file manager the user already knows — Windows Explorer, macOS Finder, GNOME Files; Android
+and iOS get the brand look, since the phone shell has its own Material grammar. A persisted choice
+always wins (`skinProvider` in [07-state-context.md](07-state-context.md)).
 
 ## 🔠 Typography Scale
 
@@ -99,7 +112,10 @@ System stack: `-apple-system, "Segoe UI", Roboto, "Inter", sans-serif`. Monospac
 | `--text-meta` | 12 / 16 | 400 | Sizes, timestamps (mono, tabular) |
 | `--text-caption` | 11 / 14 | 400 | Hints, status-bar text |
 
-> Mobile bumps `--text-body` to 16/22 and file-row min-height to 56px for touch comfort.
+> Touch comfort wants `--text-body` at 16/22 and a taller file row — **neither is built**. Body size
+> is `SkinTokens.bodySize` and row height is `SkinTokens.rowHeight` on every platform, with no mobile
+> branch; Android and iOS run `Skin.airclone`, so a phone row is the same 36px a desktop Airclone-skin
+> row is.
 
 ## 🔳 Spacing, Radius & Elevation
 
@@ -131,9 +147,11 @@ See the [Components Index](../components/components-index.md) for the full catal
   down) + storage bar (4px track, `--color-primary` fill) + muted usage label. The mobile design adds
   a **"Show in Files"** toggle row, for the day that bridge exists — see
   [02-product-context.md](02-product-context.md).
-- **File row** — 36px desktop / 56px mobile. Leading type icon/thumbnail, name (`--text-body`,
-  truncates), trailing meta (size + modified, `--text-meta` mono tabular). Hover `--surface-sunken`;
-  selected = `--color-primary` 12%-alpha bg + left accent bar; status-glyph slot for transfer state.
+- **File row** — height is `SkinTokens.rowHeight`, the active skin's number and the same on touch:
+  Airclone 36 · Windows 28 · macOS 24 · GNOME 38 ([`file_row.dart`](../../app/lib/src/ui/file_row.dart)).
+  Leading type icon/thumbnail, name (`--text-body`, truncates), trailing meta (size + modified,
+  `--text-meta` mono tabular). Hover `--surface-sunken`; selected = `--color-primary` 12%-alpha bg +
+  left accent bar; status-glyph slot for transfer state.
 - **Transfer row** — type label + `source → dest` (mono, middle-truncating) + progress bar
   (`--color-primary`, `--color-error` on fail) + speed + ETA + status chip; indeterminate shimmer
   while starting.
@@ -149,14 +167,25 @@ See the [Components Index](../components/components-index.md) for the full catal
 
 - **Contrast:** all text/bg pairs meet WCAG AA (4.5:1 body, 3:1 large). **Status is never
   color-only** — pair every dot/chip with an icon and text label.
-- **Keyboard (desktop):** full operability — arrow-key file nav, `Ctrl/Cmd+A`, Shift-range,
-  Ctrl-click multi-select, `F2` rename, `Del` delete, `Ctrl+C/X/V` across panes, `Tab` switches
-  panes, `Esc` cancels. Visible 2px `--color-primary` focus ring on every interactive element. Every
-  drag has a keyboard-equivalent (copy/move via menu).
-- **Screen readers:** panes = `tree`/`grid`, job panel = `log` with `aria-live="polite"`; toggles
-  expose `aria-pressed`.
+- **Keyboard (desktop):** what ships is `Alt+←/→/↑` and `Backspace` to navigate, `F5` refresh,
+  `Ctrl+L` / `Alt+D` to edit the path, `Ctrl+F` filter, `Ctrl+Shift+F` search, `Ctrl+K` palette,
+  `Ctrl+T`/`Ctrl+W` tabs, `Ctrl+I` inspector, `F2` rename, `Del` delete, `Enter` open, `Space` Quick
+  Look, `Esc` clear, `Ctrl+A/C/X/V`, type-to-jump, and `F1` for the cheat sheet —
+  [`shortcuts_dialog.dart`](../../app/lib/src/ui/shortcuts_dialog.dart) is the list to mirror, so
+  extend it in the same change. **Not yet:** arrow-key row navigation outside the tree view
+  ([`tree_view.dart`](../../app/lib/src/ui/tree_view.dart) is the only view with a cursor), `Tab` as a
+  pane switch (nothing binds it — it is Flutter's focus traversal), Shift-range and Ctrl-click
+  selection (multi-select is the row checkbox), and `Cmd` chords: the app declares no `meta`
+  activators, so every chord above is Ctrl on macOS too. Visible 2px `--color-primary` focus ring on
+  every interactive element. Every drag has a keyboard-equivalent (copy/move via menu).
+- **Screen readers (target, not built):** the accessibility layer here is Flutter `Semantics`, not
+  ARIA — pane rows want labels, the jobs dock wants a `liveRegion`, chrome toggles want `toggled`.
+  Today the only annotated widget in the app is
+  [`overflow_name.dart`](../../app/lib/src/ui/overflow_name.dart); everywhere else ships the
+  framework's defaults.
 - **Touch (mobile):** 44×44px minimum targets; primary actions in the thumb zone; destructive actions
-  confirm, never a bare swipe; honor OS dynamic-type.
+  confirm, never a bare swipe; honor OS dynamic-type. The file row misses this today at 36px — it is
+  the first thing a touch-density pass has to satisfy.
 - **Motion & themes:** respect `prefers-reduced-motion` and `prefers-color-scheme` (with manual
   override). All meaning survives in monochrome/high-contrast.
 

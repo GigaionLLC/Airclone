@@ -39,9 +39,9 @@ experience**, and brings it to the desktop *and* the phone:
 - ⏰ **Sync & schedule** — Copy, Move, Sync (make the destination match) or Two-way; mark a folder as
   the sync source, then later sync it INTO wherever you are standing. Save a job and run it on a
   schedule *(on **Windows** and **Android** a schedule also fires with Airclone closed — Task
-  Scheduler, or a WorkManager poll on the phone; on macOS, Linux and iOS it runs while the app is
-  open — see [Scheduling](wiki/features/feat-scheduling.md))*. A repeating Sync always carries a
-  delete cap, and tripping it pauses every schedule until you look.
+  Scheduler, or a WorkManager poll on the phone; on macOS and Linux it runs while Airclone is open,
+  and iOS has no scheduling yet — see [Scheduling](wiki/features/feat-scheduling.md))*. A repeating
+  Sync always carries a delete cap, and tripping it pauses every schedule until you look.
 - 🗄️ **Back up & restore** — *Back up a folder* asks three things (what, where, how often) and
   creates a copy-only task that keeps overwritten files as versions, with a retention window and a
   cleanup that shows what it would delete before it does. Restore is the file browser opened at the
@@ -119,7 +119,8 @@ This repo follows a structured documentation methodology. **Agents and contribut
 
 - `wiki/` — long-lived architecture knowledge (the source of truth).
 - `dev/` — operational tooling (plans, backlog, logs).
-- `Skills/` — the agentic development & documentation skill library.
+- `Skills/` — the agentic development & documentation skill library. **Gitignored** — vendored per
+  machine, not part of a clone.
 - `reference/` — **gitignored** competitive research and notes (never committed).
 
 ## 🧱 Architecture at a glance
@@ -173,7 +174,7 @@ convenience, not features. The store builds and the free builds are the same app
 
 | Store | Platforms | Listing |
 | :--- | :--- | :--- |
-| **Apple App Store** | iPhone, iPad (iOS 15+) and Mac (macOS 12+) — one purchase covers all three | [apps.apple.com](https://apps.apple.com/app/id6790176897) |
+| **Apple App Store** | iPhone, iPad (iOS 13+) and Mac (macOS 10.15+) — one purchase covers all three | [apps.apple.com](https://apps.apple.com/app/id6790176897) |
 | **Google Play** | Android (phone, tablet, Android TV) | [play.google.com](https://play.google.com/store/apps/details?id=com.gigaionllc.airclone) |
 | **Microsoft Store** | Windows 10/11 | [apps.microsoft.com](https://apps.microsoft.com/detail/9PJ6LRTS2B8X) |
 

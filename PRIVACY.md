@@ -1,6 +1,6 @@
 # Airclone — Privacy Policy
 
-_Last updated: 2026-08-11_
+_Last updated: 2026-09-10_
 
 Airclone is a desktop and mobile graphical interface for
 [rclone](https://rclone.org), published by **Gigaion, LLC**. This policy
@@ -62,10 +62,27 @@ default.**
 
 Either way the file stays on your device. It is not uploaded anywhere.
 
+## Work you scheduled, running on its own
+
+A task you save — a sync, or a backup — can run at a time you chose. On Windows
+and Android it can do that **with Airclone closed**: Windows Task Scheduler, or
+an Android background wake, starts the app just long enough to run whatever is
+due. Nothing is scheduled until you schedule it, and a scheduled run does
+exactly what the task you saved does — it talks to the remote you picked, and to
+nothing else.
+
+- **Camera-roll backup** (Android) is **off until you set it up.** Once you do,
+  it copies your camera roll — plus any folders you add — to the remote you
+  chose. It only ever copies: nothing on the phone is moved or deleted. Your
+  photos and videos go to your remote, never to Gigaion, LLC.
+- Background runs default to **Wi-Fi only**, and can be limited to while
+  charging, so an unattended run does not spend mobile data.
+- Deleting the task, or turning the schedule off, stops the background runs.
+
 ## Network connections Airclone makes
 
-Airclone only makes network connections that you initiate or that keep the
-software current:
+Airclone only makes network connections that you ask for — including ones you
+scheduled to run later — or that keep the software current:
 
 1. **The cloud storage services you configure** — to browse and transfer your
    files, using the credentials you gave to rclone. This is the core function

@@ -65,9 +65,10 @@ actually changed in a shipped version — and you need the exact file rather tha
 ## 🤖 CI workflows
 
 Every workflow in [`.github/workflows/`](../.github/workflows/) is listed below — if you add one, add a
-row. They fall into three kinds: **build** (make artifacts), **publish on demand** (reach a store; all
-`workflow_dispatch`, never a tag side-effect), and **verify/utility** (prove something, or perform one
-rare irreversible act). Most of the store lanes are thin wrappers around a script in
+row. They fall into four kinds: **build** (make artifacts), **publish on demand** (reach a store; all
+`workflow_dispatch`, never a tag side-effect), **verify/utility** (prove something, or perform one
+rare irreversible act), and **monitoring** (a scheduled read of what a store is doing to us). Most of
+the store lanes are thin wrappers around a script in
 [`tool/`](../tool/), named here so you can read what a run will actually do before you start it. All
 secrets/variables are named, **never valued** — this repo is public.
 
@@ -105,6 +106,12 @@ Nothing here happens because you tagged. Each is a button, and each says what it
 | [`mas-screenshots.yml`](../.github/workflows/mas-screenshots.yml) | manual | Captures Mac screenshots of the **sandboxed** build. Apple accepts only four exact sizes, hence `mode: diagnose` before `capture`. Demo data is seeded inside the app's own container, because a sandboxed app cannot be handed a folder without someone clicking through `NSOpenPanel`. |
 | [`apple-revoke-cert.yml`](../.github/workflows/apple-revoke-cert.yml) | manual ([`tool/asc_ios_signing.py`](../tool/asc_ios_signing.py)) | ⛔ **Irreversible.** Revokes ONE Apple certificate by id and nothing else — its own workflow so it never sits one wrong dropdown away from a build. Double-entry confirmation. **Never revoke the certificate under a build that is submitted but not yet live**: the first iOS submission came back INVALID BINARY minutes after *Add for Review* for exactly that. Which id signed what is tracked in [`apple-handoff.md`](apple-handoff.md). |
 
+### Monitoring
+
+| Workflow | Trigger | What it does |
+| :--- | :--- | :--- |
+| [`store-feedback.yml`](../.github/workflows/store-feedback.yml) | daily cron (08:00 UTC) + manual | Two jobs, both reading Play with `PLAY_SERVICE_ACCOUNT_JSON` and both writing into the run summary. `serving` — "What Play is serving": every track and the version code it actually holds ([`tool/play_tracks.py`](../tool/play_tracks.py)). `play` — "Google Play reviews" ([`tool/play_reviews.py`](../tool/play_reviews.py)). It is scheduled rather than a button because Play serves roughly the **last week** of reviews: a review nobody fetched in time is a review nobody can ever read. It never goes red on review content unless you set `fail_at_or_below` by hand — a one-star review is not a broken pipeline. |
+
 **Release-notes coupling — two different files.** The `release` job uses `dev/releases/$GITHUB_REF_NAME.md`
 as `--notes-file` when it exists and emits a `::warning::` + falls back to `--generate-notes` when it
 does not. Tags containing `alpha`, `beta`, or `rc` are marked pre-release. If the Release already exists
@@ -123,7 +130,7 @@ clones the previous submission's field, so Microsoft's "what's new" is edited by
 | :--- | :--- | :--- |
 | `release.yml` | `AZURE_TENANT_ID`, `AZURE_CLIENT_ID`, `AZURE_CLIENT_SECRET`; `APPLE_DEVELOPER_ID_APPLICATION_P12_BASE64`, `APPLE_DEVELOPER_ID_APPLICATION_P12_PASSWORD`, `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, `APPLE_TEAM_ID`; `AIRCLONE_KEYSTORE_BASE64`, `AIRCLONE_KEYSTORE_PASSWORD`, `AIRCLONE_KEY_ALIAS`, `AIRCLONE_KEY_PASSWORD`; `PLAY_SERVICE_ACCOUNT_JSON` | `WINDOWS_SIGNING_ENABLED`, `AZURE_SIGNING_ENDPOINT`, `AZURE_SIGNING_ACCOUNT`, `AZURE_SIGNING_PROFILE`, `MSIX_IDENTITY_NAME`, `MSIX_PUBLISHER`, `MSIX_DISPLAY_NAME` |
 | `submit-msstore.yml` | `STORE_TENANT_ID`, `STORE_CLIENT_ID`, `STORE_CLIENT_SECRET` | `STORE_APP_ID`, `MSIX_IDENTITY_NAME`, `MSIX_PUBLISHER` |
-| Play (`play-images.yml`, `promote-play.yml`) | `PLAY_SERVICE_ACCOUNT_JSON` | — |
+| Play (`play-images.yml`, `promote-play.yml`, `store-feedback.yml`) | `PLAY_SERVICE_ACCOUNT_JSON` | — |
 | Apple, every lane that talks to App Store Connect | `APPSTORE_ISSUER_ID` (a secret, not a variable — a variable is not masked, and this one appeared verbatim in a public log once), `APPSTORE_API_PRIVATE_KEY` (the `.p8` contents); plus `APPLE_REVIEW_CONTACT` on `asc-version.yml` and `asc-submit-review.yml` | `APPSTORE_API_KEY_ID` |
 | Apple build + upload, on top of that | `APPLE_TEAM_ID`; iOS: `APPLE_IOS_DIST_P12_BASE64`, `APPLE_IOS_P12_PASSWORD`, `APPLE_IOS_PROVISIONING_PROFILE_BASE64`. macOS: `APPLE_MAS_APP_P12_BASE64`, `APPLE_MAS_INSTALLER_P12_BASE64`, `APPLE_MAS_P12_PASSWORD`, `APPLE_MAS_PROVISIONING_PROFILE_BASE64` | `APPLE_IOS_PROFILE_NAME` |
 

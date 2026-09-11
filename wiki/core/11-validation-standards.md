@@ -25,7 +25,7 @@ Validation is layered. Each gate has a different job and a different failure sha
 | 1 | **Widget-local** | a dialog / field's own `State` | an inline error string next to the input | [`_NameDialog._submit`](../../app/lib/src/ui/file_op_dialogs.dart#L139) |
 | 2 | **Pure classifier** | a top-level function in `state/` | a typed tier / refusal / `ArgumentError` | [`classifyTier`](../../app/lib/src/state/console/rclone_commands.dart#L148), [`translateToRc`](../../app/lib/src/state/console/console_rc_translate.dart#L166), [`buildArchiveCommand`](../../app/lib/src/state/archive_command.dart#L116) |
 | 3 | **Controller pre-flight** | a Riverpod `Notifier`, before it calls `rpc` | setting `state.error` and returning | [`AddRemoteController.submit`](../../app/lib/src/state/add_remote_controller.dart#L98) |
-| 4 | **Engine seam** | `RcloneClient.rpc` (both transports) | throwing [`RcloneException`](../../app/lib/src/rclone/rclone_client.dart#L57) | [`HttpRcloneClient.rpc`](../../app/lib/src/rclone/http_rclone_client.dart#L201), [`mapRpcResult`](../../app/lib/src/rclone/ffi_rclone_client.dart#L141) |
+| 4 | **Engine seam** | `RcloneClient.rpc` (both transports) | throwing [`RcloneException`](../../app/lib/src/rclone/rclone_client.dart#L57) | [`HttpRcloneClient.rpc`](../../app/lib/src/rclone/http_rclone_client.dart#L453), [`mapRpcResult`](../../app/lib/src/rclone/ffi_rclone_client.dart#L141) |
 | 5 | **rclone itself** | the backend | an `error` field in the RC body, or `job/status.error` | [`JobsController`](../../app/lib/src/state/jobs_controller.dart#L263) |
 
 **Rule — validate downward, never only upward.** A UI gate is a convenience; the authoritative refusal
@@ -48,11 +48,11 @@ data with no engine, no `BuildContext`, no I/O, so its every branch is covered i
 
 | Input | Rule | Where |
 | :--- | :--- | :--- |
-| Remote name — **import / scan rename** | must match `^[A-Za-z0-9_.-]+$`, be non-empty, not collide with another final name in the same batch, and not collide with an existing remote | [config_import_dialog.dart#L48](../../app/lib/src/ui/config_import_dialog.dart#L48), [scan_from_desktop_sheet.dart#L99](../../app/lib/src/ui/scan_from_desktop_sheet.dart#L99) |
+| Remote name — **import / scan rename** | must match `^[A-Za-z0-9_.-]+$`, be non-empty, not collide with another final name in the same batch, and not collide with an existing remote | [config_import_dialog.dart#L67](../../app/lib/src/ui/config_import_dialog.dart#L67), [scan_from_desktop_sheet.dart#L99](../../app/lib/src/ui/scan_from_desktop_sheet.dart#L99) |
 | Remote name — **add-remote wizard** | non-empty after `trim()` only; the charset is enforced by rclone's `config/create` and surfaced as an RC error | [add_remote_controller.dart#L98](../../app/lib/src/state/add_remote_controller.dart#L98) |
 | New-folder / rename leaf | non-empty after `trim()`; refused inline when it collides with a sibling name passed in as `taken` | [file_op_dialogs.dart#L146](../../app/lib/src/ui/file_op_dialogs.dart#L146) |
 | Pasted / dropped names | resolved by [`planPaste`](../../app/lib/src/state/name_conflict.dart#L14) under a `ConflictChoice`; *keep both* routes each name through [`uniqueName`](../../app/lib/src/state/name_conflict.dart#L40) against a **running** taken-set, so newly assigned names can't collide with each other either |
-| File leaf staged for another app | [`_safeLeaf`](../../app/lib/src/state/open_external.dart#L290) strips `\ / : * ? " < > |` plus control characters and leading dots, so a name can never escape the staging directory |
+| File leaf staged for another app | [`_safeLeaf`](../../app/lib/src/state/open_external.dart#L334) strips `\ / : * ? " < > |` plus control characters and leading dots, so a name can never escape the staging directory |
 
 There is deliberately **no single shared "is this a valid remote name" helper** — the charset regex is
 currently declared twice (import dialog, phone scan sheet). If a third caller appears, hoist it into a
@@ -74,9 +74,12 @@ shared file rather than copying it a third time.
   [`escapeRcloneGlob`](../../app/lib/src/state/archive_command.dart#L101) backslash-escapes
   `\ * ? [ ] { }`. Without it a multi-select compress of `data[1].csv` would emit
   `--include /data[1].csv`, whose `[1]` is a character class that matches `data1.csv` — silently
-  archiving the wrong files. The one live caller is the browser's archive path
-  ([browser_pane.dart#L631](../../app/lib/src/ui/browser_pane.dart#L631)); any new `--include` /
-  `--exclude` built from a real file name must do the same.
+  archiving the wrong files. Two live callers: the browser's archive path
+  ([browser_pane.dart#L800](../../app/lib/src/ui/browser_pane.dart#L800)) and
+  [`photoFolderRule`](../../app/lib/src/state/photo_backup.dart#L83), which anchors a user-chosen
+  camera-roll folder into an rclone `--filter` rule. Any new `--include` / `--exclude` / `--filter`
+  built from a real name must do the same — and anything that reads such a rule back must unescape,
+  which is what [`photoFolderOfRule`](../../app/lib/src/state/photo_backup.dart#L89) exists for.
 
 ---
 
@@ -153,6 +156,17 @@ surfaced as `notes`, never silently dropped.
 | Destructive console verb | `_confirmDestructive`, showing `redactedPreview(cmd)` | [console_pane.dart#L215](../../app/lib/src/ui/console_pane.dart#L215) |
 | Dedupe / folder cleanup / closing with mounts | dedicated confirms | [dedupe_dialog.dart](../../app/lib/src/ui/dedupe_dialog.dart), [folder_tools.dart](../../app/lib/src/ui/folder_tools.dart), [close_with_mounts_dialog.dart](../../app/lib/src/ui/close_with_mounts_dialog.dart) |
 
+Nobody is watching a repeating or scheduled run, so its gate cannot be a dialog. It is a **cap or an
+outright refusal instead, applied where the work is dispatched** — and for a scheduled task that
+means in *both* runners, because neither can assume the other ran first:
+
+| Action | Gate | Where |
+| :--- | :--- | :--- |
+| Repeating / scheduled one-way **Sync** | `withScheduledDeleteCap` gives it rclone's `--max-delete` (`kDefaultScheduledDeleteCap`, 100) when the user chose none. The cap **is** the confirmation — applied at RUN time, not at definition time, so tasks saved before it existed are covered too | [transfer_options.dart#L31](../../app/lib/src/state/transfer_options.dart#L31), [feat-scheduling.md §5.1](../features/feat-scheduling.md) |
+| Scheduled Sync whose source is empty or unreadable | refused outright before dispatch (`_sourceIsUnsafe` → `kEmptySourceRefusal`), and the refusal is recorded as a failed run so it is visible in Settings → Automation. Unreadable counts as unsafe: a human can be asked, a timer cannot | [scheduler_controller.dart#L223](../../app/lib/src/state/scheduler_controller.dart#L223), [feat-scheduling.md §5.2](../features/feat-scheduling.md) |
+| Any **backup** task run | `backupOptions` re-applies copy-only + `keepReplaced` + no-dry-run at run time, so a task edited through the raw advanced dialog cannot run as a sync under a backup's name | [task_kind.dart#L47](../../app/lib/src/state/task_kind.dart#L47) |
+| Backup **version prune** | dry run by default — every caller opts in to deleting — and the pass refuses entirely above `kMaxPrunePerPass` (500) rather than deleting the first 500 | [backup_prune.dart#L14](../../app/lib/src/state/backup_prune.dart#L14), [feat-backup.md](../features/feat-backup.md) |
+
 Rules for any new destructive action:
 
 1. **Name the consequence, not the act.** "This permanently deletes the folder and everything inside
@@ -161,10 +175,23 @@ Rules for any new destructive action:
 3. **Cancel is the safe default** for irreversible operations (autofocus it).
 4. **Prefer a real cap over prose.** One-way sync exposes `maxDeleteFiles` → rclone `--max-delete` (a
    count, sync-only); bisync exposes `maxDeletePercent`
-   ([transfer_options.dart#L96](../../app/lib/src/state/transfer_options.dart#L96)). These are
+   ([transfer_options.dart#L153](../../app/lib/src/state/transfer_options.dart#L153)). These are
    data-loss guards, not tuning knobs — a wrong or empty source can otherwise wipe a destination.
 5. **The confirm is not the enforcement.** If the operation is reachable from a controller, guard it
    there too (§1).
+6. **A cap that can be reached unattended is applied where the run is DISPATCHED, in every runner.**
+   Not where the task is defined: a rule applied only in the options dialog misses every task saved
+   before it existed, and every path that never opens that dialog. The in-app scheduler
+   ([scheduler_controller.dart](../../app/lib/src/state/scheduler_controller.dart)) and the headless
+   / background runner ([headless_runner.dart](../../app/lib/src/headless/headless_runner.dart))
+   therefore each apply `withScheduledDeleteCap` / `backupOptions` themselves, and each run their own
+   empty-source refusal. Adding a third runner means adding them a third time.
+7. **A cap that trips stops the whole scheduler, not just the task that tripped it.** A run aborting
+   on `--max-delete` sets `schedulerPausedProvider` — global, persisted, no auto-resume and no
+   timeout — because the causes are environmental (an unmounted drive, an expired token, a renamed
+   folder) and are rarely confined to the one task that noticed
+   ([scheduler_pause.dart](../../app/lib/src/state/scheduler_pause.dart); the error match is
+   `isDeleteCapError`, the one place that decides).
 
 ---
 
@@ -210,7 +237,7 @@ State these as rules, in order. They are the contract for every new failure path
 
 **R2 — A 2xx is not automatically success.** rclone's interactive config flow returns HTTP 200 with an
 `Error` field in the body; `AddRemoteController._call` checks it explicitly
-([add_remote_controller.dart#L241](../../app/lib/src/state/add_remote_controller.dart#L241)). Check
+([add_remote_controller.dart#L266](../../app/lib/src/state/add_remote_controller.dart#L266)). Check
 for in-body errors on any RC method that has them.
 
 **R3 — Controllers catch; widgets never do.** A controller stores the failure in its own state
@@ -220,11 +247,11 @@ for in-body errors on any RC method that has them.
 
 | Scope of failure | Surface | Reference |
 | :--- | :--- | :--- |
-| The engine is not up at all | the full-screen `EngineGate` (locating / not installed / needs password / provisioning / error), not an error string | [engine_gate.dart](../../app/lib/src/ui/engine_gate.dart), [`EnginePhase`](../../app/lib/src/state/engine_controller.dart#L51) |
-| A pane's content failed to load | inline, centred in the pane's content area | [browser_pane.dart#L310](../../app/lib/src/ui/browser_pane.dart#L310) |
+| The engine is not up at all | the full-screen `EngineGate` (locating / not installed / needs password / provisioning / error), not an error string | [engine_gate.dart](../../app/lib/src/ui/engine_gate.dart), [`EnginePhase`](../../app/lib/src/state/engine_controller.dart#L55) |
+| A pane's content failed to load | inline, centred in the pane's content area | [browser_pane.dart#L333](../../app/lib/src/ui/browser_pane.dart#L333) |
 | A field is invalid | inline next to / under the field | [file_op_dialogs.dart#L146](../../app/lib/src/ui/file_op_dialogs.dart#L146) |
-| A wizard step failed | the controller's `state.error`, rendered by that step | [add_remote_controller.dart#L241](../../app/lib/src/state/add_remote_controller.dart#L241) |
-| Anything **inside a modal dialog** | inline in the dialog — **never** a SnackBar; it renders behind the modal barrier and is easy to miss | [mount_panel.dart#L29](../../app/lib/src/ui/mount_panel.dart#L29) |
+| A wizard step failed | the controller's `state.error`, rendered by that step | [add_remote_controller.dart#L266](../../app/lib/src/state/add_remote_controller.dart#L266) |
+| Anything **inside a modal dialog** | inline in the dialog — **never** a SnackBar; it renders behind the modal barrier and is easy to miss | [mount_panel.dart#L255](../../app/lib/src/ui/mount_panel.dart#L255) |
 | A fire-and-forget action from a main surface | `SnackBar` via `ScaffoldMessenger.maybeOf` | [open_external_action.dart#L93](../../app/lib/src/ui/open_external_action.dart#L93) |
 | A long-running transfer | the job row's `error`, in the Transfers panel | [jobs_controller.dart#L263](../../app/lib/src/state/jobs_controller.dart#L263) |
 | A console command | an `ConsoleLineKind.error` line in that console's scrollback | [console_controller.dart](../../app/lib/src/state/console/console_controller.dart) |
@@ -250,7 +277,7 @@ that comment, or surface the error instead.
 
 **R9 — A stale result is a failure too.** An overlapping listing that returns after navigation has
 moved on must commit nothing rather than surface a wrong error or a wrong folder; see the
-supersede guard in [`BrowserController._load`](../../app/lib/src/state/browser_controller.dart#L420)
+supersede guard in [`BrowserController._load`](../../app/lib/src/state/browser_controller.dart#L804)
 and the listing-race invariant in [14-performance-standards.md](14-performance-standards.md).
 
 ---

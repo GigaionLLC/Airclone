@@ -22,8 +22,8 @@ powerful on demand · progressive disclosure · always-on observability.*
 The tokens are **Dart, not CSS**. [`app/lib/src/ui/theme/tokens.dart`](app/lib/src/ui/theme/tokens.dart)
 is the source of truth: it defines the scales, the palettes, and the `AircloneTheme` `ThemeExtension`
 that carries them. [`AppTheme.build(skin, brightness)`](app/lib/src/ui/theme/app_theme.dart) installs
-that extension on `ThemeData`, and 60 files under `app/lib/src/ui/` already read tokens back out of it
-(`AircloneTheme.of` / `.tokensOf` / `.chromeOf`).
+that extension on `ThemeData`, and most of the ~80 files under `app/lib/src/ui/` already read tokens
+back out of it (`AircloneTheme.of` / `.tokensOf` / `.chromeOf`).
 Where a prose doc and `tokens.dart` disagree, the code wins.
 
 | Token group | How a widget reads it | Values |

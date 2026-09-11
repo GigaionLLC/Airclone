@@ -324,9 +324,16 @@ than a read of the copy.
 - [ ] **Microsoft Store only —** all four MSIX identity fields match Partner Center → Product
       management → Product identity **as a set** (first mismatch masks the rest); the first **two
       lines** of the Description still disclose the bundled Visual C++ runtime (policy 10.2.4.1) and
-      the build still bundles it; and install → run → uninstall on a **clean VM with no VC++
-      Redistributable** leaves nothing in `C:\Program Files\Airclone` (policy 10.2.7) with
-      uninstaller exit code **0**.
+      the build still bundles it; and the **10.2.7 removal check is run against the artifact that
+      ships**. For the Store that is the **`.msix`**: install it on a clean VM with no VC++
+      Redistributable, run it, **create a schedule**, then uninstall from Settings → Apps and confirm
+      nothing Airclone made still fires — `Get-ScheduledTask -TaskPath '\Airclone\'` returns nothing,
+      and no `%LOCALAPPDATA%\Packages\<identity>` residue re-registers work on next run. Windows
+      removes the package itself, so the Inno uninstaller's cleanup (`RemoveScheduledTasks` in
+      `app/windows/installer/airclone.iss`) never runs for a Store install and cannot be the thing
+      relied on here. The EXE's own version of this check — install → run → uninstall leaves nothing
+      in `C:\Program Files\Airclone`, uninstaller exit code **0** — still applies, to the
+      direct-download channel.
 - [ ] **Every store —** the build offers **no route to a download outside that store**. Install the
       real store artifact (or fake the attribution: `adb install -r -i com.android.vending <apk>`),
       open **Settings → Check for updates**, and confirm it names the store and links only to it.

@@ -172,8 +172,8 @@ one when you want to run them and delete that too.
 
 ## 7. CI wiring ✅
 
-Four things use this one credential. Upload and promote are deliberately split — a tag is a
-consequence, production is a decision — and the other two hang off them:
+Five things use this one credential. Upload and promote are deliberately split — a tag is a
+consequence, production is a decision — and the rest hang off them:
 
 | Lane | Trigger | What it touches | File |
 | :--- | :--- | :--- | :--- |
@@ -181,6 +181,14 @@ consequence, production is a decision — and the other two hang off them:
 | Verify | inside the upload lane, every tag | reads every track, asserts one | the `Verify the build really landed in open testing` step + [`tool/play_tracks.py`](../tool/play_tracks.py) `--expect beta=<code>` |
 | Promote | **manual** — Actions → *Promote on Google Play* → Run workflow | production, staged | `.github/workflows/promote-play.yml` + [`tool/play_promote.py`](../tool/play_promote.py) |
 | Listing images | **manual** — Actions → *Play Store listing images* → Run workflow | listing graphics, incl. `tvScreenshots` / `tvBanner` | `.github/workflows/play-images.yml` + [`tool/play_images.py`](../tool/play_images.py); needs the *Manage store presence* grant |
+| Monitoring | **daily cron** 08:00 UTC (+ manual) | reads Play reviews and every track's serving version | `.github/workflows/store-feedback.yml` + [`tool/play_reviews.py`](../tool/play_reviews.py) / [`tool/play_tracks.py`](../tool/play_tracks.py) |
+
+**Monitoring is the lane that fails silently-daily if this key lapses.** The other four run when
+somebody pushes a tag or presses a button, so a broken credential surfaces the moment it matters.
+The cron runs unattended and its jobs exit **0** when `PLAY_SERVICE_ACCOUNT_JSON` is empty — by
+design, so a fork without the secret is not permanently red — which means a rotation that never
+reached GitHub looks exactly like a quiet week. After rotating, dispatch *Store feedback* by hand
+and check the run summary actually lists tracks.
 
 **The verify step is not ceremony.** An upload action can report success while nothing lands — a
 deprecated input silently ignored, an edit committed against a different track — so the release job

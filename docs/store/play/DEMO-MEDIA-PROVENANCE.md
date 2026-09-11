@@ -49,8 +49,14 @@ image can never silently reach a store screenshot. Then, per photo:
 - back-dated to the timestamps the gradient tiles used, so the gallery's Jun 20 / Jun 21 date
   grouping still reads naturally.
 
-Reproduce with `scratchpad/fetch-cc0-photos.ps1` + `scratchpad/stage_demo_photos.py` (see
-[`dev/plans/play-screenshots-plan.md`](../../../dev/plans/play-screenshots-plan.md)).
+**The two scripts that did this no longer exist** — they were written in a session scratchpad and
+never moved into the repo. So the list above is the specification, not a description of one: ask
+the Commons API for the file's licence, download **only** when it answers CC0 or public domain,
+then transpose, strip, resize and back-date. Keep the licence check first and fail-closed: it is
+the only thing standing between a re-licensed Commons file and a store screenshot. Anything
+rebuilt belongs in `dev/store/` beside the screenshot generator, which is the lesson
+[`dev/plans/play-screenshots-plan.md`](../../../dev/plans/play-screenshots-plan.md) already
+records from losing that generator to a scratchpad the same way.
 
 ## Video — `google-drive/Videos/`, `onedrive/Projects/`
 

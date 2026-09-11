@@ -10,8 +10,9 @@ description: "The application shell, navigation models, and screen layouts for d
 
 Airclone is **one product in two layouts and three input models**. The same domain models,
 `RcloneClient`, and component primitives back all of them; only the shell and the navigation model
-differ. Mobile is **not** a shrunken desktop — it drops the dual pane; and a television is the mobile
-shell wrapped for a five-key remote, not a fourth design.
+differ. Mobile is **not** a shrunken desktop — it is touch-first, single-pane by default, and its
+second pane is an opt-in the user toggles rather than a standing commander; and a television is the
+mobile shell wrapped for a five-key remote, not a fourth design.
 
 **When to read this:** you are adding or moving a surface in the app shell — a toolbar verb, a
 sidebar entry, a pane or tab, the job panel, a bottom-nav tab or the FAB — and need to know where it
@@ -20,14 +21,17 @@ break.
 
 ---
 
-## 🖥️ Desktop — Dual-Pane File Commander
+## 🖥️ Desktop — File Explorer + Dual-Pane Commander
 
 A **rebuilt file explorer purpose-built for rclone** — this in-app browser is the **primary, hero
-surface** of Airclone, not a fallback for the OS mount. It is a dual-pane commander wrapped in a
-modern, themeable shell: *two browsable locations plus an action between them.* It opens **many
-remotes at once** (each pane has tabs; any tab targets any remote + path), lets you **add and
-configure remotes inline**, and supports **full in-app drag-and-drop** — including dropping OS files
-directly **onto a folder row**, exactly like dragging into a folder in a native explorer.
+surface** of Airclone, not a fallback for the OS mount. It **opens single-pane**: one wide explorer,
+because that is the shape a file manager is expected to have (`singlePaneProvider` defaults to
+`true`). A top-bar toggle turns it into the **dual-pane commander** — *two browsable locations plus
+an action between them* — which is the mode the pane-to-pane mechanics below describe; all of them
+work single-pane too, they just aim at the pane you are in. Either way it opens **many remotes at
+once** (each pane has tabs; any tab targets any remote + path), lets you **add and configure remotes
+inline**, and supports **full in-app drag-and-drop** — including dropping OS files directly **onto a
+folder row**, exactly like dragging into a folder in a native explorer.
 
 > **Why the in-app explorer is the performant path (and mount is the convenience).** In-app actions
 > call the rclone RC surface **directly** — server-side `copyfile`/`movefile` within a remote (no
@@ -39,26 +43,55 @@ directly **onto a folder row**, exactly like dragging into a folder in a native 
 
 **Anatomy**
 
-- **Global toolbar (top, 44px):** app identity, global verbs (New Remote, Copy, Move, Sync, Compare),
-  Jobs / Mounts / Scheduler toggles, global bandwidth-throttle slider, theme + settings. Verbs are
-  redundant with drag and right-click so novices and pros each have a path.
-- **Left sidebar (240px, collapsible):** vertical list of **remote cards** (provider icon, name,
-  connection dot, thin storage-usage bar) with "+ Add remote" pinned at top. Local disks appear as
-  peers below a divider. Right-click → Mount, Browse, Serve, Edit, pinned Quick Actions. A name too
-  long for its row is **not** ellipsised: line one stays at full size and the overflow continues on a
-  second line in smaller text (`OverflowName`), because remotes whose names differ only in the last
-  two characters otherwise render as identical rows. A name that fits is untouched — nearly every
-  row. Removing every remote at once is deliberately **not** here: it lives in Settings, behind a
-  named list and an acknowledgement ([15-security.md §3.3](15-security.md)).
-- **Dual-pane browser (center stage):** two independent panes, each with **tabs** (open many remotes
-  at once — a tab per remote+path), its own provider switcher + editable path bar + breadcrumb,
-  sortable columns (Name / Size / Modified / Status), and a per-pane filter box. Panes/tabs retarget
-  to any remote — Drive left, S3 right, cloud-to-cloud in one drag. A single-pane toggle exists for
-  small windows; either pane can split into more tabs rather than forcing a second window. A pane
-  never says "Empty folder" over a listing rclone shortened: when a `crypt` remote's key does not
-  match its data, rclone drops the entries it cannot decrypt and still answers 200, so the pane
-  counts those notices across its own request and reports **"N items hidden"** instead
-  ([07-state-context.md](07-state-context.md), `hiddenUndecryptable`).
+- **Global toolbar (top, 44px):** sidebar show/hide · the Airclone wordmark + version (quieted on the
+  OS skins) · a **bandwidth-limit popup menu** — fixed presets (Unlimited / 1M / 5M / 10M / 50M /
+  100M) plus "Schedule…", not a slider
+  ([bandwidth_control.dart](../../app/lib/src/ui/bandwidth_control.dart)) · the single-/dual-pane
+  toggle · the inspector toggle (Ctrl+I) · the transfers-dock toggle · then, **only in Advanced
+  mode**, Saved tasks, Serve / Share on LAN and Mount as a drive — the last two also hidden outright
+  where policy forbids them (the sandboxed Mac App Store build) · keyboard shortcuts (F1) · Settings,
+  which is where theme and skin live. The **file verbs are not here**, on purpose: they sit next to
+  the rows they act on. Add-remote is on the sidebar's CLOUD header; Copy / Move to other pane,
+  "Copy / Move / Sync…" and Compare are on the pane's command bar and its row context menus.
+  [home_screen.dart](../../app/lib/src/ui/home_screen.dart) (`_TopBar`).
+- **Left sidebar (240px default, collapsible *and* drag-resizable):** three labelled, collapsible
+  sections, in this order — **LOCATIONS** (folders the user added, with its own `+` picker and an
+  OS-folder drop target; no `+` on iOS, which has no filesystem to pick from), **DISKS**
+  (auto-detected, and the header is rendered only when the list is non-empty — a heading over nothing
+  is worse than no heading), then **CLOUD** (the rclone remotes, with a `+` popup offering *Add a
+  remote…* / *Encrypt a remote…*). Local locations sit **above** the cloud remotes, under their own
+  header, not below a divider. A row is an icon + the name + (on skins that ask for it) the remote
+  type, and a `⋮` menu offering **Test connection · Edit remote… · Duplicate remote… ·
+  Remove** — mount, serve and browse are reached elsewhere. A name too long for its row is **not** ellipsised:
+  line one stays at full size and the overflow continues on a second line in smaller text
+  (`OverflowName`), because remotes whose names differ only in the last two characters otherwise
+  render as identical rows. A name that fits is untouched — nearly every row. Removing every remote
+  at once is deliberately **not** here: it lives in Settings, behind a named list and an
+  acknowledgement ([15-security.md §3.3](15-security.md)).
+- **Browser (center stage):** one pane, or two independent ones side by side over a draggable,
+  persisted divider. Each has **tabs**, and a tab has a *kind* — a **browser** tab (a remote + path)
+  or a **console** tab running the rclone command console, opened from the `+`-adjacent terminal
+  button on the tab strip in Advanced mode (`PaneKind` in
+  [browser_controller.dart](../../app/lib/src/state/browser_controller.dart),
+  [tab_strip.dart](../../app/lib/src/ui/tab_strip.dart)). A browser tab carries its own provider
+  switcher + editable path bar + breadcrumb, sortable columns (Name / Size / Modified / Status), and
+  a per-pane filter box. Panes/tabs retarget to any remote — Drive left, S3 right, cloud-to-cloud in
+  one drag; either pane opens more tabs rather than forcing a second window. **A pane with no
+  location open is not blank:** once at least one remote exists it renders `HomeView`, the pane's
+  quick-access home — Favorites · Recent · This device · Cloud as tiles, over a filter field
+  ([home_view.dart](../../app/lib/src/ui/home_view.dart)) — which is what a user sees on every
+  launch. A pane never says "Empty folder" over a listing rclone shortened: when a `crypt` remote's
+  key does not match its data, rclone drops the entries it cannot decrypt and still answers 200, so
+  the pane counts those notices across its own request and reports **"N items hidden"** instead
+  ([07-state-context.md](07-state-context.md), `hiddenUndecryptable`). On the OS skins that ask for
+  it, single-pane mode **hoists** the active pane's toolbar to a full-width band above the sidebar,
+  which changes the shell's top-level layout — so a change to the toolbar has to be checked in both
+  modes.
+- **Inspector (right, 300px, toggleable):** a details column beside the panes, off by default and
+  toggled from the top bar or Ctrl+I (`inspectorVisibleProvider`,
+  [inspector_panel.dart](../../app/lib/src/ui/inspector_panel.dart)). What it *shows* is owned by
+  [20-explorer-design.md](20-explorer-design.md); what matters here is that it is a shell region, and
+  the shell is `top bar · [ sidebar | explorer | inspector ] · jobs dock · status bar`.
 - **Transfer / Job panel (bottom, dockable):** persistent, and the always-on observability surface.
   Two tabs, not three: **Transfers** (the live per-file strip over the job list — type, source → dest,
   per-file progress, speed, ETA, status, with Stop / Stop-all / Clear-finished) and **Recent
@@ -71,31 +104,35 @@ directly **onto a folder row**, exactly like dragging into a folder in a native 
   the dock's height rather than a fixed box — a dock the user made taller that still shows three
   in-flight files is the bug report "the transfers list is compacted … I couldn't resize it". A job
   moving more files than its row shows offers a tappable expander, never a dead "+N more".
-- **Status bar (bottom, 24px):** Mount Manager + CLI buttons, engine-health dot; center aggregate
-  (`↑ 12.4 MB/s · 3 jobs · ETA 2m`); right item-count (tabular-nums).
+- **Status bar (bottom, 24px):** on the left the engine-health dot and its label (`engine ok · rclone
+  <version>`, or the phase when it is not ready); on the right a summary of the **active pane** —
+  item count · selection count and size · free-of-total space — and, on the skins that ask for it,
+  the Details / Large-thumbnails view switcher for that pane. It carries **no** Mount or CLI button
+  and **no** aggregate speed/jobs/ETA readout: mount moved to the top bar (Advanced + policy), the
+  console is a pane tab, and live transfer figures belong to the dock above it.
 
 ```
-┌─────────────────────────────────────────────────────────────────────────────────┐
-│ ◉ Airclone   [+New Remote] [Copy][Move][Sync][Compare] │ [Jobs][Mounts][Sched] ⚙ │
-├──────────────┬────────────────────────────────────────────────────────────────────┤
-│ REMOTES   +  │ ┌── PANE A ───────────────┐  ┌── PANE B ────────────────────────┐ │
-│              │ │ ⊞gdrive ⊞dropbox      + │  │ ⊞s3:backups ⊞gdrive          + │ │
-│              │ │ [gdrive ▾]  ⌂ > Work > Q1 │  │ [s3:backups ▾]  ⌂ > 2026         │ │
-│ ▣ Google Drv │ │ 🔎 filter…        ⇅ Name  │  │ 🔎 filter…             ⇅ Modified │ │
-│   ▓▓▓▓░ 64%  │ ├───────────────────────────┤  ├──────────────────────────────────┤ │
-│ ▣ S3 backups │ │ 📁 designs/        —  2d   │  │ 📁 jan/           —      5 Jan    │ │
-│   ▓▓░░░ 31%  │ │ 📁 contracts/      —  1w   │  │ 📁 feb/           —      3 Feb    │ │
-│ ▣ OneDrive ● │ │ 📄 plan.pdf     2.1MB 3h   │═▶│ 📄 plan.pdf    2.1MB    today    │ │
-│ ─────────────│ │ 📄 budget.xlsx  140KB 1d   │  │ 📄 notes.md     4KB     today    │ │
-│ 💽 Local C:  │ │ 🖼 hero.png     8.4MB 2h   │  │                                  │ │
-│ 💽 SD card   │ │                           │  │       (drag A→B = copy)          │ │
-├──────────────┴───┴───────────────────────────┴──┴──────────────────────────────────┤
-│ [Transfers] Recent activity                                    ⌃ [Stop All] [⌫]    │
-│ ▸ Copy  gdrive:/Q1/hero.png → s3:backups/2026   ▓▓▓▓▓▓░░  73%  8.4MB/s  ETA 0:03   │
-│ ▸ Sync  Local C:/Photos → onedrive:/Photos      ▓▓░░░░░░  18%  2.1MB/s  ETA 4:21   │
-├────────────────────────────────────────────────────────────────────────────────────┤
-│ ⛁ Mounts  ⌨ CLI   ● engine ok          ↑12.4MB/s · 2 jobs · ETA 4:21    | 5 items  │
-└────────────────────────────────────────────────────────────────────────────────────┘
+┌────────────────────────────────────────────────────────────────────────────────────────────────┐
+│ ☰  ◉ Airclone v0.8.0                                            [bw ▾] [dual] [i] [⇅] [F1] [⚙] │
+├────────────────┬───────────────────────────────┬──────────────────────────┬────────────────────┤
+│ LOCATIONS    + │ ⊞gdrive ⊞dropbox >_console +  │ ⊞s3:backups ⊞gdrive   +  │ DETAILS          ✕ │
+│  📁 Projects   │ [gdrive ▾]  ⌂ › Work › Q1     │ [s3:backups ▾] ⌂ › 2026  │ ┌────────────────┐ │
+│  📁 Photos     │ 🔎 filter…             ⇅ Name │ 🔎 filter…    ⇅ Modified │ │  hero.png      │ │
+├────────────────┼───────────────────────────────┼──────────────────────────┼────────────────────┤
+│ DISKS          │ 📁 designs/            —   2d │ 📁 jan/        —   5 Jan │ │   (preview)    │ │
+│  💽 Local C:   │ 📁 contracts/          —   1w │ 📁 feb/        —   3 Feb │ └────────────────┘ │
+│  💽 SD card    │ 📄 plan.pdf        2.1MB   3h │ 📄 plan.pdf  2.1MB today │ 8.4 MB · PNG       │
+│ CLOUD        + │ 📄 budget.xlsx     140KB   1d │ 📄 notes.md    4KB today │ 1920 × 1080        │
+│  ☁ Google Drive│ 🖼 hero.png        8.4MB   2h │                          │ modified 2h ago    │
+│  ☁ S3 backups  │                               │    (drag A → B = copy)   │ gdrive:/Work/Q1    │
+│  ☁ OneDrive   ⋮│                               │                          │                    │
+├────────────────┴───────────────────────────────┴──────────────────────────┴────────────────────┤
+│ [Transfers] Recent activity                                                  ⌃ [Stop All] [⌫]  │
+│ ▸ Copy  gdrive:/Q1/hero.png → s3:backups/2026   ▓▓▓▓▓▓░░  73%  8.4MB/s  ETA 0:03               │
+│ ▸ Sync  Local C:/Photos → onedrive:/Photos      ▓▓░░░░░░  18%  2.1MB/s  ETA 4:21               │
+├────────────────────────────────────────────────────────────────────────────────────────────────┤
+│ ● engine ok · rclone 1.74.4              5 items · 1 selected · 8.4 MB · 120 GB free of 931 GB │
+└────────────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
 **Drag-and-drop**
@@ -104,17 +141,23 @@ directly **onto a folder row**, exactly like dragging into a folder in a native 
 | :--- | :--- |
 | OS file → empty pane area | Upload to the current pane path (border glows; ghost row in Jobs) |
 | **OS file → a folder row** | Upload **into that folder** (row highlights on hover — like dropping into a folder in a native explorer) |
-| Pane row → OS | Download to OS location (real file payload, drag-out) |
+| **Local** pane row → OS | Copy the file out to the OS location (a real `Formats.fileUri` payload) |
 | Pane row → a folder row (same or other pane) | **Copy into that folder** (server-side within a remote; streamed across remotes) |
-| Pane A → Pane B (empty area) | **Copy** to the other pane's path (default; animated arrow) |
-| Shift + drag | **Move** (source rows dim) |
-| Alt / right-drag → drop menu | Choose Copy / Move / Sync at the drop target |
-| Multi-select + drag | Batch transfer (onto a folder or pane) |
+| Pane A → Pane B (empty area) | **Copy** to the other pane's path |
+| Multi-select + drag | Batch copy (onto a folder or pane) |
 
-Drag *default is copy* (safest); move/sync need an explicit modifier or menu choice. Drops are
+**Every drag is a copy.** The drag session declares `DropOperation.copy` and nothing in the drop path
+reads a modifier key: there is no Shift-to-move and no Alt/right-drag menu, so a dropped row can
+never be the one that removed the original. Move is a named verb instead — "Move to other pane" on
+the pane command bar, cut-then-paste, or "Copy / Move / Sync…" for the full options dialog. Drops are
 **target-aware**: hovering a folder row drops *into* that folder, hovering empty pane space drops at
 the pane path. Every drag produces a real `_async` job in the Job panel — never a silent operation —
-and within a single remote uses **server-side** copy/move so no bytes round-trip through your machine.
+and within a single remote uses **server-side** copy so no bytes round-trip through your machine.
+
+Dragging *out* to the OS is narrower than it looks and the table row above is literal: a drag carries
+a real file payload only when the source row is on a **local** remote, and only for the **first** file
+of a selection — a cloud row is not downloaded by dragging it to the desktop.
+[native_drag.dart](../../app/lib/src/ui/native_drag.dart).
 
 **Nothing here overwrites silently.** Every drop, paste and "Copy/Move to…" goes through the one
 conflict-aware routine (`transferNamesIntoFolder` in
@@ -126,8 +169,8 @@ dialogs or dispatch the same move twice; and a **fail-closed** probe — a desti
 listed copies *nothing* and says so, because an unreadable folder used to read as "no collisions"
 and dispatch a plain overwrite.
 
-**Sync dialog** (from the Sync verb, a remote Quick Action, or right-drag → Sync). The sketch below
-is the *intended* shape and is ahead of the code: the shipped
+**Sync dialog** (from "Copy / Move / Sync…" on the pane command bar or a row's context menu). The
+sketch below is the *intended* shape and is ahead of the code: the shipped
 [`transfer_options_dialog.dart`](../../app/lib/src/ui/transfer_options_dialog.dart) has three tabs —
 **Settings** (Mode, Options, Compare by, Performance, plus the two-way-only conflict rows), **Filters**,
 **rclone cmd** (the exact command the run will produce) — and a Cancel / Dry run / Run footer. There is no job-name field, no
@@ -183,9 +226,14 @@ empty folder deletes everything at the destination, and "0 files" is indistingui
 [sync_source.dart](../../app/lib/src/state/sync_source.dart) ·
 [sync_here_action.dart](../../app/lib/src/ui/sync_here_action.dart).
 
-**Scheduler** lists saved jobs as rows (name, source→dest, direction chip, human-readable schedule
-via cron→prose, last/next run, run/pause/edit). The editor offers Interval or Time builders with an
-advanced raw-cron field and an optional **"watch a local folder"** (debounced FS watcher) trigger.
+**Saved tasks** (the Tasks dialog, top bar, Advanced mode) lists saved transfers as rows: name,
+source→dest, the schedule in prose, last/next run, and run/pause/edit. **There is no cron.** A
+schedule is one of three kinds — **Interval**, **Daily**, **Weekly** (`ScheduleKind` in
+[task_schedule.dart](../../app/lib/src/state/task_schedule.dart)) — and the editor is a picker over
+exactly those, with minutes for an interval and a time-of-day (plus weekdays) for the other two.
+Nothing watches a folder: there is no filesystem-change trigger. When a task actually runs, what
+catches up a missed slot and what can run it with the app closed are owned by
+[feat-scheduling.md](../features/feat-scheduling.md).
 
 **Mount Manager** (a *secondary convenience*, not the primary file-work surface) lists active mounts
 (source, mount point, status) with a mount dialog whose options come from the shared
@@ -204,41 +252,66 @@ cryptic error. Mount exists so a remote is reachable *inside other
 apps*; for uploading and moving files, the in-app explorer is faster (it avoids the VFS cache), and
 the UI gently nudges users there for heavy file work.
 
-**Onboarding (3 steps):** Welcome ("Airclone bundles rclone — nothing to install") → Add your first
-remote (provider grid → dynamic form, Quick/OAuth default) → "You're set" (drops into the dual pane,
-new remote left + Local right, with a "drag a file here→there to copy" coach-mark). Empty states are
-illustrated and instructive.
+**Onboarding is one card, not a wizard.** Once the remotes list has *loaded* and is empty — never
+while it is still loading, or the card flashes over a list that is about to arrive — the pane shows a
+single centred **"Connect your first remote"** panel: an icon, a line naming what a remote is, and an
+**"Add a remote"** button straight into the add-remote dialog. There is no Welcome step, no "You're
+set" step, no seeded dual pane and no coach-mark. As soon as one remote exists that card is replaced
+by the pane's `HomeView` quick-access screen. Both states are pinned by
+[onboarding_test.dart](../../app/test/onboarding_test.dart); `_empty` in
+[browser_pane.dart](../../app/lib/src/ui/browser_pane.dart) is the branch.
 
 ---
 
 ## 📱 Mobile — Touch-First Browser + System Storage
 
-Single-pane, touch-first. No dual pane, no FUSE mount. The shell is chosen by **width**, not by
+Touch-first, single-pane **by default** — and no FUSE mount. The shell is chosen by **width**, not by
 platform: `< 700px` (or a television) gets `MobileHomeScreen`, so an Android tablet in landscape runs
 the desktop shell — see [06-design-system.md](06-design-system.md) for the one real breakpoint.
+
+**The second pane is an opt-in, not an absence.** A split toggle on the primary pane's header (and in
+the `⋯` actions sheet) reveals `paneProvider(1)` beside `paneProvider(0)` in the same resizable
+`PaneSplit` the desktop uses, and the axis is **adaptive**: stacked on a narrow portrait phone,
+side-by-side once the area is wide, with a manual Adaptive / Side-by-side / Stacked cycle that
+overrides the width. Each pane keeps its own slim header so both stay independently navigable, and
+system-back walks the active pane up and then **collapses the split** rather than leaving the app.
+`mobileSplitProvider` + `paneSplitOrientationProvider` in
+[pane_layout.dart](../../app/lib/src/state/pane_layout.dart) ·
+[mobile_home.dart](../../app/lib/src/ui/mobile_home.dart) (`_MobileBrowser`) ·
+[pane_split.dart](../../app/lib/src/ui/pane_split.dart).
 
 The intended headline feature is **system integration**: remotes appearing in the phone's own Files
 app via an Android `DocumentsProvider` / iOS File Provider, toggled per remote. **Neither bridge is
 built** — there is no `DocumentsProvider` in `app/android/` and no File Provider target in
 `app/ios/`, so the "Show in Files" toggle and its secondary line ("Available in Files app" / "Not
 shown in system files") are design, not shipped UI.
-[02-product-context.md](02-product-context.md) owns that status; the wireframe below is a sketch of
-the intended shell and shows the toggle for that reason.
+[02-product-context.md](02-product-context.md) owns that status; the left half of the wireframe below
+is a sketch of the intended shell, and shows the toggle — and the remote cards that carry it — for
+that reason.
 
-**Bottom nav:** **Remotes** (home) · **Files** (active browser) · **Transfers** · **Settings**, with a
-context-aware floating **+** (add remote on Remotes; upload on Files) that opens a bottom sheet rather
-than a dropdown.
+**Bottom nav — three destinations:** **Files** · **Transfers** · **Settings**. There is **no Remotes
+tab**: the locations list *is* the Files tab's opening screen (`_MobileLocations`), and the tab swaps
+to the browser once a location is open or a split is up. A television replaces this bar with
+`TvNavRail` (below).
 
-**Remote cards** are large tap targets carrying the provider icon, name, connection dot and storage
-bar.
+**The `+` FAB is not context-aware across tabs.** It renders only on the Files tab, only once a real
+folder is open in the pane it would target (never over a console tab, and in single-pane always pane
+0 — `activePane` can linger at 1 after an "open in other pane" and the FAB must not aim at a hidden
+pane). It opens the **create sheet**: New folder · Upload from URL · Paste here
+([mobile_action_sheets.dart](../../app/lib/src/ui/mobile_action_sheets.dart),
+`showMobileCreateSheet`).
+
+**The locations list** is headed *This phone* (auto-detected drives, then the folders the user added)
+and *Cloud* (the rclone remotes, with a `+` for add / encrypt / import). A row is a compact tile —
+icon, name, the remote type as a subtitle, and a `⋮` opening the remote sheet — not a card with a
+connection dot and a storage bar.
 
 **Touch browser:** full-width 56px rows, horizontally-scrolling breadcrumb, long-press multi-select →
-contextual action bar (Copy, Move, Download, Share link, Delete), `+` FAB upload (background job with
-notification), on-demand **materialization** (open → download-then-open with progress; "still
-uploading" state surfaced after edits).
+contextual action bar (Copy, Move, Download, Share link, Delete), on-demand **materialization**
+(open → download-then-open with progress; "still uploading" state surfaced after edits).
 
 ```
-   Home (Remotes)              Browser (Files)
+   Files — locations (sketch)  Files — browser
 ┌─────────────────────────┐  ┌─────────────────────────┐
 │  Airclone          ⚙    │  │ ‹  gdrive › Work › Q1   │
 │  Your remotes           │  │ ⌂  Work  Q1            🔎│
@@ -253,14 +326,21 @@ uploading" state surfaced after edits).
 │ │ ▣  S3 backups     ● │ │  │                         │
 │ │ Not shown in files  │ │  │                     (+) │
 │ │ Show in Files  [○ ○]│ │  ├─────────────────────────┤
-│ └─────────────────────┘ │  │ ▤    📁    ⇅    ⚙        │
-│                     (+) │  │Remotes Files Transf Set │
+│ └─────────────────────┘ │  │    📁      ⇅      ⚙     │
+│                         │  │ Files Transfers Settings│
 └─────────────────────────┘  └─────────────────────────┘
 ```
 
-**Background sync** is honestly framed: the Transfers tab shows a "Background sync" card (last/next
-run + best-effort disclaimer). Active foreground transfers mirror to a system notification; scheduled
-runs (WorkManager / BGTaskScheduler) are best-effort. Live, user-initiated transfers are reliable.
+**Background work is not framed in the Transfers tab.** That tab is a plain **Transfers / Recent**
+segmented switch over the same bodies the desktop dock uses — there is **no "Background sync" card**,
+so nothing there tells the user what a scheduled run will and will not do; the opt-in lives in
+Settings → **Automation** instead. Active transfers do mirror to a system notification: on Android a
+`dataSync` foreground service holds one while anything is queued or running, so the OS does not
+freeze the app — and the rclone child process with it — when the user switches away
+([android_transfer_service.dart](../../app/lib/src/state/android_transfer_service.dart)). Running
+with the app *closed* is a WorkManager poll on Android and a Task Scheduler entry on Windows; **iOS
+has neither**, and there is no `BGTaskScheduler` anywhere in the project.
+[feat-scheduling.md](../features/feat-scheduling.md) owns all of it.
 
 ---
 

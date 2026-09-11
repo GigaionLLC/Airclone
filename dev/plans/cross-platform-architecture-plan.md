@@ -58,7 +58,10 @@ Prove the load-bearing assumptions before committing to UI.
 - **Exit criteria:** identical RC JSON drives both transports; a remote is browsable in Android Files;
   the iOS xcframework executes an RPC.
 
-### Phase 1 — Desktop MVP · **DONE** (shipped through the alpha run to v0.1.0-beta.1 and since)
+### Phase 1 — Desktop MVP · **DONE**, except the tray (shipped through the alpha run to v0.1.0-beta.1 and since)
+There is **no system tray and no minimize-to-keep-running** — verified absent, no tray package and
+no tray code ([`feature-backlog.md`](../backlog/feature-backlog.md), MUST / App shell). First-run
+onboarding shipped as a zero-remotes empty state, not the guided wizard the bullet below implies.
 - Spawn/supervise `rcd` (loopback + socket, transient creds); binary provisioning + SHA256 +
   min-version + `"system"`/PATH fallback.
 - Dynamic add-remote wizard from `config/providers` + interactive/OAuth state machine.
@@ -76,7 +79,11 @@ Prove the load-bearing assumptions before committing to UI.
 Android ships from alpha.84 (bundled engine, phone-first shell) and iOS from 2026-08-28 (statically
 linked `librclone`), sharing the whole Dart layer; background transfers hold the engine alive through
 a `dataSync` foreground service (alpha.86), and `rclone serve` is offered on mobile like everywhere
-but the Mac App Store build. **The two OS Files integrations were never built** — there is no Android
+but the Mac App Store build. **WorkManager-driven background scheduling shipped in v0.8**
+(`app/android/.../DueTasksWorker.kt`, registered from `state/android_work_registration.dart`), with
+the camera-roll photo backup on top of it (`state/photo_backup.dart`) — so the "background sync"
+bullet below is done for Android, minus boot-resume, which WorkManager handles itself.
+**The two OS Files integrations were never built** — there is no Android
 `DocumentsProvider` and no iOS File Provider extension, so a remote does not appear in the system
 file picker. That is the single largest gap left in this phase.
 
@@ -96,8 +103,8 @@ file picker. That is the single largest gap left in this phase.
 ### Phase 3 — Advanced · **PART DONE**
 bisync, the crypt wrap wizard, the scheduler (with desktop background execution), filter UI,
 bandwidth limits and public-link sharing all ship. Still open, and tracked in
-[`phase3-continuation-plan.md`](phase3-continuation-plan.md): background execution beyond Windows,
-crypt reattach/rotation, the bisync reliability surface, and the engine test harness. Real-time FS
+[`phase3-continuation-plan.md`](phase3-continuation-plan.md): background execution on macOS and
+Linux, crypt reattach/rotation, the bisync reliability surface, and the engine test harness. Real-time FS
 watchers, remote-`rcd` "mobile drives desktop", and full i18n are untouched.
 
 *Original text:*

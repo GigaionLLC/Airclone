@@ -3,25 +3,26 @@ type: "core"
 name: "External Integrations"
 status: "stable"
 dependencies: ["08-core-architecture", "14-performance-standards"]
-description: "Every seam between Airclone and the outside world: the RcloneClient engine abstraction, the full rclone RC method catalogue, the one platform channel, bundled native code, and the OS integration surfaces."
+description: "Every seam between Airclone and the outside world: the RcloneClient engine abstraction, the full rclone RC method catalogue, the platform channels, bundled native code, and the OS integration surfaces."
 ---
 
 # 🔌 External Integrations
 
 The complete map of everything Airclone talks to outside its own Dart code — the rclone engine, the
-platform channel, the bundled native libraries, and the operating system.
+platform channels, the bundled native libraries, and the operating system.
 
 **When to read this:** you are about to call a new rclone RC method, add a native/platform-channel
-call, bundle another native library, or touch mount / serve / drag-and-drop / open-in-another-app.
+call, bundle another native library, or touch mount / serve / drag-and-drop / open-in-another-app /
+background execution.
 
 Airclone has **exactly four** outward seams. Nothing else in the app reaches outside the process.
 
 | # | Seam | Owner | Section |
 | :--- | :--- | :--- | :--- |
 | 1 | **`RcloneClient`** — the one engine abstraction (JSON RC in/out + a byte reference) | [`rclone/`](../../app/lib/src/rclone/) | [§1](#1--rcloneclient--the-one-engine-seam) · [§2](#2--rc-method-catalogue) |
-| 2 | **`airclone/native`** — the single app-defined MethodChannel name, with two native handlers | [`MainActivity.kt`](../../app/android/app/src/main/kotlin/app/airclone/airclone/MainActivity.kt) (Android) · [`SecurityScopedBookmarks.swift`](../../app/macos/Runner/SecurityScopedBookmarks.swift) (Mac App Store) | [§3](#3--platform-channels) |
+| 2 | **Platform channels** — three app-defined MethodChannel names: `airclone/native`, `airclone/work`, `airclone/work_bg` | [`NativeChannel.kt`](../../app/android/app/src/main/kotlin/app/airclone/airclone/NativeChannel.kt) · [`WorkChannel.kt`](../../app/android/app/src/main/kotlin/app/airclone/airclone/WorkChannel.kt) · [`DueTasksWorker.kt`](../../app/android/app/src/main/kotlin/app/airclone/airclone/DueTasksWorker.kt) (Android) · [`SecurityScopedBookmarks.swift`](../../app/macos/Runner/SecurityScopedBookmarks.swift) (Mac App Store) | [§3](#3--platform-channels) |
 | 3 | **Bundled native code** — rclone, librclone, libmpv, PDFium, a Rust crate | CI + build scripts | [§4](#4--bundled-native-code) |
-| 4 | **OS integration** — mount, serve, drag, hand-off, credential vault, biometrics | [`state/`](../../app/lib/src/state/) + plugins | [§5](#5--os-integration-surfaces) |
+| 4 | **OS integration** — mount, serve, drag, hand-off, credential vault, biometrics, background execution | [`state/`](../../app/lib/src/state/) + plugins | [§5](#5--os-integration-surfaces) |
 
 The *decision* behind seam 1 (why two implementations, why one interface) lives in
 [08-core-architecture.md](08-core-architecture.md) §3. This document is the *reference*: what exists
@@ -46,15 +47,14 @@ today, verified against the source.
 Supporting types in the same file: `ObjectRef`, `enum EngineState {stopped, starting, running, error}`,
 `EngineStatus`, `RcloneException(method, message, {statusCode})`.
 
-> ⚠️ [08-core-architecture.md](08-core-architecture.md) §3 sketches an aspirational
-> `Future<Stream<List<int>>> openObject(...)` and a `PauseReason` enum. **Neither exists.** The real
-> byte path is `objectRef` returning a URL + headers, consumed by
-> [`preview_dialog.dart`](../../app/lib/src/ui/preview_dialog.dart),
-> [`quick_look.dart`](../../app/lib/src/ui/quick_look.dart),
-> [`inspector_panel.dart`](../../app/lib/src/ui/inspector_panel.dart),
-> [`folder_thumbnail.dart`](../../app/lib/src/ui/folder_thumbnail.dart),
-> [`browser_pane.dart`](../../app/lib/src/ui/browser_pane.dart) and
-> [`open_external_action.dart`](../../app/lib/src/ui/open_external_action.dart).
+`objectRef` is the **whole** byte path — there is no streaming read on the interface. Its consumers are
+[`preview_dialog.dart`](../../app/lib/src/ui/preview_dialog.dart),
+[`quick_look.dart`](../../app/lib/src/ui/quick_look.dart),
+[`inspector_panel.dart`](../../app/lib/src/ui/inspector_panel.dart),
+[`folder_thumbnail.dart`](../../app/lib/src/ui/folder_thumbnail.dart),
+[`browser_pane.dart`](../../app/lib/src/ui/browser_pane.dart) and
+[`open_external_action.dart`](../../app/lib/src/ui/open_external_action.dart), none of which knows which
+engine is live.
 
 ### 1.1 The two implementations
 
@@ -65,7 +65,7 @@ There is no third variant. **Android runs the same `HttpRcloneClient` as desktop
 | File | [`http_rclone_client.dart`](../../app/lib/src/rclone/http_rclone_client.dart) | [`ffi_rclone_client.dart`](../../app/lib/src/rclone/ffi_rclone_client.dart) |
 | Mechanism | Spawns the `rclone` **executable** as `rcd`; POSTs JSON over loopback HTTP | `dart:ffi` → `librclone`'s C ABI, in-process |
 | Used on | Windows · macOS · Linux (default) · **Android** | Desktop when selected/only option; the only legal path for iOS / Mac App Store |
-| Transport detail | `POST http://127.0.0.1:<free port>/<method>`, Basic auth, 30 s timeout | `RcloneRPC(method, inputJson) → (Output, Status)` on a worker isolate |
+| Transport detail | `POST http://127.0.0.1:<free port>/<method>`, Basic auth, 30 s timeout, **one automatic retry on a connection-level failure — read-only methods only** (§6) | `RcloneRPC(method, inputJson) → (Output, Status)` on a worker isolate |
 | Error mapping | non-2xx → `RcloneException` carrying rclone's `error` field | `mapRpcResult()` — pure, unit-tested, produces the **identical** shape |
 | Byte path | rcd's built-in `--rc-serve` file server at `/[<fs>]/<percent-encoded remote>` | `LibrcloneObjectServer` (§1.4) |
 | Extra capability | `commandStream()` — `core/command` with `returnType: STREAM` | none (see [§6](#6--gotchas)) |
@@ -91,8 +91,9 @@ rclone rcd <user extraArgs…> --rc-addr 127.0.0.1:<free port> --rc-user airclon
   rc credentials), minus the `operations/about` + `operations/fsinfo` capability probes, de-duplicated
   and capped at 100 a session, into the diagnostics ring. `isEngineFailureLine` is a pure top-level
   function so that rule is unit-testable on its own. One line type is inspected **before** either
-  filter, on every build: rclone's `Skipping undecryptable file name` NOTICE, which is a `crypt`
-  key mismatch and the only evidence a listing came back short (§6). It is counted every time and
+  filter, on every build: rclone's `Skipping undecryptable file name` / `Skipping undecryptable dir
+  name` NOTICE (it words objects and directories separately), which is a `crypt` key mismatch and the
+  only evidence a listing came back short (§6). It is counted every time and
   written to the diagnostics ring once per session — one broken folder emits a notice per entry, and
   repeating that would spend the ring's whole budget restating a fact the first line already made.
 
@@ -125,6 +126,14 @@ manager** and **archive create/extract/list**, both of which spawn a process, ar
 left to fail — a dead action is a store rejection. Deliberately **not** gated: *open with the default
 app* (`url_launcher` / NSWorkspace, not a spawn, and sandbox-legal for a file the user granted) and
 *copy path*.
+
+`kMacAppStoreBuild` gates two further surfaces **directly**, not through `subprocessAllowedHere`, so
+they are easy to miss when auditing what a store build still offers:
+[`mountEnabledProvider`](../../app/lib/src/state/mount_policy.dart) and
+[`serveEnabledProvider`](../../app/lib/src/state/serve_policy.dart) are both `!kMacAppStoreBuild`. A
+Mac App Store build therefore offers neither Mount (FUSE is impossible under the App Sandbox) nor
+Serve (the entitlement set omits `com.apple.security.network.server`) — hidden at the one provider
+every entry point already checks, rather than failing at runtime.
 
 ### 1.3 Locating and provisioning the binary
 
@@ -194,7 +203,7 @@ per-method options.
 
 | Method | What it is used for | Call sites |
 | :--- | :--- | :--- |
-| `operations/list` | The browser listing; destination picker; folder-thumbnail probe; paste/drop collision probe; search (`recurse`); dedupe scan **and** its local cloud-placeholder pre-probe; crypt round-trip canary; connection-test fallback when About is unsupported; console `ls`/`lsf`/`lsl`/`lsjson`/`lsd` | [`browser_controller.dart#L455`](../../app/lib/src/state/browser_controller.dart#L455) · [`destination_picker.dart#L120`](../../app/lib/src/ui/destination_picker.dart#L120) · [`folder_thumbnail.dart#L57`](../../app/lib/src/ui/folder_thumbnail.dart#L57) · [`paste_action.dart#L107`](../../app/lib/src/ui/paste_action.dart#L107) · [`search_dialog.dart#L79`](../../app/lib/src/ui/search_dialog.dart#L79) · [`dedupe_dialog.dart#L103`](../../app/lib/src/ui/dedupe_dialog.dart#L103), `#L133`, `#L192` · [`encrypt_remote_controller.dart#L242`](../../app/lib/src/state/encrypt_remote_controller.dart#L242) · [`connection_test_dialog.dart#L38`](../../app/lib/src/ui/connection_test_dialog.dart#L38) |
+| `operations/list` | The browser listing **and**, separately, each folder a tree-view node expands (`_loadTreeFolder` — the one listing path that does *not* sample the undecryptable-name counter, see §6); destination picker; folder-thumbnail probe; paste/drop collision probe; search (`recurse`); dedupe scan **and** its local cloud-placeholder pre-probe; crypt round-trip canary; connection-test fallback when About is unsupported; console `ls`/`lsf`/`lsl`/`lsjson`/`lsd` | [`browser_controller.dart#L811`](../../app/lib/src/state/browser_controller.dart#L811) (`_load`), [`#L759`](../../app/lib/src/state/browser_controller.dart#L759) (`_loadTreeFolder`) · [`destination_picker.dart#L120`](../../app/lib/src/ui/destination_picker.dart#L120) · [`folder_thumbnail.dart#L57`](../../app/lib/src/ui/folder_thumbnail.dart#L57) · [`paste_action.dart#L107`](../../app/lib/src/ui/paste_action.dart#L107) · [`search_dialog.dart#L79`](../../app/lib/src/ui/search_dialog.dart#L79) · [`dedupe_dialog.dart#L103`](../../app/lib/src/ui/dedupe_dialog.dart#L103), `#L133`, `#L192` · [`encrypt_remote_controller.dart#L242`](../../app/lib/src/state/encrypt_remote_controller.dart#L242) · [`connection_test_dialog.dart#L38`](../../app/lib/src/ui/connection_test_dialog.dart#L38) |
 | `operations/stat` | File-vs-dir probe before dispatch; per-file checksums via `opt: {showHash: true, hashTypes: …}` | [`transfer_service.dart#L57`](../../app/lib/src/state/transfer_service.dart#L57) · [`console_controller.dart#L284`](../../app/lib/src/state/console/console_controller.dart#L284) · [`checksum_dialog.dart#L29`](../../app/lib/src/ui/checksum_dialog.dart#L29) |
 | `operations/about` | Remote quota/usage; connection test; console `about` | [`remote_about.dart#L25`](../../app/lib/src/state/remote_about.dart#L25) · [`connection_test_dialog.dart#L24`](../../app/lib/src/ui/connection_test_dialog.dart#L24) |
 | `operations/fsinfo` | The backend `Features` map, used to capability-gate UI (e.g. `PublicLink`) | [`remote_features.dart#L13`](../../app/lib/src/state/remote_features.dart#L13) |
@@ -231,7 +240,7 @@ descending into a folder calls `operations/list`, and only that step can report 
 | `sync/copy` · `sync/move` | Directory transfers (the dir branch of stat-then-dispatch); console `copy`/`move`, and the dir fallback for `copyto`/`moveto` | [`transfer_service.dart#L71`](../../app/lib/src/state/transfer_service.dart#L71) · [`console_controller.dart#L294`](../../app/lib/src/state/console/console_controller.dart#L294) |
 | `sync/sync` 🖥️ | console `sync` | [`console_rc_translate.dart#L390`](../../app/lib/src/state/console/console_rc_translate.dart#L390) |
 | `sync/bisync` | Two-way sync (`maxDelete` here is a **percent**, default 50); console `bisync` | [`transfer_options.dart#L490`](../../app/lib/src/state/transfer_options.dart#L490) |
-| `job/status` | Transfer completion polling; scheduler supervision; reading a console read-verb's `output` when its async job settles; the preview bridge's copy wait | [`jobs_controller.dart#L259`](../../app/lib/src/state/jobs_controller.dart#L259) · [`scheduler_controller.dart#L274`](../../app/lib/src/state/scheduler_controller.dart#L274) · [`console_controller.dart#L376`](../../app/lib/src/state/console/console_controller.dart#L376) |
+| `job/status` | Transfer completion polling; scheduler supervision; reading a console read-verb's `output` when its async job settles; the preview bridge's copy wait | [`jobs_controller.dart#L259`](../../app/lib/src/state/jobs_controller.dart#L259) · [`scheduler_controller.dart#L377`](../../app/lib/src/state/scheduler_controller.dart#L377) · [`console_controller.dart#L376`](../../app/lib/src/state/console/console_controller.dart#L376) |
 | `job/stop` | Jobs-panel Stop and console Stop (one convergence point) | [`jobs_controller.dart#L203`](../../app/lib/src/state/jobs_controller.dart#L203) · [`console_controller.dart#L349`](../../app/lib/src/state/console/console_controller.dart#L349) |
 | `core/stats` | The 1 Hz global stats poller; per-job progress scoped by `group` | [`stats_controller.dart#L57`](../../app/lib/src/state/stats_controller.dart#L57) · [`jobs_controller.dart#L235`](../../app/lib/src/state/jobs_controller.dart#L235) |
 | `core/version` | Readiness handshake and `status()` on **both** clients; console `version` | [`http_rclone_client.dart#L442`](../../app/lib/src/rclone/http_rclone_client.dart#L442), `#L621` · [`ffi_rclone_client.dart#L59`](../../app/lib/src/rclone/ffi_rclone_client.dart#L59) |
@@ -258,14 +267,29 @@ descending into a folder calls `operations/list`, and only that step can report 
 
 ## 3. 📱 Platform channels
 
-There is **exactly one** app-defined channel **name** — `airclone/native` — with **two** native
-handlers behind it: Android's
-[`MainActivity.kt`](../../app/android/app/src/main/kotlin/app/airclone/airclone/MainActivity.kt) and
-macOS's [`SecurityScopedBookmarks.swift`](../../app/macos/Runner/SecurityScopedBookmarks.swift). The
-two method sets are disjoint, and every Dart caller is `Platform`-guarded, so one name is safe. There
-is no iOS, Windows or Linux handler.
+**Three** app-defined channel names. Two of them are the Android background-execution seam, and both
+serve a Flutter engine that has no Activity behind it.
 
-### 3.1 Android — `MainActivity.kt`
+| Channel | Direction | Native handler | Dart side |
+| :--- | :--- | :--- | :--- |
+| `airclone/native` | Dart → native facts and actions | [`NativeChannel.kt`](../../app/android/app/src/main/kotlin/app/airclone/airclone/NativeChannel.kt) (Android) · [`SecurityScopedBookmarks.swift`](../../app/macos/Runner/SecurityScopedBookmarks.swift) (Mac App Store) | [§3.1](#31-android--nativechannelkt) · [§3.2](#32-macos--securityscopedbookmarksswift) |
+| `airclone/work` | Dart → WorkManager: `registerCallback` · `enqueuePeriodic` · `cancelPeriodic` · `runOnce` · `status` | [`WorkChannel.kt`](../../app/android/app/src/main/kotlin/app/airclone/airclone/WorkChannel.kt) | [`android_work_channel.dart`](../../app/lib/src/state/android_work_channel.dart) ([§3.3](#33-android-background-execution)) |
+| `airclone/work_bg` | The headless worker's engine → Dart: `start` · `log` · `done` | [`DueTasksWorker.kt`](../../app/android/app/src/main/kotlin/app/airclone/airclone/DueTasksWorker.kt) | [`android_work_entrypoint.dart`](../../app/lib/src/state/android_work_entrypoint.dart) ([§3.3](#33-android-background-execution)) |
+
+The two `airclone/native` method sets are disjoint, and every Dart caller is `Platform`-guarded, so
+one name safely serves Android and macOS. There is no iOS, Windows or Linux handler.
+
+### 3.1 Android — `NativeChannel.kt`
+
+Registered on the **application** context, not the Activity. It used to live in
+`MainActivity.configureFlutterEngine`, which meant it existed only on an engine some Activity had
+created — and a WorkManager worker runs a second Flutter engine with no Activity at all, unable to ask
+even for `nativeLibraryDir`, without which the rclone engine cannot start.
+[`MainActivity.kt`](../../app/android/app/src/main/kotlin/app/airclone/airclone/MainActivity.kt) is now
+27 lines that register the handler against `applicationContext` and lend themselves to the few calls
+that genuinely need an Activity (permission prompts, choosers), which degrade rather than crash when
+there is none. **A method added to an Activity-scoped channel would be missing from every background
+run** — add it here.
 
 | Method | Returns / does | Dart caller |
 | :--- | :--- | :--- |
@@ -275,6 +299,7 @@ is no iOS, Windows or Linux handler.
 | `requestAllFilesAccess` | Opens the per-app All-Files-Access settings screen, falling back to the list screen (both launches guarded — some OEM builds ship neither) | [`android_native.dart#L44`](../../app/lib/src/state/android_native.dart#L44) |
 | `openExternal` | Wraps a staged file in a `FileProvider` `content://` URI and fires an `ACTION_VIEW` or `ACTION_SEND` chooser with `FLAG_GRANT_READ_URI_PERMISSION` on **both** the intent and the chooser. Returns error code `not_shareable` when the path is outside every `file_paths.xml` root | [`open_external.dart#L149`](../../app/lib/src/state/open_external.dart#L149) |
 | `installerPackage` | The package that installed us (`com.android.vending` for Play, null for a sideload), via `getInstallSourceInfo` on R+ | [`install_source.dart`](../../app/lib/src/state/install_source.dart) |
+| `deviceName` | `Settings.Global.DEVICE_NAME` — what the phone calls itself over Bluetooth/Wi-Fi Direct — falling back to make + model. Names the per-device folder a camera-roll backup writes into (`deviceFolderName` in [`task_kind.dart`](../../app/lib/src/state/task_kind.dart)). Off Android `Platform.localHostname` stands in, and any failure yields the placeholder `Android` rather than throwing inside a setup flow | [`photo_backup.dart#L243`](../../app/lib/src/state/photo_backup.dart#L243) (`photoBackupDeviceName()`) |
 | `videoThumbnail` | PNG bytes of a keyframe, via `MediaMetadataRetriever` on a single background thread (never the platform thread — decoding blocks). Tries ~10% in, then 1 s, then 0, and prefers the first frame that isn't one flat shade | [`android_native.dart`](../../app/lib/src/state/android_native.dart) → [`thumbnail_service.dart`](../../app/lib/src/state/thumbnail_service.dart) |
 | `startTransferService` | Starts **or updates** the `dataSync` foreground service notification (same call does both) | [`android_transfer_service.dart#L55`](../../app/lib/src/state/android_transfer_service.dart#L55) |
 | `stopTransferService` | Stops it | [`android_transfer_service.dart#L36`](../../app/lib/src/state/android_transfer_service.dart#L36) |
@@ -324,10 +349,45 @@ safe no-op elsewhere. Dart side:
 | `resolveBookmark` | Turns stored bookmark data back into a usable URL, reporting `isStale` — macOS asking for it to be re-created and re-persisted. Still works right now, so it is not an error; ignoring it is how a saved Location quietly stops working after an OS update. |
 | `startAccess` · `stopAccess` | Begin / end access. **Must run on the same native `NSURL` instance**, which is why the Swift side caches by bookmark string rather than re-resolving — stopping on an equal-looking URL silently fails to release, and the OS ceiling on simultaneously-held resources is real (low thousands). Grants are therefore held per Location, never per file. |
 
+### 3.3 Android background execution — `airclone/work` + `airclone/work_bg`
+
+Two channels, one round trip: the app enqueues work, then the OS wakes a **second Flutter engine** in
+the same process and that engine calls back. See [feat-scheduling.md](../features/feat-scheduling.md)
+for what the schedule means; this is only the seam.
+
+| Channel | Method | Does |
+| :--- | :--- | :--- |
+| `airclone/work` | `registerCallback` | Persists the raw callback handle of `androidWorkEntrypoint` natively — a worker booting a fresh engine has nothing else to go on. The entrypoint must be `@pragma('vm:entry-point')` or AOT tree-shakes it and the handle resolves to nothing. |
+| | `enqueuePeriodic` | One `PeriodicWorkRequest` under the unique name `airclone.run-due`, `ExistingPeriodicWorkPolicy.UPDATE` so re-saving a task does not push the next run out by a whole period. Returns the interval actually in force — WorkManager's 15-minute floor is applied natively so Dart reads back the real value. |
+| | `cancelPeriodic` · `runOnce` | Cancel by name; enqueue an unconstrained one-shot (`KEEP`, so a double-tap does not queue two). |
+| | `status` | Whether a live request exists, its WorkManager state and next run, plus the stamp the last run left (time, headless exit code, summary). Read off the platform thread — the WorkManager database blocks. |
+| `airclone/work_bg` | `start` | The worker hands the engine its argv: `--run-due --timeout-minutes N`, the same contract `schtasks` uses. |
+| | `log` | One line into logcat under the tag `AircloneWork`. |
+| | `done` | Exit code + summary; the worker finishes and destroys the engine. The isolate must **never** call `exit()` — that would end the whole process, foreground Activity included. |
+
+Three things make the worker work at all, each of them a constraint rather than a preference:
+
+- **`airclone/native` is registered on the worker's engine too** — the rclone engine cannot come up
+  without `nativeLibraryDir`, and that is the whole reason §3.1's handler is Application-scoped.
+- **`setForeground()`, not `startForegroundService`.** Android 12+ forbids starting a foreground
+  service from the background, and a worker *is* the background; WorkManager's own promotion is one of
+  the sanctioned routes. Promoted, the run is capped at 5 h (inside Android 15's ~6 h/day `dataSync`
+  budget); refused, at 8 min, because a plain worker is stopped at ~10. A run cut short is not lost —
+  the next wake resumes, since `copy` skips what is already at the destination.
+- **It yields to a visible app.** The in-app scheduler ticks every 30 s while an Activity is on screen
+  and runs due tasks itself; running here as well would spawn a second rclone engine and race it over
+  the same `SharedPreferences`.
+  [`AircloneApplication.kt`](../../app/android/app/src/main/kotlin/app/airclone/airclone/AircloneApplication.kt)
+  counts started Activities, and the worker simply returns when the count is non-zero.
+
+`airclone/work` is registered by the Activity only
+([`MainActivity.kt`](../../app/android/app/src/main/kotlin/app/airclone/airclone/MainActivity.kt)):
+enqueueing is something the app does, never something a worker does to itself.
+
 Everything else that crosses into native code does so through a **pub plugin's own** channel
 (`path_provider`, `flutter_secure_storage`, `local_auth`, `url_launcher`, `package_info_plus`,
 `shared_preferences`, `file_selector`, `mobile_scanner`, `desktop_multi_window`, `media_kit`,
-`pdfrx`, `super_drag_and_drop`, `flutter_acrylic`) — not through `airclone/native`.
+`pdfrx`, `super_drag_and_drop`, `flutter_acrylic`) — not through a channel of Airclone's own.
 
 ---
 
@@ -361,17 +421,31 @@ Release/packaging mechanics — signing, notarization, Store submission — belo
 
 | Surface | Mechanism | Where |
 | :--- | :--- | :--- |
-| **Mount** (remote as a drive/folder) | `mount/*` + `vfs/refresh` against the spawned `rcd`. Needs a FUSE provider: WinFsp / macFUSE / FUSE3. `mount/types` empty ⇒ not installed. | [`mount_controller.dart`](../../app/lib/src/state/mount_controller.dart) |
-| **Serve** (expose a remote over a protocol) | `serve/*`. Loopback by default; LAN binds all interfaces and forces credentials on auth-capable protocols. | [`serve_controller.dart`](../../app/lib/src/state/serve_controller.dart) |
+| **Mount** (remote as a drive/folder) | `mount/*` + `vfs/refresh` against the spawned `rcd`. Needs a FUSE provider: WinFsp / macFUSE / FUSE3. `mount/types` empty ⇒ not installed. **Off in a Mac App Store build** (§1.2). | [`mount_controller.dart`](../../app/lib/src/state/mount_controller.dart) |
+| **Serve** (expose a remote over a protocol) | `serve/*`. Loopback by default; LAN binds all interfaces and forces credentials on auth-capable protocols. **Off in a Mac App Store build** (§1.2). | [`serve_controller.dart`](../../app/lib/src/state/serve_controller.dart) |
 | **Drag in / out** | `super_drag_and_drop`. Once any `DropRegion` exists, `super_native_extensions` owns native drops app-wide, so `NativePaneDropRegion` wraps every drop target. | [`native_drag.dart`](../../app/lib/src/ui/native_drag.dart) |
 | **Open in another app** | Bytes are **staged**: streamed from `objectRef` into the app cache under `airclone_open/`, written `.part`-first and renamed, pruned on a 12 h TTL. Android → `content://` chooser via the channel; desktop → `file:` URL via `url_launcher`. A `local` remote skips staging entirely. | [`open_external.dart`](../../app/lib/src/state/open_external.dart) |
 | **Reveal in file manager** (local files) | Documented OS commands, no plugin: Windows `explorer.exe /select,<path>` (backslashes mandatory; exit code is meaningless so success = "it launched"); macOS `open -R`; Linux `org.freedesktop.FileManager1.ShowItems` over `dbus-send`, falling back to `xdg-open` on the parent dir. Argv is always a list — never a shell string. | [`os_integration.dart`](../../app/lib/src/state/os_integration.dart) |
 | **Credential vault** | `flutter_secure_storage` (Windows DPAPI/Credential Manager · macOS Keychain · Linux Secret Service) behind one key, `airclone.configPassword`. **Opt-in, default off**; a vault failure degrades to the manual password gate, never a crash. | [`config_password_vault.dart`](../../app/lib/src/state/config_password_vault.dart) |
 | **Biometrics** | `local_auth`. Adds **no** crypto — the OS keystore already holds the password; a successful prompt merely *releases* it instead of showing the typing gate. Never hard-blocks startup. | [`biometric_unlock.dart`](../../app/lib/src/state/biometric_unlock.dart) |
 | **Android foreground service** | `dataSync` service declared in the manifest, driven by the channel, holding the app **and its engine child** alive while transfers run. | [`TransferService.kt`](../../app/android/app/src/main/kotlin/app/airclone/airclone/TransferService.kt) |
+| **Windows background execution** | `schtasks /Create /XML … /F` registers *this exe's own* `--run-due` / `--run-task` invocation (`/F` doubles as the update on an edited schedule); `/Delete … /F` removes one and `/Query /FO CSV /NH` lists them — there is no "query one folder" form. The definition must be in the Task Scheduler **v1.2 namespace** and is written **UTF-16** to a temp file, because `schtasks /XML` reads a file and not stdin. | [`windows_task_scheduler.dart`](../../app/lib/src/state/windows_task_scheduler.dart) |
+| **Android background execution** | One WorkManager periodic request under the unique name `airclone.run-due`, driven over `airclone/work`; the worker boots a second Flutter engine and talks back over `airclone/work_bg` (§3.3). Needs three manifest/Gradle pieces: `android:name=".AircloneApplication"`, a `tools:node="merge"` `foregroundServiceType` on `androidx.work.impl.foreground.SystemForegroundService` (Android 14+ wants the type on *that* service, not only ours), and `androidx.work:work-runtime-ktx`. | [`android_work_channel.dart`](../../app/lib/src/state/android_work_channel.dart) · [`AndroidManifest.xml`](../../app/android/app/src/main/AndroidManifest.xml) |
 | **Camera** | `mobile_scanner`, for scanning an Offline-QR config. Permission requested in-flow on first open, never at launch; `uses-feature` declared optional so camera-less devices can still install. | [`AndroidManifest.xml`](../../app/android/app/src/main/AndroidManifest.xml) |
 | **Extra desktop windows** | `desktop_multi_window` — pop-out image viewers, each its own `FlutterEngine` in the same process. Desktop only; every call is `Platform`-guarded. | [`popout_image_app.dart`](../../app/lib/src/ui/popout_image_app.dart) |
 | **Update channel** | Detects how this copy was installed and routes "Check for updates" to the owning store — MSIX via `GetCurrentPackageFullName`/`…FamilyName`, Android via `installerPackage`, macOS via a `_MASReceipt` in the bundle, Linux via `FLATPAK_ID`/`SNAP`. See §5.1. | [`install_source.dart`](../../app/lib/src/state/install_source.dart) |
+
+Both background-execution rows land on the **same** Dart entrypoint —
+[`headless_runner.dart`](../../app/lib/src/headless/headless_runner.dart), which boots the engine, runs
+the due tasks with no UI, and exits 0 / 1 / 2. The flag strings and those exit codes are the contract
+the OS registrations depend on. On Windows,
+[`windows/runner/main.cpp`](../../app/windows/runner/main.cpp) mirrors the Dart-side
+`isHeadlessInvocation` scan so a background run never spawns a console window. The app window is still
+created — its message loop is what services the platform-channel replies the headless isolate awaits —
+but is never `Show()`n, because the entrypoint returns before `runApp` and no first frame is ever
+produced, and the frame callback is what would have shown it. A headless run spawns its
+**own** `rcd` on its own free loopback port, so it coexists with a running GUI instance — at the cost of
+a known last-writer-wins race on the `SharedPreferences` run stamps.
 
 ### 5.1 Update channel — a store install must never see a download link
 
@@ -427,7 +501,8 @@ RC-API traps that have actually cost this project time. Check this table before 
 | **User engine flags can shadow the rc security flags** | pflag lets the *last* occurrence of a repeated flag win. | Put user `extraArgs` **first** in the `rcd` argv so `--rc-addr`/`--rc-user`/`--rc-pass` always override. [`http_rclone_client.dart#L259`](../../app/lib/src/rclone/http_rclone_client.dart#L259) |
 | **Re-exec'd children do not inherit `--config`** | `core/command` and the archive subprocess spawn a *fresh* rclone. It inherits the environment but not the flag, and rclone treats a config it cannot open as an **empty** one — silently — so every remote answers `didn't find section in config file` while the sidebar, served by the parent, still lists them. On Android it resolves an empty `$HOME/.config/rclone/rclone.conf`; on desktop any divergence in default resolution does the same. | Two layers. Android also passes `RCLONE_CONFIG` in the engine's `extraEnv` (precedence is flag > env > default, so the parent is unaffected) [`engine_controller.dart#L224`](../../app/lib/src/state/engine_controller.dart#L224); and every console dispatch pins the engine's own path onto the child argv via `withConfigArg` + `HttpRcloneClient.engineConfigPath()` (the spawn override, else `config/paths`) — a `--config` the **user** typed still wins. [`console_command.dart`](../../app/lib/src/state/console/console_command.dart) |
 | **`core/transferred` is a capped ring, not a log** | ~100 entries per group, in completion order, not configurable. A 300-file dry run returns 104 entries — all `what: "deleting"`, with the transfers evicted. Querying an unknown group also CREATES it, and the group filter is exact-match, not prefix. | Never build a "what changed" list on it. `operations/check` is uncapped and sorted, and its `missingOnSrc` is exactly what a sync would delete; async, `job/status.output` carries the whole result object (a `sync/sync` job's `output` is always `{}`). [`sync_preview.dart`](../../app/lib/src/state/sync_preview.dart) |
-| **A `crypt` remote with the wrong key returns a SHORT listing, not an error** | `operations/list` answers 200 with the entries whose names decrypted and silently omits the rest; six directories arrive as `{"list":[]}` and the pane renders a confident "Empty folder". The only evidence is rclone's `NOTICE: …: Skipping undecryptable file name:` on the engine's own log. | The stdout/stderr drain counts those notices ([`undecryptable_names.dart`](../../app/lib/src/state/undecryptable_names.dart)) and `BrowserController._load` samples the counter either side of its request, so a short listing says "N items hidden". Note this rides on the log drain, so it is **`HttpRcloneClient` only** — the in-process engine emits no such stream. |
+| **A `crypt` remote with the wrong key returns a SHORT listing, not an error** | `operations/list` answers 200 with the entries whose names decrypted and silently omits the rest; six directories arrive as `{"list":[]}` and the pane renders a confident "Empty folder". The only evidence is rclone's `NOTICE: …: Skipping undecryptable file name:` — or `… dir name:`, which is the spelling behind the *wholly* empty pane, since rclone words objects and directories separately — on the engine's own log. | The stdout/stderr drain counts both spellings ([`undecryptable_names.dart`](../../app/lib/src/state/undecryptable_names.dart)) and `BrowserController._load` samples the counter either side of its request, so a short listing says "N items hidden". Two limits: it rides on the log drain, so it is **`HttpRcloneClient` only** — the in-process engine emits no such stream — and only `_load` samples it, not a tree-view expansion (§2). |
+| **A dropped keep-alive socket looks like a failed call** | `ClientException: Connection closed before full header was received` — the socket died before the response started, so the request most likely never ran. On the 1 Hz stats poll it self-heals; on a call the *user* made it surfaces as a failed listing or a failed copy. | `sendWithConnectionRetry` retries exactly once, gated on `isRetryableRcMethod`'s read-only allowlist; a `TimeoutException` is never retried (the engine took that request and is already struggling). **Adding a mutating method to `_readOnlyRcMethods` is a data-loss bug** — a doubled `operations/copyfile` is far worse than an error the caller can see. Both are pure top-level functions, so the rule is unit-testable on its own. [`http_rclone_client.dart#L92`](../../app/lib/src/rclone/http_rclone_client.dart#L92) |
 | **`--rc-job-expire-duration 24h`** | An expired job's `job/status` no longer carries its `output`. | Treat a settle-time `job/status` read as best-effort; the terminal summary must not depend on it. |
 | **Windows env vars and Go** | A CRT `_putenv` only touches the calling CRT's snapshot, which Go never reads — so `RCLONE_CONFIG_PASS` silently would not reach librclone. | Set it via kernel32 `SetEnvironmentVariableW` (POSIX: libc `setenv`/`unsetenv`), before `RcloneInitialize`, then clear it. [`librclone_ffi.dart#L354`](../../app/lib/src/rclone/librclone_ffi.dart#L354) |
 | **`RcloneRPC` blocks** | Called inline it freezes the UI isolate; and `DynamicLibrary`/`Pointer` are not sendable across isolates. | All FFI stays inside the single worker isolate; the main isolate only exchanges plain messages. |

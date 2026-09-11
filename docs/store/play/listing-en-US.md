@@ -26,6 +26,17 @@ in the live listing until someone pastes:**
   (`jobs_panel.dart`: *"queued transfers wait; running ones finish"*); a running
   transfer cannot be paused.
 
+**And one addition on 2026-09-10, also pending a paste:** camera-roll backup and
+scheduled folder backups, both shipped in v0.8 and never claimed here. Two things
+go with that edit:
+
+- Check Play Console → **Data safety** against the new copy before pasting. The app
+  now reads the camera roll and copies it off the device, to storage the user chose,
+  which is what that form asks about. The form itself belongs to
+  [`dev/google-play-store.md`](../../../dev/google-play-store.md), not to this file.
+- **No new Android permission was added for any of it** — photo backup rides the
+  All-files-access grant the app already asks for. Nothing here may imply otherwise.
+
 ---
 
 ## App name  (max 30 chars)
@@ -66,6 +77,12 @@ WHAT YOU CAN DO
   queue so nothing new starts.
 • Sync and back up folders. Mirror, copy, move, or two-way sync, with a dry-run preview
   that shows exactly what will change before anything happens.
+• Back up your camera roll. Point it at a cloud you already own and your photos copy
+  themselves across in the background — on Wi-Fi unless you say otherwise, videos
+  included or not, as often as you choose. Copy only: nothing on the phone is moved or
+  deleted.
+• Back up a folder, on a schedule. Pick what, where and how often. A file the backup
+  replaces is kept beside the new one, so an earlier version is still there to copy back.
 • See your photos and videos. Image and video thumbnails load right in the app for any
   remote, cached and encrypted on your device.
 • Stay in control. Nothing is overwritten silently — every file collision asks first:

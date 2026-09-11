@@ -29,8 +29,8 @@ shell, OS-integration surface and capability level actually are — or a proposa
 - The **rebuilt rclone file explorer** is the hero everywhere (browse, drag/drop, multi-select,
   preview, server-side transfers via direct RC — no VFS). See [feat-file-browser](../features/feat-file-browser.md).
 - The same **add-remote wizard** (dynamic form from `config/providers` + OAuth), **transfer/job
-  model**, **sync directions** (Mirror / Backup-new / Two-way), **design tokens**, light/dark theme,
-  and **i18n**.
+  model**, **transfer modes** (Copy / Move / Sync / Two-way sync), **design tokens**, and light/dark
+  theme.
 - Differences are only: window chrome, navigation (sidebar+tabs vs bottom-nav vs D-pad rail), and how
   a remote is exposed to the OS — a FUSE mount on desktop, and on mobile the planned
   `DocumentsProvider` / File Provider bridge, which is **not built yet** (see
@@ -57,7 +57,7 @@ The body is identical across the three desktops; the **chrome and OS integration
 │ JOBS [Active] Sched History            ▓▓▓▓▓▓░ 73% 8.4MB/s ETA 0:03    │
 │ ⛁ Mounts  ⌨ CLI  ● engine ok    ↑12.4MB/s · 2 jobs        | 5 items   │
 └───────────────────────────────────────────────────────────────────────┘
-   ▼ system tray (notification area): right-click ▾
+   ▼ system tray (notification area), PLANNED — right-click ▾
      ┌──────────────────────────┐
      │ Airclone — engine ok     │
      │ Mount  gdrive → X:        │
@@ -66,8 +66,10 @@ The body is identical across the three desktops; the **chrome and OS integration
      └──────────────────────────┘
 ```
 - **Mount** → drive letter (`X:`) via WinFsp; appears in Explorer "This PC".
-- Tray in the notification area; "minimize to tray keeps jobs/mounts running."
-- Installers: MSI/winget/choco/scoop; Authenticode-signed.
+- A tray icon in the notification area, keeping jobs/mounts running while minimized, is **planned,
+  not built** — nothing in `app/windows/` or `app/lib/` implements one.
+- Distribution: portable zip + an Inno Setup installer, both code-signed (Azure Artifact Signing),
+  plus the Microsoft Store MSIX.
 
 ### macOS
 ```
@@ -81,11 +83,13 @@ The body is identical across the three desktops; the **chrome and OS integration
 ├──────────────┴───────────────────────────────────────────────────────┤
 │ ⛁ Mounts  ⌨ CLI  ● engine ok    ↑12.4MB/s · 2 jobs        | 5 items   │
 └───────────────────────────────────────────────────────────────────────┘
-   ▲ macOS menu-bar extra (status item) mirrors the tray menu
+   ▲ macOS menu-bar extra (status item) — PLANNED, not built
 ```
 - **Mount** → `/Volumes/<name>` via macFUSE / FUSE-T; shows in Finder sidebar.
-- Native **menu bar** + a menu-bar status item; traffic-light window controls.
-- Distribution: DMG / Homebrew cask; **Developer-ID signed + notarized** (no Gatekeeper scare).
+- Native **menu bar**; traffic-light window controls. A menu-bar status item is **planned, not
+  built**.
+- Distribution: DMG + zip, **Developer-ID signed + notarized** (no Gatekeeper scare), plus the Mac
+  App Store package.
 
 ### Linux
 ```
@@ -99,11 +103,11 @@ The body is identical across the three desktops; the **chrome and OS integration
 ├──────────────┴───────────────────────────────────────────────────────┤
 │ ⛁ Mounts  ⌨ CLI  ● engine ok    ↑12.4MB/s · 2 jobs        | 5 items   │
 └───────────────────────────────────────────────────────────────────────┘
-   ▼ AppIndicator/StatusNotifier tray (GNOME needs an extension)
+   ▼ AppIndicator/StatusNotifier tray — PLANNED (and GNOME needs an extension)
 ```
 - **Mount** → `~/mnt/...` or `/mnt/...` via FUSE3; appears in Nautilus/Dolphin.
-- Honors system GTK/Qt theme; tray via StatusNotifierItem.
-- Distribution: AppImage / deb / rpm / Flathub / AUR.
+- Honors system GTK/Qt theme. A StatusNotifierItem tray is **planned, not built**.
+- Distribution: a `tar.gz` bundle — the only Linux artifact the release pipeline produces.
 
 ### Desktop dialogs (shared, OS-themed)
 ```
@@ -112,11 +116,12 @@ The body is identical across the three desktops; the **chrome and OS integration
 │ name [ Nightly-Photos____ ]   │        │ Remote  [ gdrive ▾ ] /        │
 │ SRC [Local C ▾]/Photos        │        │ Mount at [ X:  ▾ ]            │
 │ DST [onedrive ▾]/Photos       │        │ Cache mode ( full ▾ )         │
-│ ( ) Mirror →  ⚠ deletes       │        │ Cache dir [ SSD…/cache ]      │
-│ (•) Backup new only           │        │ [ ] read-only  [✓] auto-mount │
-│ ( ) Two-way ⇄ (pairing)       │        │ ⚠ WinFsp not found — [Install]│
-│ ▸ Filters ▸ Tuning ▸ Bw       │        │            [Cancel] [ Mount ] │
-│ [🔍 Dry-run][Save][ Run ▶ ]   │        └──────────────────────────────┘
+│ (•) Copy → adds to destination│        │ Cache dir [ SSD…/cache ]      │
+│ ( ) Move → copy, then delete  │        │ [ ] read-only  [✓] auto-mount │
+│ ( ) Sync → ⚠ deletes extras   │        │ ⚠ WinFsp not found — [Install]│
+│ ( ) Two-way ⇄ (bisync)        │        │            [Cancel] [ Mount ] │
+│ ▸ Filters ▸ Tuning ▸ Bw       │        └──────────────────────────────┘
+│ [🔍 Dry-run][Save][ Run ▶ ]   │
 └───────────────────────────────┘
 ```
 
@@ -124,8 +129,9 @@ The body is identical across the three desktops; the **chrome and OS integration
 Dual-pane + **tabs** (many remotes open), drag/drop onto folders + drag-out, multi-select, inline
 remote config/OAuth, copy/move/**sync**/**bisync**, dry-run + color compare, transfer queue with
 live speed/ETA + bandwidth slider, **mount manager** (VFS options + FUSE auto-install),
-**serve** (WebDAV/SFTP/HTTP/FTP/DLNA), scheduler (cron + watch-folder), public links, crypt wizard,
-tray + auto-launch, headless/remote-`rcd` profiles (v2).
+**serve** (WebDAV/SFTP/HTTP/FTP/DLNA), scheduler (interval / daily / weekly), public links, crypt
+wizard, headless/remote-`rcd` profiles (v2). Tray, auto-launch and a watch-folder trigger are
+**planned, not built** — nothing in `app/` implements any of the three.
 
 ---
 
@@ -170,7 +176,9 @@ as a foreground service, and hand-off to another app through a `FileProvider` `c
 ### 3.1 📺 Android TV / Google TV
 
 The **same APK and the same phone shell**, wrapped in affordances that arm only when Android reports a
-television. `MainActivity.isTelevision()` answers on two independent signals — `UI_MODE_TYPE_TELEVISION`
+television. `isTelevision()` in
+[`NativeChannel.kt`](../../app/android/app/src/main/kotlin/app/airclone/airclone/NativeChannel.kt),
+reached over the `isTelevision` method channel, answers on two independent signals — `UI_MODE_TYPE_TELEVISION`
 (what the platform reports at runtime, and what emulators set) or `FEATURE_LEANBACK` (what Play
 filters on, and what some manufacturer boxes report instead) — and
 [`android_native.dart`](../../app/lib/src/state/android_native.dart) resolves it **once before
@@ -227,7 +235,11 @@ pane comes for free.
 - **Show in Files** (planned) would publish an `NSFileProviderDomain` so remotes appear in Files and
   in any app's document picker. Design constraints already known and worth keeping: ~20 MB extension
   memory (stream to disk), whole-file up/down (no live mount), range playback via an in-app server.
-- Background sync = BGTaskScheduler (opportunistic/best-effort).
+- **No scheduling at all yet.** iOS falls through to `SchedulingSupport.none` in
+  [`scheduling_policy.dart`](../../app/lib/src/state/scheduling_policy.dart): no schedule entry point,
+  and no background execution behind one if there were. Saved tasks still run when the user starts
+  them by hand, and the UI says so rather than offering a control that would do nothing. A background
+  path (BGTaskScheduler, opportunistic/best-effort) is the planned shape, not a shipped one.
 - Distribution: App Store; ABM/VPP for managed fleets.
 
 ---
@@ -269,9 +281,9 @@ nothing phones home. Full design: [19-enterprise-readiness](19-enterprise-readin
 | Appears in OS file explorer | ✅ FUSE drive | ✅ FUSE volume | ✅ FUSE | ⏳ DocumentsProvider | ⏳ File Provider |
 | Live mount perf for upload/move | ➖ VFS | ➖ VFS | ➖ VFS | ➖ on-demand | ➖ whole-file |
 | Serve (WebDAV/SFTP/HTTP/DLNA) | ✅ | ✅ | ✅ | ➖ (in-app) | ➖ (in-app) |
-| System tray / menu-bar | ✅ | ✅ | ➖ (ext) | ❌ | ❌ |
-| Background sync | ✅ daemon | ✅ daemon | ✅ daemon | ➖ WorkManager | ➖ BGTask (best-effort) |
-| Scheduler + watch-folder | ✅ | ✅ | ✅ | ➖ scheduled | ➖ scheduled |
+| System tray / menu-bar | ⏳ | ⏳ | ⏳ | ❌ | ❌ |
+| Scheduler (interval / daily / weekly) | ✅ | ✅ | ✅ | ✅ | ❌ |
+| Runs with the app closed | ✅ Task Scheduler | ➖ while open | ➖ while open | ✅ WorkManager poll | ❌ |
 | MDM/policy managed | ⏳ ADMX/Intune | ⏳ profiles/Jamf | ⏳ /etc/repo | ⏳ managed config | ⏳ AppConfig |
 | Engine | spawn `rcd` | spawn `rcd` | spawn `rcd` | spawn `rcd` (bundled jniLib) | in-proc librclone |
 
@@ -282,6 +294,13 @@ non-negotiable, and the reasoning are owned by [08-core-architecture.md](08-core
 [10-external-integrations.md](10-external-integrations.md) §1.1–§1.2 carries the two client
 implementations and the per-platform resolution; §1.3 and §4 carry how the binary is located and
 what native code ships in the bundle.
+
+**Scheduling is one function, not five opinions.**
+[`scheduling_policy.dart`](../../app/lib/src/state/scheduling_policy.dart) resolves Windows and
+Android to a background run (an OS-registered wake that fires with Airclone closed), macOS and Linux
+to ticking while the app is open — launchd and systemd-user are planned, not built — and everything
+else, iOS included, to no scheduling at all. Every surface reads that one answer, so the two rows
+above cannot drift from the app. [feat-scheduling](../features/feat-scheduling.md) owns the detail.
 
 **MDM is ⏳ on every platform**, and the §5 overlay above is the design for it. What exists today is
 the seam it will be enforced through — the four kill-switch providers in

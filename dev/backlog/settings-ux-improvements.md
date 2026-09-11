@@ -12,9 +12,11 @@ reached and understood. Overall verdict: the individual surfaces are strong — 
 dialog (Settings/Filters/rclone-cmd tabs, inline flag help, dry-run, copy-as-command) is
 best-in-class — but they are **fragmented and under-discoverable**. Three dominant problems:
 
-1. Flagship power features (Mount, Serve, Saved tasks, bisync, concurrency, engine flags) hide
+1. Flagship power features (Mount, Serve, bisync, concurrency, engine flags) hide
    behind one opaque **"Advanced mode"** toggle the user must first discover — no ghosted buttons,
-   no hint, and the toggle's description doesn't even mention Mount/Serve.
+   no hint, and the toggle's description doesn't even mention Mount/Serve. *(Saved tasks and
+   scheduling left advanced mode in v0.8 — Settings → Automation is ungated, deliberately, per
+   `settings_screen.dart:124-135`. The rest of this stands.)*
 2. The **Add/Edit-remote form** — the most important advanced surface — throws away rclone's
    multi-line help and shows raw option keys (`access_key_id`, `chunk_size`).
 3. **Settings itself** is one long 480px scroll: no search, no reset-to-default, no deep links;
@@ -24,7 +26,7 @@ best-in-class — but they are **fragmented and under-discoverable**. Three domi
 
 | # | P | Finding | Where | Fix |
 |---|---|---------|-------|-----|
-| 1 | P0 | Mount/Serve/Saved-tasks invisible until "Advanced mode" is found; its description omits Mount+Serve | `home_screen.dart:923-945,543-563`, `settings_screen.dart:174` | Always-visible "Mount as a drive…" / "Serve on LAN…" in the remote tile menu (`home_screen.dart:1395`); ghost the top-bar icons with an "Enable Advanced mode" affordance; enumerate everything the toggle reveals |
+| 1 | P0 | Mount/Serve invisible until "Advanced mode" is found; its description omits Mount+Serve. (Saved tasks were the third item here and are **fixed in v0.8** — the ungated Settings → Automation group.) | `home_screen.dart:923-945,543-563`, `settings_screen.dart:174` | Always-visible "Mount as a drive…" / "Serve on LAN…" in the remote tile menu (`home_screen.dart:1395`); ghost the top-bar icons with an "Enable Advanced mode" affordance; enumerate everything the toggle reveals |
 | 2 | P0 | Remote form drops rclone's real help; raw option keys as labels; `OptionExample.help` never shown | `add_remote_dialog.dart:322,515,534`, `provider.dart:76` | Info icon/tooltip revealing full `o.help`; example help as dropdown subtitles; humanized labels with the raw key as a mono hint (pattern from `transfer_options_dialog.dart:698`) |
 | 3 | P1 | No search within Settings | `settings_screen.dart:69,107` | Reuse the Add-remote provider search pattern (`add_remote_dialog.dart:107`) to filter sections |
 | 4 | P1 | No "Reset to default" anywhere — bad engine flags are an unrecoverable footgun | `settings_screen.dart:660,605`, `transfer_options_dialog.dart:180` | Reset buttons on Engine flags / Concurrency / rclone path; "Reset to defaults" in the transfer dialog footer |

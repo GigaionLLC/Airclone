@@ -27,7 +27,7 @@ around them — the ones that create, overwrite or remove a remote in bulk.
 | :--- | :--- |
 | **Sidebar** (a remote's ⋯ menu) | Test connection · Edit · Duplicate · Delete remote (a sidebar *location* offers "Remove from sidebar" instead — it is not in the config) |
 | **+ Add remote** | The provider grid → dynamic form → `config/create` |
-| **Settings → Config** | Import · Export · Import/Export QR · **Remove all remotes** · Restore a backup |
+| **Settings → Config** | Import · Export · Import/Export QR · **Remove all remotes** · Restore a backup · **Use a different config file…** (desktop) · **Encrypt this config… / Change password… / Remove encryption…** (§6, desktop) · the opt-in **external config backup** (§7, Android) |
 
 ## 2. `config/create` overwrites. Nothing here may let that happen by accident
 
@@ -137,6 +137,54 @@ the ten newest. That backup is why the destructive options above are offerable a
 permissions, collision-suffixed stamps, restore-then-restart) live with
 [`config_backups.dart`](../../app/lib/src/state/config_backups.dart) and
 [Security](../core/15-security.md).
+
+**One path deliberately does not snapshot: first-time encryption.** Its source is the plaintext
+config, so a snapshot would leave a readable copy of every secret sitting in the ring — the exact
+thing the user just asked to stop existing. **Change password** and **Remove encryption** both
+snapshot as normal, because there the file being replaced was already encrypted. So of the three
+encryption operations, encrypting is the one the ring cannot undo.
+
+## 6. Config encryption is rclone's own, and it is CLI-only
+
+The three operations in Settings → Config — **Encrypt this config…**, then **Change password…** and
+**Remove encryption…** once it is encrypted — drive rclone's native `config encryption` subcommands
+([`config_encryption.dart`](../../app/lib/src/state/config_encryption.dart)). They are not an
+Airclone format: an encrypted `rclone.conf` is readable by the rclone CLI on any machine.
+
+Two consequences worth stating plainly:
+
+- **There is no RC method for this** (verified against `rc/list` on rclone v1.74), and setting
+  `RCLONE_CONFIG_PASS` on a plaintext config does *not* encrypt it on save. The only mechanism is the
+  binary subcommand — so the controls need a real rclone binary and are absent on the pure-FFI
+  engine, which can *use* an encrypted config but not change its state.
+- **The password never reaches a command line.** The new password is written to the child's stdin
+  (twice, as rclone asks); the current one rides in `RCLONE_CONFIG_PASS` in the child's environment,
+  so it is not in the process list.
+
+This is a different thing from the **Airclone encrypted export** — an ACFG2 envelope over a config
+you are moving between devices. Encrypting the *active* config is a state of the file rclone itself
+reads; the envelope is a transport wrapper. The two are easy to confuse and do not substitute for
+each other.
+
+## 7. The Android copy that survives uninstall
+
+On a phone the config lives in the app's private sandbox and the manifest sets
+`allowBackup="false"` — both deliberate, so cloud credentials cannot ride along in an ADB or cloud
+backup. The cost is that uninstalling is total loss of every remote.
+[`external_config_backup.dart`](../../app/lib/src/state/external_config_backup.dart) is the opt-in
+way out: one file under `<shared storage>/Airclone/`, which the OS does not delete with the app.
+
+- **Off by default.** Nothing exists outside the sandbox until asked for.
+- **Encrypted is the real answer** — an ACFG2 envelope under a passphrase, the same format as the
+  encrypted export. Shared storage is readable by any app holding storage permission, which is what
+  makes the passphrase the price of putting the file there at all.
+- **Plaintext is available and never quiet**, behind a second confirmation that says what it means.
+- Restoring it re-enters the import wizard with `initialBytes`, so it gets the same mandatory
+  preview as any other untrusted file (§3).
+
+Desktop needs none of this — its config already lives outside the app — and iOS has no equivalent
+shared location. The files-side sibling, backing up *your data* rather than your remotes, is
+[Backup & Restore](feat-backup.md).
 
 ---
 

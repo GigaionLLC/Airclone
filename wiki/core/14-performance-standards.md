@@ -53,8 +53,13 @@ to download the whole file. Airclone browses local paths that may sit inside suc
   completely — the exact case it exists for, since an rclone config often lives inside the sync root
   it points at. `resolveLocalBackingRoot()` follows the chain (the config decides, not the string
   shape: a remote named `b` is written `b:` and is indistinguishable from a drive letter by pattern),
-  and `remotes_provider` publishes the map on every load. `union`/`combine` take a *list* of
-  upstreams and are deliberately **not** followed.
+  and `remotes_provider` publishes the map on every load by calling `resolveBackingRoots()`.
+  That function owns the ABSENCE rule, which is what makes the tri-state below work:
+  `union`/`combine` take a *list* of upstreams, cannot be followed, and are therefore **omitted
+  from the map entirely** rather than published with a null value. Absent means unknown; a name
+  present with a null value means known-to-be-cloud. Building that map inline instead is how a
+  union over a local sync root once read as a definitive "not local" and walked straight past the
+  dedupe consent prompt.
 - **Check:** the PER-FILE guard is deliberately **fail-open** — Windows-only, returning `false` on
   any error, on other platforms, and for an unresolvable path. A false positive costs one thumbnail.
   Do not "improve" that into a fail-closed check.
@@ -69,14 +74,6 @@ to download the whole file. Airclone browses local paths that may sit inside suc
   instead of pretending to enumerate. Behaviour is covered by
   [cloud_placeholder_test.dart](../../app/test/cloud_placeholder_test.dart) and
   [cloud_placeholder_wrapper_test.dart](../../app/test/cloud_placeholder_wrapper_test.dart).
-- **Known gap — `union`/`combine` currently resolve to `false`, not `null`.** The code and the
-  intent disagree here, and the code is what ships. `isLocalBacked` returns `null` only when the
-  remote's name is ABSENT from the published map (or its type is `unknown`) — but
-  `remotes_provider` publishes an entry for **every** name in `config/dump`, and an unfollowed
-  `union` gets a present-but-null value, which reads back as a definitive "not local". So a union
-  over a local sync root skips the consent prompt. `cloud_placeholder_wrapper_test.dart` asserts
-  `null` only because its fixture omits the name, which the real publisher never does. Fix the
-  publisher (omit the unresolvable types) rather than the caller if you touch this.
 
 **The complete consult list today.** Adding a content-read path means adding a row here and a call
 there:
@@ -271,11 +268,13 @@ Budgets live in [thumbnail_service.dart](../../app/lib/src/state/thumbnail_servi
 ## 3. The browser listing race
 
 Pane operations build paths as `state.path + entry`, so a **stale entry list produces preview 404s
-and copy "object not found"**. That is the downstream bug this section exists to prevent.
+and copy "object not found"**. That is the downstream bug this section exists to prevent. §3.1–§3.4
+are the rules for the **flat** listing — one folder in `state.path` + `entries`; the tree view holds
+many folders at once and meets the same hazard a different way (§3.5).
 
 ### 3.1 Navigation clears; refresh does not
 
-**RULE — `_navigate` clears `entries` (and selection + filter) as it starts loading; `refresh()` deliberately keeps the current list on screen.**
+**RULE — `_navigate` clears the FLAT `entries` (and selection + filter) as it starts loading; `refresh()` deliberately keeps the current list on screen.**
 
 - **Why:** clearing on navigate means the pane shows a spinner rather than the *previous* folder's
   list while the new listing lands. Not clearing on refresh means a same-folder reload (including
@@ -293,7 +292,8 @@ and copy "object not found"**. That is the downstream bug this section exists to
 - **Enforced in:** `_load` in
   [browser_controller.dart](../../app/lib/src/state/browser_controller.dart) —
   `bool superseded() => state.remote != remote || state.path != path;`, checked on **both** the
-  success and the catch path.
+  success and the catch path. This is one of **two** supersede guards in that file; the tree's node
+  loader carries its own, keyed differently (§3.5).
 - **Check:** a new early-return or a new await inside `_load` needs its own `superseded()` check. The
   catch path matters as much as the success path — a stale error would also clobber the pane.
 
@@ -330,6 +330,34 @@ and copy "object not found"**. That is the downstream bug this section exists to
   seen inside its own request window **and** only when its own backend is `crypt` — anything else is
   another listing's skip. A crypt reached through an alias or union is therefore missed. Erring
   toward a miss is deliberate: telling a user data is hidden when it is not is the worse failure.
+
+### 3.5 The tree view holds many listings at once
+
+**RULE — A tree row's target is built from its OWN `TreeRow.parentPath`, never from `state.path`; and a tree node load is superseded by a per-folder generation token, not by remote + path.**
+
+- **Why:** the tree caches a listing per expanded folder and — unlike the flat listing —
+  deliberately does *not* clear them on navigate, because collapsing and re-expanding a folder must
+  cost nothing. That is precisely the condition §3 was written against, so the flat rules cannot
+  apply unchanged: `state.path + entry.name` on a row three levels down would target `root/name`
+  instead of `A/B/C/name`, and a single `remote`+`path` snapshot cannot tell one folder's in-flight
+  listing from another's.
+- **Enforced in:** [tree_state.dart](../../app/lib/src/state/tree_state.dart) is pure data + pure
+  functions and reads `state.path` nowhere; `_loadTreeFolder` in
+  [browser_controller.dart](../../app/lib/src/state/browser_controller.dart) stamps
+  `ses.treeGen[folder]` from one session-wide counter and bails on
+  `ses.state.remote != remote || ses.treeGen[folder] != gen`; the UI threads an `_EntryLoc`
+  (parent path + file + siblings) through every per-entry handler in
+  [browser_pane.dart](../../app/lib/src/ui/browser_pane.dart), so the flat view and the tree supply
+  the same handlers a different parent.
+- **`selectedEntries` is EMPTY by construction in tree mode**, so every consumer that only knows
+  that getter — Delete, F2, Ctrl+C, the inspector, Quick Look — sees no selection rather than acting
+  on the wrong path. A tree selection lives in `tree.selected` as full paths and is reached through
+  `selectedTreeRows`. See [07-state-context.md](07-state-context.md) for the state shape.
+- **Check:** any new await inside the tree loader needs its own generation re-check, and any new
+  consumer of a tree row must take the parent from the row. Covered by
+  [tree_state_test.dart](../../app/test/tree_state_test.dart),
+  [tree_controller_test.dart](../../app/test/tree_controller_test.dart) and
+  [tree_node_paths_test.dart](../../app/test/tree_node_paths_test.dart).
 
 ---
 
@@ -522,6 +550,12 @@ Off-screen thumbnail players obey the same reasoning from the other direction �
 | :--- | :--- | :--- |
 | Job progress | ONE periodic poller at 1 Hz for *all* running jobs — never one timer per job | [jobs_controller.dart](../../app/lib/src/state/jobs_controller.dart) |
 | Engine stats | One 1 Hz `core/stats` poll; keeps the last good snapshot on any error | [stats_controller.dart](../../app/lib/src/state/stats_controller.dart) |
+| Mount list | One 2 s `mount/listmounts` poll — the engine is the source of truth, nothing is persisted | [mount_controller.dart](../../app/lib/src/state/mount_controller.dart) |
+| Serve list | One 2 s `serve/list` poll, same shape and for the same reason | [serve_controller.dart](../../app/lib/src/state/serve_controller.dart) |
+| Bandwidth schedule | One 60 s tick over the saved timetable; it issues `core/bwlimit` **only when the active window's rate changes**, so a quiet day costs no RC traffic at all | [bw_schedule_controller.dart](../../app/lib/src/state/bw_schedule_controller.dart) |
+| Scheduler tick | One 30 s tick that dispatches due tasks; returns immediately — before reading anything — while `schedulerPausedProvider` is tripped | [scheduler_controller.dart](../../app/lib/src/state/scheduler_controller.dart) |
+| Supervised run outcome | One `job/status` loop per dispatched task at `kOutcomePollInterval` (1 s, deliberately the same cadence `JobsController` already polls at, so supervision adds no engine traffic of its own), hard-bounded by `kMaxSuperviseDuration` (6 h) to mirror the Scheduled-Task `ExecutionTimeLimit=PT6H` | [scheduler_controller.dart](../../app/lib/src/state/scheduler_controller.dart) |
+| OS background wake | `kDefaultPollMinutes` 15, user-settable from `kPollMinuteChoices` (5–60) and `clampPollMinutes`-clamped on the way in and out, persisted as `scheduler_poll_minutes`. This is the lateness bound for **interval** schedules only — an exact daily/weekly time gets its own OS trigger and is not affected | [registration_policy.dart](../../app/lib/src/state/registration_policy.dart) · [poll_cadence.dart](../../app/lib/src/state/poll_cadence.dart) |
 | Transfer dispatch | `transferConcurrencyProvider` slots; `0` = unlimited (default), persisted | [jobs_controller.dart](../../app/lib/src/state/jobs_controller.dart) |
 | `rcd` readiness | 15 s deadline in `_awaitReady` | [http_rclone_client.dart](../../app/lib/src/rclone/http_rclone_client.dart) |
 | RC call timeout | 30 s per `rpc()` (`core/command` streaming excepted — it has none) | [http_rclone_client.dart](../../app/lib/src/rclone/http_rclone_client.dart) |
@@ -531,6 +565,10 @@ Off-screen thumbnail players obey the same reasoning from the other direction �
 
 - **Why:** an uncaught error inside a `Timer.periodic` callback tears progress reporting down for the
   rest of the session; a leaked timer keeps polling a disposed provider.
+- **Check:** `grep -rn "Timer.periodic" app/lib` — job progress, engine stats, mount, serve,
+  bandwidth schedule and the scheduler tick are **all six** of them, and the only other hits are UI
+  animation timers (drag auto-scroll, the multi-QR cycler) that touch no engine. A seventh poller is
+  a budget decision, not an implementation detail: give it a row above.
 
 **RULE — Console (`JobType.command`) and archive (`JobType.archive`) jobs must NOT consume a transfer slot.**
 

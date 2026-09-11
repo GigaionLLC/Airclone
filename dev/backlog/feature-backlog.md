@@ -410,7 +410,7 @@ Same markers as MUST. **Most of this section shipped** — it was the single big
   **run history shipped** (`TaskRunRecord`, ten per task, `state/tasks_controller.dart`), and
   **OS-level background execution shipped on Windows** (`headless/headless_runner.dart` +
   `state/windows_task_scheduler.dart`). Still open: **cron** (5-field, prose-rendered) and the
-  **macOS/Linux/Android** background equivalents.
+  **macOS/Linux** background equivalents (Android shipped v0.8 — see the Advanced-power entry above).
 - ⬜ `[D]` Real-time FS watcher with net-change debounce — verified absent (no directory watching
   anywhere; listings refresh on navigate, on demand, and via mobile pull-to-refresh).
 - ⬜ `[D+M]` Dynamic-path macros (`$(date)`, `$(hostname)` — resolved internally, no shell) — verified
@@ -429,7 +429,13 @@ Same markers as MUST. **Most of this section shipped** — it was the single big
 - ◐ `[D]` Clean headless/server mode with SSE + Basic-auth + TLS — **not built**. What exists is a
   headless *task runner*, not a server: `app/lib/src/headless/headless_runner.dart` handles
   `--run-task <id>` / `--run-due` and exits. No listener, no web UI, no auth surface.
-- ⬜ `[M]` Media auto-backup — verified absent. ✅ `[D+M]` **Recoverable delete shipped** as
+- ✅ `[M]` **Media auto-backup shipped (v0.8, Android)** — `state/photo_backup.dart` +
+  `ui/photo_backup_section.dart`: a `TaskKind.photos` task mirroring a set of internal-storage
+  folders (`DCIM` by default, more addable) into `remote:Airclone/Photos/<device>/`, copy-only via
+  `backupOptions`, videos on their own toggle, run by the WorkManager periodic wake. iOS is
+  deliberately not built ([scheduling-and-backup-plan.md](../plans/scheduling-and-backup-plan.md)
+  §4.d — camera assets are not files on iOS, so a backup would have to export each one first).
+- ✅ `[D+M]` **Recoverable delete shipped** as
   `TransferOptions.keepReplaced` (`--suffix .replaced --suffix-keep-extension`, chosen because it is
   robust across cloud *and* local with no path math); a backend-trash tier and `_config.BackupDir` to a
   separate versions folder are the remaining forms.
@@ -613,8 +619,8 @@ because a differentiator that isn't built yet is a plan, and reading it as a fac
    "mandatory dry-run", until that changes.
 6. **Open-source + privacy headline** — local-only, no telemetry. **True today**, and load-bearing:
    `state/diagnostics.dart` redacts at ingest and there is no egress path at all.
-7. **Engineering rigor** — automated tests for the engine lifecycle + RC integration (102 test files in
-   `app/test/`), restart as a first-class tested op, structured OAuth. **True today** — except **i18n,
-   which does not exist**; drop "from day one" until there is a `l10n` directory.
+7. **Engineering rigor** — automated tests for the engine lifecycle + RC integration (a test file per
+   subsystem in `app/test/`), restart as a first-class tested op, structured OAuth. **True today** —
+   except **i18n, which does not exist**; drop "from day one" until there is a `l10n` directory.
 8. **Free where it matters** — all manual power (dual-pane, drag-drop, mount, compare, dry-run) free;
    the premium story is mobile + cleaner UX, not gating basics. **True today.**

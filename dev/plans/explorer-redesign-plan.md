@@ -123,8 +123,9 @@
   rest of the phase — Finder-grade selection, the top-bar priority overflow, per-pane state — has
   not been re-audited against the code, so treat the remaining items as unknown, not as absent)
 - `[ ]` Phase 4 — Columns + native chrome + transactions (the Miller-columns view is definitively
-  unbuilt: `state/browser_controller.dart` is `enum ViewMode { list, grid, media }`, with no
-  `columns` member. The other three items are unaudited)
+  unbuilt: `state/browser_controller.dart` is `enum ViewMode { list, grid, media, tree }`, with no
+  `columns` member — `tree` is the v0.8 tree view, [`tree-view-plan.md`](tree-view-plan.md), and is
+  a different shape. The other three items are unaudited)
 - `[x]` Phase 5 — Mobile touch explorer (alpha.84: phone shell with bottom nav and touch grammar —
   `ui/mobile_home.dart`; long-press and `+` bottom sheets in `ui/mobile_action_sheets.dart` plus
   pull-to-refresh in v0.3.4)

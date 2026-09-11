@@ -21,8 +21,8 @@ before you open the backlog to queue it.
 | :--- | :--- | :--- | :--- |
 | **The Switcher** | Non-technical user with files across Drive/Dropbox/OneDrive | Move/organize files between clouds without a terminal | One window, drag-to-transfer, OAuth wizard — no `rclone.conf` editing |
 | **The Power User** | Developer/sysadmin already on rclone CLI | A faster surface for everyday browse/move + visible jobs and mounts | RC daemon (structured jobs/stats), dual-pane, mount manager, presets — same config as their CLI |
-| **The Mobile-First** | Phone-centric user | Their cloud available in the phone's Files app and other apps | Background sync + hand-off to another app ship today; the "Show in Files" toggle (`DocumentsProvider`/File Provider) is **not built yet** — the gap this persona is still waiting on |
-| **The Backup-Keeper** | Anyone running scheduled backups | Reliable, safe, scheduled sync with no surprises | Dry-run + compare, `--max-delete` guard, named scheduled jobs, run history |
+| **The Mobile-First** | Phone-centric user | Their cloud available in the phone's Files app and other apps | Background sync, camera-roll backup and hand-off to another app ship today; the "Show in Files" toggle (`DocumentsProvider`/File Provider) is **not built yet** — the gap this persona is still waiting on |
+| **The Backup-Keeper** | Anyone running scheduled backups | Reliable, safe, scheduled sync with no surprises | The **Back up a folder** wizard (what / where / how often) with versions and a previewed prune, a `--max-delete` cap every repeating Sync carries whether or not it was asked for, a circuit breaker that pauses the whole scheduler when one trips, a reviewable dry-run change set, and run history. See [feat-backup](../features/feat-backup.md) · [feat-scheduling](../features/feat-scheduling.md) |
 | **The Self-Hoster** *(v2)* | NAS/VPS owner | Drive remotes from a server / from their phone | Clean headless server mode + remote-`rcd` profile from the desktop/mobile UI |
 | **The Enterprise Admin / IT** | Sysadmin / security team deploying to a fleet | Mass-deploy, lock down, audit, and integrate with org identity/secrets — **without the tool phoning home** | MDM/policy manageability (ADMX/Intune/Jamf/Android-MC/AppConfig), enforced kill-switches in the engine seam, OS-keychain/Vault secrets, local hash-chained audit + opt-in SIEM export, signed/SBOM'd builds, optional **self-hosted** control plane. See [Enterprise Readiness](19-enterprise-readiness.md). |
 
@@ -33,10 +33,16 @@ before you open the backlog to queue it.
 2. **Browse** → navigate any remote or local disk with the same rows/gestures; preview inline.
 3. **Transfer** → drag between panes (desktop) or multi-select → action bar (mobile) → async job in
    the always-on transfer panel.
-4. **Sync** → choose direction (Mirror / Backup-new / Two-way) → dry run → run now or save as
-   a scheduled job. *(A reviewable dry-run change set — see the hardening audit's H-04 — is the
-   planned upgrade; today a dry run is an ordinary job that writes nothing.)*
+4. **Sync** → choose a mode (Copy / Move / Sync / Two-way sync — defined once in
+   [16-glossary-of-terms](16-glossary-of-terms.md)) → dry run → run now or save as a scheduled task.
+   *(On the Sync-here path a dry run is a reviewable change set: what would be created, overwritten
+   and deleted, deletions first, against the run's delete cap. The other transfer entry points still
+   dispatch an ordinary job that writes nothing.)*
 5. **Make local** → mount as a drive (desktop). *(Mobile "Show in Files" is planned, not shipped.)*
+6. **Back up** → pick a folder, a destination and a frequency → a copy-only task that keeps replaced
+   files as versions, with a retention window and a prune that shows what it would delete first;
+   restore is the file browser opened at the backup. Desktop and Android; on Android the camera roll
+   is the same task shape. See [feat-backup](../features/feat-backup.md).
 
 ## 🗺️ Competitive Landscape (categories)
 

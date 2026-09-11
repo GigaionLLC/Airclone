@@ -83,13 +83,19 @@ the wizard has no platform gate. The Android-only sibling, **camera-roll
 backup** (`TaskKind.photos`, Settings → Automation → "Back up your photos"), is
 described in [Scheduling §6](feat-scheduling.md#6-what-this-is-not-yet).
 
-Two details worth knowing:
+Three details worth knowing:
 
 - **It shows you the destination before creating anything**, so you do not have
   to go browsing afterwards to find out where your files went.
 - **Weekly is not offered.** A backup that runs once a week is six days stale
   when you need it. The raw task editor is still there for someone who genuinely
   wants one.
+- **"Also run while Airclone is closed" starts ticked**, wherever the platform
+  can honour it (Windows and Android — see
+  [Scheduling §4](feat-scheduling.md#4-running-with-the-app-closed--windows-and-android)).
+  That is deliberately the opposite of the raw task editor, which leaves it off:
+  a backup you have to remember to be running is the thing this wizard exists to
+  replace.
 
 ## 4. Versions, and pruning them
 
@@ -101,6 +107,12 @@ written by an older build; both shapes are recognised.
 365). Zero means "keep nothing beyond the current file", which is a legitimate
 choice for someone short on space. There is deliberately **no "forever"**: a
 version history that only grows is a bill nobody agreed to.
+
+The setting is **Settings → Automation → "Keep replaced file versions for"**,
+and it appears only once you have a backup to retain versions *of* — a retention
+window over nothing is a setting asking about something you have not done yet.
+Choosing one does not delete anything by itself either: cleanup is per backup,
+from the button on that backup's row (§6).
 
 ### 4.1 The prune is the most destructive thing this app does
 

@@ -70,6 +70,13 @@ N minutes have elapsed since `lastRun`, and due immediately when it has never ru
 (`lastRun == null`). A task run manually stamps `lastRun` before it dispatches, so the next tick
 does not fire a second copy behind it.
 
+**A two-way sync with no baseline is never auto-run**, and that gate sits *before* `isDue` rather
+than beside it. bisync's first pass is a `--resync`, which is destructive and has to be done once by
+hand; so `dueTasks` (`state/scheduler_controller.dart`, shared verbatim with the headless path)
+filters those tasks out before the schedule is even consulted. Nothing is recorded when it happens —
+the task simply never runs and its history stays empty. Saved tasks marks the row *"Needs first run
+— baseline not established"*; Settings → Automation does not.
+
 Each task keeps its **last 10 run outcomes** (`TaskRunRecord`, capped in `state/tasks_controller.dart`)
 so a failure that happened while nobody was watching is still there afterwards.
 
@@ -121,17 +128,23 @@ task starts up to one wake late, and Doze may hold a wake back further. The wake
 app is on screen, because the in-app tick owns due tasks then. It survives reboots with no
 `BOOT_COMPLETED` receiver of ours — WorkManager re-arms itself.
 
-> **A background wake is short, and a big first backup runs in slices.** Measured on an Android
-> 15 emulator (2026-09-09): Android 12+ **refuses** `setForeground()` to a periodic wake started
-> in the background (`startForegroundService() not allowed due to mAllowStartForeground false`)
-> — WorkManager's promotion is not one of the sanctioned exemptions for periodic work. So the
-> wake runs inside the plain worker's budget, and the Dart run is capped at **8 minutes**
+> **A background wake is usually short, and a big first backup runs in slices.** Measured on an
+> Android 15 emulator (2026-09-09): Android 12+ **refuses** `setForeground()` to a periodic wake
+> started in the background (`startForegroundService() not allowed due to mAllowStartForeground
+> false`) — WorkManager's promotion is not one of the sanctioned exemptions for periodic work. So
+> that wake runs inside the plain worker's budget, and the Dart run is capped at **8 minutes**
 > (`UNPROMOTED_TIMEOUT_MINUTES` in `DueTasksWorker.kt`) so it ends cleanly — rclone quit, outcome
 > recorded — rather than being torn down mid-copy. A large first backup therefore proceeds **one
 > slice per wake**, resuming where it stopped (`copy` skips what the destination already has).
 > Someone expecting a 40 GB camera roll to finish overnight should expect days of wakes instead.
-> A run that starts while the app is on screen is not under this cap: the in-app scheduler runs
-> it as an ordinary transfer.
+>
+> **The 8 minutes is the refused case, not the only case.** The promotion is attempted on every
+> wake, and where it is granted the cap is **5 hours** (`DART_TIMEOUT_MINUTES`, sized to stay inside
+> Android 15's ~6 h/day dataSync budget). It is granted on **Android 8–11** — `minSdk` is 26, so
+> those are live — and on 12+ for the one-off *"Run due tasks in background now"* the user starts
+> from inside the app, which is exactly why that button exists. On a modern phone left alone, 8
+> minutes is what you get. A run that starts while the app is on screen is under no cap at all: the
+> in-app scheduler runs it as an ordinary transfer.
 
 macOS, Linux and iOS get the in-app scheduler and an honest footnote. launchd and systemd-user
 are Phase D of the plan, now expected after v0.8; iOS background execution is out of scope (§6).
@@ -210,7 +223,7 @@ it.
 | **The in-app tick** | Every schedule, on every platform, whenever Airclone is open | `SchedulerController` — a 30 s timer inside the app | Up to 30 s |
 | **An exact OS trigger** | **Daily and weekly** schedules, opted in, on Windows | Task Scheduler → `Airclone` → *the task's own name* | Not late — it fires at the time you chose |
 | **The shared poller** | **Interval** schedules ("every N hours"), opted in, on Windows | Task Scheduler → `Airclone` → `Run due tasks` | Up to one cadence (default 15 min) |
-| **The Android poll** | **Every** opted-in schedule on Android, with the app closed (§4.2) | WorkManager → `DueTasksWorker`; Settings → Automation → "Background on this phone" | Up to one wake (15 min floor) plus whatever Doze adds; and a wake is capped at 8 min |
+| **The Android poll** | **Every** opted-in schedule on Android, with the app closed (§4.2) | WorkManager → `DueTasksWorker`; Settings → Automation → "Background on this phone" | Up to one wake (15 min floor) plus whatever Doze adds; and a wake is capped at 8 min on Android 12+ (5 h where the foreground promotion is granted — §4.2) |
 
 The split is not arbitrary and it is not a setting: a schedule that names an
 exact time gets an exact trigger, because Task Scheduler can hit 09:00 exactly
@@ -268,52 +281,67 @@ wants this" and unregister everything.
 
 Work down this list; it is ordered by how often each one is the answer.
 
-1. **Was "Also run while Airclone is closed" actually ticked?** It is per task
-   and off by default. The editor's footnote says so in as many words when it is
-   off, naming the checkbox.
+1. **Was "Also run while Airclone is closed" actually ticked?** It is per task,
+   and off by default on a schedule you set up in the **task editor** — but the
+   **backup wizard pre-ticks it** wherever background runs are possible, so a
+   wizard-created backup is opted in unless you unticked it. The editor's
+   footnote says so in as many words when it is off, naming the checkbox.
 2. **Was Airclone closed on a platform that has no background scheduling?**
    macOS, Linux and iOS run schedules **only while the app is open** (§4). A
    missed slot is caught up once on next launch — once, not replayed.
 3. **Is the scheduler paused?** A delete-cap trip stops *everything* until a
    human resumes it (§5.3). Settings → Automation shows a banner naming the task
    that tripped it and the engine's own error. This is deliberately global, so
-   one bad task stops the others too.
+   one bad task stops the others too. A background wake while paused reports
+   **success** to the OS — it exits 0 having selected nothing and run nothing —
+   so `0x0` beside an empty run history is what a pause looks like from Task
+   Scheduler's side.
 4. **Did it refuse rather than fail?** A scheduled Sync whose source is empty or
    unreadable does not run at all (§5.2). It records a failed run whose reason
    says exactly that; Settings → Automation shows the last outcome per task.
-5. **Was the engine locked?** An encrypted config with no stored password cannot
+5. **Is it a two-way sync that has never been run by hand?** A bisync task with
+   no established baseline is filtered out before the schedule is consulted
+   (§2), by every runner. There is no error and no run record — the history
+   simply stays empty — so this one hides better than anything else on the list.
+   Run it once from Saved tasks, where the row says *"Needs first run"*.
+6. **Was the engine locked?** An encrypted config with no stored password cannot
    unlock unattended. The in-app path records "a scheduled task was due while the
    engine was locked"; a background run exits **2**, which Task Scheduler shows
    as `0x2` in *Last Run Result*.
-6. **Was the machine asleep or off?** Both Windows jobs set
+7. **Was the machine asleep or off?** Both Windows jobs set
    `StartWhenAvailable`, so the run catches up when the machine returns — but
    once, and not at the original time.
-7. **On Android, was the wake late, or just short?** A poll fires at best every
-   15 minutes, Doze can hold it back, and a background wake is capped at 8
-   minutes (§4.2) — a big backup that "did not finish" is usually one that is
-   still proceeding a slice per wake. Settings → Automation shows the last
-   wake's outcome.
-8. **Only then, look at Task Scheduler itself.** `Airclone` → the entry the
+8. **On Android, was the wake late, or just short?** A poll fires at best every
+   15 minutes, Doze can hold it back, and on Android 12+ a background wake is
+   capped at 8 minutes (§4.2) — a big backup that "did not finish" is usually one
+   that is still proceeding a slice per wake. Settings → Automation shows the
+   last wake's outcome.
+9. **Only then, look at Task Scheduler itself.** `Airclone` → the entry the
    editor named. *Last Run Time* and *Last Run Result* are the ground truth about
    whether Windows started the process at all. `0x0` means it ran and succeeded,
    `0x1` means it ran and something failed (check the task's run history in
    Airclone for the reason), `0x2` means it could not start — bad task id, or an
    engine that would not come up.
 
-**A run that Windows started always leaves a trace in Airclone**, in that task's
-run history, whether it succeeded or failed. If Task Scheduler says a run
-happened and Airclone's history has nothing for it, that is a real bug worth
-reporting rather than a configuration problem.
+**A run that actually dispatched a task always leaves a trace in Airclone**, in
+that task's run history, whether it succeeded or failed. Two ordinary outcomes
+dispatch nothing and so record nothing, and both exit **0**: a `Run due tasks`
+wake that found nothing due (most poller wakes, by design), and any wake at all
+while the scheduler is paused. So `0x0` with an empty history is expected for the
+shared poller and expected while paused — but for an **exact trigger** on an
+unpaused scheduler it is a real bug worth reporting rather than a configuration
+problem.
 
 ## 6. What this is not, yet
 
 - **No background execution on macOS or Linux** (launchd / systemd-user: Phase D of the plan,
   now expected after v0.8).
 - **Android runs due tasks in the background; iOS does not.** The Android path is §4.2 — a
-  WorkManager poll with no exact-time triggers, and a background wake capped at 8 minutes, so a
-  large first backup lands in slices across wakes. iOS background execution is explicitly out of
-  scope. **No battery-optimisation detection yet:** a phone that has put Airclone in a restricted
-  bucket stretches the 15-minute period to hours, and nothing in the app says so.
+  WorkManager poll with no exact-time triggers, and a background wake capped at 8 minutes on
+  Android 12+ (5 hours where the foreground promotion is granted), so a large first backup lands in
+  slices across wakes. iOS background execution is explicitly out of scope. **No
+  battery-optimisation detection yet:** a phone that has put Airclone in a restricted bucket
+  stretches the 15-minute period to hours, and nothing in the app says so.
 - **Camera-roll backup is Android-only** (`TaskKind.photos`, Settings → Automation → "Back up
   your photos"): a set of folders under internal storage (DCIM by default), mirrored into
   `remote:Airclone/Photos/<device>/`, copy only, videos on a separate toggle.
@@ -350,7 +378,8 @@ Tests: `test/scheduler_tick_test.dart`, `test/schedule_test.dart`,
 `test/scheduling_policy_test.dart`, `test/scheduler_delete_cap_test.dart`,
 `test/scheduler_empty_source_test.dart`, `test/scheduler_pause_ui_test.dart`,
 `test/from_to_picker_test.dart`, `test/windows_task_scheduler_test.dart`,
-`test/due_runner_task_test.dart`; the hybrid — `test/registration_policy_test.dart`,
+`test/due_runner_task_test.dart`, `test/headless_breaker_test.dart` (the breaker on the
+path nobody is watching); the hybrid — `test/registration_policy_test.dart`,
 `test/registration_explanation_test.dart`, `test/registration_seed_test.dart`,
 `test/reconcile_plan_test.dart`, `test/reconcile_exec_test.dart`,
 `test/reconcile_launch_test.dart`; Android — `test/android_work_registration_test.dart`,

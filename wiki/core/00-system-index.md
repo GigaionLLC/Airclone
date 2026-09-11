@@ -100,6 +100,7 @@ records the next free number.
 | [README.md](../../README.md) | Public project README. |
 | [DESIGN.md](../../DESIGN.md) | Visual/brand reference that accompanies [06-design-system.md](06-design-system.md). |
 | [HOW-TO.md](../../HOW-TO.md) | End-user guide. |
+| [PRIVACY.md](../../PRIVACY.md) | Published privacy policy — the URL every store listing points at. |
 
 ## Related
 

@@ -10,9 +10,9 @@ description: "Canonical dictionary of rclone and Airclone domain terms."
 Canonical definitions. Use these terms consistently across code, UI copy, and docs.
 
 **When to read this:** you hit a term you cannot define while reading code, a plan, or another core
-doc — *remote* vs *backend*, RC vs librclone, VFS, bisync, DocumentsProvider, MDM — and you need the
-canonical meaning before you build on it. Also read it before naming a new type, provider, or UI
-string, so the vocabulary stays consistent everywhere.
+doc — *remote* vs *backend*, *Job* vs *Task*, RC vs librclone, VFS, bisync, DocumentsProvider, MDM —
+and you need the canonical meaning before you build on it. Also read it before naming a new type,
+provider, or UI string, so the vocabulary stays consistent everywhere.
 
 | Term | Definition |
 | :--- | :--- |
@@ -26,8 +26,13 @@ string, so the vocabulary stays consistent everywhere.
 | **gomobile** | Go's mobile binding toolchain (`golang.org/x/mobile`) that packages Go (incl. librclone) as an Android `.aar` / iOS `.xcframework`. |
 | **RcloneClient** | Airclone's internal interface that both transports (the spawned `rcd` daemon, the in-process library) implement, so the UI is engine-agnostic. |
 | **Job** | An asynchronous rclone operation (`_async:true`) with an id, status, and progress — the unit shown in the transfer/job manager. |
-| **Copy / Move / Sync** | Transfer operations. **Sync** makes the destination match the source (it **deletes** extra files at the destination) — always confirm. |
-| **Bisync** | rclone's true **two-way** sync that reconciles changes on both sides. |
+| **Task** | A *saved* transfer definition — source, destination, mode, options, and an optional schedule — surfaced in the UI as **Saved tasks**. A task is not a Job: running one (by hand, by the in-app scheduler, or headlessly) **produces** a Job. Keep the two words apart; they are the easiest pair here to confuse. See [feat-scheduling](../features/feat-scheduling.md). |
+| **Copy / Move / Sync** | Transfer operations, and the exact words the mode radio uses. **Sync** makes the destination match the source (it **deletes** extra files at the destination) — always confirm. |
+| **Bisync** | rclone's true **two-way** sync that reconciles changes on both sides. Labelled **Two-way sync** in the UI. |
+| **Delete cap** | `--max-delete`: how many destination deletions a run may make before it aborts and changes nothing further. A **repeating** one-way Sync is given one automatically when the user set none — the case it guards is a source that vanished, where rclone would otherwise empty the destination. |
+| **Circuit breaker (scheduler pause)** | The scheduler stopping **globally** after a scheduled run aborted on its delete cap, until a human looks. Global rather than per-task on purpose: the causes — an unmounted drive, an expired token, a renamed folder — are environmental, so letting the other tasks keep firing is how one bad night becomes several. |
+| **Version / retention / prune** | Backup vocabulary. A **version** is the copy a backup set aside instead of overwriting; **retention** is how long versions are kept; a **prune** is the pass that removes expired ones — it shows what it would delete first, and refuses outright rather than guessing when a single pass would remove more than its cap. See [feat-backup](../features/feat-backup.md). |
+| **Tree view** | The fourth `ViewMode` beside list, grid and media: an expandable hierarchy inside one pane, several folders open at once, every operation resolving its path from the node. Desktop only — the touch shell keeps its own navigation. |
 | **Mount** | Presenting a remote as a local drive/folder via FUSE (WinFsp on Windows, macFUSE on macOS, FUSE3 on Linux). Desktop only. |
 | **VFS** | rclone's Virtual File System layer used by mount/serve, with cache modes (off / minimal / writes / full). |
 | **Serve** | Exposing a remote over a network protocol (`rclone serve webdav|sftp|http|ftp|nfs|dlna`). |
@@ -40,7 +45,8 @@ string, so the vocabulary stays consistent everywhere.
 | **Leanback / Android TV** | Android's television profile. `android.software.leanback` is the feature Play filters TV apps on; Airclone declares it `required="false"` so the one bundle installs on phones too. Airclone detects a TV at runtime and wraps the phone shell in `TvShell` — see [05](05-app-structure.md) §📺. |
 | **D-pad** | The five-key directional pad on a TV remote. It moves focus by *directional traversal* — "what is nearest, in this direction, to whatever holds focus now?" — which is why focus must never be nowhere and why the focus ring is the cursor. |
 | **Overscan** | The edge of the picture a television crops, by an amount no app can query. Airclone insets the whole TV frame by `tvOverscan` (48×27dp, Google's 5% guidance at 1080p). |
-| **Headless mode** | Running the engine/UI as a web server (e.g. on a NAS/VPS) with no local desktop GUI. |
+| **Headless mode** | A UI-less run of saved tasks, started by the OS scheduler rather than by a person: `airclone --run-task <id>` runs one task, `airclone --run-due` runs everything due, and the process exits `0` (ran clean, or nothing was due), `1` (something failed) or `2` (could not start). Those flags and exit codes are a contract the Task Scheduler registrations depend on. |
+| **Server mode** *(v2)* | Running the engine and UI as a web server (e.g. on a NAS/VPS) with no local desktop GUI — the `airclone-server` deployable in [19](19-enterprise-readiness.md). **Not built.** |
 
 ## 🏢 Enterprise Terms
 

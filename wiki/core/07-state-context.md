@@ -23,12 +23,12 @@ cached server value — or when you need to find "which provider owns X" without
 | :--- | :--- |
 | **Framework** | Riverpod 2 (`flutter_riverpod`) with the modern `Notifier` / `NotifierProvider` API **only**. |
 | **Not used** | No `riverpod_generator` / code-gen, no `StateNotifierProvider`, no `ChangeNotifierProvider`, no `AsyncNotifierProvider`. Do not introduce them. |
-| **Naming** | Every top-level provider is named `<thing>Provider`. 88 public providers + 2 private, both re-entrancy latches: `_transferInFlightProvider` in [ui/paste_action.dart](../../app/lib/src/ui/paste_action.dart) and `_syncInFlightProvider` in [ui/sync_here_action.dart](../../app/lib/src/ui/sync_here_action.dart). |
-| **Location** | 83 live in [app/lib/src/state/](../../app/lib/src/state/); the other 5 public ones (plus both private ones) live beside their widget in `app/lib/src/ui/`. New state belongs in `state/` unless it is purely one widget's chrome. |
+| **Naming** | Every top-level provider is named `<thing>Provider`. 96 public providers + 2 private, both re-entrancy latches: `_transferInFlightProvider` in [ui/paste_action.dart](../../app/lib/src/ui/paste_action.dart) and `_syncInFlightProvider` in [ui/sync_here_action.dart](../../app/lib/src/ui/sync_here_action.dart). |
+| **Location** | 91 live in [app/lib/src/state/](../../app/lib/src/state/); the other 5 public ones (plus both private ones) live beside their widget in `app/lib/src/ui/`. New state belongs in `state/` unless it is purely one widget's chrome. |
 | **Root** | The graph is rooted at `engineControllerProvider`. Every server-state provider starts with `ref.read/watch(engineControllerProvider).client` and returns an **empty value when it is null** — never throws, never blocks. |
 | **Persisted scalar idiom** | A `Notifier<T>` whose `build()` fires an unawaited `_load()` and returns the default **synchronously**, plus `Future<void> set(T)` that assigns `state` then writes SharedPreferences inside a swallowing `try/catch`. Canonical example: [state/advanced_mode.dart](../../app/lib/src/state/advanced_mode.dart). |
 | **`ensureLoaded()`** | Providers whose value is read at *startup decision time* also expose an idempotent `Future<void> ensureLoaded()` caching a single `_loading` future — see [settings_controller.dart](../../app/lib/src/state/settings_controller.dart), [config_password_vault.dart](../../app/lib/src/state/config_password_vault.dart), [biometric_unlock.dart](../../app/lib/src/state/biometric_unlock.dart). Callers making a boot-time branch **must await it** (see Traps). |
-| **`autoDispose`** | Used exactly once, deliberately: `recentTransfersProvider`. Everything else is app-lifetime. |
+| **`autoDispose`** | Used exactly twice, deliberately: `recentTransfersProvider` and `androidWorkStatusProvider` (re-asks WorkManager each time the Settings section opens). Everything else is app-lifetime. |
 
 The engine seam itself (`RcloneClient`, transports, restart semantics) is owned by
 [08-core-architecture.md](08-core-architecture.md). Concurrency budgets and poller cadence rationale
@@ -61,19 +61,19 @@ Paths are relative to `app/lib/src/`. Line numbers are the declaration site at t
 
 | Provider | File | Kind → state | Owns / mutated by |
 | :--- | :--- | :--- | :--- |
-| `browserAProvider` | [state/browser_controller.dart:492](../../app/lib/src/state/browser_controller.dart) | `NotifierProvider<BrowserController, BrowserState>` | Pane 0 (left / top). |
-| `browserBProvider` | [state/browser_controller.dart:495](../../app/lib/src/state/browser_controller.dart) | same type | Pane 1 (right / bottom). |
-| `activePaneProvider` | [state/browser_controller.dart:501](../../app/lib/src/state/browser_controller.dart) | `StateProvider<int>` | Which pane (0/1) sidebar clicks and cross-pane copies target. |
-| `paneFilterFocusProvider` | [state/browser_controller.dart:508](../../app/lib/src/state/browser_controller.dart) | `Provider.family<FocusNode, int>` | App-lifetime `FocusNode` per pane's Ctrl+F box; disposes it in `ref.onDispose`. |
-| `pathEditRequestProvider` | [state/browser_controller.dart:517](../../app/lib/src/state/browser_controller.dart) | `StateProvider.family<int, int>` | A monotonic tick bumped by Ctrl+L / Alt+D to pop the address bar into edit mode. |
-| `paneScrollProvider` | [state/browser_controller.dart:523](../../app/lib/src/state/browser_controller.dart) | `Provider.family<ScrollController, int>` | App-lifetime `ScrollController` per pane; disposes it in `ref.onDispose`. |
+| `browserAProvider` | [state/browser_controller.dart:848](../../app/lib/src/state/browser_controller.dart) | `NotifierProvider<BrowserController, BrowserState>` | Pane 0 (left / top). |
+| `browserBProvider` | [state/browser_controller.dart:851](../../app/lib/src/state/browser_controller.dart) | same type | Pane 1 (right / bottom). |
+| `activePaneProvider` | [state/browser_controller.dart:857](../../app/lib/src/state/browser_controller.dart) | `StateProvider<int>` | Which pane (0/1) sidebar clicks and cross-pane copies target. |
+| `paneFilterFocusProvider` | [state/browser_controller.dart:864](../../app/lib/src/state/browser_controller.dart) | `Provider.family<FocusNode, int>` | App-lifetime `FocusNode` per pane's Ctrl+F box; disposes it in `ref.onDispose`. |
+| `pathEditRequestProvider` | [state/browser_controller.dart:873](../../app/lib/src/state/browser_controller.dart) | `StateProvider.family<int, int>` | A monotonic tick bumped by Ctrl+L / Alt+D to pop the address bar into edit mode. |
+| `paneScrollProvider` | [state/browser_controller.dart:879](../../app/lib/src/state/browser_controller.dart) | `Provider.family<ScrollController, int>` | App-lifetime `ScrollController` per pane; disposes it in `ref.onDispose`. |
 | `viewMemoryProvider` | [state/view_memory.dart:96](../../app/lib/src/state/view_memory.dart) | `NotifierProvider<ViewMemory, Map<String, ViewPref>>` | Per-remote last view mode / sort / density. `remember(name, pref)` (skips a no-change write), `prefFor(name)`. |
 | `clipboardControllerProvider` | [state/clipboard_controller.dart:82](../../app/lib/src/state/clipboard_controller.dart) | `NotifierProvider<ClipboardController, ClipboardItems>` | Copy/cut staging shared by both panes. `copy`, `cut`, `clear`. Pure state — the paste integrator performs the transfer. |
 | `recentsEnabledProvider` | [state/recent_locations.dart:46](../../app/lib/src/state/recent_locations.dart) | `NotifierProvider<RecentsEnabled, bool>` | Whether visited folders are remembered at all. **Opt-in, default off** — a trail nobody asked for puts remote and folder names on the Home screen. The *choice* is persisted; the trail is not. |
 | `recentLocationsProvider` | [state/recent_locations.dart:94](../../app/lib/src/state/recent_locations.dart) | `NotifierProvider<RecentLocations, List<RecentLocation>>` | Session-only MRU, capped at 12. `record(remote, path)` is a **no-op while `recentsEnabledProvider` is off** — nothing is collected and filtered later. A `ref.listen` on that switch clears the list the moment it goes off. |
 | `syncSourceProvider` | [state/sync_source.dart:50](../../app/lib/src/state/sync_source.dart) | `NotifierProvider<SyncSourceController, SyncSource>` | The folder a later "Sync to here" syncs **from**. Session-only, and deliberately **not** a third state on the clipboard: `ClipboardItems.isNotEmpty` drives whether Paste appears, and the two gestures are orthogonal. `mark(remote, path)`, `clear()`. The pure `syncTargetRefusal()` beside it refuses an overlapping source/destination pair outright (case-insensitively) rather than warning. |
 
-> `paneProvider(int index)` at [browser_controller.dart:504](../../app/lib/src/state/browser_controller.dart)
+> `paneProvider(int index)` at [browser_controller.dart:860](../../app/lib/src/state/browser_controller.dart)
 > is a plain **top-level function**, not a provider. It returns `browserA`/`browserB` and is the
 > canonical way UI code reaches a pane (~112 call sites in `ui/`).
 
@@ -84,9 +84,9 @@ Paths are relative to `app/lib/src/`. Line numbers are the declaration site at t
 | `paneSplitRatioProvider` | [state/pane_layout.dart:128](../../app/lib/src/state/pane_layout.dart) | `NotifierProvider<PaneSplitRatio, double>` | Persisted, clamped. |
 | `paneSplitOrientationProvider` | [state/pane_layout.dart:216](../../app/lib/src/state/pane_layout.dart) | `NotifierProvider<…, PaneSplitOrientation>` | `adaptive` / `sideBySide` / `stacked`, persisted. |
 | `mobileSplitProvider` | [state/pane_layout.dart:224](../../app/lib/src/state/pane_layout.dart) | `StateProvider<bool>` | Phone-only second-pane opt-in; session only. |
-| `singlePaneProvider` | [ui/home_screen.dart:66](../../app/lib/src/ui/home_screen.dart) | `StateProvider<bool>` | Desktop single vs dual pane (default `true`). |
-| `sidebarVisibleProvider` | [ui/home_screen.dart:69](../../app/lib/src/ui/home_screen.dart) | `StateProvider<bool>` | |
-| `sidebarWidthProvider` | [ui/home_screen.dart:72](../../app/lib/src/ui/home_screen.dart) | `StateProvider<double>` | Default 240. |
+| `singlePaneProvider` | [ui/home_screen.dart:67](../../app/lib/src/ui/home_screen.dart) | `StateProvider<bool>` | Desktop single vs dual pane (default `true`). |
+| `sidebarVisibleProvider` | [ui/home_screen.dart:70](../../app/lib/src/ui/home_screen.dart) | `StateProvider<bool>` | |
+| `sidebarWidthProvider` | [ui/home_screen.dart:73](../../app/lib/src/ui/home_screen.dart) | `StateProvider<double>` | Default 240. |
 | `inspectorVisibleProvider` | [ui/inspector_panel.dart:26](../../app/lib/src/ui/inspector_panel.dart) | `StateProvider<bool>` | |
 | `columnWidthsProvider` | [ui/column_header.dart:141](../../app/lib/src/ui/column_header.dart) | `NotifierProvider<ColumnWidthsController, ColumnWidths>` | Persisted Size / Modified column widths (clamped on load). |
 | `jobsDockHeightProvider` | [state/pane_layout.dart:172](../../app/lib/src/state/pane_layout.dart) | `NotifierProvider<JobsDockHeight, double>` | Height of the bottom Transfers dock, persisted **unclamped by viewport** — the widget re-clamps against the live layout every build via the pure `clampJobsDockHeight`, so a dock dragged tall on a big monitor cannot swallow a small one. |
@@ -105,7 +105,7 @@ Paths are relative to `app/lib/src/`. Line numbers are the declaration site at t
 | `transferServiceProvider` | [state/transfer_service.dart:220](../../app/lib/src/state/transfer_service.dart) | `Provider<TransferService>` | Dispatches transfers with `_async: true` and `_group: 'airclone/<local jobId>'`. |
 | `recentTransfersProvider` | [state/recent_activity_controller.dart:10](../../app/lib/src/state/recent_activity_controller.dart) | `FutureProvider.autoDispose<List<TransferredItem>>` | `core/transferred`. The **only** autoDispose provider; the panel refreshes by invalidating it. |
 | `transferForegroundServiceProvider` | [state/android_transfer_service.dart:17](../../app/lib/src/state/android_transfer_service.dart) | `Provider<void>` | Side-effect-only: `ref.listen`s jobs and drives the Android `dataSync` foreground service over `MethodChannel('airclone/native')`. No-op off Android. |
-| `fileOpsProvider` | [state/file_ops.dart:183](../../app/lib/src/state/file_ops.dart) | `Provider<FileOps>` | Single-shot non-streaming mutations (create / rename / delete), plus the read-only `compare()` (`operations/check`) and `folderSize()` the sync preview is built on. Long transfers belong to jobs. |
+| `fileOpsProvider` | [state/file_ops.dart:282](../../app/lib/src/state/file_ops.dart) | `Provider<FileOps>` | Single-shot non-streaming mutations (create / rename / delete), plus the read-only `compare()` (`operations/check`) and `folderSize()` the sync preview is built on. Long transfers belong to jobs. |
 | `archiveServiceProvider` | [state/archive_service.dart:229](../../app/lib/src/state/archive_service.dart) | `Provider<ArchiveService>` | `rclone archive create/extract/list` as a **subprocess** (no RC method exists); tracked as `JobType.archive`. |
 
 ### Remotes & server-state caches
@@ -183,11 +183,29 @@ the cloud-hydration guard in [state/cloud_placeholder.dart](../../app/lib/src/st
 
 | Provider | File | Kind → state | Notes |
 | :--- | :--- | :--- | :--- |
-| `tasksProvider` | [state/tasks_controller.dart:278](../../app/lib/src/state/tasks_controller.dart) | `NotifierProvider<TasksController, List<TransferTask>>` | Persisted saved transfers with stable string ids and a per-task run history capped at 10. `add`, `update`, `remove`, `recordRun`. |
-| `schedulerProvider` | [state/scheduler_controller.dart:291](../../app/lib/src/state/scheduler_controller.dart) | `NotifierProvider<SchedulerController, SchedulerStatus>` | 30 s tick, in-memory only. Runs due tasks **while the app is open**; stamps `lastRun` before the async kickoff so a tick can't double-fire; records `skippedWhileUnavailable` when the engine is down. |
+| `tasksProvider` | [state/tasks_controller.dart:341](../../app/lib/src/state/tasks_controller.dart) | `NotifierProvider<TasksController, List<TransferTask>>` | Persisted saved tasks — `TaskKind.transfer` / `backup` / `photos` share one model, one scheduler and one run history — with stable string ids, a `runWhileClosed` background opt-in, and a per-task run history capped at 10. `add`, `update`, `remove`, `recordRun`, `replaceAll` (one write for a change spanning tasks). Its hydration gate is `await ref.read(tasksProvider.notifier).ready`, **not** the `ensureLoaded()` idiom above: anything acting on the *whole* set must wait, because the empty list `build()` returns reads as "nothing is scheduled" and would unregister everything. |
+| `schedulerProvider` | [state/scheduler_controller.dart:394](../../app/lib/src/state/scheduler_controller.dart) | `NotifierProvider<SchedulerController, SchedulerStatus>` | 30 s tick; `SchedulerStatus` itself is in-memory only. Runs due tasks **while the app is open**; stamps `lastRun` before the async kickoff so a tick can't double-fire; records `skippedWhileUnavailable` when the engine is down. Every tick returns immediately while `schedulerPausedProvider` is tripped, and a `TaskKind.transfer` run goes through `withScheduledDeleteCap` (a backup through `backupOptions`). `build()` also fires `reconcileRegistrations(seed: true)` once — the launch-time OS reconcile — which is why HomeScreen must force-read it. |
+| `schedulerPausedProvider` | [state/scheduler_pause.dart:110](../../app/lib/src/state/scheduler_pause.dart) | `NotifierProvider<SchedulerPaused, SchedulerPause?>` | The circuit breaker: **global, not per-task**, because the causes of a run blowing its delete cap are environmental. Persisted (`scheduler_paused`) — a pause that forgets itself on restart is not a pause. `pause()` keeps the FIRST reason; `resume()` is only ever a user action, with no auto-resume and no timeout. |
+| `pollCadenceProvider` | [state/poll_cadence.dart:51](../../app/lib/src/state/poll_cadence.dart) | `NotifierProvider<PollCadence, int>` | How often the shared background job wakes to run whatever is due. Persisted, because the OS registration built from it outlives the process; clamped by `clampPollMinutes` on the way in *and* out. Bounds lateness for interval schedules only — an exact daily trigger is unaffected. |
+| `backupRetentionProvider` | [state/backup_retention.dart:180](../../app/lib/src/state/backup_retention.dart) | `NotifierProvider<BackupRetention, int>` | How many days a replaced version is kept before a prune may remove it (persisted, default 30, clamped). `0` keeps nothing beyond the current file; there is deliberately no "forever". |
+| `backupPrunerProvider` | [state/backup_prune.dart:167](../../app/lib/src/state/backup_prune.dart) | `Provider<BackupPruner>` | Lists a backup folder recursively and deletes old versions — **dry run by default**, so the UI previews with the code that will run. Refuses outright above `kMaxPrunePerPass` (500) rather than deleting the first 500: a pass that large is more likely a bug than a backlog. *What* to delete is decided by the pure `prunableVersionsRecursive`, not here. |
 | `bandwidthControllerProvider` | [state/bandwidth_controller.dart:53](../../app/lib/src/state/bandwidth_controller.dart) | `NotifierProvider<…, BandwidthState>` | Live `core/bwlimit`. `setLimit(rate)`. |
 | `bwScheduleControllerProvider` | [state/bw_schedule_controller.dart:72](../../app/lib/src/state/bw_schedule_controller.dart) | `NotifierProvider<…, BwSchedule>` | Persisted timetable + a 60 s applier. `setEnabled`, `setWindows`. |
-| `windowsTaskSchedulerProvider` | [state/windows_task_scheduler.dart:272](../../app/lib/src/state/windows_task_scheduler.dart) | `Provider<WindowsTaskScheduler>` | `schtasks` register / unregister / isRegistered for headless runs. Windows-only; silently no-ops elsewhere. Has a `ProcessRunner` seam for tests. |
+| `windowsTaskSchedulerProvider` | [state/windows_task_scheduler.dart:490](../../app/lib/src/state/windows_task_scheduler.dart) | `Provider<WindowsTaskScheduler>` | `schtasks` `register` / `unregister` / `isRegistered` / `listRegistered` / `reconcile` for headless runs. Windows-only; silently no-ops elsewhere. Has a `ProcessRunner` seam for tests. What each schedule gets is decided by `registrationShapeFor` in [state/registration_policy.dart](../../app/lib/src/state/registration_policy.dart): its own exact trigger `Airclone\<task id>` for daily/weekly, membership of the one shared `Run due tasks` job (`--run-due`, cadence from `pollCadenceProvider`) for interval, and `unsupported` where the platform has no background execution at all. |
+
+### Android background execution
+
+Android's half of the shared poller above: one `PeriodicWorkRequest` under one fixed name, which
+wakes a second Flutter engine to run whatever is due (see *Three entry points build the graph*).
+Every provider here is a safe no-op off Android and none of them throws — background scheduling
+failing must never take the Settings screen down with it.
+
+| Provider | File | Kind → state | Notes |
+| :--- | :--- | :--- | :--- |
+| `androidWorkProvider` | [state/android_work_channel.dart:149](../../app/lib/src/state/android_work_channel.dart) | `Provider<AndroidWork>` | The `MethodChannel('airclone/work')` wrapper over WorkManager: enqueue/cancel the periodic request, `runOnce()`, `status()`. |
+| `androidWorkStatusProvider` | [state/android_work_channel.dart:154](../../app/lib/src/state/android_work_channel.dart) | `FutureProvider.autoDispose<AndroidWorkStatus>` | What WorkManager currently holds plus the stamp the last wake left behind (next/last run, headless exit code, summary). `autoDispose` so the Settings section re-asks on every open instead of showing the answer from last time. |
+| `androidWorkSettingsProvider` | [state/android_work_settings.dart:77](../../app/lib/src/state/android_work_settings.dart) | `NotifierProvider<AndroidWorkSettings, AndroidWorkConstraints>` | The conditions Android must meet before it wakes us: `unmetered` (default **on** — the headline background task on a phone is a camera-roll backup, and a 40 GB roll on cellular is a bill) and `charging`. Per-device, not per-task, because WorkManager applies them to the single shared wake. Persisted. |
+| `androidWorkReconcilerProvider` | [state/android_work_registration.dart:111](../../app/lib/src/state/android_work_registration.dart) | `Provider<void>` | Side-effect-only, force-read once at launch. Stores the Dart entrypoint's callback handle first (a wake before that has nothing to run), awaits `tasksProvider.notifier.ready`, then keeps the periodic request in step with the saved tasks and the constraints. A plan equal to the last one applied is skipped, so the `lastRun`/history writes every scheduled run makes do not each touch WorkManager. |
 
 ### Wizards, console & OS integration
 
@@ -206,6 +224,9 @@ the cloud-hydration guard in [state/cloud_placeholder.dart](../../app/lib/src/st
 These are provider-free, unit-testable logic used by the controllers above. Prefer adding logic here
 over inside a `Notifier` — the test suite reaches these directly:
 [archive_command.dart](../../app/lib/src/state/archive_command.dart) ·
+[backup_restore.dart](../../app/lib/src/state/backup_restore.dart) (`remote:path` split → open a backup folder in a pane; there is no restore engine) ·
+[backup_task.dart](../../app/lib/src/state/backup_task.dart) (where a backup lands: `Airclone/Backups` / `Airclone/Photos` + the per-device folder) ·
+[build_flavor.dart](../../app/lib/src/state/build_flavor.dart) (`kMacAppStoreBuild` — a compile-time constant, unlike `install_source.dart`) ·
 [bw_schedule.dart](../../app/lib/src/state/bw_schedule.dart) ·
 [cloud_placeholder.dart](../../app/lib/src/state/cloud_placeholder.dart) ·
 [config_encryption.dart](../../app/lib/src/state/config_encryption.dart) ·
@@ -215,12 +236,19 @@ over inside a `Notifier` — the test suite reaches these directly:
 [engine_mode.dart](../../app/lib/src/state/engine_mode.dart) ·
 [external_config_backup.dart](../../app/lib/src/state/external_config_backup.dart) (paths + mode mapping) ·
 [install_source.dart](../../app/lib/src/state/install_source.dart) (installer-id → channel + store links) ·
+[mac_bookmarks.dart](../../app/lib/src/state/mac_bookmarks.dart) (security-scoped bookmarks; a no-op everywhere but a sandboxed macOS build) ·
 [name_conflict.dart](../../app/lib/src/state/name_conflict.dart) ·
 [offline_qr.dart](../../app/lib/src/state/offline_qr.dart) ·
 [open_external.dart](../../app/lib/src/state/open_external.dart) ·
+[photo_backup.dart](../../app/lib/src/state/photo_backup.dart) (camera-roll folders → ordered rclone filter rules) ·
+[registration_policy.dart](../../app/lib/src/state/registration_policy.dart) (exact trigger vs shared poller, poll-cadence clamp, reconcile plan) ·
 [remote_summary.dart](../../app/lib/src/state/remote_summary.dart) ·
+[scheduler_registration.dart](../../app/lib/src/state/scheduler_registration.dart) (`seedRunWhileClosed` + `reconcileRegistrations`) ·
+[scheduling_policy.dart](../../app/lib/src/state/scheduling_policy.dart) (what "run on a schedule" means per platform, in one place) ·
 [sync_preview.dart](../../app/lib/src/state/sync_preview.dart) (buckets → "what a transfer would do") ·
+[task_kind.dart](../../app/lib/src/state/task_kind.dart) (`backupOptions` / `isBackupShaped` — the three constraints that make a task a backup) ·
 [task_schedule.dart](../../app/lib/src/state/task_schedule.dart) ·
+[tree_state.dart](../../app/lib/src/state/tree_state.dart) (the tree view's forest + row flattening; nothing in it reads `state.path`) ·
 [undecryptable_names.dart](../../app/lib/src/state/undecryptable_names.dart) (a session counter, not a provider) ·
 [transfer_options.dart](../../app/lib/src/state/transfer_options.dart) ·
 plus the console helpers in [state/console/](../../app/lib/src/state/console/).
@@ -240,17 +268,27 @@ plus the console helpers in [state/console/](../../app/lib/src/state/console/).
 
 | `BrowserState` field | Meaning |
 | :--- | :--- |
-| `remote`, `path` | Current location. `null` remote = nothing open (**or** a console tab — check `activeIsConsole`). |
-| `entries`, `loading`, `error` | The listing from `operations/list`. |
+| `remote`, `path` | Current location. `null` remote = nothing open (**or** a console tab — check `activeIsConsole`). In `ViewMode.tree` this is the folder the tree is *rooted* at, not the folder any given row lives in. |
+| `entries`, `loading`, `error` | The listing from `operations/list`. In the tree it is the top level only; deeper levels live in `tree`. |
 | `selected` (`Set<String>`), `filter` | Multi-selection by name; live client-side Ctrl+F filter. |
-| `sortKey`, `ascending`, `viewMode`, `gridSize` | Per-pane view; persisted per remote via `viewMemoryProvider`. |
+| `sortKey`, `ascending`, `viewMode`, `gridSize` | Per-pane view; persisted per remote via `viewMemoryProvider`. `viewMode == tree` is coerced back to `list` on a touch-primary device (`_allowedHere`), so "tree" always means the tree is what is showing. |
+| `tree` | The tree view's forest ([state/tree_state.dart](../../app/lib/src/state/tree_state.dart)): one cached listing per expanded folder, keyed by full path relative to the remote root, plus that view's own expansion, in-flight/error sets, multi-selection and cursor. Expansion is **session-only** (a tree that reopened forty folders at launch would issue forty listings); the cache survives navigation and a view-mode switch, and is cleared when the remote changes. |
 | `tabs`, `activeTab` | Overlaid tab metadata (see above). |
 | `hiddenUndecryptable` | How many entries rclone silently dropped from this listing because a `crypt` remote could not decrypt their names. Sampled either side of the request from the counter in [state/undecryptable_names.dart](../../app/lib/src/state/undecryptable_names.dart); a listing that came back short renders "N items hidden" instead of "Empty folder". |
-| derived | `segments`, `visibleEntries`, `selectedEntries`, `isSelected(name)`, `activeIsConsole`. |
+| derived | `segments`, `visibleEntries`, `selectedEntries`, `isSelected(name)`, `activeIsConsole`; and for the tree `hasSelection`, `selectionCount`, `childrenOf(folder)`, `isTreeSelected(path)`, `selectedTreeRows`. |
+
+**`selectedEntries` is empty in tree mode, always.** Every consumer of it builds a target as
+`state.path + entry.name`, which is right for one flat folder and wrong for a row three levels down —
+Delete would purge `root/name` instead of `A/B/C/name`. A tree selection therefore never surfaces
+there; it lives in `tree.selected` as full paths and the only correct source for a tree operation is
+`selectedTreeRows`, whose rows each carry their own `parentPath`. Use `hasSelection` /
+`selectionCount` for "is anything selected", since those answer for whichever view is showing.
 
 Mutators: `newTab` / `newConsoleTab` / `switchTab` / `closeTab`; `open(remote)`, `enterDir`,
 `goToSegment`, `up`, `navigateTo`, `back`, `forward`, `refresh`, `clear`; `setFilter`,
-`toggleSelect`, `clearSelection`, `selectOnly`, `selectAll`; `setViewMode`, `setGridSize`, `setSort`.
+`toggleSelect`, `clearSelection`, `selectOnly`, `selectAll`; `setViewMode`, `setGridSize`, `setSort`;
+and for the tree `expandNode`, `collapseNode`, `toggleExpand`, `reloadTreeFolder`, `toggleTreeSelect`,
+`selectTreeOnly`, `setTreeCursor`.
 
 Explorer-level design intent for these panes lives in [20-explorer-design.md](20-explorer-design.md).
 
@@ -260,11 +298,13 @@ Explorer-level design intent for these panes lives in [20-explorer-design.md](20
 
 Three backing stores, plus rclone's own config which this layer does **not** own.
 
-### SharedPreferences (32 keys)
+### SharedPreferences (37 keys)
 
 | Key | Provider | Encoding |
 | :--- | :--- | :--- |
 | `advanced_mode` | `advancedModeProvider` | bool |
+| `android_work_unmetered`, `android_work_charging` | `androidWorkSettingsProvider` | bool — unmetered defaults **on** |
+| `backup_retention_days` | `backupRetentionProvider` | int — days, clamped on load |
 | `biometric_unlock` | `biometricUnlockOptInProvider` | bool |
 | `bookmarks` | `bookmarksProvider` | JSON string |
 | `bw_schedule` | `bwScheduleControllerProvider` | JSON string |
@@ -287,6 +327,8 @@ Three backing stores, plus rclone's own config which this layer does **not** own
 | `rclonePath` | `settingsControllerProvider` | string |
 | `recents_enabled` | `recentsEnabledProvider` | bool — the opt-in switch only; the trail itself is never persisted |
 | `remember_config_password` | `rememberConfigPasswordProvider` | bool |
+| `scheduler_paused` | `schedulerPausedProvider` | JSON string — the tripped circuit breaker, persisted so a restart does not quietly resume it |
+| `scheduler_poll_minutes` | `pollCadenceProvider` | int — clamped, because the OS registration built from it outlives the process |
 | `skin` | `skinProvider` | enum name |
 | `themeMode` | `settingsControllerProvider` | enum name |
 | `thumb_disabled` | `thumbnailsDisabledProvider` | JSON string (list of fs) |
@@ -346,16 +388,19 @@ Six app-lifetime timers exist. Every one is created in `build()` and cancelled i
 Riverpod providers are **lazy**: a timer-owning provider nobody watches never arms. The shell
 force-reads the ones with no natural watcher from a post-frame callback in
 [ui/home_screen.dart](../../app/lib/src/ui/home_screen.dart) — `schedulerProvider`,
-`bwScheduleControllerProvider`, `bookmarksProvider`, `transferForegroundServiceProvider` and
+`bwScheduleControllerProvider`, `bookmarksProvider`, `transferForegroundServiceProvider`,
+`androidWorkReconcilerProvider` (Android: keeps WorkManager's periodic wake in step with the saved
+tasks and the Wi-Fi/charging settings; a no-op elsewhere) and
 `externalBackupProvider.notifier.ensureLoaded()` — alongside
 `engineControllerProvider.notifier.bootstrap()`. **Add any new self-driving provider to that list.**
 
-### Two entry points build the graph
+### Three entry points build the graph
 
 | Entry point | Container | Notes |
 | :--- | :--- | :--- |
 | GUI | `runApp(const ProviderScope(...))` in [app/lib/main.dart](../../app/lib/main.dart) | The scope is never disposed at process exit — see Traps. |
 | Headless (`--run-task` / `--run-due`) | a bare `ProviderContainer()` in [src/headless/headless_runner.dart](../../app/lib/src/headless/headless_runner.dart) | No widget tree, no `runApp`. It force-reads the prefs-backed providers it depends on, uses `SharedPreferences.getInstance()` as a hydration sync-point, quits the engine explicitly, then **does** `container.dispose()`. |
+| Android WorkManager wake | `androidWorkEntrypoint()` in [state/android_work_entrypoint.dart](../../app/lib/src/state/android_work_entrypoint.dart) → its own `ProviderContainer()` via `runHeadlessInProcess` | A `vm:entry-point` function running as the root of a **second Flutter engine inside the app's own process**, with no Activity and no widget tree. Same `--run-due` contract as the OS schedulers, and it disposes its container — but it must **never** call `exit()`, which is exactly why `runHeadlessInProcess` exists beside `runHeadless`: ending the process would take the foreground Activity with it. |
 
 ---
 
@@ -381,6 +426,13 @@ force-reads the ones with no natural watcher from a post-frame callback in
    "object not found". `_navigate` clears `entries` before loading and `_load` bails when
    `remote`/`path` changed under it (`superseded()`). `refresh()` deliberately does *not* clear, so a
    same-folder reload keeps its list on screen. Preserve both behaviours.
+   The **tree** is the same trap under the opposite constraint: it holds many listings at once and is
+   deliberately not cleared on navigate, so it carries its own per-folder form of the guard
+   (`_Session.treeSeq` / `treeGen` — one counter for the whole session, so a cleared map can never
+   hand a stale response a number that matches again) and a hard rule to go with it: a tree row's path
+   is built from `TreeRow.parentPath` and **never** from `state.path`. Nothing in
+   [state/tree_state.dart](../../app/lib/src/state/tree_state.dart) reads `state.path`; keep it that
+   way.
 5. **A console tab has `remote == null`.** Any "is this pane showing content?" check must accept
    `BrowserState.activeIsConsole` too, or the phone shell bounces a console back to the locations
    list.

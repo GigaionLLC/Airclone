@@ -36,8 +36,9 @@ non-goals your change has to land inside.
   a clear visual grammar (accent-tinted selection, merged contiguous rows, inset accent ring on drops).
 - **P6 — Preview before commit.** Before any copy/move/delete, show count, total size, conflicts, and
   ETA → Confirm/Cancel — routed through the transfers panel (pairs perfectly with rclone job semantics).
-- **P7 — Density is a first-class control.** Grid-size/gap sliders, Folders-First / Show-Size and
-  **Thumbnails** toggles, double-click behavior — surfaced live in the top bar.
+- **P7 — Density is a first-class control.** Density lives in reach, not in Settings: the top bar's
+  View menu carries the four icon-size presets and the **Thumbnails** toggle. A grid-gap control,
+  Folders-First, Show-Size and a double-click-behaviour setting are wanted and unbuilt.
 - **P8 — Discoverability without clutter.** Keybind glyphs in menus/tooltips, a shortcuts sheet, and a
   **priority-overflow top bar** that gracefully collapses controls on narrow / dual-pane layouts.
 - **P9 — Virtualize everything, always.** Every view windows its items from day one — the difference
@@ -52,15 +53,20 @@ dual-pane model.
 | :--- | :--- |
 | **Top bar** (~48px, floating, blurred) | *Left:* sidebar toggle, back/forward, **morphing PathBar**. *Right:* expandable search, view-mode picker, view-settings (sliders), sort, inspector toggle. Priority-overflow collapses low-priority controls when width is tight. |
 | **Sidebar** (~220px, collapsible) | Remotes (each with its backend icon), pinned/favorite paths, recents, a transfers entry. Active item gets accent fill. Remotes are the "devices" analogue. |
+| **Tab strip** (per pane) | One chip per open tab, `✕` to close, `+` to open another — [`PaneTabStrip`](../../app/lib/src/ui/tab_strip.dart), rendered by both the desktop pane header and the phone browser, with `Ctrl+T` / `Ctrl+W`. A tab is a browser, or the rclone command console (`PaneKind.console`). |
 | **Main view** | The active view (list / grid / media / columns) for the focused pane — virtualized. Two sit side-by-side in dual-pane. |
-| **Inspector** (~284px, toggleable) | Tabbed details for the selection: Overview (large thumb, name/kind, quick-action pills, media card) and More (hashes/MIME, full path, rclone remote/backend metadata). Multi-select + empty states. Reused inside Quick Look. ⌘/Ctrl+I. |
+| **Inspector** (~284px, toggleable) | Tabbed details for the selection: Overview (large thumb, name/kind, quick-action pills, media card) and More (hashes/MIME, full path, rclone remote/backend metadata). Multi-select + empty states. `Ctrl+I`. |
 | **Status bar** (~24px) | Item count, selection count + aggregate size, current sort, transfer mini-indicator, free/used where the backend exposes it. |
 
 **Dual-pane coexistence:** the top bar, sidebar, inspector, and status bar are *shared chrome* that
-reflect the **active pane**. Each pane keeps its own path history, view mode, sort, scroll, and
-selection. A thin active-pane accent indicator makes focus unambiguous; the inactive pane is a
-first-class drop target. **Single-pane is a mode** (toggle), not a fallback — default dual-pane on
-desktop, single-pane stack on mobile.
+reflect the **active pane**. Path history, view mode, sort, scroll and selection belong to the active
+**tab**, not to the pane — a pane is a stack of independent sessions, and `BrowserState.tabs` /
+`activeTab` overlay the active one onto the pane snapshot
+([`browser_controller.dart`](../../app/lib/src/state/browser_controller.dart)). A thin active-pane
+accent indicator makes focus unambiguous; the inactive pane is a first-class drop target.
+**Single-pane is the default** on desktop (`singlePaneProvider` in
+[`home_screen.dart`](../../app/lib/src/ui/home_screen.dart)); dual-pane is the toggle beside it, and
+mobile stacks a single pane.
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────────────────┐
@@ -79,8 +85,9 @@ desktop, single-pane stack on mobile.
 └──────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
-Quick Look (Space) overlays the view as a scale-in modal with prev/next nav + the inspector as a
-sidebar; the top bar hides while open.
+Quick Look (Space) covers the window over a dimmed barrier — chevrons and ←/→ to move, Space/Esc to
+close — and goes edge-to-edge fullscreen on touch, where a swipe moves and a tap hides the chrome.
+It carries no inspector sidebar ([`quick_look.dart`](../../app/lib/src/ui/quick_look.dart)).
 
 ## 🔲 View Modes
 
@@ -90,8 +97,8 @@ thumbnails lazily only for the visible window.
 | View | Status | Notes | Priority |
 | :--- | :--- | :--- | :--- |
 | **List** | ✅ have | Virtualized table (Name/Size/Modified/Type). Refine: adjacent selected rows merge into one rounded block, alternating bg, drop-target affordance. | P0 (refinements only) |
-| **Grid / icons** | ✅ have | Row-virtualized (column count from width). Card = thumbnail box (icon→thumb crossfade) + centered name pill + optional size. Grid-size/gap sliders, size-scaled corner radius. [`file_grid.dart`](../../app/lib/src/ui/file_grid.dart). | — |
-| **Media / gallery** | ✅ have | Square-cropped tiles, ~1px gap, fill width; date grouping with sticky floating date header; video duration badge. Reuses grid thumbnails. [`media_gallery.dart`](../../app/lib/src/ui/media_gallery.dart). | — |
+| **Grid / icons** | ✅ have | Row-virtualized (column count from width). Card = thumbnail box (icon→thumb crossfade) + centered name pill + optional size. Density is four named icon-size presets in the View menu (`_viewSizePresets`, 72–168px; `setGridSize` clamps to 80–180), not a slider, and tiles take a fixed `Radii.md`. [`file_grid.dart`](../../app/lib/src/ui/file_grid.dart). | — |
+| **Media / gallery** | ✅ have | Square-cropped tiles, ~1px gap, fill width; date grouping with sticky floating date header; a play-glyph overlay on video tiles (no duration is computed). Reuses grid thumbnails. [`media_gallery.dart`](../../app/lib/src/ui/media_gallery.dart). | — |
 | **Tree** | ✅ have (v0.8, desktop only) | One flat `ListView` over a flattened forest — never a scrollable per level — with a disclosure arrow on folders, indentation by depth (the Name column keeps a minimum width), and the Details columns. Listings are lazy, one `operations/list` per first expand, cached across collapse, session-only. Every row carries the folder it was listed from, and every operation resolves its path from that, never from `state.path` (the v0.5.0 stale-listing invariant). Selection may span folders; transfers group per source folder. Not offered on the touch shell. [`tree_view.dart`](../../app/lib/src/ui/tree_view.dart), [`tree_state.dart`](../../app/lib/src/state/tree_state.dart); plan: [tree-view-plan.md](../../dev/plans/tree-view-plan.md). | — |
 | **Columns (Miller)** | build | Cascading columns: select a folder → append a column; ←/→ traverse, ↑/↓ within; per-pane column stack. The strongest "native" signal. **The only unbuilt row** — `enum ViewMode { list, grid, media, tree }` in [`browser_controller.dart`](../../app/lib/src/state/browser_controller.dart) has no fifth member. | P3 |
 
@@ -138,7 +145,7 @@ each one. Do not restate a number here.
 
 **Quick Look (Space)** reuses our existing preview renderers (image/text/md/pdf/video/audio), streams
 bytes via byte-range (`rclone serve http` / RC) so media is seekable without a full download, with
-←/→ navigation across the listing and the inspector embedded as a sidebar.
+←/→ navigation across the listing.
 
 > **Feasibility:** lazy windowed generation + immutable cache + ranged reads is fast and cheap even on
 > slow backends. Video keyframes / PDF rendering are heavier — gate behind tool availability, low

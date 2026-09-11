@@ -25,6 +25,29 @@ python tool/play_images.py --package com.gigaionllc.airclone \
 overwriting it, so a second run without it leaves duplicates in the listing. Either
 route writes images only, and Play holds the change as a draft until someone sends it.
 
+## The banner, which is not in this folder
+
+A TV listing also needs a **banner** — the tile Play's TV storefront draws — and it
+lives one directory across, at
+[`../tv-banner/tv-banner-1280x720.png`](../tv-banner/tv-banner-1280x720.png). It is
+**exactly 1280x720**, the only size Play accepts for that slot, and
+`tool/play_images.py` checks the dimensions before uploading so a wrong file is named
+here rather than coming back as an opaque 400.
+
+Generate it from the master icon with `python dev/brand/make-tv-banner.py`, which
+writes **both** TV banners: this one, and the 320x180 `drawable-xhdpi/tv_banner.png`
+that `android:banner` points at for the TV home screen. They are different images for
+different surfaces and neither one complains about being the wrong one — see
+[`dev/android-tv.md`](../../../../dev/android-tv.md).
+
+Upload it as its own run, same flags as above: `type: tvBanner`,
+`dir: docs/store/play/tv-banner`, `replace: true`, `mode: report` before `apply`.
+
+```bash
+python tool/play_images.py --package com.gigaionllc.airclone \
+    --type tvBanner --dir docs/store/play/tv-banner --replace --apply
+```
+
 ## What is deliberately not here
 
 **Transfers and Settings.** Both were captured and both were dropped. The

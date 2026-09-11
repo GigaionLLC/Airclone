@@ -3,7 +3,7 @@
 ## 📊 State Dashboard
 | Metric | Value |
 | :--- | :--- |
-| **Status** | `SHIPPED — 0.6.8 READY_FOR_SALE on both platforms, 0.7.5 WAITING_FOR_REVIEW on both` |
+| **Status** | `SHIPPED — 0.6.8 and 0.7.5 READY_FOR_SALE on both platforms` (per-version state is owned by [`dev/apple-handoff.md`](../apple-handoff.md), not repeated here) |
 | **Version** | `v1.0.0` |
 | **Last Updated** | 2026-09-06 |
 | **Price target** | **$1.49**, matching Microsoft Store and Google Play |
@@ -137,9 +137,11 @@ artifact.
 
 **As built.** Both lanes now archive **UNSIGNED**
 (`CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY=""`) and apply a stored
-distribution identity at `-exportArchive`. `mas-release.yml` dropped `-allowProvisioningUpdates`
-from its export entirely; `ios-release.yml` still passes it on export and should not gain a second
-minting path. `signing: automatic` on the iOS lane is a retained experiment — it exists to answer
+distribution identity at `-exportArchive`. Neither lane passes `-allowProvisioningUpdates` or the
+App Store Connect key on export any more, except on the `automatic` experiment:
+`mas-release.yml` dropped both entirely (`:331-333`) and `ios-release.yml` gates them behind
+`if [ "${{ inputs.signing }}" = "automatic" ]` (`:383-394`). Neither should gain a second minting
+path. `signing: automatic` on the iOS lane is a retained experiment — it exists to answer
 whether an App Manager key can mint an iOS *distribution* identity this way — not a route.
 
 Certificates are minted **once, deliberately**, through the **Certificates API** with the App

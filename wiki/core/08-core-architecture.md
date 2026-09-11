@@ -150,24 +150,45 @@ never know which transport is live.**
 /// The ONE seam. `method` == an rclone RC method string ("sync/copy", etc.).
 /// params/return are the identical JSON shapes for HTTP and librclone.
 abstract interface class RcloneClient {
-  Future<Map<String, dynamic>> rpc(String method, Map<String, dynamic> params);
+  Future<Map<String, dynamic>> rpc(String method, [Map<String, dynamic> params]);
 
-  Future<void> start();            // desktop: spawn rcd & await core/version; mobile: RcloneInitialize()
-  Future<void> quit();             // desktop: core/quit then kill; mobile: RcloneFinalize()
+  Future<void> start();            // desktop: spawn rcd & await core/version; in-process: RcloneInitialize()
+  Future<void> quit();             // desktop: core/quit then kill; in-process: RcloneFinalize()
   Future<void> restart();          // FIRST-CLASS op (see §3.2) — rclone has no core/restart
-  Future<EngineStatus> status();   // running / paused(reason) / dead; min-version check
+  Future<EngineStatus> status();   // non-throwing lifecycle snapshot
 
-  /// Streaming binary read (media/thumbnails).
-  /// Desktop: HTTP --rc-serve URL. Mobile: VFS-cache-backed file / pipe. Same call shape.
-  Future<Stream<List<int>>> openObject(String fs, String remote);
+  /// An authenticated reference to an object's raw bytes (previews, thumbnails,
+  /// media, hand-off). SYNCHRONOUS — it mints a reference, it does not fetch.
+  ObjectRef objectRef(String fs, String remote);
 }
 
-enum PauseReason { password, path, version, updating }
+class ObjectRef {                  // a URL + the headers that authenticate it
+  const ObjectRef(this.url, this.headers);
+  final String url;
+  final Map<String, String> headers;
+}
+
+enum EngineState { stopped, starting, running, error }
+
+class EngineStatus {               // state + version + human-readable detail
+  const EngineStatus(this.state, {this.version, this.message});
+  …
+}
 ```
 
-- **`HttpRcloneClient`** — spawns `rclone rcd --rc-addr=127.0.0.1:<random> --rc-user=<id>
-  --rc-pass=<secret>` (prefer unix socket / named pipe), injects Basic auth, POSTs `rpc()` to
-  `http://<addr>/<method>`.
+The byte path is that URL + header pair, never a stream: rcd's `--rc-serve` file server answers it on
+the HTTP engine, and `LibrcloneObjectServer` — a tiny loopback server with a per-session Bearer token —
+answers it in-process with the identical shape, so **every preview widget works unchanged** whichever
+engine is live.
+
+- **`HttpRcloneClient`** — spawns `rclone rcd <user extraArgs…> --rc-addr 127.0.0.1:<free port>
+  --rc-user airclone --rc-pass <24 random bytes, base64url> --rc-serve
+  --rc-job-expire-duration 24h [--config <path>]`, injects Basic auth, POSTs `rpc()` to
+  `http://<addr>/<method>`. The user's own engine flags go **first** because pflag lets the last
+  occurrence of a repeated flag win, so the loopback bind and per-session credentials always override
+  anything pasted into the engine-flags setting. Hardening options that are *not* built (unix socket,
+  named pipe, TLS on the RC surface) are tracked as residual risk in
+  [15-security.md](15-security.md).
 - **`FfiRcloneClient`** — calls `RcloneInitialize()` once, marshals `rpc()` to
   `RcloneRPC(method, inputJSON) → (outputJSON, status)` on a background isolate (calls block), frees
   output with `RcloneFreeString`.
@@ -270,14 +291,21 @@ Full detail in [07-state-context.md](07-state-context.md) and [15-security.md](1
 
 - **Two state categories:** *server-state* (listings/jobs/stats — cached, deduped, polled by **one
   shared ~1 Hz poller** keyed by `_group`) and *client-state* (panes, selection, clipboard, prefs).
-- **`rclone.conf` is owned entirely by the engine** — Airclone never reads/writes it directly; all
-  mutation via `config/*`. Credentials live there, never in app stores.
+- **`rclone.conf` is the engine's file** — every *per-remote* mutation goes through `config/*`, never a
+  hand-edited section. Whole-file operations are the deliberate exceptions, and each one quiesces or
+  restarts the engine around the write: the out-of-band encryption probe (§3.2), the automatic backup
+  ring and its restore ([`config_backups.dart`](../../app/lib/src/state/config_backups.dart)), a
+  replace import (`replaceConfigFile` in
+  [`config_transfer_controller.dart`](../../app/lib/src/state/config_transfer_controller.dart), which
+  snapshots before it overwrites), and native config encryption set/change/remove, for which no RC
+  method exists ([10-external-integrations.md](10-external-integrations.md) §5). Credentials live
+  there, never in app stores.
 - **App settings & layout** in a small typed local store (window bounds, pane weights, theme, mount
   registry, scheduler jobs).
 - **Secrets:** detect config encryption out-of-band; gate startup behind a password prompt; export
-  `RCLONE_CONFIG_PASS` to the engine (never persist it); OS-keychain opt-in; transient random RC
-  credentials per desktop session, loopback only (prefer unix socket/named pipe). In-process mobile
-  librclone has **no network attack surface**.
+  `RCLONE_CONFIG_PASS` to the engine (never persist it); OS-keychain opt-in; a transient random RC
+  password per desktop session (the user name is the constant `airclone`), bound to loopback TCP.
+  In-process mobile librclone has **no network attack surface**.
 - **Dynamic remote forms** are generated from cached `config/providers` (Type→widget mapping,
   `Examples`/`Exclusive`, `Provider` conditionals, Advanced expander, `IsPassword`/`Sensitive`), and
   the **interactive/OAuth state machine** drives `config/create`/`update` with

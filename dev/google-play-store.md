@@ -117,6 +117,19 @@ Save. Listing edits do **not** require a new AAB and can ship independently of a
 - Complete the account-level **Data safety** form and **content rating** questionnaire (required for
   production) if not already done.
 
+**G. Read what users are actually saying** *(since 2026-09-09)*
+- **Actions → *Store feedback*** (`.github/workflows/store-feedback.yml`) also runs **daily at 08:00
+  UTC** on its own. Two jobs, both writing into the run summary: *What Play is serving* — every
+  track and the version code it holds ([`tool/play_tracks.py`](../tool/play_tracks.py)) — and
+  *Google Play reviews* ([`tool/play_reviews.py`](../tool/play_reviews.py)).
+- It is scheduled rather than left as a button because **Play serves roughly the last seven days of
+  reviews** on this endpoint. A window nobody fetched in time is a window nobody can ever read back.
+- It never goes red on review content unless you pass `fail_at_or_below` by hand: a one-star review
+  is not a broken pipeline, and a workflow that goes red for something you cannot fix by pushing is
+  a workflow people learn to ignore.
+- Worth opening deliberately after a release that changes install or playback behaviour. The Google
+  TV bugs fixed in v0.8 reached us out of band, from a user who had no other route in.
+
 ## Android developer verification — both signing keys must be registered
 
 Google's requirement (announced 2026-07-15): every package distributed on Android must be registered
@@ -180,6 +193,8 @@ verification. Same for any future channel that re-signs our APKs, e.g. an F-Droi
 ## See also
 
 - [`dev/android-tv.md`](android-tv.md) — shipping to the Android TV form factor
+- Daily Play monitoring — reviews and what each track is serving:
+  [`.github/workflows/store-feedback.yml`](../.github/workflows/store-feedback.yml) (step G above).
 - One-time CI / service-account setup, from nothing: [`dev/play-ci-setup.md`](play-ci-setup.md).
   (`dev/plans/store-automation-plan.md` is the original 2026-07-09 research, superseded — do not
   follow its track or release-notes claims.)

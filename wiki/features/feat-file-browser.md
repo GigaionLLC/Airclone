@@ -259,14 +259,28 @@ nothing. bisync re-uses the existing baseline confirm — an ad-hoc pair has no 
 ## 6. Browsing & viewing
 
 - Navigation: editable path bar + breadcrumb, back/forward/up, per-tab history.
-- Views: list (sortable Name/Size/Modified/Status columns) and grid/thumbnails; per-pane filter box;
-  server-side search where supported.
+- Views: four `ViewMode`s per pane tab — **list** (sortable Name/Size/Modified/Status columns),
+  **icons** (grid/thumbnails), **gallery** (`ViewMode.media`) and **tree** (§6.2, desktop only —
+  the switcher hides it on a touch-primary shell). Plus a per-pane filter box, which narrows the
+  folder you are standing in and nothing else.
+- **Find (`Ctrl+Shift+F`) is not a backend search.** It is one `operations/list` with
+  `recurse: true` over everything below the pane's current folder, filtered in Dart by name and
+  path, keeping at most 500 matches while still counting the true total. No backend query API is
+  involved and there is no capability gate, so on a large remote this costs a full recursive
+  listing of the subtree — worth knowing before running it at the root of something enormous.
 - Selection: multi-select (Ctrl/Cmd-click, Shift-range, Ctrl+A), keyboard ops (`F2` rename, `Del`
   delete, `Ctrl+C/X/V` across panes).
 - Preview: inline image/audio/video/PDF/text, streamed via the engine (no full download); pop-out
   viewers for media.
 - File ops: new folder, rename, delete (with confirm), copy/cut/paste across remotes, public link
-  (capability-gated), get size/about.
+  (capability-gated), get size/about, **checksums** (per file, from the context menu), **compare two
+  panes** (`operations/check` between them, bucketed into match / differ / missing either side) and
+  the **duplicate finder** (same-content copies grouped, each deleted by its own unique path, so
+  same-name Drive duplicates stay unambiguous).
+- **The archive actions are build-gated.** *Compress…*, and on an archive *Extract here* /
+  *Extract to…* / *List contents…*, shell out to the `rclone archive` CLI, so they appear only where
+  this build may spawn a subprocess (`subprocessAllowedHere`). A store build bundles no binary, and
+  the rows are absent there rather than present and dead.
 - **Recent folders are opt-in and never written to disk.** Off by default; the switch is in Settings
   and *it* persists, while the trail itself is session-only (capped at 12, newest first) and feeds
   the Home screen's "Recent" row and the Ctrl+K palette. Turning it off drops what was already
@@ -292,6 +306,27 @@ rather than a false alarm: the notice carries the encrypted name and no remote, 
 regex that feeds it and the sampling rule are owned by
 [Performance & Reliability Standards §3.4](../core/14-performance-standards.md); the browser only
 decides how to say it.
+
+### 6.2 The tree view
+
+The fourth view mode ([`tree_view.dart`](../../app/lib/src/ui/tree_view.dart), state in
+[`tree_state.dart`](../../app/lib/src/state/tree_state.dart)) is an expandable hierarchy inside one
+pane, with the Details columns and keyboard expand/collapse. It is **one flat `ListView` over a
+flattened forest** rather than a scrollable per level, so a deep tree costs what any other long
+listing costs. The view-mode comparison table lives with
+[Explorer design § View Modes](../core/20-explorer-design.md#-view-modes).
+
+Two properties are worth knowing here because they are the opposite of how the flat listing works:
+
+- **A folder's listing is fetched on first expand and kept across collapse**, so re-opening costs
+  nothing. The set of open folders is session-only on purpose — a tree that reopened forty folders
+  at launch would issue forty listings. Selection likewise spans folders, which the flat pane's
+  per-folder selection cannot express, so the tree carries its own.
+- **Every row resolves its path from the folder it was listed from, never from `state.path`.** The
+  tree holds many listings at once, so "the pane's current path" is not an answer to "where is this
+  row" — in this view `state.path` is only the root the tree hangs from. That is the v0.5.0
+  stale-listing race written down as an invariant rather than re-fixed, and it is the thing to
+  preserve when adding an operation to this view.
 
 ## 7. Relationship to the OS mount
 
@@ -324,8 +359,9 @@ therefore the *only* surface on a phone, as well as the primary one.
 
 `config/providers · config/create · config/update · config/delete · operations/list · operations/stat
 · operations/mkdir · operations/copyfile · operations/movefile · operations/deletefile ·
-operations/purge · operations/publiclink · operations/fsinfo · operations/about · operations/size ·
-operations/check · sync/copy · sync/move · core/stats · core/bwlimit · job/status · job/stop`
+operations/copyurl · operations/purge · operations/publiclink · operations/fsinfo · operations/about
+· operations/size · operations/check · sync/copy · sync/move · sync/sync · sync/bisync · core/stats ·
+core/bwlimit · job/status · job/stop`
 
 `operations/list` is also the collision probe behind §5.1, and `operations/check` is what makes the
 §5.2 preview trustworthy — `core/transferred` would have been the obvious source and is a capped ring

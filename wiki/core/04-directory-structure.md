@@ -33,9 +33,14 @@ Airclone/
 │  │     │  └─ models/                   # the domain models: Remote, RcloneFile, Job,
 │  │     │                               #   MountInfo, MountOptions, ServeServer, …
 │  │     ├─ state/          # Riverpod controllers (engine, remotes, browser) + pure modules
+│  │     │  └─ console/                   # the command console: argv→RC translation,
+│  │     │                                #   autocomplete, redaction
 │  │     ├─ headless/       # `--run-task` / `--run-due`: no widget tree, no runApp
-│  │     └─ ui/             # app shell, home screen, TV shell, theme tokens, format helpers
+│  │     └─ ui/             # app shell, home screen, TV shell, format helpers
+│  │        └─ theme/                     # design tokens + AppTheme / the OS skins
 │  ├─ test/                 # unit tests (run in the Linux container / CI)
+│  ├─ integration_test/ + test_driver/    # the `flutter drive` store-screenshot
+│  │                        #   harness, driven by the *-screenshots workflows
 │  ├─ windows/ macos/ linux/ android/ ios/   # platform runners + the native handlers
 │  └─ pubspec.yaml          # name: airclone · version: <semver>+<build>
 ├─ wiki/                    # architecture knowledge (source of truth)
@@ -48,8 +53,11 @@ Airclone/
 │                           #   scripts (App Store Connect, Play, Microsoft Store) and
 │                           #   the CI linters check-docs.py / check-workflows.py —
 │                           #   inventory in dev/README.md
-├─ .github/workflows/       # build & verify, release, the Apple / Play / Microsoft
-│                           #   submission lanes, and the librclone builders —
+├─ .github/                 # workflows/ — build & verify, release, the Apple / Play /
+│                           #   Microsoft submission lanes, the librclone builders;
+│                           #   actions/ — composite actions the workflows call
+│                           #   (ensure-mingw, the cgo setup the Windows librclone
+│                           #   build needs); scripts/ — notarize.sh —
 │                           #   inventory in dev/README.md
 └─ docker-compose.yml       # the `flutter` dev container
 ```
@@ -73,24 +81,34 @@ This machine has **no native Flutter/Visual Studio** — we use **Docker (linux/
 checks** and **GitHub Actions for the OS-native binaries** (a Linux container cannot build a Windows
 or macOS desktop app).
 
-### Local (Docker) — analyze, test, format, codegen
+### Local (Docker) — analyze, test, codegen
 ```powershell
 # Run docker via PowerShell (Git-Bash mangles `-w /work`). Pub cache is a named volume.
 docker compose run --rm flutter flutter pub get
 docker compose run --rm flutter flutter analyze
 docker compose run --rm flutter flutter test
-docker compose run --rm flutter dart format lib test
 # or the wrapper:
 ./tool/flutter.ps1 analyze
 ```
 First-time project scaffold (already done): `./tool/scaffold.ps1`.
 
+**Do not run `dart format` from the container.** Its image is
+`ghcr.io/cirruslabs/flutter:stable`, which **lags the version CI pins**, and an older formatter
+reformats files the `--set-exit-if-changed` gate then rejects — which is exactly how the v0.6.3
+release broke. Format with the native SDK on the dev machine, which is kept in step with the pin.
+The warning lives with the service definition in
+[`docker-compose.yml`](../../docker-compose.yml).
+
 ### CI / releases (GitHub Actions — free on the public repo)
-- **`ci.yml`** — on push/PR: `dart format` check, `flutter analyze`, `flutter test` (ubuntu). It fails
-  on **any** info-level lint and on a single unformatted file, so run both before pushing. A separate
-  `docs` job runs `python tool/check-docs.py` (a broken relative link fails the build; orphans and
-  doc-shape findings stay advisory) and `python tool/check-workflows.py` — run both locally rather
-  than learning from a red check.
+- **`ci.yml`** — on push/PR (and a weekly canary `schedule`, so upstream drift surfaces while the repo
+  is quiet): `dart format` check, `flutter analyze`, `flutter test --coverage` (ubuntu, coverage
+  uploaded as an artifact). It fails on **any** info-level lint and on a single unformatted file, so
+  run both before pushing. A separate `docs` job runs `python tool/check-docs.py` (a broken relative
+  link fails the build; orphans and doc-shape findings stay advisory), `python -m compileall -q tool/`
+  (an unparseable store script must not first be discovered half way through a release) and
+  `python tool/check-workflows.py` — run all three locally rather than learning from a red check. A
+  third job, `rclone-pin`, **warns and never fails** when the rclone version pin drifts between its
+  definition sites or falls behind upstream.
 - **`release.yml`** — on a `v*` tag: builds **Windows** (windows-latest/MSVC), **macOS**
   (macos-latest/Xcode), **Linux**, **Android**, and publishes a **GitHub Release** with the binaries
   attached (marked pre-release when the tag contains `alpha`/`beta`/`rc`).

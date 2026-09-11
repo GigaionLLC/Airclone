@@ -36,7 +36,10 @@ owns the topic.
 **Inside `wiki/`:** `core/` holds the numbered "brain" documents (§2); `features/`, `components/`,
 `logic/` and `database/` each hold topic docs **plus an index that lists every doc in that folder** —
 [features](../features/features-index.md) · [components](../components/components-index.md) ·
-[logic](../logic/logic-index.md) · [persistence](../database/database-index.md).
+[logic](../logic/logic-index.md) · [persistence](../database/database-index.md). That is the
+structural rule; it is not yet the state. Only `features/` holds topic docs today — the other three
+carry a **seed index only**, cataloguing pages nobody has written and pointing at the source files
+instead until someone does. Expect a table of Dart files there, not a page.
 
 **Inside `dev/`:** `plans/` (live work, from [`template-plan.md`](../../dev/plans/template-plan.md)) ·
 [`archive-plans/`](../../dev/archive-plans/README.md) (finished plans) ·
@@ -202,7 +205,7 @@ This repository is **public**.
 
 ## 🔍 8. The checks are mechanical — run them
 
-All three failure modes in this blueprint are mechanically detectable, so there is a committed linter.
+The failure modes in this blueprint are mechanically detectable, so there is a committed linter.
 **Run it from the repo root before committing any doc change:**
 
 ```bash
@@ -215,16 +218,19 @@ python tool/check-docs.py
 | :--- | :--- | :--- |
 | **Broken links** | any `](path)` that does not resolve on disk, **including links into `app/` source** | code moves; the doc still renders fine and the link only fails when someone follows it |
 | **Orphans** | a doc no other doc links to | reachable by `grep` but not by navigation — invisible to a low-context agent that starts at a hub |
+| **Control bytes** | a NUL or other control character sitting inside a `.md` | git and `grep` treat the whole file as **binary**: the diff disappears and the text stops being searchable — write the escape, never the byte |
 | **Doc shape** | a `wiki/core/` doc missing an H1, a "When to read this", or a Related section (§3) | the doc exists but gives no entry or exit, so it is a dead end |
 
 It strips fenced blocks and inline code first, so link *examples* — including the skeleton in §3 —
-are not reported as broken. Exit code is `0` when clean and `1` on broken links; pass `--strict` to
-also fail on orphans and shape violations, and `--quiet` for totals only.
+are not reported as broken. Exit code is `0` when clean and `1` on a broken link **or a control
+byte** — both make the file wrong for everyone downstream and neither is visible to whoever
+introduced it; pass `--strict` to also fail on orphans and shape violations, and `--quiet` for totals
+only.
 
 **CI runs it on every push and PR** — the `docs` job in
-[`ci.yml`](../../.github/workflows/ci.yml), added 2026-09-06. A broken link fails the build;
-`--strict` is deliberately off, so orphans and shape findings stay advisory rather than failing a
-release over a document nothing links to yet. Run it the way CI does before trusting a local pass:
+[`ci.yml`](../../.github/workflows/ci.yml), added 2026-09-06. A broken link or a control byte fails
+the build; `--strict` is deliberately off, so orphans and shape findings stay advisory rather than
+failing a release over a document nothing links to yet. Run it the way CI does before trusting a local pass:
 CI checks out only tracked files, so a link into a gitignored directory resolves on your machine and
 not in the build — which is exactly what the job caught first.
 

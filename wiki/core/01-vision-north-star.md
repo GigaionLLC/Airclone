@@ -25,14 +25,14 @@ Anyone should be able to *browse, organize, and move files across their cloud st
 without touching a command line, a config file, or an HTTP API — whether they're at a desktop or on
 their phone.
 
-Four pillars carry the vision:
+Five pillars carry the vision:
 
 | Pillar | What it means |
 | :--- | :--- |
 | **One UI for every backend** | Any rclone remote (S3, Drive, Dropbox, SFTP, WebDAV, …) plus local disks appear as peers in a single list, with the same rows, gestures, and context menu. No "cloud mode" vs "local mode." |
 | **A rebuilt explorer, not a mount** | The hero is an in-app file explorer purpose-built for rclone — open many remotes at once (tabs + dual-pane), configure them inline, and drag files **onto folders** like a native explorer. It transfers via rclone directly (server-side moves, no VFS), so it's faster than working on a mounted drive. |
 | **Direct manipulation** | The primary verbs — copy, move, sync — are things you *do* with your hands (drag between panes or onto a folder), not forms you fill out. Dialogs exist for precision, not for basics. |
-| **Local when you want it** | A remote can *also* be reached from the OS file explorer — mounted as a drive (desktop) or shown in the system Files app (mobile, Android/iOS) — as a convenience for other apps. This is secondary to the in-app explorer, which stays the fast path for uploading and moving. |
+| **Local when you want it** | A remote can *also* be reached from the OS file explorer — mounted as a drive (desktop), or on mobile shown in the system Files app, which is **planned, not built** ([02-product-context](02-product-context.md) owns that status). What a phone has today is hand-off: any file can be handed straight to another app. Either way this is secondary to the in-app explorer, which stays the fast path for uploading and moving. |
 | **Safe by default, powerful on demand** | Destructive operations always offer a dry-run preview and a color-coded diff before touching data; every advanced rclone control is one disclosure away, never in your face. |
 
 ## 🌟 North Star Metric
@@ -87,13 +87,14 @@ library in-process on mobile). One config, one capability set, two form factors.
 
 ## ⚡ The Magic Moment
 
-> **The first time a user drags a file out of one cloud and into another — or flips "Show in Files"
-> on their phone and watches a remote appear inside the system file explorer — without ever opening a
-> terminal.**
+> **The first time a user drags a file out of one cloud and into another — or hands a file from a
+> remote straight to another app on their phone — without ever opening a terminal.**
 
-That instant — bytes moving between two clouds from one window, or a cloud becoming a place your phone
-and its apps can browse — is when the user realizes Airclone has turned rclone's power into something
-they can simply *use*.
+That instant — bytes moving between two clouds from one window, or a cloud file arriving in another
+app with no download step in between — is when the user realizes Airclone has turned rclone's power
+into something they can simply *use*. The *target* moment on mobile, once the Files-app bridge exists,
+is flipping "Show in Files" and watching a remote appear in the system file explorer; that is where
+this is heading, not where it is.
 
 ---
 

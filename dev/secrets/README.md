@@ -37,6 +37,9 @@ release hosting**.
 | `dev-profile.env` | 🚫 never | Your real values. The file tooling and agents actually read. |
 | `.passphrase` | 🚫 never | A 32-character random passphrase (192 bits, `openssl rand -base64 24`) that encrypts the backup below. |
 | `dev-profile.env.enc` | 🚫 never | AES-256-CBC + PBKDF2 encryption of `dev-profile.env`, for **private** backup or transfer between your own machines. |
+| `apple-csr/` | 🚫 never | The **Mac App Store** signing material — the `3rd Party Mac Developer` application and installer certificates, their private keys, the `.p12`s, `p12.password` and the MAS provisioning profile. The source the `APPLE_MAS_*` GitHub secrets were built from. |
+| `apple-ios/` | 🚫 never | The **iOS** distribution identity and its profile, plus `cert-id.txt` and `profile-name.txt`. The source of the `APPLE_IOS_*` secrets, and the resume input for `tool/asc_ios_signing.py --profile-only`, which mints a fresh profile against the certificate already recorded there instead of a new one. |
+| `.vault-passphrase` | 🚫 never | The key to the committed `dev/vault/vault.enc` — see [`dev/vault/README.md`](../vault/README.md). `tool/vault.py` reads it from exactly this path. |
 
 `.gitignore` denies **everything** in this directory and then re-allows only this README and the
 example file. That is default-deny on purpose: a new file dropped here is ignored automatically, so

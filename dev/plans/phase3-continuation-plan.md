@@ -2,7 +2,7 @@
 type: "plan"
 name: "Phase 3 Continuation Plan"
 status: "active"
-description: "Finishing bisync / crypt / scheduling + engine currency. Desktop background execution and the crypt round-trip canary have since shipped (v0.2.0-beta.1); still open are background execution on macOS/Linux/Android, the crypt reattach and rotation wizards, bisync reliability surface, and the engine test harness."
+description: "Finishing bisync / crypt / scheduling + engine currency. Desktop background execution and the crypt round-trip canary have since shipped (v0.2.0-beta.1); still open are background execution on macOS/Linux (Android shipped in v0.8), the crypt reattach and rotation wizards, the bisync reliability surface, and the engine test harness."
 ---
 
 # 🧭 Phase 3 Continuation Plan

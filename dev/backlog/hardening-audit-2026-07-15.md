@@ -187,9 +187,12 @@ cache with version metadata, size/TTL/LRU limits, secure cleanup, and explicit m
 
 ### [ ] H-10 - Use one tested rclone version policy
 
-**Finding:** release builds pin rclone v1.74.4, while the runtime minimum is 1.73.5 and the portable
-desktop updater discovers whatever `version.txt` currently advertises. This can accept an older
-security baseline or run a newer engine that was not covered by Airclone's release tests.
+**Finding:** release builds pin one rclone version — v1.75.1 as of v0.8.0, in `release.yml` and
+mirrored in `dev/android/build-rclone.ps1` and both `dev/desktop/build-librclone.*` — while the
+runtime minimum is still 1.73.5 (`app/lib/src/rclone/rclone_engine.dart`, `minRcloneVersion`) and
+the portable desktop updater discovers whatever `version.txt` currently advertises. The pin moves;
+the gap between it and an unenforced floor is the finding. This can accept an older security
+baseline or run a newer engine that was not covered by Airclone's release tests.
 
 **Evidence:** `.github/workflows/release.yml:25-32,611`;
 `app/lib/src/rclone/rclone_engine.dart:116-156,238-274`;

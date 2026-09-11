@@ -512,9 +512,12 @@ incoherent.
     silently. Blanking the field saves the default, never "unlimited".
   - `[x]` **Circuit breaker that pauses the whole scheduler on a trip** (§4.e).
     `state/scheduler_pause.dart` — persisted, global, no auto-resume; hooked at
-    `recordRunOutcome`'s single terminal path, checked at the top of `tick()`,
-    and surfaced as a banner with the engine's verbatim error plus a Resume
-    button at the top of the tasks dialog.
+    `recordRunOutcome`'s single terminal path, checked at the top of `tick()`
+    **and again in `headless/headless_runner.dart` during warm-up, before any
+    task is selected**, so a Windows Scheduled Task or an Android wake refuses
+    while paused rather than repeating the damage nobody is watching
+    (`app/test/headless_breaker_test.dart`). Surfaced as a banner with the
+    engine's verbatim error plus a Resume button at the top of the tasks dialog.
   - `[x]` **Empty-source refusal.** `SchedulerController._sourceIsUnsafe` — a
     scheduled one-way Sync lists its source before dispatching and refuses if it
     is empty **or unreadable**. Unreadable counting as unsafe is a deliberate
@@ -552,6 +555,10 @@ incoherent.
     per-task either. The rule is in `state/registration_policy.dart` and it is a
     rule rather than a preference: **a schedule that names an exact time gets an
     exact OS trigger; one that names only a gap joins a single shared poller.**
+    The split is **Windows-only**: `registrationShapeFor` returns `sharedPoller`
+    for every Android schedule, because WorkManager has one periodic worker and
+    no per-task triggers, and saying otherwise would promise a 09:00 fire it
+    cannot make on a platform whose floor is fifteen minutes anyway.
     A daily 09:00 task should fire at 09:00, which Task Scheduler does for free
     with no wakeups in between and a poller can only approximate; an "every two
     hours" task is already polling by nature, so a private OS entry buys nothing

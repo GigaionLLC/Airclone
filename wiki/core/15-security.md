@@ -34,7 +34,7 @@ does not, so this table never states an aspiration in the present tense.
 | **Locked-config deadlock / startup crash** | Encryption is detected **out-of-band before any RC call** by reading the config file header; `--ask-password=false` is never used (it crashes rclone); `RCLONE_CONFIG_PASS` travels by env, never argv. | *Nothing outstanding — this row is fully built.* |
 | **Supply-chain tampering** (binary swap, MITM update) | The rclone version is pinned in one place and the download path is **fail-closed** — no fetchable, parseable, matching `SHA256SUMS` entry, no install. Windows artifacts are signed; macOS is Developer-ID signed + notarized; the bundled rclone is signed with them. | SBOM + build provenance; disabling rclone's own `selfupdate` by policy. |
 | **Data exfiltration via the app** (cooperative-user guardrail) | Four kill-switch seams enforced **inside the controller**, not only in the UI — mount, serve, reveal-in-file-manager, archive ([07 §Mount, serve & policy](07-state-context.md)). `serve/start` additionally whitelists its params, defaults to loopback and forces auth on exposed auth-capable protocols. | Backend allow/deny lists, remote-pair rules, and an audit trail of every transfer. (See the honesty note in §6.) |
-| **Accidental phone-home** | No telemetry, no analytics, no crash reporting; diagnostics never leave the device unless the user exports them. The only outbound call Airclone itself makes is the update check, and a **store-managed install short-circuits before it** (§5.1 of [10](10-external-integrations.md)). | A CI test asserting zero outbound traffic on a clean config. No such test exists today. |
+| **Accidental phone-home** | No telemetry, no analytics, no crash reporting; diagnostics never leave the device unless the user exports them. Airclone itself reaches exactly two destinations, both only on a user action: the **app** release check (`api.github.com`), where a store-managed install **short-circuits before the request** (§5.1 of [10](10-external-integrations.md)); and the **rclone engine** version check and download (`downloads.rclone.org`), which a packaged Store build refuses via `RcloneEngine.isStoreManaged()` (§5 of [14](14-performance-standards.md)) and which is only offered where that refusal does not apply. Nothing else leaves the device. | A CI test asserting zero outbound traffic on a clean config. No such test exists today. |
 
 ## 2. Engine & RC Hardening
 
@@ -60,6 +60,16 @@ both opt-in, both cleared when their feature is turned off, and both degrading t
 rather than a crash when the vault is unavailable ([07-state-context.md](07-state-context.md)). Every
 other credential lives in `rclone.conf`, which the engine owns.
 
+**Biometric unlock also ships** ([`biometric_unlock.dart`](../../app/lib/src/state/biometric_unlock.dart),
+`biometricUnlockOptInProvider`, default **off**), on every platform whose OS can answer `local_auth`
+— not mobile only. Be precise about what it is, in the file's own words: it *"adds NO cryptography"*
+and is *"an unlock-UX gate, not a security boundary"*. The config password is already in the OS vault
+bound to device unlock; a successful prompt merely **releases** it during the engine's cold start
+instead of showing the typing gate, and the prompt is required *before* the stored secret is read, so
+a refusal never pulls the plaintext into memory. Anyone who can unlock the device can still reach the
+keystore. It never hard-blocks startup: no hardware, no enrolment, a thrown platform call or a
+cancelled prompt all fall back to the existing manual password gate.
+
 The designed end state is a single **`SecretStore`** seam abstracting credential storage with
 backends per environment. **No such class exists yet**; when it lands it must satisfy:
 
@@ -70,8 +80,10 @@ backends per environment. **No such class exists yet**; when it lands it must sa
 - **References, not literals:** secrets resolve as references (`vault://…`, `keyring://…`,
   `awssm://…`) and are injected at engine spawn via `RCLONE_CONFIG_*` + `--password-command`, so
   `rclone.conf` need not contain plaintext.
-- The **config password** lives in the keystore; on mobile, decryption is gated behind biometric /
-  device unlock. The password is **never persisted by Airclone** in plaintext and never sent anywhere.
+- The **config password** resolves through the same seam as every other secret rather than through
+  its own vault call. It is **never persisted by Airclone** in plaintext and never sent anywhere —
+  that much is already true today, as is the biometric gate in front of releasing it (above). The
+  seam is the part that does not exist.
 
 ### 3.1 Mobile config lifetime — uninstall is destructive, by design
 
@@ -177,6 +189,26 @@ files on it, but it does destroy the credentials, paths and — for a `crypt` re
 salt that make its contents readable. A crypt remote recreated with a different key still connects
 and still reports free space; it simply stops being able to decrypt the names of what it stored, and
 the folder lists as empty. The UI has to say that, because nothing in rclone's response does.
+
+### 3.4 Unattended unlock — background runs
+
+Scheduled runs move the vault outside the foreground app, and that is a trust-boundary statement
+worth making plainly rather than leaving implied by §3.
+
+A Windows Task Scheduler `--run-due` launch and an Android WorkManager wake both end up in the same
+place: [`headless_runner.dart`](../../app/lib/src/headless/headless_runner.dart), whose `_startEngine`
+reads the config password out of the OS vault and unlocks an encrypted config **with no user
+present**. No biometric prompt is possible on that path — there is nobody to prompt — so the
+release gate described above simply does not apply there. On Android this happens inside a *second*
+Flutter engine in the app's own process, with no Activity and no widget tree
+([`android_work_entrypoint.dart`](../../app/lib/src/state/android_work_entrypoint.dart)).
+
+That is the price of a backup that runs while the app is closed, and it is gated by exactly one
+thing: the user having opted into remembering the config password. A headless run that cannot obtain
+one does **not** prompt, does not guess, and does not run — it exits `kExitCannotStart` (2) with a
+message naming the setting that would allow it. Anything new on this path inherits the same rule:
+an unattended runner may read a secret the user chose to store, and may never create one, persist
+one, or write one anywhere.
 
 ## 4. Encryption
 

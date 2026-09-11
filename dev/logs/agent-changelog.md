@@ -13,6 +13,141 @@ happened": nothing was logged between 2026-07-02 and 2026-07-15, or between 2026
      it is: it used to say ABOVE, which pushed it further down the file with every entry until
      it sat hundreds of lines under the newest one and pointed writers at the wrong place. -->
 
+## [2026-09-09] - v0.8.0: backups, a scheduler you can find, and the runs nobody is watching
+
+**Agent:** Claude Opus 5 - `main`
+**Files Modified:** 90 across the v0.7.7→v0.8.0 range, 60 of them new. New Dart state:
+`backup_task`, `backup_prune`, `backup_restore`, `backup_retention`, `photo_backup`, `task_kind`,
+`tree_state`, `scheduler_pause`, `scheduler_registration`, `scheduling_policy`,
+`registration_policy`, `poll_cadence`, and the four `android_work_*` files. New UI:
+`backup_wizard`, `backup_actions`, `photo_backup_section`, `from_to_picker`, `tree_view`,
+`file_row`, `tv_row_actions`. New Kotlin: `DueTasksWorker`, `WorkChannel`, `NativeChannel`,
+`AircloneApplication`. 27 new test files. Plus `.github/workflows/store-feedback.yml` and
+`tool/play_reviews.py` (new), `app/windows/installer/airclone.iss`, `app/pubspec.yaml`
+(`0.8.0+126`), `dev/releases/v0.8.0.md` and `dev/plans/tree-view-plan.md` (new), and the
+`wiki/features/feat-backup.md` + `feat-scheduling.md` pair.
+**Database/API Changes:** tag `v0.8.0` pushed (722ec03), which is what creates the GitHub Release
+and uploads to Play **open testing**. No store submission for this version is recorded in this
+repo — read the live answer rather than assuming one: *Store feedback*
+(`.github/workflows/store-feedback.yml`) prints every Play track's serving version, and
+`asc-version.yml -f mode=builds` is the same question for Apple.
+
+**Summary:** Scheduling had been shipping for several releases and a user could not find it. Every
+door sat behind advanced mode, behind a 700 dp shell, and behind a two-pane layout you had to
+arrange first. This release makes it findable, makes it safe to leave running, and builds backups on
+top of it.
+
+**A backup is a task with its dangerous options taken away.** Copy only, keep what it replaces,
+never a dry run — applied at creation *and* re-applied every run, so a task edited through the raw
+advanced dialog cannot run as something other than what its name says. Backups land under
+`<destination>/Airclone/Backups/<device>/<folder>`; the device segment exists because two machines
+backing up to one remote would otherwise merge, and the first sign of that is a restore putting a
+laptop's files on a phone. Restore is deliberately **not** a bespoke path: the button opens the
+backup's destination in the other pane and copying back out goes through the same conflict
+preflight as every other transfer. A private restore path would have had to grow its own version of
+that guard, later and worse.
+
+**The prune resolves every uncertainty to "do not delete".** The current file is never touched; a
+version whose current file is gone is kept, because it is the only copy left; no modification time
+means unknown age, not old enough; more than 500 to delete and it refuses **entirely** rather than
+deleting some, because a pass that large is more likely a bug than a backlog; an unreadable folder
+deletes nothing. The confirm dialog *is* the dry run — `prune()` defaults to reporting, so the list
+you approve was produced by exactly the code that will act on it.
+
+**Code with no door is not a feature.** An audit before tagging (e7443c5) found that nothing in the
+UI called `backupPrunerProvider`, `backupRetentionProvider`, `canRestoreFrom` or `versionBytes`.
+Backup, retention and restore were all built, all tested, and all unreachable. Worth repeating as a
+check rather than a story: after the tests pass, grep for a caller.
+
+**The circuit breaker ignored the runs it most exists for.** `state/scheduler_pause.dart` is global,
+persisted and has no auto-resume; it was hooked at `recordRunOutcome` and checked at the top of
+`tick()`. That covers the in-app tick and nothing else — a Windows Scheduled Task or an Android
+WorkManager wake would have kept going while a human was being asked to look. 505b765 added the
+check to `headless_runner.dart` during warm-up, before any task is selected, and b26543b is the test
+that pins it (`app/test/headless_breaker_test.dart`). 505b765 fixed the other half too:
+`scheduling_policy.dart`
+mapped Android to background support while `registration_policy.dart` had no Android branch at all,
+so the platform was told it could schedule and then denied a registration shape.
+
+**Android background execution, without the `workmanager` plugin.** `DueTasksWorker.kt` is our own
+`CoroutineWorker` that boots a headless `FlutterEngine` and runs `androidWorkEntrypoint`. The
+prerequisite landed first — the `airclone/native` channel moved out of `MainActivity` into the
+Application-scoped `NativeChannel.kt`, so `nativeLibraryDir` resolves with no Activity. Measured on
+Android 15: Android 12+ refuses to promote a background-started periodic wake to the foreground
+(`mAllowStartForeground false`), so a wake runs inside the plain worker's budget with the Dart run
+capped at 8 minutes, and a large first backup proceeds in slices, one per wake. No `BOOT_COMPLETED`
+receiver — WorkManager re-arms its own requests, and ours would be a second wakeup source with
+nothing to add. `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` is deliberately never requested (Play policy).
+
+**Windows registration became a rule, not a preference.** `registration_policy.dart`: a schedule
+that names a wall-clock time gets an exact OS trigger, one that names only a gap joins a single
+shared poller (15 minutes by default, 5–60). And **uninstalling now removes the tasks** (3033597) —
+they used to be left behind, firing forever at an executable that no longer existed, on a machine
+the user believes is clean. Same shape as the Store 10.2.7 finding that already cost a certification
+round, just not about files.
+
+**The tree view was built around the invariant it could break.** v0.5.0's stale-path rule says a
+pane clears its entries on navigate, because an operation built from `state.path` + a stale entry
+list resolves to the wrong object. A tree holds many folders' listings at once and does *not* clear
+them, so every operation resolves its parent from the **node**, never from `state.path` — pinned by
+`test/tree_node_paths_test.dart`. `ViewMode` is now `{list, grid, media, tree}`, desktop only.
+
+**Monitoring, because the repo has no watchers.** A Google TV user sent a three-bug report out of
+band — a persistent focus ring over every film (our own, drawn around a video surface measured at 36
+px under the loading spinner and never re-measured), D-pad focus landing on the row overflow menu,
+and no way to change track in the audio player. All real, all fixed the same day (2a26933,
+fc14ffb), and none of it visible through any channel this repo watched. `store-feedback.yml` now
+runs daily; Play serves roughly the last week of reviews, so a run that only happens when somebody
+remembers is not a substitute for a scheduled one.
+
+## [2026-09-09] - v0.7.7: five bugs from one user session on the flow that shipped the day before
+
+**Agent:** Claude Opus 5 - `main`
+**Files Modified:** 36. In `app/lib/src/state/`: `sync_preview`, `file_ops`, `remotes_provider`,
+`cloud_placeholder`. In `app/lib/src/ui/`: `sync_preview_dialog`, `sync_here_action`,
+`preview_dialog`, `remove_all_remotes`, `overflow_name`. In `app/test/`:
+`cloud_placeholder_wrapper`, `overflow_name`. Plus `app/pubspec.yaml`, `dev/releases/v0.7.7.md`
+(new), and the docs pass that ran alongside: four root docs, six `dev/` docs, twelve `wiki/` pages
+and `docs/store/README.md`.
+**Database/API Changes:** tag `v0.7.7` pushed (63f8c2c). No store submission for this version is
+recorded here, and the `store-feedback.yml` header notes that establishing that fact afterwards took
+reconstructing it from three workflows' start times — which is the digging that lane now prevents.
+
+**Summary:** Everything here came from one user exercising the "mark a folder, sync into it" flow
+that had shipped in v0.7.6, plus one guard that was closed and quietly reopened.
+
+**A preview that cannot finish is a preview that lies.** Comparing two locations ran as a single
+request under a 30-second limit, and 13,356 files do not compare in thirty seconds — so the preview
+failed on exactly the folders big enough to need one. It runs as a background job now, with no
+deadline to miss, and **cancel actually stops the job** rather than only closing the window and
+leaving the work running.
+
+**"Sync … to here" looked like a dead button.** It walked the whole source recursively before
+anything appeared on screen. It now asks the source one quick question, and both steps say which is
+running. The thorough walk is not gone — it still guards a one-way Sync you have chosen to run
+against a source that looks populated but contains no files, which would otherwise empty the
+destination. It just happens after you have said what you want, and it can be cancelled.
+
+**One fault, three surfaces.** The un-draggable scrollbar in the preview list turned out to be the
+same fault in the remove-all-remotes list and in **every text-file preview**, where it had been
+broken since it shipped. Worth the habit: when a widget-level bug shows up once, grep for the
+pattern before fixing only the instance you were shown.
+
+**Absent and null are not the same thing, and the difference was a multi-GB download.**
+`isLocalBacked()` is tri-state on purpose — null means UNRESOLVED and a tree-walking caller must
+treat it as "might be local". `union` and `combine` take a list of upstreams rather than one remote,
+so this module cannot follow them and they were meant to stay **absent** from the map. But
+`remotes_provider` built the map inline over every name in the config, so they arrived
+present-with-null, which reads as a definitive "not online-only" — and a union sitting on a sync
+folder went straight past the dedupe consent prompt into a recursive hashing pass. Introduced while
+closing the previous bug in the same area, and found by a docs pass looking for drift.
+
+**Its test had been green the whole time, for the wrong reason.** The assertion was right — an
+unfollowable remote stays unknown — but the test built its input by hand instead of the way the app
+builds it at runtime, so it never exercised the path that broke. It now builds its input the same
+way the app does, and it fails against the old code. A test that constructs its own fixture is
+testing the fixture.
+
 ## [2026-09-09] - v0.7.6 out to every store, and two guards that were made to fail before they were kept
 
 **Agent:** Claude Opus 5 - `main`

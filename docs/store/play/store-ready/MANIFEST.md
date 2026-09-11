@@ -8,6 +8,12 @@ Re-run the generator (or `--check`) to re-assert all of it.
 The 7-inch set is the 10-inch canvas scaled to 0.75, so both tablet slots show
 identical framing.
 
+**The generator rewrites this file whole** - its own `MANIFEST_HEAD`, the slot rows,
+then `MANIFEST_TAIL` - so anything hand-added between them survives only until the
+next run. *"How to get them there"* below is exactly that: hand-written, in neither
+template, and the section `docs/store/README.md` routes people here to read. Move it
+into `MANIFEST_TAIL` before regenerating, or paste it back afterwards.
+
 ## Where each file goes in Play Console -> Store listing -> Graphics
 
 | Slot | File | Dimensions | Caption |
