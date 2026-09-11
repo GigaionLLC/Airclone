@@ -5,7 +5,7 @@ import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:crypto/crypto.dart';
-import 'package:flutter/foundation.dart' show immutable;
+import 'package:flutter/foundation.dart' show immutable, visibleForTesting;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:http/http.dart' as http;
 import 'package:media_kit/media_kit.dart';
@@ -142,11 +142,24 @@ class ThumbnailService {
   /// Session-scoped; a forced rebuild clears + re-attempts.
   final _undecodable = <String>{};
 
+  /// Thumbnails still in RAM.
+  ///
+  /// A grid tile that scrolls past the list's cache extent is disposed, and its
+  /// bytes go with it — so without this, scrolling back re-read the file and
+  /// re-ran the decrypt for a thumbnail already produced twice over. That made
+  /// the *second* pass over a folder cost the same as the first, which is the
+  /// opposite of what a cache is for.
+  final _mem = ThumbMemoryCache();
+
   Directory? _cacheDir;
 
+  /// Drop everything held in RAM. Pairs with `clearDiskCaches()`: clearing only
+  /// the disk would leave the just-deleted thumbnails still showing.
+  void clearMemoryCache() => _mem.clear();
+
   /// Load thumbnail bytes (PNG) for [req]; null on any failure. When [force] is
-  /// set the disk cache is bypassed (and later overwritten) so a stale or
-  /// corrupt cached thumbnail is regenerated from source.
+  /// set both caches are bypassed (and later overwritten) so a stale or corrupt
+  /// cached thumbnail is regenerated from source.
   Future<Uint8List?> load(ThumbRequest req, {bool force = false}) async {
     final memoryOnly = _ref.read(cacheMemoryOnlyProvider);
 
@@ -154,11 +167,18 @@ class ThumbnailService {
     // the mark so the user can re-attempt (e.g. after adding codec support).
     if (force) {
       _undecodable.remove(req.cacheKey);
+      _mem.remove(req.cacheKey);
     } else if (_undecodable.contains(req.cacheKey)) {
       return null;
     }
 
-    // 1) Encrypted disk cache (skipped on a forced rebuild).
+    // 1) RAM. Free, and the common case once a folder has been looked at.
+    if (!force) {
+      final hit = _mem.get(req.cacheKey);
+      if (hit != null) return hit;
+    }
+
+    // 2) Encrypted disk cache (skipped on a forced rebuild).
     if (!memoryOnly && !force) {
       try {
         final dir = await _ensureDir();
@@ -168,21 +188,26 @@ class ThumbnailService {
           final png = await _ref
               .read(cacheCryptoProvider)
               .open(blob, req.cacheSecret);
-          if (png != null) return png; // miss/corrupt → regenerate below
+          if (png != null) {
+            _mem.put(req.cacheKey, png);
+            return png; // miss/corrupt → regenerate below
+          }
         }
       } catch (_) {
         // fall through to generation
       }
     }
 
-    // 2) In-flight dedup keyed by cacheKey.
+    // 3) In-flight dedup keyed by cacheKey.
     final existing = _inFlight[req.cacheKey];
     if (existing != null) return existing;
 
     final future = _generateAndCache(req, memoryOnly);
     _inFlight[req.cacheKey] = future;
     try {
-      return await future;
+      final png = await future;
+      if (png != null) _mem.put(req.cacheKey, png);
+      return png;
     } finally {
       _inFlight.remove(req.cacheKey);
     }
@@ -421,6 +446,55 @@ class ThumbnailService {
       final c = _waiters.removeAt(0);
       if (!c.isCompleted) c.complete();
     }
+  }
+}
+
+/// Bounded, least-recently-used store of thumbnail bytes, sized in bytes rather
+/// than entries because a thumbnail's size varies with what is in the picture.
+///
+/// Returning the identical [Uint8List] on a hit matters beyond saving the read:
+/// Flutter's own image cache keys on that instance, so the PNG is not decoded a
+/// second time either.
+@visibleForTesting
+class ThumbMemoryCache {
+  ThumbMemoryCache({this.budgetBytes = 24 * 1024 * 1024});
+
+  /// These are still-encoded PNGs (~30 KB for a photo), so the default holds
+  /// several hundred — more than a folder's worth of scrolling — while staying
+  /// a bounded, predictable number on a phone.
+  final int budgetBytes;
+
+  /// Least-recently-used **first**: a `Map` preserves insertion order, and a hit
+  /// is re-inserted to move it to the end.
+  final _entries = <String, Uint8List>{};
+  int _bytes = 0;
+
+  int get bytes => _bytes;
+  int get length => _entries.length;
+
+  /// Look up [key], promoting it to most-recently-used.
+  Uint8List? get(String key) {
+    final hit = _entries.remove(key);
+    if (hit != null) _entries[key] = hit;
+    return hit;
+  }
+
+  void put(String key, Uint8List value) {
+    remove(key);
+    _entries[key] = value;
+    _bytes += value.length;
+    // Never evict the entry just added, even if it alone is over budget: the
+    // caller is about to show it, and dropping it would mean fetching it again.
+    while (_bytes > budgetBytes && _entries.length > 1) {
+      _bytes -= _entries.remove(_entries.keys.first)?.length ?? 0;
+    }
+  }
+
+  void remove(String key) => _bytes -= _entries.remove(key)?.length ?? 0;
+
+  void clear() {
+    _entries.clear();
+    _bytes = 0;
   }
 }
 

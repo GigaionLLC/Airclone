@@ -35,6 +35,7 @@ import '../state/mount_policy.dart';
 import '../state/remotes_provider.dart';
 import '../state/settings_controller.dart';
 import '../state/skin.dart';
+import '../state/thumbnail_service.dart';
 import '../state/window_backdrop.dart';
 import 'config_encryption_dialog.dart';
 import 'config_export_dialog.dart';
@@ -442,6 +443,8 @@ class _CacheSectionState extends ConsumerState<_CacheSection> {
   Future<void> _clear() async {
     setState(() => _clearing = true);
     await clearDiskCaches();
+    // The in-RAM half too, or the thumbnails just deleted keep showing.
+    ref.read(thumbnailServiceProvider).clearMemoryCache();
     if (!mounted) return;
     setState(() => _clearing = false);
     _refreshSize();
