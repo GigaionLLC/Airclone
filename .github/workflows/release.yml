@@ -468,7 +468,12 @@ jobs:
       # ship: the tarball for anyone who wants the files, the AppImage for
       # everyone else.
       - name: Build AppImage
-        run: bash ../dev/linux/build-appimage.sh
+        # `test -s` first: an EMPTY script exits 0 with no output, so the step
+        # goes green having built nothing. Not hypothetical — a bad in-place
+        # rewrite truncated both packaging scripts to 0 bytes and this step
+        # "passed"; only the run-it check below noticed.
+        run: test -s ../dev/linux/build-appimage.sh &&
+          bash ../dev/linux/build-appimage.sh
           build/linux/x64/release/bundle
           "$GITHUB_WORKSPACE/app/Airclone-x86_64.AppImage"
       - name: Verify the AppImage actually starts
@@ -506,7 +511,8 @@ jobs:
       - name: Install Flatpak tooling
         run: sudo apt-get install -y flatpak flatpak-builder
       - name: Build Flatpak
-        run: bash ../dev/linux/build-flatpak.sh
+        run: test -s ../dev/linux/build-flatpak.sh &&
+          bash ../dev/linux/build-flatpak.sh
           build/linux/x64/release/bundle
           "$GITHUB_WORKSPACE/app/airclone.flatpak"
       - name: Verify the Flatpak installs and starts
