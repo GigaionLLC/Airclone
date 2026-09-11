@@ -11,6 +11,13 @@
 /// Self-contained on purpose: no external CSS, no fonts, no images, no
 /// analytics. Everything it needs is in the one response, so it works on an
 /// air-gapped host and adds no origins to the Content-Security-Policy.
+///
+/// The inline script carries a per-response [nonce], because the server's CSP
+/// is `script-src 'self'` and `'self'` does NOT cover inline script. Without
+/// the nonce the browser silently drops the script, the form falls back to a
+/// native POST, and the request arrives with no CSRF header and is refused —
+/// which is precisely what happened the first time this page met a real
+/// browser. A nonce keeps the strict policy AND the single response.
 library;
 
 import 'dart:convert';
@@ -20,7 +27,7 @@ import 'dart:convert';
 /// [error] is shown above the form when a previous attempt failed. It is
 /// deliberately vague about *why*: "wrong password" and "no such user" must
 /// look identical, or the page becomes a username oracle.
-String renderLoginPage({String? error, String? notice}) {
+String renderLoginPage({required String nonce, String? error, String? notice}) {
   final errorBlock = error == null
       ? ''
       : '<p class="msg error" role="alert">${_escape(error)}</p>';
@@ -84,17 +91,18 @@ String renderLoginPage({String? error, String? notice}) {
   <p class="sub">Sign in to reach this machine's remotes.</p>
   $errorBlock
   $noticeBlock
-  <form id="f" method="post" action="/api/login">
+  <form id="f">
     <label for="u">Username</label>
     <input id="u" name="username" autocomplete="username" autofocus required>
     <label for="p">Password</label>
     <input id="p" name="password" type="password" autocomplete="current-password" required>
     <button id="b" type="submit">Sign in</button>
   </form>
+  <noscript><p class="msg error">JavaScript is required to sign in.</p></noscript>
   <footer>The password was generated on first launch. It is in
   <code>webui.env</code> beside your rclone config.</footer>
 </main>
-<script>
+<script nonce="${_escape(nonce)}">
 // Submitted with fetch and a custom header so the server can require that
 // header on every state-changing request; a cross-origin form cannot set one.
 const f = document.getElementById('f');

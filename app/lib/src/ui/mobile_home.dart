@@ -269,7 +269,13 @@ class _MobileLocations extends ConsumerWidget {
           ],
         ),
         if (needsAccess) const StorageAccessBanner(),
-        _header(c, androidIsTelevision ? 'This TV' : 'This phone'),
+        _header(
+          c,
+          localStorageSectionTitle(
+            isTelevision: androidIsTelevision,
+            phoneShell: true,
+          ),
+        ),
         for (final d in drives) _tile(context, ref, d.remote, d.kind),
         for (final l in locations) _tile(context, ref, l.remote, l.kind),
         _header(

@@ -216,6 +216,33 @@ jobs:
           }
           & $nuget sources list
       - run: flutter build windows --release
+      # The Web UI's interface files, for `airclone --webui` and
+      # Settings -> Remote access. Built here rather than shipped as a Flutter
+      # asset on purpose: ~40 MB of CanvasKit inside the APK and the IPA would
+      # be pure dead weight, since a phone is not the machine you point a
+      # browser at. Desktop jobs only, for the same reason.
+      #
+      # --no-web-resources-cdn is LOAD-BEARING, not a preference. Without it the
+      # bundle fetches CanvasKit and the Roboto font from gstatic.com on every
+      # page load: a phone-home this product does not do, and a hard failure on
+      # exactly the air-gapped and LAN-only servers this feature exists for. It
+      # is also blocked outright by the Web UI's own Content-Security-Policy,
+      # which is how the default was caught.
+      - name: Build the Web UI interface files
+        run: flutter build web --release --no-web-resources-cdn
+      - name: Bundle the Web UI beside the app
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $dest = "build/windows/x64/runner/Release/webui"
+          if (Test-Path $dest) { Remove-Item -Recurse -Force $dest }
+          Copy-Item -Recurse build/web $dest
+          # Debug symbol maps: ~7 MB, never read at runtime.
+          Get-ChildItem -Recurse $dest -Filter '*.symbols' | Remove-Item -Force
+          if (-not (Test-Path "$dest/index.html")) {
+            throw "Web UI files were not bundled into $dest."
+          }
+          Write-Output "Web UI bundled OK"
       # HARD GATE: the build must be self-contained with respect to the MSVC
       # runtime. windows/CMakeLists.txt copies it app-local via
       # InstallRequiredSystemLibraries, but a missing/renamed VS redist directory
@@ -458,6 +485,29 @@ jobs:
           name: librclone-linux
           path: app/linux/librclone
       - run: flutter build linux --release
+      # The Web UI's interface files, for `airclone --webui` and
+      # Settings -> Remote access. Built here rather than shipped as a Flutter
+      # asset on purpose: ~40 MB of CanvasKit inside the APK and the IPA would
+      # be pure dead weight, since a phone is not the machine you point a
+      # browser at. Desktop jobs only, for the same reason.
+      #
+      # --no-web-resources-cdn is LOAD-BEARING, not a preference. Without it the
+      # bundle fetches CanvasKit and the Roboto font from gstatic.com on every
+      # page load: a phone-home this product does not do, and a hard failure on
+      # exactly the air-gapped and LAN-only servers this feature exists for. It
+      # is also blocked outright by the Web UI's own Content-Security-Policy,
+      # which is how the default was caught.
+      - name: Build the Web UI interface files
+        run: flutter build web --release --no-web-resources-cdn
+      - name: Bundle the Web UI beside the app
+        run: |
+          set -euo pipefail
+          dest="build/linux/x64/release/bundle/webui"
+          rm -rf "$dest"
+          cp -r build/web "$dest"
+          find "$dest" -name '*.symbols' -delete
+          test -f "$dest/index.html" || { echo "Web UI files missing"; exit 1; }
+          echo "Web UI bundled OK"
       - name: Note whether librclone bundled
         run: |
           if [ -f build/linux/x64/release/bundle/librclone.so ]; then
@@ -625,6 +675,34 @@ jobs:
           name: librclone-macos
           path: app/macos/librclone
       - run: flutter build macos --release
+      # The Web UI's interface files, for `airclone --webui` and
+      # Settings -> Remote access. Built here rather than shipped as a Flutter
+      # asset on purpose: ~40 MB of CanvasKit inside the APK and the IPA would
+      # be pure dead weight, since a phone is not the machine you point a
+      # browser at. Desktop jobs only, for the same reason.
+      #
+      # --no-web-resources-cdn is LOAD-BEARING, not a preference. Without it the
+      # bundle fetches CanvasKit and the Roboto font from gstatic.com on every
+      # page load: a phone-home this product does not do, and a hard failure on
+      # exactly the air-gapped and LAN-only servers this feature exists for. It
+      # is also blocked outright by the Web UI's own Content-Security-Policy,
+      # which is how the default was caught.
+      - name: Build the Web UI interface files
+        run: flutter build web --release --no-web-resources-cdn
+      - name: Bundle the Web UI into the app (Resources)
+        # Contents/Resources, not beside the binary: that is where non-code
+        # bundle content belongs, and the codesign pass already walks it. Runs
+        # BEFORE codesign so the files are sealed with the app.
+        run: |
+          set -euo pipefail
+          APP="build/macos/Build/Products/Release/Airclone.app"
+          dest="$APP/Contents/Resources/webui"
+          rm -rf "$dest"
+          mkdir -p "$APP/Contents/Resources"
+          cp -r build/web "$dest"
+          find "$dest" -name '*.symbols' -delete
+          test -f "$dest/index.html" || { echo "Web UI files missing"; exit 1; }
+          echo "Web UI bundled OK"
       - name: Bundle librclone into the app (Frameworks)
         # Tolerant of a missing dylib (a failed/ skipped librclone build): the app
         # then ships binary-engine-only rather than failing the release. Runs

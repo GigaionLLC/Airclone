@@ -50,6 +50,7 @@ import 'remove_all_remotes.dart';
 import 'scan_from_desktop_sheet.dart';
 import 'tasks_panel.dart';
 import 'theme/tokens.dart';
+import 'webui_section.dart';
 
 /// Opens the app settings dialog (theme, engine path override, update check).
 Future<void> showSettingsDialog(BuildContext context) =>
@@ -141,6 +142,14 @@ class SettingsContent extends ConsumerWidget {
         if (HostPlatform.isAndroid) ...[
           const SizedBox(height: Space.x4),
           const PhotoBackupSection(),
+        ],
+        // Remote access: the Web UI. Desktop only (a phone is not the machine
+        // you point a browser at) and NOT advanced-gated — the thing an
+        // operator most needs to see is who can currently reach it.
+        if (desktop) ...[
+          const SizedBox(height: Space.x5),
+          const _GroupHeader('Remote access'),
+          const WebUiSection(),
         ],
         if (desktop || advanced) ...[
           const SizedBox(height: Space.x5),

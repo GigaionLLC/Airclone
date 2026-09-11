@@ -3,7 +3,7 @@
 ## 📊 State Dashboard
 | Metric | Value |
 | :--- | :--- |
-| **Status** | `IN PROGRESS` |
+| **Status** | `BUILT — awaiting a test build` |
 | **Version** | `v1.0.0` |
 | **Active Persona** | `Architect` |
 | **Last Updated** | 2026-09-11 |
@@ -193,4 +193,39 @@ bury everything else.
 * `[ ]` `--webui` flag parsing incl. `=`-joined forms and bad ports
 
 ## 5️⃣ Phase 5: Product Owner Review
-* **Status:** `PENDING`
+* **Status:** `BUILT, VERIFIED ON WINDOWS, NOT YET RELEASED`
+
+### What was proven by running it, not by reasoning about it
+
+A Windows release build hosting `--webui`, driven from a browser:
+
+* the sign-in page is what an unauthenticated visitor gets, and `/` redirects to it;
+* after signing in, the real Airclone UI renders — the host's own remotes, read
+  through `config/dump` over `/api/rc`;
+* browsing the host's `D:` drive lists the host's files and reports the host's
+  free space, which is the whole claim of this feature;
+* a narrow viewport gets the phone shell, the same URL, no separate build;
+* zero console errors and **zero requests to any third party**.
+
+### Three bugs only real execution found
+
+1. **The CSP blocked the sign-in page's own script.** `script-src 'self'` does
+   not cover inline script, so the form fell back to a native POST and the CSRF
+   check refused it — "sign in does nothing". Fixed with a per-response nonce,
+   and pinned by a test that checks the header and the page agree.
+2. **`flutter build web` phones home to Google on every page load** for CanvasKit
+   and the Roboto font. That is a hard failure on the air-gapped and LAN-only
+   servers this feature exists for, and contrary to the product's own posture.
+   `--no-web-resources-cdn` is now load-bearing in CI, with the reason written
+   next to it.
+3. **The phone shell headed the host's disks "This phone".** True on a phone,
+   false in a browser, and precisely backwards about where the user's files are.
+
+### Known gaps, stated rather than discovered later
+
+* No byte transfer between the viewer's device and the host (`operations/uploadfile`
+  and `--rc-serve` are the route when it is built).
+* One account. Sessions are per-browser, not per-person.
+* No TLS of its own; a reverse proxy is the answer and the docs say so.
+* macOS and Linux packaging is written but **unverified** — only the Windows
+  path has been run end to end.

@@ -493,3 +493,29 @@ class CollapsedSections extends Notifier<Set<String>> {
 
 final collapsedSectionsProvider =
     NotifierProvider<CollapsedSections, Set<String>>(CollapsedSections.new);
+
+/// Heading for the section listing the machine's own disks and folders.
+///
+/// On the Web UI this is the **host's** storage, never the viewer's. A phone
+/// showing the Web UI is a screen: the disks under this heading belong to the
+/// machine running Airclone, and a mount made from here appears there too. The
+/// phone shell used to head that list "This phone", which told the user the
+/// opposite of the truth about where their files were — the one piece of
+/// wording in the app that a remote UI makes actively false.
+///
+/// [phoneShell] is which layout is asking (the width-gated phone shell, or the
+/// desktop one), not which device it is running on; an Android tablet gets the
+/// desktop shell and still wants "This device".
+String localStorageSectionTitle({
+  required bool isTelevision,
+  required bool phoneShell,
+}) {
+  if (HostPlatform.isWeb) return 'Host computer';
+  if (isTelevision) return 'This TV';
+  if (phoneShell) return 'This phone';
+  // iPads get the desktop layout via the 700px width gate, so without the iOS
+  // test here it called an iPad "This computer".
+  return (HostPlatform.isAndroid || HostPlatform.isIOS)
+      ? 'This device'
+      : 'This computer';
+}

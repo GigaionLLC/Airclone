@@ -24,6 +24,7 @@ your first cloud connection.
 | [Backing up your photos (Android)](photos-android.md) | Android-only camera-roll backup: setting it up, what it copies, where it lands, the Wi-Fi and charging constraints, and the permissions Airclone asks for. |
 | [Mounting a drive and sharing](mount-and-share.md) | Mounting a remote as a drive, serving it over HTTP, WebDAV, FTP, SFTP or DLNA on your network, and asking a provider for a public link. |
 | [Your remotes, and moving them between devices](config-and-devices.md) | Where your rclone config lives on each platform, how to lock it with a password, and the three ways to carry your remotes to another device. |
+| [The Web UI](web-ui.md) | Opening Airclone in a browser on another device: starting it from Settings or with `--webui`, who can reach it, the generated password, and why every mount and every transfer still happens on the machine running Airclone. |
 | [The command console](console.md) | The built-in rclone command console: how to open it, what it runs, what it refuses and why, and how it differs between the two engines. |
 | [When something goes wrong](troubleshooting.md) | Symptom-to-cause troubleshooting, and where the local Problem report lives. |
 

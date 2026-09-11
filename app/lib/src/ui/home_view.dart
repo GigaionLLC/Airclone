@@ -4,7 +4,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../rclone/models/remote.dart';
 import '../state/bookmarks_controller.dart';
 import '../state/browser_controller.dart';
-import '../state/host_platform.dart';
 import '../state/local_locations.dart';
 import '../state/recent_locations.dart';
 import '../state/remotes_provider.dart';
@@ -198,11 +197,7 @@ class _HomeViewState extends ConsumerState<HomeView> {
       if (recentTiles.isNotEmpty) section('Recent', recentTiles),
       if (deviceTiles.isNotEmpty)
         section(
-          // iPad gets the desktop layout via the 700px width gate, so without
-          // iOS here it called an iPad "This computer".
-          HostPlatform.isAndroid || HostPlatform.isIOS
-              ? 'This device'
-              : 'This computer',
+          localStorageSectionTitle(isTelevision: false, phoneShell: false),
           deviceTiles,
         ),
       if (cloudTiles.isNotEmpty) section('Cloud', cloudTiles),

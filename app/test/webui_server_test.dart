@@ -350,6 +350,45 @@ void main() {
       await res.drain<void>();
     });
 
+    test(
+      'the sign-in page script carries a nonce the CSP actually allows',
+      () async {
+        // This is the bug that got through twice. `script-src 'self'` does not
+        // cover inline script, so without a matching nonce the browser silently
+        // drops the login script, the form degrades to a native POST, and the
+        // CSRF check refuses it — presenting as "sign in does nothing". Neither
+        // half is enough on its own: the first attempt shipped a nonce in the
+        // page whose header counterpart was the literal text "$scriptNonce".
+        final res = await send('GET', kLoginPath);
+        final csp = res.headers.value('Content-Security-Policy')!;
+        final body = await res.transform(utf8.decoder).join();
+
+        final inPage = RegExp(
+          r'<script nonce="([A-Za-z0-9_-]+)">',
+        ).firstMatch(body);
+        expect(inPage, isNotNull, reason: 'no nonce on the inline script');
+        final nonce = inPage!.group(1)!;
+        expect(nonce.length, greaterThanOrEqualTo(16));
+        expect(csp, contains("'nonce-$nonce'"));
+        // An un-interpolated placeholder would satisfy a laxer check than this.
+        expect(csp, isNot(contains(r'$')));
+      },
+    );
+
+    test('each sign-in page gets a fresh nonce', () async {
+      // A nonce reused across responses is no better than 'unsafe-inline':
+      // injected script could simply carry the known value.
+      Future<String> nonceOf() async {
+        final res = await send('GET', kLoginPath);
+        final body = await res.transform(utf8.decoder).join();
+        return RegExp(
+          r'<script nonce="([A-Za-z0-9_-]+)">',
+        ).firstMatch(body)!.group(1)!;
+      }
+
+      expect(await nonceOf(), isNot(await nonceOf()));
+    });
+
     test('the cookie is not marked Secure over plain HTTP', () async {
       // Marking it Secure on an http:// origin makes the browser discard it,
       // which presents to the operator as "the password is wrong", forever.

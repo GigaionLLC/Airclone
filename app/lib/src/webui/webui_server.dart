@@ -25,6 +25,7 @@ library;
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math';
 
 import '../rclone/rclone_client.dart';
 import 'webui_assets.dart';
@@ -78,6 +79,7 @@ class WebUiServer {
 
   HttpServer? _server;
   HttpClient? _upstream;
+  final Random _nonceRandom = Random.secure();
 
   bool get isRunning => _server != null;
 
@@ -232,20 +234,28 @@ class WebUiServer {
 
   // ── Security headers ──────────────────────────────────────────────────────
 
-  void _applySecurityHeaders(HttpResponse response) {
+  /// [scriptNonce] is set only for the sign-in page, which is the one response
+  /// carrying an inline script. `script-src 'self'` does not cover inline
+  /// script, so without the nonce the browser drops it silently and the form
+  /// degrades to a native POST that the CSRF check then refuses.
+  void _applySecurityHeaders(HttpResponse response, {String? scriptNonce}) {
     final h = response.headers;
     h.set('X-Content-Type-Options', 'nosniff');
     // The Web UI has no reason to be framed, and being framed is how
     // clickjacking turns a signed-in operator into a delete button.
     h.set('X-Frame-Options', 'DENY');
     h.set('Referrer-Policy', 'no-referrer');
+    // 'wasm-unsafe-eval' is required: CanvasKit is a WebAssembly module and
+    // compiling one counts as eval under CSP. It permits WebAssembly
+    // compilation only, NOT JavaScript eval().
+    final scriptSrc = StringBuffer("script-src 'self' 'wasm-unsafe-eval'");
+    if (scriptNonce != null) {
+      scriptSrc.write(" 'nonce-$scriptNonce'");
+    }
     h.set(
       'Content-Security-Policy',
-      // 'wasm-unsafe-eval' is required: CanvasKit is a WebAssembly module and
-      // compiling one counts as eval under CSP. It permits WebAssembly
-      // compilation only, NOT JavaScript eval().
       "default-src 'self'; "
-          "script-src 'self' 'wasm-unsafe-eval'; "
+          '$scriptSrc; '
           "style-src 'self' 'unsafe-inline'; "
           "img-src 'self' data: blob:; "
           "media-src 'self' blob:; "
@@ -311,7 +321,16 @@ class WebUiServer {
       request.response.headers.set(HttpHeaders.locationHeader, '/');
       return request.response.close();
     }
-    return _html(request, HttpStatus.ok, renderLoginPage());
+    // Fresh per response: a nonce reused across responses is no better than
+    // 'unsafe-inline', since an injected script could simply carry it.
+    final nonce = _newNonce();
+    _applySecurityHeaders(request.response, scriptNonce: nonce);
+    return _html(request, HttpStatus.ok, renderLoginPage(nonce: nonce));
+  }
+
+  String _newNonce() {
+    final bytes = List<int>.generate(16, (_) => _nonceRandom.nextInt(256));
+    return base64Url.encode(bytes).replaceAll('=', '');
   }
 
   Future<void> _handleLogin(HttpRequest request) async {
