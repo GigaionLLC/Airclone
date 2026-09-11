@@ -216,9 +216,11 @@ Three ways, all on the Releases page. Pick by how your desktop likes to install 
 | :--- | :--- |
 | `Airclone-x86_64.AppImage` | One file. `chmod +x` it and run it — it carries its own libraries, so nothing needs installing. **Start here if you are not sure.** |
 | `airclone.flatpak` | `flatpak install --user ./airclone.flatpak`. Integrates with your software centre and updates like any other app. |
-| `airclone-linux-x64.tar.gz` | The raw files, for packaging it yourself or putting it where you want. Needs `libmpv`, `libsecret-1` and `libasound2` already present — the other two do not. |
+| `airclone-linux-x64.tar.gz` | The raw files, for packaging it yourself or putting it where you want. Needs `libmpv`, `libsecret-1` and `libasound2` installed already — the other two carry their own. |
 
-The rclone engine is included in all three; there is nothing else to download.
+The rclone engine is included in all three; there is nothing else to download. The
+AppImage still uses your system's ALSA (`libasound2`), which every desktop Linux has —
+bundling audio libraries breaks a machine's own sound setup rather than helping it.
 
 ## 🗺️ Roadmap
 
