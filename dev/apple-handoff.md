@@ -9,7 +9,11 @@ by design** — real IDs, key paths and account state live in the encrypted vaul
 (`python tool/vault.py unlock`, then
 `dev/vault/notes/apple-appstore-setup-record.md`).
 
-## State: last written 2026-09-11 — 0.7.6 IS LIVE; 0.8.2 STAGED AND DELIBERATELY PARKED
+## State: last written 2026-09-11 — 0.7.6 IS LIVE; 0.8.2 STAGED AND PARKED; 0.8.3 RELEASED, NOT SUBMITTED
+
+> **Later the same day:** v0.8.3 shipped the issue #3 fix that 0.8.2 was parked for, to GitHub and
+> Play open testing only. Apple has **no 0.8.3 record**; the table below predates it and the
+> uploaded build 128 does not contain the fix. See *Why 0.8.2 is parked* below before acting.
 
 Read from App Store Connect on **2026-09-11** with `asc-version.yml -f mode=report`, so these rows
 are observed rather than remembered. What changed since the previous writing is instructive: 0.7.6
@@ -29,13 +33,22 @@ after the note was written, which is exactly why this file says to ask rather th
 `asc-submit-review.yml` has not run since **2026-09-09**; nothing has been submitted for review from
 here since then.
 
-**Why 0.8.2 is parked.** Bug report
+**Why 0.8.2 is parked, and what changed on 2026-09-11.** Bug report
 [#3](https://github.com/GigaionLLC/Airclone/issues/3) — a Windows user seeing a blank sidebar and
 blank panes — landed while the submission was being prepared. The decision was to hold Apple,
 Google-production and Microsoft until that is fixed, and ship one later version to all three
-together. The 0.8.2 records and builds are harmless where they are; when the fix version is ready,
-either rename the record (`asc-version.yml -f mode=apply -f set_version=<new>`) or create a fresh
-one and leave 0.8.2 unsubmitted.
+together. The 0.8.2 records and builds are harmless where they are.
+
+**The fix is now released as v0.8.3** (build 129): an empty card reader refused the "do you exist?"
+question for its drive letter, the throw escaped the drive sweep into a synchronous provider, and
+all three widgets watching it rethrew into their own `build()`. The condition this was waiting on is
+met. **0.8.3 is deliberately NOT submitted to Apple yet** — the instruction on releasing it was "not
+necessarily to microsoft/google/apple yet", so it went to GitHub and Play open testing only.
+
+When Apple is wanted, do not reuse the 0.8.2 record without thought: rename it
+(`asc-version.yml -f mode=apply -f set_version=0.8.3`) and upload build 129, or create a fresh 0.8.3
+record and leave 0.8.2 unsubmitted. **Build 128 predates the fix** — submitting it would ship the
+bug that caused the park.
 
 0.7.7, 0.8.0 and 0.8.1 never got Apple records at all. That is not an error to repair — a version
 nobody submitted needs no record — but it does mean the App Store is several versions behind the
