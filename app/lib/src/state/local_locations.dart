@@ -91,8 +91,37 @@ String _basename(String path) {
   return name.isEmpty ? path : name;
 }
 
+/// `Directory.existsSync()`, but total.
+///
+/// **`existsSync` is not a predicate on Windows — it throws.** The SDK returns
+/// an `OSError` for anything the OS refuses to stat and the getter turns that
+/// into a `FileSystemException` (`directory_impl.dart`: *"Exists failed"*).
+/// Reproduced on Windows 11: `Directory('CON:/').existsSync()` throws rather
+/// than answering false. A drive letter is enough to reach that class of error —
+/// a mapped network drive whose server is unreachable, a card reader with no
+/// media, a locked volume.
+///
+/// That matters far more than it looks, because these stats run inside
+/// [drivesProvider] and [userLocationsProvider]. A throw in a Riverpod provider
+/// body puts the provider in an error state, and every `ref.watch` of it then
+/// RETHROWS into the watching widget's build — which takes out the sidebar and
+/// both pane bodies at once, since those are the three things that watch it. In
+/// a release build the result is not an error message: Flutter's default
+/// `ErrorWidget` paints a flat `0xF0C0C0C0` grey rectangle with no text. An
+/// unreadable drive letter could therefore blank the whole app.
+///
+/// A path we cannot stat is simply not offered. "I could not look" and "it is
+/// not there" lead to the same UI, and neither is worth a crash.
+bool _dirExists(String path) {
+  try {
+    return Directory(path).existsSync();
+  } catch (_) {
+    return false;
+  }
+}
+
 LocalLocation? _folder(String name, String path, LocalKind kind) {
-  if (path.isEmpty || !Directory(path).existsSync()) return null;
+  if (path.isEmpty || !_dirExists(path)) return null;
   return LocalLocation(
     remote: Remote(name: name, type: 'local', fs: fsRoot(path), isLocal: true),
     kind: kind,
@@ -243,7 +272,7 @@ final drivesProvider = Provider<List<LocalLocation>>((ref) {
     for (var ch = 'C'.codeUnitAt(0); ch <= 'Z'.codeUnitAt(0); ch++) {
       final letter = String.fromCharCode(ch);
       final root = '$letter:/';
-      if (Directory(root).existsSync()) {
+      if (_dirExists(root)) {
         out.add(
           LocalLocation(
             remote: Remote(
@@ -344,7 +373,7 @@ class UserLocations extends Notifier<List<LocalLocation>> {
   /// because the user just picked the folder through PowerBox: the grant is
   /// live, and a stat is not what proves it.
   void addFolder(String path, {String? bookmark}) {
-    if (bookmark == null && !Directory(path).existsSync()) return;
+    if (bookmark == null && !_dirExists(path)) return;
     if (bookmarksRequired && bookmark == null) return;
     final fs = fsRoot(path);
     if (state.any((l) => l.remote.fs == fs)) return;
