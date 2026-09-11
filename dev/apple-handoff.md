@@ -9,12 +9,39 @@ by design** — real IDs, key paths and account state live in the encrypted vaul
 (`python tool/vault.py unlock`, then
 `dev/vault/notes/apple-appstore-setup-record.md`).
 
-## State: last written 2026-09-09 — 0.7.5 IS LIVE; 0.7.6 RECORDS CREATED, BUILDS UPLOADING
+## State: last written 2026-09-11 — 0.7.6 IS LIVE; 0.8.2 STAGED AND DELIBERATELY PARKED
 
-**`v0.7.7` and `v0.8.0` have been tagged since this was written** (`app/pubspec.yaml` is
-`0.8.0+126`), and no Apple version record for either is recorded here. Nothing in this repo can tell
-you what became of the ⏳ rows below either — only App Store Connect knows, so **ask it before acting
-on this table**:
+Read from App Store Connect on **2026-09-11** with `asc-version.yml -f mode=report`, so these rows
+are observed rather than remembered. What changed since the previous writing is instructive: 0.7.6
+was recorded here as `PREPARE_FOR_SUBMISSION` and is in fact **READY_FOR_SALE** — the lane finished
+after the note was written, which is exactly why this file says to ask rather than trust it.
+
+| | macOS | iOS |
+| :--- | :--- | :--- |
+| 0.6.8 / 0.7.5 / 0.7.6 | **READY_FOR_SALE** | READY_FOR_SALE (0.7.5 confirmed; assume same) |
+| 0.7.7 / 0.8.0 / 0.8.1 | ❌ no version record ever created | ❌ no version record ever created |
+| Version 0.8.2 | **PREPARE_FOR_SUBMISSION**, created 2026-09-11 | **PREPARE_FOR_SUBMISSION**, created 2026-09-11 |
+| 0.8.2 `releaseType` | MANUAL, set at creation | MANUAL, set at creation |
+| Build 128 uploaded | ✅ `mas-release.yml -f mode=upload` succeeded | ✅ `ios-release.yml -f mode=upload -f signing=secrets` succeeded |
+| Build 128 attached | ⛔ not attached | ⛔ not attached |
+| 0.8.2 submitted | ⛔ **parked on purpose — see below** | ⛔ **parked on purpose — see below** |
+
+`asc-submit-review.yml` has not run since **2026-09-09**; nothing has been submitted for review from
+here since then.
+
+**Why 0.8.2 is parked.** Bug report
+[#3](https://github.com/GigaionLLC/Airclone/issues/3) — a Windows user seeing a blank sidebar and
+blank panes — landed while the submission was being prepared. The decision was to hold Apple,
+Google-production and Microsoft until that is fixed, and ship one later version to all three
+together. The 0.8.2 records and builds are harmless where they are; when the fix version is ready,
+either rename the record (`asc-version.yml -f mode=apply -f set_version=<new>`) or create a fresh
+one and leave 0.8.2 unsubmitted.
+
+0.7.7, 0.8.0 and 0.8.1 never got Apple records at all. That is not an error to repair — a version
+nobody submitted needs no record — but it does mean the App Store is several versions behind the
+GitHub releases, and the next submission jumps from 0.7.6 to whatever ships next.
+
+Re-read the live state before acting on any of this:
 
 ```bash
 gh workflow run asc-version.yml -f platform=MAC_OS -f mode=report   # the version record and its state
@@ -22,25 +49,6 @@ gh workflow run asc-version.yml -f platform=MAC_OS -f mode=builds   # did the up
 ```
 
 Both are read-only — nothing writes without `mode=apply` — and both want running per platform.
-
-| | macOS | iOS |
-| :--- | :--- | :--- |
-| Version 0.7.5 | **READY_FOR_SALE** | **READY_FOR_SALE** |
-| Version 0.7.6 | **PREPARE_FOR_SUBMISSION** | **PREPARE_FOR_SUBMISSION** |
-| 0.7.6 `releaseType` | MANUAL, set at creation | MANUAL, set at creation |
-| Build 124 attached | ⏳ lane was still uploading | ⏳ lane was still uploading |
-| 0.7.6 audited / submitted | ⛔ not as of this line | ⛔ not as of this line |
-| Versions 0.7.7 / 0.8.0 | ❓ no record created from here | ❓ no record created from here |
-
-0.7.6 was created per platform with
-`asc-version.yml -f platform=<IOS|MAC_OS> -f mode=create -f version=0.7.6`, which
-printed `created … version 0.7.6  state=PREPARE_FOR_SUBMISSION  releaseType=MANUAL`
-on both. `ios-release.yml` and `mas-release.yml` were dispatched for build **124**
-in the same window and had not finished, so at that point **nothing was attached
-and nothing was submitted**. The rest of the sequence is the ordinary one: confirm the build
-registered (`asc-version.yml -f mode=builds` — `UPLOAD SUCCEEDED` is not evidence
-on its own), attach it with `mode=apply`, then
-`asc-submit-review.yml -f mode=submit -f confirm_version=0.7.6`.
 
 0.7.5 reached the store the same way and is the proof the lane works end to end:
 submitted 2026-09-06 entirely from CI — no console, no local key — with build 123
