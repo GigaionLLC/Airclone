@@ -527,8 +527,15 @@ jobs:
           dest="build/linux/x64/release/bundle"
           install -Dm755 "rclone-extract/rclone-${ver}-linux-amd64/rclone" "$dest/rclone"
           # Assert the packaged output, and that it actually runs on this arch.
+          #
+          # `env -u RCLONE_VERSION` is load-bearing. rclone maps every --flag to
+          # an RCLONE_<FLAG> environment variable, so this job's own pin
+          # variable IS the env form of rclone's `--version` flag — and rclone
+          # parses that one as a bool. Running it with the variable set dies
+          # with "invalid argument \"v1.75.1\" for \"--version\" flag". The name
+          # collision is real and cost this step a CI run to find.
           test -s "$dest/rclone" || { echo "rclone was not copied into $dest"; exit 1; }
-          "$dest/rclone" version | head -1
+          env -u RCLONE_VERSION "$dest/rclone" version | head -1
           echo "Bundled rclone $ver into $dest for the tarball, AppImage and Flatpak."
       # The Web UI's interface files, for `airclone --webui` and
       # Settings -> Remote access. Built here rather than shipped as a Flutter
