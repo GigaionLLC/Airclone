@@ -337,7 +337,7 @@ Future<int> _runHeadless(
   }
 
   // There is work to do — bring the engine up now.
-  final startError = await _startEngine(container);
+  final startError = await startEngineUnattended(container);
   if (startError != null) {
     diagnostics.add('airclone: $startError');
     return kExitCannotStart;
@@ -358,7 +358,13 @@ const Set<EnginePhase> _transientPhases = {
 /// Drives [EngineController] to a settled state and, for an encrypted config,
 /// unlocks it from the OS vault. Returns null on a ready engine, or a
 /// human-readable reason it could not start (mapped to exit 2 by the caller).
-Future<String?> _startEngine(ProviderContainer container) async {
+///
+/// Public because the Web UI host (`webui/webui_runner.dart`) needs exactly
+/// this: an engine brought up with nobody present to type a password. Both
+/// callers are unattended, and the encrypted-config path in particular must
+/// behave identically for a scheduled task and for a server that has just been
+/// started by systemd.
+Future<String?> startEngineUnattended(ProviderContainer container) async {
   final engine = container.read(engineControllerProvider.notifier);
   await engine.bootstrap();
   var phase = await _awaitEngineSettled(container);

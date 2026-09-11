@@ -243,7 +243,8 @@ List<LocalLocation> buildDefaultUserFolders() {
   }
 
   final env = HostPlatform.environment;
-  final home = (HostPlatform.isWindows ? env['USERPROFILE'] : env['HOME']) ?? '';
+  final home =
+      (HostPlatform.isWindows ? env['USERPROFILE'] : env['HOME']) ?? '';
   final sep = HostPlatform.isWindows ? '\\' : '/';
 
   void add(String name, String sub, LocalKind kind) {

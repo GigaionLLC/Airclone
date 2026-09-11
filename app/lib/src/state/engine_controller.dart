@@ -7,6 +7,7 @@ import '../rclone/http_rclone_client.dart';
 import '../rclone/librclone_ffi.dart';
 import '../rclone/rclone_client.dart';
 import '../rclone/rclone_engine.dart';
+import '../rclone/web_rclone_client.dart';
 import 'biometric_unlock.dart';
 import 'build_flavor.dart';
 import 'cache_crypto.dart';
@@ -112,6 +113,13 @@ class EngineController extends Notifier<EngineUi> {
   /// Locate an existing rclone and start; otherwise surface "not installed".
   Future<void> bootstrap() async {
     if (state.phase == EnginePhase.locating || state.isReady) return;
+
+    // Web UI build: there is no engine to find, provision, unlock or spawn —
+    // one is already running on the host that served this page, and the whole
+    // of the code below would be asking the browser to do the host's job.
+    // "Starting" here means proving we can reach it.
+    if (HostPlatform.isWeb) return _adoptHostEngine();
+
     state = const EngineUi(phase: EnginePhase.locating);
     final path = await RcloneEngine.findExisting();
     _rclonePath = path;
@@ -150,6 +158,41 @@ class EngineController extends Notifier<EngineUi> {
       return;
     }
     await _proceedWith(path);
+  }
+
+  /// Web UI: adopt the engine the host is already running, reached over
+  /// `/api/rc` on the same origin this page came from.
+  ///
+  /// No provisioning, no config-password gate and no encrypted-config probe:
+  /// the host dealt with all three before it ever started serving. A failure
+  /// here is a reachability problem, not an engine problem, so the message says
+  /// so — the operator's next move is to look at the host, not at their browser.
+  Future<void> _adoptHostEngine() async {
+    state = const EngineUi(phase: EnginePhase.starting);
+    final client = WebRcloneClient();
+    try {
+      await client.start();
+      final status = await client.status();
+      state = EngineUi(
+        phase: EnginePhase.ready,
+        client: client,
+        version: status.version,
+      );
+    } on WebUiSessionExpired {
+      // The browser is already being sent to the sign-in page; say something
+      // truthful in the meantime rather than flashing an rclone error.
+      state = const EngineUi(
+        phase: EnginePhase.starting,
+        message: 'Signing in again…',
+      );
+    } on RcloneException catch (e) {
+      state = EngineUi(
+        phase: EnginePhase.error,
+        message:
+            'Could not reach the rclone engine on the machine running '
+            'Airclone: ${e.message}',
+      );
+    }
   }
 
   /// Resolve the engine to run from the persisted setting + availability. Android

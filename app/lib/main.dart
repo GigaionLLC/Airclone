@@ -10,6 +10,8 @@ import 'src/state/window_backdrop.dart';
 import 'src/ui/app.dart';
 import 'src/ui/error_surface.dart';
 import 'src/ui/popout_image_app.dart';
+import 'src/webui/webui_options.dart';
+import 'src/webui/webui_runner.dart';
 
 Future<void> main(List<String> args) async {
   // Headless background entrypoint (`--run-task <id>` / `--run-due`), invoked by
@@ -21,6 +23,16 @@ Future<void> main(List<String> args) async {
   // process, so this never returns.
   if (isHeadlessInvocation(args)) {
     return runHeadless(args);
+  }
+  // Web UI host (`--webui`): boot the engine and serve this app's web build to
+  // browsers instead of opening a window. Branches here for the same reasons as
+  // the headless runner above — it owns its own binding init, never calls
+  // runApp, and must not touch the pre-frame backdrop sequence — and it never
+  // returns. The `!HostPlatform.isWeb` guard is a compile-time constant, so in
+  // the browser build this branch and the server behind it are eliminated
+  // entirely: the page you are looking at cannot also be the thing serving it.
+  if (!HostPlatform.isWeb && isWebUiInvocation(args)) {
+    return runWebUi(args);
   }
   WidgetsFlutterBinding.ensureInitialized();
   installVisibleErrorWidget();
