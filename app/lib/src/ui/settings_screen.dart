@@ -996,7 +996,6 @@ class _ConfigToolsHookState extends ConsumerState<_ConfigToolsHook> {
   @override
   Widget build(BuildContext context) {
     final c = AircloneTheme.of(context);
-    final desktop = Platform.isWindows || Platform.isMacOS || Platform.isLinux;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -1037,13 +1036,22 @@ class _ConfigToolsHookState extends ConsumerState<_ConfigToolsHook> {
             ),
             OutlinedButton.icon(
               // QR import is phone-camera only. A phone scans the QR live; a
-              // computer has no camera, so it explains that and points at the
-              // file-based flows (opening a file is for Import File Config).
-              // A television has no camera either, and offering it a scanner
-              // that cannot open is exactly the dead end a TV review fails on.
-              onPressed: () => desktop || androidIsTelevision
-                  ? showQrCameraUnavailableDialog(context)
-                  : showScanFromDesktopSheet(context),
+              // Wherever a camera can actually be driven — phones, and a Mac,
+              // which has a built-in one and a mobile_scanner implementation to
+              // reach it. Windows and Linux have no implementation at all and
+              // keep the file-based flows; so does a television, which has no
+              // camera, and offering it a scanner that cannot open is exactly
+              // the dead end a TV review fails on. See qrCameraScanAvailableFor.
+              onPressed: () =>
+                  qrCameraScanAvailableFor(
+                    isAndroid: Platform.isAndroid,
+                    isIOS: Platform.isIOS,
+                    isMacOS: Platform.isMacOS,
+                    isAndroidTv: androidIsTelevision,
+                    macAppStore: kMacAppStoreBuild,
+                  )
+                  ? showScanFromDesktopSheet(context)
+                  : showQrCameraUnavailableDialog(context),
               icon: const Icon(Icons.qr_code_scanner, size: 16),
               label: const Text('Import QR Config'),
               style: OutlinedButton.styleFrom(

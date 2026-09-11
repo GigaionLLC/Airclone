@@ -31,6 +31,8 @@
 	<string>$(PRODUCT_COPYRIGHT)</string>
 	<key>NSMainNibFile</key>
 	<string>MainMenu</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Airclone uses the camera only to scan an Offline QR code when you choose Import QR Config, so a configuration can move between your devices without going through any server.</string>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
 	<!-- Export compliance, answered here so Apple never asks per build.

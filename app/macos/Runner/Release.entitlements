@@ -9,5 +9,13 @@
 	     checks. -->
 	<key>com.apple.security.app-sandbox</key>
 	<false/>
+	<!-- The built-in camera, for scanning an Offline QR to import a config
+	     (Settings -> Import QR Config). Under the Hardened Runtime a macOS app
+	     cannot open a capture device without this, and NSCameraUsageDescription
+	     in Info.plist supplies the prompt the user sees. Direct-download build
+	     only: the Mac App Store entitlements deliberately omit it until that
+	     submission decision is taken - see MacAppStore.entitlements. -->
+	<key>com.apple.security.device.camera</key>
+	<true/>
 </dict>
 </plist>

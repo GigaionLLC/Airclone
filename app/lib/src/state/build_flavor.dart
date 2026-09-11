@@ -29,6 +29,38 @@ import 'dart:io';
 /// True only in a Mac App Store build (`--dart-define=AIRCLONE_MAS=true`).
 const bool kMacAppStoreBuild = bool.fromEnvironment('AIRCLONE_MAS');
 
+/// Whether a live QR scan is possible here, for importing a config by camera.
+///
+/// Pure and parameterised so the rule is unit-testable off-device, like every
+/// other policy in this file.
+///
+/// The scanner is `mobile_scanner`, which ships Android, iOS **and macOS**
+/// implementations but none for Windows or Linux. Those two therefore have no
+/// camera path at all and keep the file-based flows (including decoding a QR
+/// from a picture) — not because a PC never has a webcam, but because nothing
+/// in the dependency tree can drive one.
+///
+/// Two deliberate exclusions:
+///  - **Android TV**: a television has no camera, and offering a scanner that
+///    cannot open is the dead end a TV review fails on.
+///  - **A Mac App Store build**: scanning needs
+///    `com.apple.security.device.camera`, and under the App Sandbox every
+///    entitlement has to be justified to App Review and declared in the privacy
+///    label. Adding one is a submission decision rather than a code change, so
+///    until it is taken the MAS build keeps the file-based flows. The
+///    direct-download macOS build has no sandbox and carries the entitlement.
+bool qrCameraScanAvailableFor({
+  required bool isAndroid,
+  required bool isIOS,
+  required bool isMacOS,
+  required bool isAndroidTv,
+  required bool macAppStore,
+}) {
+  if (isAndroidTv) return false;
+  if (isAndroid || isIOS) return true;
+  return isMacOS && !macAppStore;
+}
+
 /// Whether this build may `fork`/`exec` a bundled rclone binary.
 ///
 /// Pure and parameterised rather than reading the globals directly, so the
