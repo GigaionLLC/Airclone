@@ -52,6 +52,16 @@ say() { printf '\n== %s\n' "$*"; }
   exit 1
 }
 
+# appimagetool shells out to desktop-file-validate and refuses to run without it,
+# with a message that arrives only AFTER the slow part (staging, and resolving
+# the whole libmpv dependency tree) has already succeeded. Say so up front
+# instead: it is `desktop-file-utils` on Debian/Ubuntu and Fedora alike.
+command -v desktop-file-validate >/dev/null || {
+  echo "desktop-file-validate is missing — appimagetool needs it." >&2
+  echo "Install it:  sudo apt-get install -y desktop-file-utils" >&2
+  exit 1
+}
+
 say "Fetching packaging tools"
 mkdir -p "$TOOLS"
 fetch() { # url dest
