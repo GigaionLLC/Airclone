@@ -461,15 +461,58 @@ jobs:
           fi
       - name: Package
         run: tar -czf airclone-linux-x64.tar.gz -C build/linux/x64/release/bundle .
+      # The tarball is the raw bundle and links against libraries a desktop may
+      # not have — on a stock Ubuntu 24.04 it fails to start, missing
+      # libsecret-1, libmpv and libasound. The AppImage carries those with it and
+      # brings a menu entry and an icon, which the tarball has never had. Both
+      # ship: the tarball for anyone who wants the files, the AppImage for
+      # everyone else.
+      - name: Build AppImage
+        run: bash ../dev/linux/build-appimage.sh
+          build/linux/x64/release/bundle
+          "$GITHUB_WORKSPACE/app/Airclone-x86_64.AppImage"
+      - name: Verify the AppImage actually starts
+        # Build-and-upload is not proof. Run it headless under a virtual display:
+        # a missing library, a broken AppRun or a bad bundle layout all fail here,
+        # in the run that produced the artifact, rather than on a user's machine.
+        run: |
+          sudo apt-get install -y xvfb
+          chmod +x Airclone-x86_64.AppImage
+          ./Airclone-x86_64.AppImage --appimage-extract >/dev/null
+          test -x squashfs-root/AppRun || { echo "no AppRun in the AppImage"; exit 1; }
+          test -f squashfs-root/usr/bin/data/flutter_assets/AssetManifest.bin \
+            || { echo "Flutter assets are not beside the executable"; exit 1; }
+          # 20s is long enough to build a window and short enough not to hang a
+          # job; the app is killed, so only a CRASH before then is a failure.
+          xvfb-run -a timeout 20 ./squashfs-root/AppRun > appimage-run.log 2>&1 &
+          pid=$!
+          sleep 15
+          if kill -0 "$pid" 2>/dev/null; then
+            echo "still running after 15s — it started"
+            kill "$pid" 2>/dev/null || true
+          else
+            wait "$pid" && rc=0 || rc=$?
+            # 124 is timeout's own "I stopped it", i.e. it stayed up.
+            if [ "${rc:-0}" -ne 124 ]; then
+              echo "::error::AppImage exited early (rc=${rc:-0})"
+              cat appimage-run.log
+              exit 1
+            fi
+          fi
+          rm -rf squashfs-root
       - uses: actions/upload-artifact@v6
         with:
           name: airclone-linux-x64
-          path: app/airclone-linux-x64.tar.gz
+          path: |
+            app/airclone-linux-x64.tar.gz
+            app/Airclone-x86_64.AppImage
       - name: Upload to release
         if: startsWith(github.ref, 'refs/tags/')
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release upload "$GITHUB_REF_NAME" airclone-linux-x64.tar.gz --clobber --repo "$GITHUB_REPOSITORY"
+        run: |
+          gh release upload "$GITHUB_REF_NAME" airclone-linux-x64.tar.gz --clobber --repo "$GITHUB_REPOSITORY"
+          gh release upload "$GITHUB_REF_NAME" Airclone-x86_64.AppImage --clobber --repo "$GITHUB_REPOSITORY"
 
   macos:
     runs-on: macos-latest
