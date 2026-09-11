@@ -1,0 +1,119 @@
+name: rclone pin bump
+
+# Opens a PR when upstream rclone moves ahead of the version this repo pins.
+#
+# WHY A PR AND NOT A PUSH. "Always ship the latest rclone" is the goal, but
+# resolving `latest` at release time would be the wrong way to get there: every
+# release would then ship an engine nobody had run, and two builds of the same
+# tag could differ. The engine is the thing that moves the user's files. So this
+# proposes the bump and lets CI and a human agree to it — the same outcome, a
+# few hours later, reproducible.
+#
+# The version is pinned in FOUR places (release.yml drives the binary bundling
+# and the Android jniLib; the three scripts build librclone). ci.yml already
+# warns when they drift or fall behind, but a warning in a CI log is precisely
+# the kind of thing that gets missed — that is how this repo shipped three
+# releases with no bundled rclone. A PR shows up in the PR list instead.
+#
+# The prose comment above the pin in release.yml deliberately is NOT rewritten:
+# it records WHY a version was chosen (security advisories, behaviour verified
+# against a real binary). That reasoning has to be redone by a person for the
+# new version, and the PR body says so.
+
+on:
+  schedule:
+    # Mondays, 07:00 UTC. rclone patch releases are irregular; weekly is often
+    # enough to catch a security release without opening noise.
+    - cron: '0 7 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  bump:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Compare the pin with upstream
+        id: check
+        run: |
+          set -euo pipefail
+          current=$(grep -oP 'RCLONE_VERSION: \Kv[0-9.]+' .github/workflows/release.yml | head -1)
+          latest=$(curl -fsS --retry 3 https://downloads.rclone.org/version.txt | grep -oP 'v[0-9.]+' | head -1)
+          [ -n "$current" ] || { echo "could not read the current pin"; exit 1; }
+          [ -n "$latest" ]  || { echo "could not read the upstream version"; exit 1; }
+          echo "current=$current" >> "$GITHUB_OUTPUT"
+          echo "latest=$latest"   >> "$GITHUB_OUTPUT"
+          if [ "$current" = "$latest" ]; then
+            echo "up-to-date=true" >> "$GITHUB_OUTPUT"
+            echo "Pinned at $current, which is the latest. Nothing to do."
+          else
+            echo "up-to-date=false" >> "$GITHUB_OUTPUT"
+            echo "Pinned at $current; upstream is $latest."
+          fi
+
+      - name: Rewrite every pin site
+        if: steps.check.outputs.up-to-date == 'false'
+        env:
+          CURRENT: ${{ steps.check.outputs.current }}
+          LATEST: ${{ steps.check.outputs.latest }}
+        run: |
+          set -euo pipefail
+          # Narrow, anchored substitutions — one per site, matching exactly the
+          # expressions ci.yml greps for, so the two can never disagree about
+          # what counts as "the pin".
+          sed -i "s/^  RCLONE_VERSION: ${CURRENT}\$/  RCLONE_VERSION: ${LATEST}/" \
+            .github/workflows/release.yml
+          sed -i "s/RcloneVersion = '${CURRENT}'/RcloneVersion = '${LATEST}'/" \
+            dev/android/build-rclone.ps1 dev/desktop/build-librclone.ps1
+          sed -i "s/^RCLONE_VERSION=\"${CURRENT}\"\$/RCLONE_VERSION=\"${LATEST}\"/" \
+            dev/desktop/build-librclone.sh
+
+          # Assert all four moved. A sed that matched nothing exits 0, and a PR
+          # that bumps three of four sites is worse than no PR at all: the
+          # binary and the library would come from different rclone versions.
+          fail=0
+          for f in .github/workflows/release.yml dev/android/build-rclone.ps1 \
+                   dev/desktop/build-librclone.ps1 dev/desktop/build-librclone.sh; do
+            if grep -q "${CURRENT}" "$f"; then
+              # release.yml's prose comment legitimately still names the old
+              # version; only the machine-read pin must have moved.
+              if [ "$f" = ".github/workflows/release.yml" ] \
+                 && ! grep -q "^  RCLONE_VERSION: ${CURRENT}\$" "$f"; then
+                continue
+              fi
+              echo "::error::$f still pins ${CURRENT}"
+              fail=1
+            fi
+          done
+          [ "$fail" -eq 0 ] || exit 1
+          git diff --stat
+
+      - name: Open the PR
+        if: steps.check.outputs.up-to-date == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CURRENT: ${{ steps.check.outputs.current }}
+          LATEST: ${{ steps.check.outputs.latest }}
+        run: |
+          set -euo pipefail
+          branch="chore/rclone-${LATEST}"
+          # Already proposed and still open? Leave it alone rather than churning
+          # the branch under a review in progress.
+          if gh pr list --head "$branch" --state open --json number -q '.[0].number' | grep -q .; then
+            echo "A PR for ${LATEST} is already open."
+            exit 0
+          fi
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$branch"
+          git commit -qam "chore(engine): pin rclone ${LATEST}"
+          git push -u origin "$branch"
+          # The body lives in a template beside this file: building markdown
+          # inside a YAML block scalar means escaping it twice, and the second
+          # escape is where it goes wrong.
+          sed -e "s/__CURRENT__/${CURRENT}/g" -e "s/__LATEST__/${LATEST}/g" \n            .github/workflows/rclone-bump-body.md > "${RUNNER_TEMP}/pr-body.md"
+          gh pr create \n            --title "chore(engine): pin rclone ${LATEST}" \n            --body-file "${RUNNER_TEMP}/pr-body.md"
