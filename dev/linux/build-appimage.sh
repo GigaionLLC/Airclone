@@ -167,8 +167,15 @@ else
   echo "  NOTE: the build host has no libasound either — no fallback staged"
 fi
 
-# linuxdeploy leaves AppRun as a symlink straight to the executable, which means
+# linuxdeploy leaves AppRun as a SYMLINK straight to the executable, which means
 # nothing can be decided at launch. Replace it with a launcher that can.
+#
+# rm FIRST, and this is not tidiness: `cat >` follows a symlink and writes
+# THROUGH it. Without the rm, the launcher below overwrites usr/bin/airclone —
+# the actual Flutter binary — while AppRun stays a symlink pointing at it. The
+# AppImage then builds, passes a file-exists check, and dies at startup looking
+# for usr/bin/usr/bin/airclone.
+rm -f "$APPDIR/AppRun"
 cat > "$APPDIR/AppRun" <<'APPRUN'
 #!/bin/sh
 # Airclone AppImage launcher.

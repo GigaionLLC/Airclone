@@ -506,7 +506,14 @@ jobs:
             || { echo "::error::libasound is on the search path; it would shadow the host"; exit 1; }
           grep -q 'usr/lib/fallback' squashfs-root/AppRun \
             || { echo "::error::AppRun does not consult the ALSA fallback"; exit 1; }
-          echo "ALSA staged as a fallback only, and AppRun knows about it"
+          # AppRun ships as a symlink to the executable, so anything that writes
+          # to it writes THROUGH it and clobbers the binary. Assert the binary is
+          # still a binary: every other check here passed while it was a shell
+          # script, because they only asked whether files existed.
+          file -b squashfs-root/usr/bin/airclone | grep -q 'ELF 64-bit' \
+            || { echo "::error::usr/bin/airclone is not an ELF executable:
+                 $(file -b squashfs-root/usr/bin/airclone)"; exit 1; }
+          echo "ALSA staged as a fallback only, AppRun knows about it, binary intact"
           # 20s is long enough to build a window and short enough not to hang a
           # job; the app is killed, so only a CRASH before then is a failure.
           xvfb-run -a timeout 20 ./squashfs-root/AppRun > appimage-run.log 2>&1 &
