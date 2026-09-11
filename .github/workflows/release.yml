@@ -490,6 +490,14 @@ jobs:
           test -x squashfs-root/AppRun || { echo "no AppRun in the AppImage"; exit 1; }
           test -f squashfs-root/usr/bin/data/flutter_assets/AssetManifest.bin \
             || { echo "Flutter assets are not beside the executable"; exit 1; }
+          # Assert the libraries a user's distro may not have are actually INSIDE
+          # the artifact. Running it here proves nothing about this: the runner
+          # installed all of them to build, so the app would start either way.
+          for lib in libmpv.so.2 libsecret-1.so.0 libjack.so.0; do
+            find squashfs-root -name "$lib" -print -quit | grep -q . \
+              || { echo "::error::$lib is not bundled in the AppImage"; exit 1; }
+          done
+          echo "libmpv, libsecret and libjack are all bundled"
           # 20s is long enough to build a window and short enough not to hang a
           # job; the app is killed, so only a CRASH before then is a failure.
           xvfb-run -a timeout 20 ./squashfs-root/AppRun > appimage-run.log 2>&1 &

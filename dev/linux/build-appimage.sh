@@ -110,12 +110,48 @@ say "Resolving shared libraries"
 # on a machine whose graphics stack differs. What it does bundle is the part a
 # distro may genuinely not have: libmpv (media preview) and libsecret (the OS
 # credential store), plus their dependency trees.
+# linuxdeploy's exclude list treats libjack as a system library, and on a machine
+# with JACK installed it is one. Plenty of desktops have no JACK at all, and mpv
+# links it rather than dlopen-ing it, so an AppImage without it dies at startup
+# on those machines with "libjack.so.0: cannot open shared object file". Bundle
+# it when the build host has it.
+#
+# libasound is deliberately NOT forced in, even though it is unresolved on a bare
+# system: ALSA loads plugin modules from the host, and shipping our own libasound
+# breaks audio on the user's machine rather than fixing anything. Every desktop
+# Linux has it; JACK is the one that is genuinely optional.
+EXTRA=()
+for lib in libjack.so.0; do
+  path="$(ldconfig -p | awk -v n="$lib" '$1 == n { print $NF; exit }')"
+  if [ -n "$path" ]; then
+    echo "  force-bundling $lib ($path)"
+    EXTRA+=(--library "$path")
+  else
+    echo "  NOTE: $lib is not on this build host, so it will not be bundled"
+  fi
+done
+
 "$TOOLS/linuxdeploy" \
   --appdir "$APPDIR" \
   --executable "$APPDIR/usr/bin/airclone" \
   --desktop-file "$APPDIR/usr/share/applications/app.airclone.airclone.desktop" \
   --icon-file "$PKG/icons/256.png" \
-  --icon-filename app.airclone.airclone
+  --icon-filename app.airclone.airclone \
+  "${EXTRA[@]}"
+
+say "Checking the libraries a distro may not have are really inside"
+# A POSITIVE check, because the ldd one below cannot do this job: ldd resolves
+# against the BUILD MACHINE, which has every one of these installed, so it passes
+# whether or not they were bundled. That is exactly how an AppImage ships looking
+# verified and then fails on a user's machine.
+for lib in libmpv.so.2 libsecret-1.so.0; do
+  if find "$APPDIR" -name "$lib" -print -quit | grep -q .; then
+    echo "  $lib bundled"
+  else
+    echo "$lib is NOT in the AppDir — the AppImage would rely on the user having it." >&2
+    exit 1
+  fi
+done
 
 say "Checking nothing is left unresolved"
 # The failure this catches is the expensive one: an AppImage that builds, ships,
