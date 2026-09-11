@@ -188,6 +188,17 @@ jobs:
           cp macos/Runner/MacAppStore.entitlements macos/Runner/Release.entitlements
           echo "--- entitlements the Runner target will build with ---"
           cat macos/Runner/Release.entitlements | grep -E '<key>|<true|<false' || true
+          # Same scoping trick, same reason, for the camera purpose string.
+          # Info.plist is SHARED by both macOS builds, but the camera is a
+          # direct-download-only feature: the QR scanner is gated off in a MAS
+          # build (kMacAppStoreBuild -> qrCameraScanAvailableFor) and the
+          # entitlement above is deliberately absent. Shipping the purpose string
+          # anyway would declare a capability this binary does not have and
+          # cannot use - exactly the needless review surface
+          # MacAppStore.entitlements warns about. CI only, never committed.
+          /usr/libexec/PlistBuddy -c "Delete :NSCameraUsageDescription" \
+            macos/Runner/Info.plist 2>/dev/null \
+            || echo "no NSCameraUsageDescription to remove"
           # CODE_SIGN_IDENTITY must be "Apple Development" - not omitted, and not
           # "Apple Distribution". Omitting it leaves project.pbxproj's "-" in
           # charge and the archive is signed ad-hoc; naming Distribution conflicts
