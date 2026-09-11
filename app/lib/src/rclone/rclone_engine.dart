@@ -1,15 +1,15 @@
-import 'dart:ffi';
 import 'dart:io';
 
 import 'package:archive/archive.dart';
 import 'package:crypto/crypto.dart';
-import 'package:ffi/ffi.dart';
 import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 
+import '../native/native_probes.dart';
 import '../state/build_flavor.dart';
+import '../state/host_platform.dart';
 
 /// Locates — and, on first run, downloads + verifies — the `rclone` binary used by
 /// the desktop [HttpRcloneClient]. Mirrors the provisioning design in
@@ -32,7 +32,7 @@ class RcloneEngine {
     if (overridePath != null && overridePath.isNotEmpty) {
       if (await File(overridePath).exists()) return overridePath;
     }
-    if (Platform.isAndroid) return bundledAndroidBinary();
+    if (HostPlatform.isAndroid) return bundledAndroidBinary();
     // A build that may not spawn - Mac App Store, iOS - has no use for a binary
     // it could never execute: resolveEngineMode forces the in-process library
     // for it regardless of what is found. Searching anyway is not merely
@@ -59,11 +59,11 @@ class RcloneEngine {
   /// Store/MSIX build must not download executable code at runtime).
   /// Desktop-only; returns null when absent or on any error.
   static Future<String?> bundledDesktopBinary() async {
-    if (Platform.isAndroid || Platform.isIOS) return null;
+    if (HostPlatform.isAndroid || HostPlatform.isIOS) return null;
     try {
       final exeDir = File(Platform.resolvedExecutable).parent.path;
-      final name = Platform.isWindows ? 'rclone.exe' : 'rclone';
-      final path = '$exeDir${Platform.pathSeparator}$name';
+      final name = HostPlatform.isWindows ? 'rclone.exe' : 'rclone';
+      final path = '$exeDir${HostPlatform.pathSeparator}$name';
       return await File(path).exists() ? path : null;
     } catch (_) {
       return null;
@@ -86,31 +86,7 @@ class RcloneEngine {
 
   static bool? _storeManaged;
 
-  static bool _detectStoreManaged() {
-    if (!Platform.isWindows) return false;
-    const appmodelErrorNoPackage = 15700; // APPMODEL_ERROR_NO_PACKAGE
-    try {
-      final getCurrentPackageFullName = DynamicLibrary.open('kernel32.dll')
-          .lookupFunction<
-            Int32 Function(Pointer<Uint32>, Pointer<Utf16>),
-            int Function(Pointer<Uint32>, Pointer<Utf16>)
-          >('GetCurrentPackageFullName');
-      final length = malloc<Uint32>()..value = 0;
-      try {
-        // A null name buffer: unpackaged -> APPMODEL_ERROR_NO_PACKAGE; packaged ->
-        // ERROR_INSUFFICIENT_BUFFER (122) or ERROR_SUCCESS (0).
-        final rc = getCurrentPackageFullName(length, nullptr);
-        return rc != appmodelErrorNoPackage;
-      } finally {
-        malloc.free(length);
-      }
-    } catch (_) {
-      // GetCurrentPackageFullName exists on Windows 8+ (we require 10), so this is
-      // unexpected. Default to "not Store-managed": the common case is the
-      // unpackaged installer/zip, and an MSIX reliably resolves via the API above.
-      return false;
-    }
-  }
+  static bool _detectStoreManaged() => isWindowsPackagedApp();
 
   /// The rclone executable that ships inside the APK as a per-ABI jniLib named
   /// `librclone.so` (see dev/android/build-rclone.ps1). The installer extracts
@@ -204,7 +180,7 @@ class RcloneEngine {
   static Future<String> downloadLatestToStaging({
     void Function(String)? onStatus,
   }) async {
-    if (Platform.isAndroid) {
+    if (HostPlatform.isAndroid) {
       // No downloadable engine exists for Android (and exec from app storage is
       // forbidden anyway) — the binary must come bundled in the APK.
       throw StateError('The bundled rclone engine is missing from this build.');
@@ -229,7 +205,7 @@ class RcloneEngine {
 
     final base = 'https://downloads.rclone.org/$version';
     final zipName = 'rclone-$version-$triple.zip';
-    final binInZip = Platform.isWindows ? 'rclone.exe' : 'rclone';
+    final binInZip = HostPlatform.isWindows ? 'rclone.exe' : 'rclone';
 
     onStatus?.call('Downloading $zipName…');
     final zipBytes = await _getBytes('$base/$zipName');
@@ -277,7 +253,7 @@ class RcloneEngine {
     final stagedPath = await _stagedBinaryPath();
     final out = File(stagedPath);
     await out.writeAsBytes(entry.content as List<int>, flush: true);
-    if (!Platform.isWindows) {
+    if (!HostPlatform.isWindows) {
       await Process.run('chmod', ['+x', stagedPath]);
     }
     onStatus?.call('Downloaded rclone $version.');
@@ -299,7 +275,7 @@ class RcloneEngine {
     onStatus?.call('Installing engine…');
     final managed = await _managedBinaryPath();
     await swapEngineBinary(staged: stagedPath, managed: managed);
-    if (!Platform.isWindows) {
+    if (!HostPlatform.isWindows) {
       await Process.run('chmod', ['+x', managed]);
     }
     return managed;
@@ -399,31 +375,31 @@ class RcloneEngine {
 
   static Future<String> _stagedBinaryPath() async {
     final dir = await _engineDir();
-    final name = Platform.isWindows ? 'rclone.exe.new' : 'rclone.new';
-    return '$dir${Platform.pathSeparator}$name';
+    final name = HostPlatform.isWindows ? 'rclone.exe.new' : 'rclone.new';
+    return '$dir${HostPlatform.pathSeparator}$name';
   }
 
   // ── internals ──────────────────────────────────────────────────────────────
 
   static Future<String> _engineDir() async {
     final support = await getApplicationSupportDirectory();
-    return '${support.path}${Platform.pathSeparator}engine';
+    return '${support.path}${HostPlatform.pathSeparator}engine';
   }
 
   static Future<String> _managedBinaryPath() async {
     final dir = await _engineDir();
-    final name = Platform.isWindows ? 'rclone.exe' : 'rclone';
-    return '$dir${Platform.pathSeparator}$name';
+    final name = HostPlatform.isWindows ? 'rclone.exe' : 'rclone';
+    return '$dir${HostPlatform.pathSeparator}$name';
   }
 
   /// rclone's release triple, e.g. `windows-amd64`, `osx-arm64`, `linux-amd64`.
   static String _targetTriple() {
-    final os = Platform.isWindows
+    final os = HostPlatform.isWindows
         ? 'windows'
-        : Platform.isMacOS
+        : HostPlatform.isMacOS
         ? 'osx'
         : 'linux';
-    final abi = Abi.current().toString(); // e.g. windows_x64, macos_arm64
+    final abi = nativeAbiName(); // e.g. windows_x64, macos_arm64
     final arch = abi.endsWith('arm64')
         ? 'arm64'
         : abi.endsWith('x64')
@@ -507,7 +483,7 @@ class RcloneEngine {
 
   static Future<String?> _whichRclone() async {
     try {
-      final cmd = Platform.isWindows ? 'where' : 'which';
+      final cmd = HostPlatform.isWindows ? 'where' : 'which';
       final res = await Process.run(cmd, ['rclone']);
       if (res.exitCode == 0) {
         final out = (res.stdout as String).trim();

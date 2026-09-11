@@ -1,15 +1,15 @@
-import 'dart:io';
-
 import 'package:flutter_acrylic/flutter_acrylic.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
+import 'host_platform.dart';
 
 /// Window backdrops only exist on desktop. On mobile the acrylic plugin has no
 /// implementation and — worse — `Window.setEffect` awaits an internal completer
 /// that `Window.initialize` never completed (its channel call threw), so any
 /// call would hang forever. Every entry point below bails out early instead.
 bool get _isDesktop =>
-    Platform.isWindows || Platform.isMacOS || Platform.isLinux;
+    HostPlatform.isWindows || HostPlatform.isMacOS || HostPlatform.isLinux;
 
 /// Desktop window background material, applied via `flutter_acrylic`.
 ///

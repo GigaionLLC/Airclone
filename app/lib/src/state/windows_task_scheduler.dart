@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'host_platform.dart';
 import 'registration_policy.dart';
 import 'task_schedule.dart';
 import 'tasks_controller.dart';
@@ -229,7 +230,7 @@ String buildDueRunnerXml({
 /// future uninstall can enumerate and remove every one.
 ///
 /// Windows-only — every public method silently no-ops on other platforms (and is
-/// only invoked behind a `Platform.isWindows` gate in the UI anyway). The
+/// only invoked behind a `HostPlatform.isWindows` gate in the UI anyway). The
 /// [ProcessRunner] seam exists for testability; production shells out to the
 /// in-box `schtasks.exe`.
 class WindowsTaskScheduler {
@@ -249,7 +250,7 @@ class WindowsTaskScheduler {
   /// throws. A no-op success on non-Windows or when [t] has no schedule.
   Future<RegisterResult> register(TransferTask t) async {
     final schedule = t.schedule;
-    if (!Platform.isWindows || schedule == null) return _ok;
+    if (!HostPlatform.isWindows || schedule == null) return _ok;
     final xml = buildTaskXml(
       schedule: schedule,
       id: t.id,
@@ -259,7 +260,7 @@ class WindowsTaskScheduler {
     // system temp dir keyed by task id (so concurrent registers don't collide)
     // as UTF-16 to match the declared encoding, then clean it up.
     final file = File(
-      '${Directory.systemTemp.path}${Platform.pathSeparator}'
+      '${Directory.systemTemp.path}${HostPlatform.pathSeparator}'
       'airclone-task-${t.id}.xml',
     );
     try {
@@ -289,7 +290,7 @@ class WindowsTaskScheduler {
   /// not-found task (best-effort: a task that was never OS-scheduled, or already
   /// removed, is not an error). Never throws.
   Future<void> unregister(String id) async {
-    if (!Platform.isWindows) return;
+    if (!HostPlatform.isWindows) return;
     try {
       await _run('schtasks', ['/Delete', '/TN', taskName(id), '/F']);
     } catch (_) {
@@ -305,7 +306,7 @@ class WindowsTaskScheduler {
   /// An empty set on any failure, so a reconcile that cannot see what is there
   /// creates what it needs and deletes nothing.
   Future<Set<String>> listRegistered() async {
-    if (!Platform.isWindows) return const {};
+    if (!HostPlatform.isWindows) return const {};
     try {
       final res = await _run('schtasks', ['/Query', '/FO', 'CSV', '/NH']);
       if (res.exitCode != 0) return const {};
@@ -342,7 +343,7 @@ class WindowsTaskScheduler {
     required int pollMinutes,
     Set<String> refresh = const {},
   }) async {
-    if (!Platform.isWindows) {
+    if (!HostPlatform.isWindows) {
       return (
         ok: true,
         error: null,
@@ -356,7 +357,7 @@ class WindowsTaskScheduler {
         for (final t in tasks)
           if (t.runWhileClosed) t.id,
       },
-      operatingSystem: Platform.operatingSystem,
+      operatingSystem: HostPlatform.operatingSystem,
     );
     final existing = await listRegistered();
     final plan = planReconcile(desired: desired, existing: existing);
@@ -426,7 +427,7 @@ class WindowsTaskScheduler {
     // cannot collide on one temp file. The shared job's name has spaces in it.
     final safe = name.replaceAll(RegExp(r'[^A-Za-z0-9._-]'), '_');
     final file = File(
-      '${Directory.systemTemp.path}${Platform.pathSeparator}'
+      '${Directory.systemTemp.path}${HostPlatform.pathSeparator}'
       'airclone-task-$safe.xml',
     );
     try {
@@ -455,7 +456,7 @@ class WindowsTaskScheduler {
   /// Whether a Scheduled Task is currently registered for [id], probed via the
   /// exit code of `schtasks /Query`. False on non-Windows or any error.
   Future<bool> isRegistered(String id) async {
-    if (!Platform.isWindows) return false;
+    if (!HostPlatform.isWindows) return false;
     try {
       final res = await _run('schtasks', ['/Query', '/TN', taskName(id)]);
       return res.exitCode == 0;

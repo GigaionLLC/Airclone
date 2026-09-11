@@ -1,6 +1,6 @@
-import 'dart:io';
-
 import 'package:flutter/material.dart';
+
+import '../../state/host_platform.dart';
 
 /// Design tokens — the single source of truth for spacing, radius, and color.
 /// Mirrors `wiki/core/06-design-system.md`. UI must reference these, never raw hex.
@@ -305,9 +305,9 @@ enum Skin {
   /// The skin that matches the host OS's native file manager. Android/iOS get
   /// the brand look (the phone shell has its own Material grammar anyway).
   static Skin forHost() {
-    if (Platform.isWindows) return Skin.windows;
-    if (Platform.isMacOS) return Skin.macos;
-    if (Platform.isLinux) return Skin.gnome;
+    if (HostPlatform.isWindows) return Skin.windows;
+    if (HostPlatform.isMacOS) return Skin.macos;
+    if (HostPlatform.isLinux) return Skin.gnome;
     return Skin.airclone;
   }
 }

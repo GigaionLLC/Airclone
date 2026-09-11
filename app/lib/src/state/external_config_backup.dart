@@ -46,6 +46,7 @@ import 'android_native.dart';
 import 'config_io.dart';
 import 'config_transfer_controller.dart';
 import 'diagnostics.dart';
+import 'host_platform.dart';
 import 'local_locations.dart';
 import 'remotes_provider.dart';
 
@@ -87,7 +88,7 @@ String? externalBackupPath(String dir, ExternalBackupMode mode) =>
 /// reinstall untouched, so the feature would be noise; iOS has no shared
 /// location a file can outlive the app in (a future iOS build would want an
 /// iCloud/Files-app export instead, which is a different design).
-bool get backupSupported => Platform.isAndroid;
+bool get backupSupported => HostPlatform.isAndroid;
 
 /// A backup found on disk, ready to hand to the import wizard.
 @immutable

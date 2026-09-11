@@ -14,6 +14,7 @@ import 'package:path_provider/path_provider.dart';
 
 import 'android_native.dart';
 import 'cache_crypto.dart';
+import 'host_platform.dart';
 
 /// Immutable request describing one thumbnail to fetch/decode.
 @immutable
@@ -111,7 +112,7 @@ class ThumbnailService {
   /// Android is the exception now that it uses the platform frame grabber
   /// instead of libmpv: nothing there competes with playback, so a folder of
   /// videos doesn't have to fill in single file.
-  static final int _maxConcurrentVideo = Platform.isAndroid
+  static final int _maxConcurrentVideo = HostPlatform.isAndroid
       ? 2
       : (_isMobile ? 1 : 2);
 
@@ -122,7 +123,7 @@ class ThumbnailService {
       ? const Duration(seconds: 30)
       : const Duration(seconds: 12);
 
-  static final bool _isMobile = Platform.isAndroid || Platform.isIOS;
+  static final bool _isMobile = HostPlatform.isAndroid || HostPlatform.isIOS;
 
   int _active = 0;
   final _waiters = <Completer<void>>[];
@@ -267,7 +268,7 @@ class ThumbnailService {
   /// failure (→ kind icon), and null too for a frame with no picture in it:
   /// caching a black rectangle would look like a broken thumbnail forever.
   Future<Uint8List?> _captureVideoFrame(ThumbRequest req) async {
-    final png = Platform.isAndroid
+    final png = HostPlatform.isAndroid
         ? await _captureVideoFrameAndroid(req)
         : await _captureVideoFrameMpv(req);
     if (png == null) return null;

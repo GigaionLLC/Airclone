@@ -1,11 +1,10 @@
-import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:media_kit/media_kit.dart';
 
 import 'src/headless/headless_runner.dart';
 import 'src/state/android_native.dart';
+import 'src/state/host_platform.dart';
 import 'src/state/local_locations.dart';
 import 'src/state/window_backdrop.dart';
 import 'src/ui/app.dart';
@@ -36,7 +35,7 @@ Future<void> main(List<String> args) async {
   // baked into its args) and needs none of that init. It must never call
   // exit()/quit() — see popout_image_app.dart. Guarded to desktop so mobile
   // never touches the plugin channel.
-  if (Platform.isWindows || Platform.isMacOS || Platform.isLinux) {
+  if (HostPlatform.isWindows || HostPlatform.isMacOS || HostPlatform.isLinux) {
     final popoutArgs = await readPopoutImageArgs();
     if (popoutArgs != null) {
       runApp(PopoutImageApp(args: popoutArgs));
@@ -52,7 +51,7 @@ Future<void> main(List<String> args) async {
   // iOS: resolve the app's Documents directory, which is the whole of "local"
   // there. Same reason as above - the location providers stay synchronous.
   await initIosDocumentsRoot();
-  if (Platform.isWindows || Platform.isMacOS || Platform.isLinux) {
+  if (HostPlatform.isWindows || HostPlatform.isMacOS || HostPlatform.isLinux) {
     // Prepare the window-effect plugin and apply the saved backdrop (if any)
     // before the first frame so there's no flash. Desktop only: on mobile the
     // acrylic plugin would hang the app before the first frame (see

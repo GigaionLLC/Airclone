@@ -7,6 +7,7 @@ import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:http/http.dart' as http;
 
 import '../state/diagnostics.dart';
+import '../state/host_platform.dart';
 import '../state/undecryptable_names.dart';
 import 'rclone_client.dart';
 import 'windows_child_job.dart';
@@ -211,7 +212,7 @@ class HttpRcloneClient implements RcloneClient {
   /// systemTemp resolves to /data/local/tmp (not app-writable), and Android
   /// kills the app's process group anyway.
   Future<void> _reapPreviousRcd() async {
-    if (Platform.isAndroid) return;
+    if (HostPlatform.isAndroid) return;
     final marker = _markerFile;
     try {
       if (!await marker.exists()) return;
@@ -297,7 +298,7 @@ class HttpRcloneClient implements RcloneClient {
     // stays as the belt-and-braces reap-on-next-launch path.
     WindowsChildJob.adopt(_process!.pid);
     // Record the new child's PID so a future launch can reap it if we crash.
-    if (!Platform.isAndroid) {
+    if (!HostPlatform.isAndroid) {
       try {
         await _markerFile.writeAsString('${_process!.pid}');
       } catch (_) {

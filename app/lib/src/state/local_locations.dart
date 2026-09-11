@@ -7,6 +7,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../rclone/models/remote.dart';
+import 'host_platform.dart';
 import 'mac_bookmarks.dart';
 
 /// What a [LocalLocation] represents — drives the sidebar icon. [folder] is a
@@ -165,7 +166,7 @@ String iosDocumentsRoot = '';
 /// everywhere else. Failure leaves it empty, which shows an empty Locations
 /// list rather than a row pointing somewhere wrong.
 Future<void> initIosDocumentsRoot() async {
-  if (!Platform.isIOS) return;
+  if (!HostPlatform.isIOS) return;
   try {
     iosDocumentsRoot = (await getApplicationDocumentsDirectory()).path;
   } catch (_) {
@@ -211,9 +212,9 @@ List<LocalLocation> buildDefaultUserFolders() {
   // files. First run is "add your first folder", granted through NSOpenPanel.
   if (bookmarksRequired) return out;
 
-  if (Platform.isIOS) return buildIosUserFolders(iosDocumentsRoot);
+  if (HostPlatform.isIOS) return buildIosUserFolders(iosDocumentsRoot);
 
-  if (Platform.isAndroid) {
+  if (HostPlatform.isAndroid) {
     // Android's fixed shared-storage folder names (Download is singular).
     // No existsSync gate: these standard folders always exist, and a stat
     // before the storage permission is granted can lie — seeding must not
@@ -241,9 +242,9 @@ List<LocalLocation> buildDefaultUserFolders() {
     return out;
   }
 
-  final env = Platform.environment;
-  final home = (Platform.isWindows ? env['USERPROFILE'] : env['HOME']) ?? '';
-  final sep = Platform.isWindows ? '\\' : '/';
+  final env = HostPlatform.environment;
+  final home = (HostPlatform.isWindows ? env['USERPROFILE'] : env['HOME']) ?? '';
+  final sep = HostPlatform.isWindows ? '\\' : '/';
 
   void add(String name, String sub, LocalKind kind) {
     final loc = _folder(name, sub.isEmpty ? home : '$home$sep$sub', kind);
@@ -313,7 +314,7 @@ List<LocalLocation> windowsDrives({bool Function(String)? existsSync}) {
 /// Auto-detected disk drives (Windows letters, or `/` on POSIX). Not editable.
 final drivesProvider = Provider<List<LocalLocation>>((ref) {
   final out = <LocalLocation>[];
-  if (Platform.isAndroid) {
+  if (HostPlatform.isAndroid) {
     // The phone's shared storage. "/" exists but is mostly unreadable noise on
     // Android, so it is deliberately not offered.
     out.add(
@@ -329,9 +330,9 @@ final drivesProvider = Provider<List<LocalLocation>>((ref) {
     );
     return out;
   }
-  if (Platform.isWindows) {
+  if (HostPlatform.isWindows) {
     out.addAll(windowsDrives());
-  } else if (!bookmarksRequired && !Platform.isIOS) {
+  } else if (!bookmarksRequired && !HostPlatform.isIOS) {
     // "/" is unbrowsable under the sandbox and no grant can ever cover it, so a
     // MAS build must not offer it. On iOS it is not browsable by anyone at any
     // privilege, so offering it would just be a row that always fails to open.

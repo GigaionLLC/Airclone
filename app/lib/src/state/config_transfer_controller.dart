@@ -15,6 +15,7 @@ import 'config_backups.dart';
 import 'config_encryption.dart';
 import 'config_io.dart';
 import 'engine_controller.dart';
+import 'host_platform.dart';
 import 'jobs_controller.dart';
 import 'remotes_provider.dart';
 import 'settings_controller.dart';
@@ -385,7 +386,7 @@ class ConfigTransferController {
     final base = await getTemporaryDirectory();
     final dir = Directory('${base.path}/airclone-cfg-${_randToken()}');
     await dir.create(recursive: true);
-    if (!Platform.isWindows) {
+    if (!HostPlatform.isWindows) {
       try {
         await Process.run('chmod', ['700', dir.path]);
       } catch (_) {
@@ -1025,7 +1026,7 @@ class ConfigTransferController {
   /// Null when it can't be determined (no engine binary / probe failed).
   Future<File?> _activeConfigFile() async {
     await _ensureSettingsLoaded();
-    if (Platform.isAndroid) {
+    if (HostPlatform.isAndroid) {
       final support = await getApplicationSupportDirectory();
       return File('${support.path}/rclone.conf');
     }

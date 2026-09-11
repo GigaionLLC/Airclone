@@ -1,8 +1,4 @@
-import 'dart:ffi';
-import 'dart:io';
-
-import 'package:ffi/ffi.dart';
-
+import '../native/native_probes.dart';
 import '../rclone/models/remote.dart';
 
 /// Guards against silently HYDRATING cloud "Files On-Demand" placeholders.
@@ -21,26 +17,6 @@ const int _attrRecallOnOpen = 0x00040000; // hydrate on open
 const int _attrOffline = 0x00001000; // content not resident
 const int _invalidFileAttributes = 0xFFFFFFFF; // GetFileAttributesW failure
 
-typedef _GetFileAttributesWC = Uint32 Function(Pointer<Utf16>);
-typedef _GetFileAttributesWDart = int Function(Pointer<Utf16>);
-
-/// Bound once. Null on non-Windows (or if kernel32 won't load), which makes
-/// [isOnlineOnlyPlaceholder] a safe no-op there.
-final _GetFileAttributesWDart? _getFileAttributesW = _bindGetFileAttributesW();
-
-_GetFileAttributesWDart? _bindGetFileAttributesW() {
-  if (!Platform.isWindows) return null;
-  try {
-    return DynamicLibrary.open(
-      'kernel32.dll',
-    ).lookupFunction<_GetFileAttributesWC, _GetFileAttributesWDart>(
-      'GetFileAttributesW',
-    );
-  } catch (_) {
-    return null;
-  }
-}
-
 /// True when reading [absolutePath]'s CONTENT would hydrate (download) an
 /// online-only cloud placeholder. Windows-only today; returns false on other
 /// platforms, on any error, and for an unresolvable path.
@@ -49,20 +25,10 @@ _GetFileAttributesWDart? _bindGetFileAttributesW() {
 /// kind icon instead); a false negative costs a silent multi-GB download. So we
 /// act only on a definitive "yes" and treat everything uncertain as local.
 bool isOnlineOnlyPlaceholder(String absolutePath) {
-  final fn = _getFileAttributesW;
-  if (fn == null || absolutePath.isEmpty) return false;
-  Pointer<Utf16>? p;
-  try {
-    p = absolutePath.toNativeUtf16();
-    final attrs = fn(p);
-    if (attrs == _invalidFileAttributes) return false;
-    const mask = _attrRecallOnDataAccess | _attrRecallOnOpen | _attrOffline;
-    return (attrs & mask) != 0;
-  } catch (_) {
-    return false;
-  } finally {
-    if (p != null) malloc.free(p);
-  }
+  final attrs = windowsFileAttributes(absolutePath);
+  if (attrs == null || attrs == _invalidFileAttributes) return false;
+  const mask = _attrRecallOnDataAccess | _attrRecallOnOpen | _attrOffline;
+  return (attrs & mask) != 0;
 }
 
 // ── Wrapper remotes over a local backing store ──────────────────────────────

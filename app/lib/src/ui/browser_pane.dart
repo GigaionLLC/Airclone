@@ -1,5 +1,3 @@
-import 'dart:io' show Platform;
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -16,6 +14,7 @@ import '../state/cloud_placeholder.dart';
 import '../state/download_settings.dart';
 import '../state/engine_controller.dart';
 import '../state/file_ops.dart';
+import '../state/host_platform.dart';
 import '../state/os_integration.dart';
 import '../state/remote_features.dart';
 import '../state/remotes_provider.dart';
@@ -1832,9 +1831,9 @@ class _PaneToolbar extends ConsumerWidget {
                 // Advanced, desktop-only: open the rclone command console. Also
                 // reachable from the tab strip + Ctrl+K, but the strip is hidden
                 // with a single tab — so surface it here where it's discoverable.
-                if ((Platform.isWindows ||
-                        Platform.isMacOS ||
-                        Platform.isLinux) &&
+                if ((HostPlatform.isWindows ||
+                        HostPlatform.isMacOS ||
+                        HostPlatform.isLinux) &&
                     ref.watch(advancedModeProvider))
                   IconButton(
                     onPressed: ctrl.newConsoleTab,

@@ -23,11 +23,10 @@
 /// branch of their own. Nothing throws.
 library;
 
-import 'dart:io';
-
 import 'package:flutter/services.dart';
 
 import 'build_flavor.dart';
+import 'host_platform.dart';
 
 const _channel = MethodChannel('airclone/native');
 
@@ -36,7 +35,7 @@ const _channel = MethodChannel('airclone/native');
 /// Only the sandboxed Mac App Store build does. The DMG runs unsandboxed and can
 /// read a path forever, so asking it to manage grants would be pure overhead —
 /// and would break, since the native handler's panel is only wired for MAS.
-bool get bookmarksRequired => Platform.isMacOS && kMacAppStoreBuild;
+bool get bookmarksRequired => HostPlatform.isMacOS && kMacAppStoreBuild;
 
 /// A folder the user just granted, plus the token that outlives the process.
 class MacGrant {

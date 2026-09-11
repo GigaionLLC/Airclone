@@ -1,9 +1,9 @@
 import 'dart:async';
-import 'dart:io' show Platform;
 
 import 'package:flutter/material.dart';
 import 'package:super_drag_and_drop/super_drag_and_drop.dart';
 
+import '../state/host_platform.dart';
 import 'pane_drag.dart';
 import 'touch.dart';
 
@@ -49,9 +49,9 @@ class NativePaneDraggable extends StatelessWidget {
         if (data.remote.isLocal && data.files.isNotEmpty) {
           final f = data.files.first;
           final os = '${data.remote.fs}${joinPath(data.parentPath, f.name)}';
-          final native = Platform.isWindows ? os.replaceAll('/', r'\') : os;
+          final native = HostPlatform.isWindows ? os.replaceAll('/', r'\') : os;
           item.add(
-            Formats.fileUri(Uri.file(native, windows: Platform.isWindows)),
+            Formats.fileUri(Uri.file(native, windows: HostPlatform.isWindows)),
           );
         }
         return item;
@@ -147,7 +147,7 @@ class _NativePaneDropRegionState extends State<NativePaneDropRegion> {
       reader.getValue<Uri>(Formats.fileUri, (uri) {
         if (uri != null) {
           try {
-            paths.add(uri.toFilePath(windows: Platform.isWindows));
+            paths.add(uri.toFilePath(windows: HostPlatform.isWindows));
           } catch (_) {
             /* not a file path; skip */
           }

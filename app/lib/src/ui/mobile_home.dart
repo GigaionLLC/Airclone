@@ -1,5 +1,3 @@
-import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -8,6 +6,7 @@ import '../state/advanced_mode.dart';
 import '../state/android_native.dart';
 import '../state/browser_controller.dart';
 import '../state/engine_controller.dart';
+import '../state/host_platform.dart';
 import '../state/local_locations.dart';
 import '../state/pane_layout.dart';
 import '../state/remotes_provider.dart';
@@ -233,7 +232,7 @@ class _MobileLocations extends ConsumerWidget {
     final locations = ref.watch(userLocationsProvider);
     final drives = ref.watch(drivesProvider);
     final needsAccess =
-        Platform.isAndroid &&
+        HostPlatform.isAndroid &&
         ref.watch(allFilesAccessProvider).valueOrNull == false;
 
     return ListView(

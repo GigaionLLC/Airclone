@@ -1,9 +1,8 @@
-import 'dart:io';
-
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../rclone/models/job.dart';
+import 'host_platform.dart';
 import 'jobs_controller.dart';
 import 'stats_controller.dart';
 
@@ -15,7 +14,7 @@ import 'stats_controller.dart';
 /// no-op off Android. The jobs poller ticks every second, so this listener is
 /// also the notification's update pulse (posts only when the text changes).
 final transferForegroundServiceProvider = Provider<void>((ref) {
-  if (!Platform.isAndroid) return;
+  if (!HostPlatform.isAndroid) return;
   const channel = MethodChannel('airclone/native');
   var running = false;
   var askedForPermission = false;

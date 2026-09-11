@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:io';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -7,6 +6,7 @@ import '../rclone/models/mount_info.dart';
 import '../rclone/models/mount_options.dart';
 import '../rclone/rclone_client.dart';
 import 'engine_controller.dart';
+import 'host_platform.dart';
 import 'mount_policy.dart';
 
 /// The mount implementations the engine supports (`mount/types`). EMPTY on
@@ -74,7 +74,7 @@ class MountController extends Notifier<List<MountInfo>> {
       'fs': fs,
       'mountPoint': mountPoint,
       'vfsOpt': options.toVfsOpt(),
-      'mountOpt': options.toMountOpt(windows: Platform.isWindows),
+      'mountOpt': options.toMountOpt(windows: HostPlatform.isWindows),
     });
     await _poll();
     return (res['mountPoint'] as String?) ?? mountPoint;

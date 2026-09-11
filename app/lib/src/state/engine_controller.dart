@@ -1,5 +1,3 @@
-import 'dart:io';
-
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
@@ -15,6 +13,7 @@ import 'cache_crypto.dart';
 import 'config_password_vault.dart';
 import 'engine_flags.dart';
 import 'engine_mode.dart';
+import 'host_platform.dart';
 import 'settings_controller.dart';
 
 /// Resolves the `--config` path the engine should spawn with (null = "let rclone
@@ -137,7 +136,7 @@ class EngineController extends Notifier<EngineUi> {
     if (path == null) {
       // On Android the engine ships inside the APK — its absence is a broken
       // build, not something a download can fix.
-      state = Platform.isAndroid
+      state = HostPlatform.isAndroid
           ? const EngineUi(
               phase: EnginePhase.error,
               message:
@@ -159,7 +158,7 @@ class EngineController extends Notifier<EngineUi> {
   /// the Mac App Store build and iOS do not, and there [subprocessAllowedHere]
   /// forces the in-process library whatever the user's setting says.
   Future<EngineMode> _resolveEngineMode({required bool binaryAvailable}) async {
-    if (Platform.isAndroid) return EngineMode.binary;
+    if (HostPlatform.isAndroid) return EngineMode.binary;
     await ref.read(settingsControllerProvider.notifier).ensureLoaded();
     final setting = ref.read(settingsControllerProvider).engineMode;
     return resolveEngineMode(
@@ -205,7 +204,7 @@ class EngineController extends Notifier<EngineUi> {
       appPrivateConfigPath: '${support.path}/rclone.conf',
       override: override,
     );
-    if (!Platform.isAndroid) return (configPath, const <String, String>{});
+    if (!HostPlatform.isAndroid) return (configPath, const <String, String>{});
     return (
       configPath,
       <String, String>{

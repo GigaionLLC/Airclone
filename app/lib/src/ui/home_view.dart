@@ -1,11 +1,10 @@
-import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../rclone/models/remote.dart';
 import '../state/bookmarks_controller.dart';
 import '../state/browser_controller.dart';
+import '../state/host_platform.dart';
 import '../state/local_locations.dart';
 import '../state/recent_locations.dart';
 import '../state/remotes_provider.dart';
@@ -201,7 +200,7 @@ class _HomeViewState extends ConsumerState<HomeView> {
         section(
           // iPad gets the desktop layout via the 700px width gate, so without
           // iOS here it called an iPad "This computer".
-          Platform.isAndroid || Platform.isIOS
+          HostPlatform.isAndroid || HostPlatform.isIOS
               ? 'This device'
               : 'This computer',
           deviceTiles,

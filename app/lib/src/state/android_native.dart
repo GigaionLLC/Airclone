@@ -1,8 +1,7 @@
-import 'dart:io';
-
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'host_platform.dart';
 import 'local_locations.dart';
 
 /// Bridge to the few Android facts/actions Dart can't reach on its own
@@ -19,7 +18,7 @@ bool androidIsTelevision = false;
 
 /// Asks Android whether this is a television (see MainActivity.kt).
 Future<void> initAndroidIsTelevision() async {
-  if (!Platform.isAndroid) return;
+  if (!HostPlatform.isAndroid) return;
   try {
     androidIsTelevision =
         await _channel.invokeMethod<bool>('isTelevision') ?? false;
@@ -33,7 +32,7 @@ Future<void> initAndroidIsTelevision() async {
 /// /storage/emulated/0 for secondary users and work profiles). Called once in
 /// main() before runApp; keeps the location providers synchronous.
 Future<void> initAndroidStorageRoot() async {
-  if (!Platform.isAndroid) return;
+  if (!HostPlatform.isAndroid) return;
   try {
     final dir = await _channel.invokeMethod<String>('externalStorageDir');
     if (dir != null && dir.isNotEmpty) androidStorageRoot = dir;
@@ -47,7 +46,7 @@ Future<void> initAndroidStorageRoot() async {
 /// desktop). rclone's `local` backend needs this for anything outside the
 /// app's own directories.
 final allFilesAccessProvider = FutureProvider<bool>((ref) async {
-  if (!Platform.isAndroid) return true;
+  if (!HostPlatform.isAndroid) return true;
   try {
     return await _channel.invokeMethod<bool>('hasAllFilesAccess') ?? false;
   } catch (_) {
@@ -68,7 +67,7 @@ Future<Uint8List?> androidVideoThumbnail(
   Map<String, String> headers,
   int size,
 ) async {
-  if (!Platform.isAndroid) return null;
+  if (!HostPlatform.isAndroid) return null;
   try {
     return await _channel.invokeMethod<Uint8List>('videoThumbnail', {
       'url': url,
@@ -86,7 +85,7 @@ Future<Uint8List?> androidVideoThumbnail(
 /// grants it there and returns; call `ref.invalidate(allFilesAccessProvider)`
 /// on resume/next build to pick up the new state.
 Future<void> requestAllFilesAccess() async {
-  if (!Platform.isAndroid) return;
+  if (!HostPlatform.isAndroid) return;
   try {
     await _channel.invokeMethod<void>('requestAllFilesAccess');
   } catch (_) {

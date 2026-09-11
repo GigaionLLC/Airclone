@@ -27,6 +27,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../rclone/rclone_client.dart';
+import 'host_platform.dart';
 
 /// Whether the staged file is opened for viewing or offered to a share target.
 /// Desktop has no share concept and always opens.
@@ -36,10 +37,10 @@ enum ExternalOpenMode { view, share }
 /// implementation yet (it also has no engine — see the dual-engine plan), so
 /// callers hide the action there rather than failing at the tap.
 bool get canOpenExternally =>
-    Platform.isAndroid ||
-    Platform.isWindows ||
-    Platform.isMacOS ||
-    Platform.isLinux;
+    HostPlatform.isAndroid ||
+    HostPlatform.isWindows ||
+    HostPlatform.isMacOS ||
+    HostPlatform.isLinux;
 
 /// Cancellation handle for one [stageForExternalOpen] run.
 ///
@@ -148,7 +149,7 @@ Future<void> handOffToOs(
   required String mime,
   ExternalOpenMode mode = ExternalOpenMode.view,
 }) async {
-  if (Platform.isAndroid) {
+  if (HostPlatform.isAndroid) {
     try {
       await _androidOpen(path, mime, mode);
     } on PlatformException catch (e) {
@@ -163,7 +164,7 @@ Future<void> handOffToOs(
     }
     return;
   }
-  if (Platform.isWindows || Platform.isMacOS || Platform.isLinux) {
+  if (HostPlatform.isWindows || HostPlatform.isMacOS || HostPlatform.isLinux) {
     if (!await launchUrl(Uri.file(path))) {
       throw Exception('No app is registered to open this kind of file.');
     }

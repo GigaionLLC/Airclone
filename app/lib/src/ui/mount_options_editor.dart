@@ -1,9 +1,8 @@
-import 'dart:io';
-
 import 'package:flutter/material.dart';
 
 import '../rclone/models/mount_info.dart';
 import '../rclone/models/mount_options.dart';
+import '../state/host_platform.dart';
 import 'theme/tokens.dart';
 
 /// The ONE editor for [MountOptions], used by both surfaces that offer them:
@@ -128,7 +127,7 @@ class MountOptionsEditor extends StatelessWidget {
         ),
         // Windows-only in rclone, and the model omits it elsewhere — so do not
         // offer a control that would do nothing.
-        if (Platform.isWindows)
+        if (HostPlatform.isWindows)
           _toggle(
             c,
             label: 'Mount as a network drive',

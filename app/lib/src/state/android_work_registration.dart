@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -7,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'android_work_channel.dart';
 import 'android_work_entrypoint.dart';
 import 'android_work_settings.dart';
+import 'host_platform.dart';
 import 'poll_cadence.dart';
 import 'scheduling_policy.dart';
 import 'task_schedule.dart';
@@ -109,7 +109,7 @@ String androidWorkExplanation(AndroidWorkPlan plan) {
 /// one applied is skipped, so the run-history and `lastRun` writes that every
 /// scheduled run makes to `tasksProvider` do not each touch WorkManager.
 final androidWorkReconcilerProvider = Provider<void>((ref) {
-  if (!Platform.isAndroid) return;
+  if (!HostPlatform.isAndroid) return;
   final work = ref.read(androidWorkProvider);
   var registered = false;
   AndroidWorkPlan? applied;

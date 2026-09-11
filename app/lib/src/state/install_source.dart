@@ -21,15 +21,16 @@
 ///   direct download  -> the GitHub release check, as before.
 library;
 
-import 'dart:ffi';
 import 'dart:io';
 
-import 'package:ffi/ffi.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
+import 'host_platform.dart';
+
+import '../native/native_probes.dart' as native;
 import '../rclone/rclone_engine.dart' show RcloneEngine;
 
 /// The distribution channel this install came from.
@@ -162,7 +163,7 @@ InstallSource androidInstallSource(String? installer, String packageName) {
 
 /// Builds the [InstallSource] for a Linux install from the environment: Flatpak
 /// and Snap both advertise themselves there, and both own their own updates.
-/// Pure for testing; production passes [Platform.environment].
+/// Pure for testing; production passes [HostPlatform.environment].
 InstallSource linuxInstallSource(Map<String, String> env) {
   if ((env['FLATPAK_ID'] ?? '').isNotEmpty) {
     return const InstallSource(
@@ -192,36 +193,7 @@ String microsoftStoreUrl(String? packageFamilyName) =>
 /// unpackaged (the installer/zip builds). Read from the same App Model API that
 /// [RcloneEngine.isStoreManaged] uses to decide packaged-ness, so the link and
 /// the decision can never disagree about which build this is.
-String? windowsPackageFamilyName() {
-  if (!Platform.isWindows) return null;
-  const errorInsufficientBuffer = 122;
-  try {
-    final getCurrentPackageFamilyName = DynamicLibrary.open('kernel32.dll')
-        .lookupFunction<
-          Int32 Function(Pointer<Uint32>, Pointer<Utf16>),
-          int Function(Pointer<Uint32>, Pointer<Utf16>)
-        >('GetCurrentPackageFamilyName');
-    final length = malloc<Uint32>()..value = 0;
-    try {
-      // First call sizes the buffer (in CHARACTERS, including the terminator).
-      final probe = getCurrentPackageFamilyName(length, nullptr);
-      if (probe != errorInsufficientBuffer || length.value == 0) return null;
-      final buffer = malloc<Uint16>(length.value).cast<Utf16>();
-      try {
-        if (getCurrentPackageFamilyName(length, buffer) != 0) return null;
-        return buffer.toDartString();
-      } finally {
-        malloc.free(buffer);
-      }
-    } finally {
-      malloc.free(length);
-    }
-  } catch (_) {
-    // Unpackaged, or the API is unavailable — the caller falls back to the
-    // Store's updates page, which needs no identity.
-    return null;
-  }
-}
+String? windowsPackageFamilyName() => native.windowsPackageFamilyName();
 
 /// True when this macOS build was installed from the Mac App Store: such a
 /// bundle carries a `Contents/_MASReceipt/receipt` that a direct download never
@@ -242,7 +214,7 @@ bool macAppStoreReceiptPresent(
 /// Resolves how this copy was installed. Cheap and side-effect-free; cached by
 /// the provider below because packaging cannot change within a run.
 Future<InstallSource> detectInstallSource() async {
-  if (Platform.isWindows) {
+  if (HostPlatform.isWindows) {
     if (!RcloneEngine.isStoreManaged()) return _direct;
     return InstallSource(
       channel: InstallChannel.microsoftStore,
@@ -250,7 +222,7 @@ Future<InstallSource> detectInstallSource() async {
       storeUrl: microsoftStoreUrl(windowsPackageFamilyName()),
     );
   }
-  if (Platform.isAndroid) {
+  if (HostPlatform.isAndroid) {
     String? installer;
     try {
       installer = await const MethodChannel(
@@ -264,7 +236,7 @@ Future<InstallSource> detectInstallSource() async {
     final pkg = (await PackageInfo.fromPlatform()).packageName;
     return androidInstallSource(installer, pkg);
   }
-  if (Platform.isIOS) {
+  if (HostPlatform.isIOS) {
     // iOS has no other distribution channel: App Store or TestFlight, and both
     // deliver their own updates. There is no App Store id to deep-link to until
     // Airclone actually ships there, so the UI explains without a button.
@@ -273,7 +245,7 @@ Future<InstallSource> detectInstallSource() async {
       storeName: 'the App Store',
     );
   }
-  if (Platform.isMacOS) {
+  if (HostPlatform.isMacOS) {
     final fromStore = macAppStoreReceiptPresent(
       Platform.resolvedExecutable,
       (p) => File(p).existsSync(),
@@ -286,7 +258,7 @@ Future<InstallSource> detectInstallSource() async {
           )
         : _direct;
   }
-  if (Platform.isLinux) return linuxInstallSource(Platform.environment);
+  if (HostPlatform.isLinux) return linuxInstallSource(HostPlatform.environment);
   return _direct;
 }
 

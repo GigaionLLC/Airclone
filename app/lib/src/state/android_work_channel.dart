@@ -1,9 +1,10 @@
-import 'dart:io';
 import 'dart:ui' show PluginUtilities;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import 'host_platform.dart';
 
 /// Dart's handle on Android WorkManager (see WorkChannel.kt).
 ///
@@ -80,7 +81,7 @@ class AndroidWork {
   /// top-level or static function annotated `@pragma('vm:entry-point')`.
   /// Returns false when the handle could not be resolved or stored.
   Future<bool> registerCallback(Function entrypoint) async {
-    if (!Platform.isAndroid) return false;
+    if (!HostPlatform.isAndroid) return false;
     final handle = PluginUtilities.getCallbackHandle(entrypoint);
     if (handle == null) return false;
     try {
@@ -100,7 +101,7 @@ class AndroidWork {
     required bool unmetered,
     required bool charging,
   }) async {
-    if (!Platform.isAndroid) return null;
+    if (!HostPlatform.isAndroid) return null;
     try {
       return await _channel.invokeMethod<int>('enqueuePeriodic', {
         'intervalMinutes': intervalMinutes,
@@ -114,7 +115,7 @@ class AndroidWork {
 
   /// Removes the periodic request. Returns whether the platform accepted it.
   Future<bool> cancelPeriodic() async {
-    if (!Platform.isAndroid) return false;
+    if (!HostPlatform.isAndroid) return false;
     try {
       await _channel.invokeMethod<void>('cancelPeriodic');
       return true;
@@ -126,7 +127,7 @@ class AndroidWork {
   /// Queues one unconstrained run of the due tasks in the background — the
   /// user asked for it now, on whatever network they are on.
   Future<bool> runOnce() async {
-    if (!Platform.isAndroid) return false;
+    if (!HostPlatform.isAndroid) return false;
     try {
       await _channel.invokeMethod<void>('runOnce');
       return true;
@@ -136,7 +137,7 @@ class AndroidWork {
   }
 
   Future<AndroidWorkStatus> status() async {
-    if (!Platform.isAndroid) return AndroidWorkStatus.none;
+    if (!HostPlatform.isAndroid) return AndroidWorkStatus.none;
     try {
       final m = await _channel.invokeMethod<Map<Object?, Object?>>('status');
       return m == null ? AndroidWorkStatus.none : AndroidWorkStatus.fromMap(m);

@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:io' show Platform;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -9,6 +8,7 @@ import '../state/browser_controller.dart';
 import '../state/cache_crypto.dart';
 import '../state/config_password_vault.dart';
 import '../state/engine_controller.dart';
+import '../state/host_platform.dart';
 import '../state/jobs_controller.dart';
 import '../state/scheduler_controller.dart';
 import '../state/poll_cadence.dart';
@@ -1457,7 +1457,7 @@ class _ScheduleDialogState extends ConsumerState<_ScheduleDialog> {
                       // sentence on every platform, so an Android user read
                       // about a Windows Scheduled Task — directly above the
                       // correct Android explanation.
-                      backgroundRegistrationBlurb(Platform.operatingSystem),
+                      backgroundRegistrationBlurb(HostPlatform.operatingSystem),
                       style: TextStyle(color: c.textFaint, fontSize: 11),
                     ),
                     value: _runWhileClosed,
@@ -1530,7 +1530,7 @@ class _ScheduleDialogState extends ConsumerState<_ScheduleDialog> {
                               ? (_weekdays.toList()..sort())
                               : const [],
                         ),
-                        operatingSystem: Platform.operatingSystem,
+                        operatingSystem: HostPlatform.operatingSystem,
                         runWhileClosed: _canOsSchedule && _runWhileClosed,
                         pollMinutes: ref.watch(pollCadenceProvider),
                         taskName: widget.task.name,

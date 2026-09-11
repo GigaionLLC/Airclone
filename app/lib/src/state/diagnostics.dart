@@ -23,6 +23,8 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'host_platform.dart';
+
 /// How bad an entry is. [error] is what a bug report is usually about; [warning]
 /// is a recovered problem; [info] is context that makes the errors readable
 /// (engine started, config switched).
@@ -248,7 +250,7 @@ DiagnosticsEnvironment describeEnvironment({
   String? engineMode,
 }) => DiagnosticsEnvironment(
   appVersion: appVersion,
-  platform: Platform.operatingSystem,
+  platform: HostPlatform.operatingSystem,
   osVersion: Platform.operatingSystemVersion,
   installChannel: installChannel,
   engineVersion: engineVersion,

@@ -1,11 +1,10 @@
-import 'dart:io';
-
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../rclone/models/remote.dart';
 import '../rclone/rclone_client.dart';
 import 'cloud_placeholder.dart';
 import 'engine_controller.dart';
+import 'host_platform.dart';
 
 /// Names already present in the rclone config, or null when they cannot be read.
 ///
@@ -52,16 +51,16 @@ final remotesProvider = FutureProvider<List<Remote>>((ref) async {
   remotes.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
   // Android has no meaningful $HOME — and the phone shell already offers
   // "Internal storage", so the synthetic local peer would just be noise.
-  if (!Platform.isAndroid) remotes.add(localHomeRemote());
+  if (!HostPlatform.isAndroid) remotes.add(localHomeRemote());
   return remotes;
 });
 
 /// A synthetic peer pointing at the user's home directory via the rclone `local`
 /// backend, so the file browser is demonstrable before any remote is configured.
 Remote localHomeRemote() {
-  final home = Platform.isWindows
-      ? (Platform.environment['USERPROFILE'] ?? 'C:\\')
-      : (Platform.environment['HOME'] ?? '/');
+  final home = HostPlatform.isWindows
+      ? (HostPlatform.environment['USERPROFILE'] ?? 'C:\\')
+      : (HostPlatform.environment['HOME'] ?? '/');
   final fs = '${home.replaceAll('\\', '/')}/';
   return Remote(name: 'This device', type: 'local', fs: fs, isLocal: true);
 }

@@ -23,6 +23,7 @@ import '../state/engine_controller.dart';
 import '../state/engine_flags.dart';
 import '../state/engine_mode.dart';
 import '../state/external_config_backup.dart';
+import '../state/host_platform.dart';
 import '../state/install_source.dart';
 import '../state/jobs_controller.dart';
 import '../state/local_locations.dart';
@@ -97,7 +98,8 @@ class SettingsContent extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final advanced = ref.watch(advancedModeProvider);
-    final desktop = Platform.isWindows || Platform.isMacOS || Platform.isLinux;
+    final desktop =
+        HostPlatform.isWindows || HostPlatform.isMacOS || HostPlatform.isLinux;
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -136,7 +138,7 @@ class SettingsContent extends ConsumerWidget {
         const AutomationSettingsSection(),
         // Android: photo backup + the background-execution constraints. Renders
         // nothing elsewhere (the widget gates itself), so no platform branch.
-        if (Platform.isAndroid) ...[
+        if (HostPlatform.isAndroid) ...[
           const SizedBox(height: Space.x4),
           const PhotoBackupSection(),
         ],
@@ -523,15 +525,15 @@ class _CacheSectionState extends ConsumerState<_CacheSection> {
 /// home/appdata dir (the section then shows "rclone default"). The engine still
 /// lets rclone resolve its own default at spawn time; this never drives config.
 String? conventionalRcloneConfigPath() {
-  if (Platform.isWindows) {
-    final appData = Platform.environment['APPDATA'];
+  if (HostPlatform.isWindows) {
+    final appData = HostPlatform.environment['APPDATA'];
     if (appData == null || appData.isEmpty) return null;
     return '${appData.replaceAll(r'\', '/')}/rclone/rclone.conf';
   }
   // POSIX: XDG override wins, else ~/.config/rclone/rclone.conf (rclone's default).
-  final xdg = Platform.environment['XDG_CONFIG_HOME'];
+  final xdg = HostPlatform.environment['XDG_CONFIG_HOME'];
   if (xdg != null && xdg.isNotEmpty) return '$xdg/rclone/rclone.conf';
-  final home = Platform.environment['HOME'];
+  final home = HostPlatform.environment['HOME'];
   if (home != null && home.isNotEmpty) {
     return '$home/.config/rclone/rclone.conf';
   }
@@ -719,7 +721,8 @@ class _ConfigSectionState extends ConsumerState<_ConfigSection> {
   @override
   Widget build(BuildContext context) {
     final c = AircloneTheme.of(context);
-    final desktop = Platform.isWindows || Platform.isMacOS || Platform.isLinux;
+    final desktop =
+        HostPlatform.isWindows || HostPlatform.isMacOS || HostPlatform.isLinux;
     // Re-resolve the display path whenever the persisted override changes — the
     // async first load, or a switch/back-to-default from another Settings view.
     ref.listen(settingsControllerProvider.select((s) => s.configPathOverride), (
@@ -1044,9 +1047,9 @@ class _ConfigToolsHookState extends ConsumerState<_ConfigToolsHook> {
               // the dead end a TV review fails on. See qrCameraScanAvailableFor.
               onPressed: () =>
                   qrCameraScanAvailableFor(
-                    isAndroid: Platform.isAndroid,
-                    isIOS: Platform.isIOS,
-                    isMacOS: Platform.isMacOS,
+                    isAndroid: HostPlatform.isAndroid,
+                    isIOS: HostPlatform.isIOS,
+                    isMacOS: HostPlatform.isMacOS,
                     isAndroidTv: androidIsTelevision,
                     macAppStore: kMacAppStoreBuild,
                   )
@@ -2352,7 +2355,7 @@ class _DiagnosticsSectionState extends ConsumerState<_DiagnosticsSection> {
   Future<void> _saveOrShare() async {
     try {
       final text = await _report();
-      if (Platform.isAndroid || Platform.isIOS) {
+      if (HostPlatform.isAndroid || HostPlatform.isIOS) {
         final path = await writeSharableTextFile(
           'airclone-diagnostics.txt',
           text,
@@ -2432,13 +2435,13 @@ class _DiagnosticsSectionState extends ConsumerState<_DiagnosticsSection> {
             OutlinedButton.icon(
               onPressed: _saveOrShare,
               icon: Icon(
-                Platform.isAndroid || Platform.isIOS
+                HostPlatform.isAndroid || HostPlatform.isIOS
                     ? Icons.ios_share
                     : Icons.save_alt,
                 size: 16,
               ),
               label: Text(
-                Platform.isAndroid || Platform.isIOS
+                HostPlatform.isAndroid || HostPlatform.isIOS
                     ? 'Share report'
                     : 'Save report…',
               ),

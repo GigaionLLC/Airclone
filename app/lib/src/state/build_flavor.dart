@@ -24,7 +24,7 @@
 /// See `dev/plans/apple-appstore-plan.md` Gate C1.
 library;
 
-import 'dart:io';
+import 'host_platform.dart';
 
 /// True only in a Mac App Store build (`--dart-define=AIRCLONE_MAS=true`).
 const bool kMacAppStoreBuild = bool.fromEnvironment('AIRCLONE_MAS');
@@ -34,7 +34,7 @@ const bool kMacAppStoreBuild = bool.fromEnvironment('AIRCLONE_MAS');
 /// Flatpak exports `FLATPAK_ID` into every sandboxed process; nothing outside
 /// one sets it. Read at call time rather than cached at startup so a test can
 /// exercise both, via [runningInFlatpak].
-bool get kRunningInFlatpak => runningInFlatpak(Platform.environment);
+bool get kRunningInFlatpak => runningInFlatpak(HostPlatform.environment);
 
 /// [kRunningInFlatpak] against an explicit environment, so it is testable.
 bool runningInFlatpak(Map<String, String> environment) =>
@@ -109,8 +109,10 @@ bool subprocessAllowedFor({required bool macAppStore, required bool isIOS}) =>
     !macAppStore && !isIOS;
 
 /// [subprocessAllowedFor] applied to the platform this binary is running on.
-bool get subprocessAllowedHere =>
-    subprocessAllowedFor(macAppStore: kMacAppStoreBuild, isIOS: Platform.isIOS);
+bool get subprocessAllowedHere => subprocessAllowedFor(
+  macAppStore: kMacAppStoreBuild,
+  isIOS: HostPlatform.isIOS,
+);
 
 /// Whether this build must keep its rclone config in APP-PRIVATE storage, at a
 /// path we choose explicitly, rather than letting rclone resolve its own default.
@@ -138,7 +140,7 @@ bool configMustBeAppPrivateFor({
 
 /// [configMustBeAppPrivateFor] applied to the platform this binary is running on.
 bool get configMustBeAppPrivateHere => configMustBeAppPrivateFor(
-  isAndroid: Platform.isAndroid,
+  isAndroid: HostPlatform.isAndroid,
   macAppStore: kMacAppStoreBuild,
-  isIOS: Platform.isIOS,
+  isIOS: HostPlatform.isIOS,
 );

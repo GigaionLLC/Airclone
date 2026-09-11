@@ -5,6 +5,7 @@ import 'dart:math';
 
 import 'package:crypto/crypto.dart';
 
+import '../state/host_platform.dart';
 import 'rclone_client.dart';
 
 /// A tiny loopback HTTP file server that gives the in-process ([FfiRcloneClient])
@@ -124,7 +125,7 @@ class LibrcloneObjectServer {
   /// runs as an async RC job so a large object never blocks the engine worker.
   Future<File> _materialize(String fs, String remote) {
     final key = sha1.convert(utf8.encode('$fs\u0000$remote')).toString();
-    final dst = File('$cacheDir${Platform.pathSeparator}$key');
+    final dst = File('$cacheDir${HostPlatform.pathSeparator}$key');
     return _inflight.putIfAbsent(key, () async {
       try {
         if (await dst.exists() && await dst.length() > 0) return dst;
@@ -141,7 +142,7 @@ class LibrcloneObjectServer {
           throw StateError('copyfile did not return a jobid');
         }
         await _awaitJob(jobid);
-        final partFile = File('$cacheDir${Platform.pathSeparator}$part');
+        final partFile = File('$cacheDir${HostPlatform.pathSeparator}$part');
         if (await dst.exists()) await dst.delete();
         await partFile.rename(dst.path);
         return dst;

@@ -1,9 +1,9 @@
-import 'dart:io' show Platform;
+import 'host_platform.dart';
 
 /// What "run on a schedule" actually means on the platform you are standing on.
 ///
 /// This exists because the answer is genuinely different in three directions and
-/// the product used to imply one answer everywhere. Scattering `Platform.isWindows`
+/// the product used to imply one answer everywhere. Scattering `HostPlatform.isWindows`
 /// across the UI made every surface responsible for getting that right on its
 /// own, and they did not agree — the README promised scheduling unconditionally,
 /// the schedule editor gated one checkbox, and a phone offered nothing at all
@@ -25,7 +25,7 @@ enum SchedulingSupport {
 }
 
 /// The decision itself, as a pure function of the OS name so it can be tested
-/// without a platform. Takes [Platform.operatingSystem]'s vocabulary:
+/// without a platform. Takes [HostPlatform.operatingSystem]'s vocabulary:
 /// `windows`, `macos`, `linux`, `android`, `ios`, `fuchsia`.
 ///
 /// An OS we have never heard of gets [SchedulingSupport.none] rather than a
@@ -48,14 +48,14 @@ SchedulingSupport schedulingSupportFor(String operatingSystem) =>
 
 /// The support level of the platform this build is running on.
 SchedulingSupport get schedulingSupport =>
-    schedulingSupportFor(Platform.operatingSystem);
+    schedulingSupportFor(HostPlatform.operatingSystem);
 
 /// Whether a schedule can be created at all here.
 bool get canSchedule => schedulingSupport != SchedulingSupport.none;
 
 /// Whether to offer "Also run while Airclone is closed".
 ///
-/// Replaces the old `_canOsSchedule => Platform.isWindows` in the schedule
+/// Replaces the old `_canOsSchedule => HostPlatform.isWindows` in the schedule
 /// editor. Same answer today; the difference is that when launchd lands, it
 /// lands in one place.
 bool get canRunWhileClosed => schedulingSupport == SchedulingSupport.background;

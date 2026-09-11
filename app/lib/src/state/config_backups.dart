@@ -3,6 +3,8 @@ import 'dart:io';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
 
+import 'host_platform.dart';
+
 /// Automatic, always-on config backups — the trust substrate under every mutating
 /// operation the config-portability plan introduces (dev/archive-plans/config-portability-plan.md
 /// §2). Before an import-merge, replace, or path switch, the caller snapshots the
@@ -71,7 +73,7 @@ class ConfigBackups {
   /// backups live under the per-user app-support dir, which NTFS ACLs already
   /// scope to the user — and on any chmod failure (the file is still written).
   static Future<void> _hardenPosix(String path, String mode) async {
-    if (Platform.isWindows) return;
+    if (HostPlatform.isWindows) return;
     try {
       await Process.run('chmod', [mode, path]);
     } catch (_) {

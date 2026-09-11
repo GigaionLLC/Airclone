@@ -23,6 +23,7 @@ import '../state/clipboard_controller.dart';
 import '../state/engine_controller.dart';
 import '../state/external_config_backup.dart';
 import '../state/file_ops.dart';
+import '../state/host_platform.dart';
 import '../state/jobs_controller.dart';
 import '../state/local_locations.dart';
 import '../state/mac_bookmarks.dart';
@@ -1039,7 +1040,7 @@ class _Sidebar extends ConsumerWidget {
 
     final children = <Widget>[
       // Android: local browsing needs All Files Access — prompt until granted.
-      if (Platform.isAndroid &&
+      if (HostPlatform.isAndroid &&
           ref.watch(allFilesAccessProvider).valueOrNull == false)
         const StorageAccessBanner(),
       // ── Locations (editable: + picker · drag-drop folders · remove) ──────────
@@ -1049,7 +1050,7 @@ class _Sidebar extends ConsumerWidget {
         // No + on iOS: there is no arbitrary filesystem to add a folder from,
         // and no picker that could grant one. Offering a button that cannot
         // work is worse than not offering it.
-        trailing: Platform.isIOS
+        trailing: HostPlatform.isIOS
             ? null
             : IconButton(
                 onPressed: () => _addFolderViaPicker(ref),
@@ -1263,7 +1264,7 @@ Future<void> _addFolderViaPicker(WidgetRef ref) async {
   // nothing for it to pick - the app's Documents directory IS local storage on
   // iOS, and it is already seeded. The + affordance is hidden there; this is the
   // matching guard, not a second line of defence.
-  if (Platform.isIOS) return;
+  if (HostPlatform.isIOS) return;
   final dir = await getDirectoryPath();
   if (dir != null && dir.isNotEmpty) {
     ref.read(userLocationsProvider.notifier).addFolder(dir);

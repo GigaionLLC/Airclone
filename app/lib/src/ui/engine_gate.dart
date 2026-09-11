@@ -1,10 +1,9 @@
-import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../state/android_native.dart';
 import '../state/engine_controller.dart';
+import '../state/host_platform.dart';
 import 'theme/tokens.dart';
 
 /// Shown until the engine is ready (locating / not-installed / provisioning /
@@ -28,7 +27,7 @@ class EngineGate extends ConsumerWidget {
 
     // On Android the engine is bundled in the APK: there is nothing to
     // download, so the gate only ever offers a re-check.
-    final canDownload = !Platform.isAndroid;
+    final canDownload = !HostPlatform.isAndroid;
     // Scroll view inside the Center: centered when it fits, scrollable when a
     // phone's soft keyboard (or a tiny window) squeezes the viewport.
     return Center(

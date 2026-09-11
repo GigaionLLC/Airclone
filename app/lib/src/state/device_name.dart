@@ -2,6 +2,8 @@ import 'dart:io';
 
 import 'package:flutter/services.dart';
 
+import 'host_platform.dart';
+
 /// This device's own name, for the per-device segment of a backup path.
 ///
 /// **One answer, shared by every backup feature on purpose.** The device
@@ -21,7 +23,7 @@ import 'package:flutter/services.dart';
 /// Never throws: this runs inside a setup flow, and any failure yields a usable
 /// placeholder rather than an exception the user cannot act on.
 Future<String> backupDeviceName() async {
-  if (!Platform.isAndroid) {
+  if (!HostPlatform.isAndroid) {
     try {
       return Platform.localHostname;
     } catch (_) {

@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -8,6 +7,7 @@ import '../state/android_work_channel.dart';
 import '../state/android_work_registration.dart';
 import '../state/android_work_settings.dart';
 import '../state/engine_controller.dart';
+import '../state/host_platform.dart';
 import '../state/jobs_controller.dart';
 import '../state/local_locations.dart';
 import '../state/device_name.dart';
@@ -38,7 +38,7 @@ class PhotoBackupSection extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    if (!Platform.isAndroid) return const SizedBox.shrink();
+    if (!HostPlatform.isAndroid) return const SizedBox.shrink();
     final c = AircloneTheme.of(context);
     final tasks = ref.watch(tasksProvider);
     final photo = tasks.where((t) => t.kind == TaskKind.photos).firstOrNull;
