@@ -686,13 +686,16 @@ class HttpRcloneClient implements RcloneClient {
 /// Separated from [HttpRcloneClient] and given injectable paths and a [kill]
 /// callback so the sibling-safety rule can be tested without spawning a real
 /// engine.
-@visibleForTesting
-Future<RandomAccessFile?> reapOrphanedRcd({
-  required Directory tempDir,
-  required File lockFile,
-  required int ownPid,
-  required void Function(int pid) kill,
-}) async {
+/// Takes the single-instance lock, or returns null when a sibling holds it.
+///
+/// Separated from the policy above so the policy can be tested on every
+/// platform. It cannot be tested through the real lock, because POSIX advisory
+/// locks are owned by the PROCESS: a test that opens the same file twice in one
+/// process and locks both succeeds on Linux and macOS, while on Windows, where
+/// locks are per-handle, it conflicts. Cross-process exclusion — the thing that
+/// actually matters here — is a platform guarantee that no single-process test
+/// can demonstrate either way.
+RandomAccessFile? _takeSingleInstanceLock(File lockFile) {
   RandomAccessFile lock;
   try {
     lock = lockFile.openSync(mode: FileMode.write);
@@ -708,6 +711,19 @@ Future<RandomAccessFile?> reapOrphanedRcd({
     lock.closeSync();
     return null; // another Airclone is running
   }
+  return lock;
+}
+
+@visibleForTesting
+Future<RandomAccessFile?> reapOrphanedRcd({
+  required Directory tempDir,
+  required File lockFile,
+  required int ownPid,
+  required void Function(int pid) kill,
+  RandomAccessFile? Function(File lockFile)? acquireLock,
+}) async {
+  final lock = (acquireLock ?? _takeSingleInstanceLock)(lockFile);
+  if (lock == null) return null;
 
   try {
     await for (final entry in tempDir.list(followLinks: false)) {

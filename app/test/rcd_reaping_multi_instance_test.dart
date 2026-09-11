@@ -8,6 +8,15 @@
 ///
 /// The rule now: reap only while holding an exclusive lock, which is only
 /// available when no other instance is running.
+///
+/// The POLICY is what these tests pin, with the lock injected. They cannot pin
+/// it through the real lock, because POSIX advisory locks belong to the PROCESS:
+/// opening one file twice in a single process and locking both SUCCEEDS on
+/// Linux and macOS, while on Windows — where locks are per-handle — it
+/// conflicts. An earlier version of this file simulated the sibling in-process
+/// and duly passed on Windows and failed on Linux CI. Cross-process exclusion is
+/// a platform guarantee; what is worth testing is what the code does once told
+/// a sibling is alive.
 library;
 
 import 'dart:io';
@@ -44,11 +53,16 @@ void main() {
     return f;
   }
 
-  Future<RandomAccessFile?> reap({int ownPid = 4242}) => reapOrphanedRcd(
+  /// [siblingRunning] stands in for another Airclone holding the lock.
+  Future<RandomAccessFile?> reap({
+    int ownPid = 4242,
+    bool siblingRunning = false,
+  }) => reapOrphanedRcd(
     tempDir: tmp,
     lockFile: lockFile,
     ownPid: ownPid,
     kill: killed.add,
+    acquireLock: siblingRunning ? (_) => null : null,
   );
 
   test('an orphan from a crashed previous run is reaped', () async {
@@ -75,12 +89,9 @@ void main() {
   });
 
   test('NOTHING is reaped while another instance holds the lock', () async {
-    // Stand in for a second running Airclone.
-    final sibling = lockFile.openSync(mode: FileMode.write)
-      ..lockSync(FileLock.exclusive);
     final m = marker(1111, 9001);
 
-    final lock = await reap();
+    final lock = await reap(siblingRunning: true);
 
     expect(lock, isNull, reason: 'we must not claim single-instance ownership');
     // The whole point: that PID is a live sibling's engine.
@@ -90,27 +101,34 @@ void main() {
       isTrue,
       reason: 'the sibling still needs its marker',
     );
-
-    sibling
-      ..unlockSync()
-      ..closeSync();
   });
 
   test('once the sibling exits, the next launch reaps what it left', () async {
-    final sibling = lockFile.openSync(mode: FileMode.write)
-      ..lockSync(FileLock.exclusive);
     marker(1111, 9001);
-    expect(await reap(), isNull);
+    expect(await reap(siblingRunning: true), isNull);
     expect(killed, isEmpty);
-
-    sibling
-      ..unlockSync()
-      ..closeSync();
 
     final lock = await reap();
     expect(lock, isNotNull);
     expect(killed, [9001]);
     lock!
+      ..unlockSync()
+      ..closeSync();
+  });
+
+  test('the real lock can be taken and released', () async {
+    // The mechanism, as far as one process can check it: a real exclusive lock
+    // is acquired and handed back, and releasing it lets the next call take it.
+    // Whether two PROCESSES exclude each other is the platform's guarantee, not
+    // something this can demonstrate.
+    final first = await reap();
+    expect(first, isNotNull);
+    first!
+      ..unlockSync()
+      ..closeSync();
+    final second = await reap();
+    expect(second, isNotNull);
+    second!
       ..unlockSync()
       ..closeSync();
   });
