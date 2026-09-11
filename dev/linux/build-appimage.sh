@@ -116,10 +116,10 @@ say "Resolving shared libraries"
 # on those machines with "libjack.so.0: cannot open shared object file". Bundle
 # it when the build host has it.
 #
-# libasound is deliberately NOT forced in, even though it is unresolved on a bare
-# system: ALSA loads plugin modules from the host, and shipping our own libasound
-# breaks audio on the user's machine rather than fixing anything. Every desktop
-# Linux has it; JACK is the one that is genuinely optional.
+# libasound is deliberately NOT forced in HERE, because anything in usr/lib is on
+# the search path and would shadow the host's on every machine. It is handled
+# separately, as a conditional last resort — see "Staging a last-resort ALSA"
+# below.
 EXTRA=()
 for lib in libjack.so.0; do
   path="$(ldconfig -p | awk -v n="$lib" '$1 == n { print $NF; exit }')"
@@ -138,6 +138,55 @@ done
   --icon-file "$PKG/icons/256.png" \
   --icon-filename com.gigaionllc.airclone \
   "${EXTRA[@]}"
+
+say "Staging a last-resort ALSA"
+# libasound is the one library that must NOT be bundled the ordinary way, and
+# must still be available if the machine has none.
+#
+# Why not the ordinary way: DT_RUNPATH is searched BEFORE ld.so.cache, so a copy
+# in usr/lib would shadow the host's on EVERY machine, not just one missing it.
+# That breaks working systems, because ALSA loads plugin modules from host paths
+# (/usr/lib/<triplet>/alsa-lib, /usr/share/alsa/alsa.conf) and the route to
+# PipeWire/PulseAudio *is* one of those plugins. Our build-host copy would look
+# for them where Ubuntu puts them and find nothing on a Fedora or an Arch.
+#
+# Why have it at all: without libasound the app does not degrade, it does not
+# start — the dynamic linker refuses before main(), so someone who only wanted to
+# copy files gets nothing. Slim containers and WSL really are like this.
+#
+# So: keep it OUT of the search path, in usr/lib/fallback, and let AppRun add
+# that directory only when the system has no libasound at all. On such a machine
+# audio was never going to work anyway; the point is that the app runs.
+FALLBACK="$APPDIR/usr/lib/fallback"
+mkdir -p "$FALLBACK"
+alsa="$(ldconfig -p | awk '$1 == "libasound.so.2" { print $NF; exit }')"
+if [ -n "$alsa" ]; then
+  cp -L "$alsa" "$FALLBACK/libasound.so.2"
+  echo "  staged $(basename "$alsa") as a fallback only"
+else
+  echo "  NOTE: the build host has no libasound either — no fallback staged"
+fi
+
+# linuxdeploy leaves AppRun as a symlink straight to the executable, which means
+# nothing can be decided at launch. Replace it with a launcher that can.
+cat > "$APPDIR/AppRun" <<'APPRUN'
+#!/bin/sh
+# Airclone AppImage launcher.
+HERE="$(dirname "$(readlink -f "$0")")"
+
+# Use the bundled ALSA ONLY when the system has none. ldconfig lives in /sbin on
+# most distros and is not always on a user's PATH, so try both; if neither can be
+# run we assume the system has one, which is the safe guess — shadowing a working
+# ALSA is worse than the app failing to start on a machine that has none.
+if ! { /sbin/ldconfig -p 2>/dev/null || ldconfig -p 2>/dev/null; } \
+     | grep -q 'libasound\.so\.2'; then
+  export LD_LIBRARY_PATH="$HERE/usr/lib/fallback${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+fi
+
+exec "$HERE/usr/bin/airclone" "$@"
+APPRUN
+chmod +x "$APPDIR/AppRun"
+echo "  AppRun replaced with a launcher that chooses at run time"
 
 say "Checking the libraries a distro may not have are really inside"
 # A POSITIVE check, because the ldd one below cannot do this job: ldd resolves

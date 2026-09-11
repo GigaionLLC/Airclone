@@ -498,6 +498,15 @@ jobs:
               || { echo "::error::$lib is not bundled in the AppImage"; exit 1; }
           done
           echo "libmpv, libsecret and libjack are all bundled"
+          # ALSA is the opposite case: it must be present as a LAST RESORT and
+          # must NOT be on the search path, or it shadows a working host ALSA.
+          test -f squashfs-root/usr/lib/fallback/libasound.so.2 \
+            || { echo "::error::the ALSA fallback is missing"; exit 1; }
+          test ! -e squashfs-root/usr/lib/libasound.so.2 \
+            || { echo "::error::libasound is on the search path; it would shadow the host"; exit 1; }
+          grep -q 'usr/lib/fallback' squashfs-root/AppRun \
+            || { echo "::error::AppRun does not consult the ALSA fallback"; exit 1; }
+          echo "ALSA staged as a fallback only, and AppRun knows about it"
           # 20s is long enough to build a window and short enough not to hang a
           # job; the app is killed, so only a CRASH before then is a failure.
           xvfb-run -a timeout 20 ./squashfs-root/AppRun > appimage-run.log 2>&1 &
