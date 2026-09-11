@@ -9,6 +9,7 @@ import 'src/state/android_native.dart';
 import 'src/state/local_locations.dart';
 import 'src/state/window_backdrop.dart';
 import 'src/ui/app.dart';
+import 'src/ui/error_surface.dart';
 import 'src/ui/popout_image_app.dart';
 
 Future<void> main(List<String> args) async {
@@ -23,6 +24,7 @@ Future<void> main(List<String> args) async {
     return runHeadless(args);
   }
   WidgetsFlutterBinding.ensureInitialized();
+  installVisibleErrorWidget();
   // Pop-out image sub-window (desktop only). desktop_multi_window spins up a
   // SECOND FlutterEngine in THIS process for each popped-out image; that engine
   // re-runs main(), but its payload arrives via the plugin channel
