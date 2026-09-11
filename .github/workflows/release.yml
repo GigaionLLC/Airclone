@@ -14,14 +14,17 @@ name: Release
 # The signed zip is published BEFORE notarization so an Apple notary outage or
 # timeout can never block a release — the stapled zip/DMG then replace/join it.
 #
-# A tag does more than fill a GitHub Release, and both of these are easy to miss:
+# A tag no longer publishes to any store. Since v0.8.3 every store lane is a
+# manual workflow_dispatch with an explicit mode — Play open testing
+# (publish-play.yml), Play production (promote-play.yml), Microsoft
+# (submit-msstore.yml), iOS and Mac App Store (ios-release.yml, mas-release.yml).
+# Before that, a `v*` tag uploaded to Play open testing on the way past, which
+# made tagging and publishing one act: there was no pre-release gate, so an `-rc`
+# tag reached testers like a final one, and a tag pushed merely to get artifacts
+# burned a Play version code permanently.
 #
-#   * it PUBLISHES to Google Play open testing. The android job uploads the AAB
-#     with `tracks: beta, status: completed` whenever PLAY_SERVICE_ACCOUNT_JSON is
-#     set (without it, every Play step skips silently), then hard-fails the run via
-#     tool/play_tracks.py --expect if Play is not actually serving that version
-#     code. There is no pre-release gate: an `-rc` tag reaches open testing too.
-#     Production is the separate, manual promote-play.yml.
+# A tag still does one thing that is easy to miss:
+#
 #   * it builds the Microsoft Store MSIX, with the package identity injected from
 #     repo variables, and attaches it to the release. That path is
 #     continue-on-error end to end, so a missing MSIX does not fail the run —
@@ -803,10 +806,6 @@ jobs:
       # Release signing. Base64-encoded keystore is job-level so the decode
       # step's `if:` can test it; empty on forks (which then debug-sign).
       AIRCLONE_KEYSTORE_BASE64: ${{ secrets.AIRCLONE_KEYSTORE_BASE64 }}
-      # Google Play auto-submission credential (a GCP service-account JSON
-      # granted release rights in Play Console → API access). Empty on forks
-      # and until the secret is configured — the Play steps then no-op.
-      HAS_PLAY_CREDS: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON != '' }}
     steps:
       - uses: actions/checkout@v5
       # Fail fast on a real (tagged) release if the signing secret is missing,
@@ -909,82 +908,17 @@ jobs:
         with:
           name: airclone-playstore-aab
           path: app/build/app/outputs/bundle/release/app-release.aab
-      # Store "What's new" is deliberately GENERIC, and the same text every
-      # release. It used to be dev/releases/<tag>.md with headings stripped and
-      # the result cut at 480 characters, so every store update shipped a
-      # mid-sentence fragment of notes written for a different audience - and
-      # had to be eyeballed by hand each time to see what survived the cut.
+      # Publishing to Google Play is NOT automatic, and deliberately so.
       #
-      # The detailed notes live on the GitHub release, which is where anyone who
-      # wants them looks. See docs/store/store-release-notes.txt.
-      - name: Prepare Play release notes (plain text, <=500 chars)
-        if: startsWith(github.ref, 'refs/tags/') && env.HAS_PLAY_CREDS == 'true'
-        working-directory: .
-        run: |
-          set -euo pipefail
-          mkdir -p distribution/whatsnew
-          cp docs/store/store-release-notes.txt distribution/whatsnew/whatsnew-en-US
-          # Play truncates past 500 bytes SILENTLY, so fail loudly instead.
-          bytes=$(wc -c < distribution/whatsnew/whatsnew-en-US)
-          if [ "$bytes" -gt 500 ]; then
-            echo "::error::store notes are $bytes bytes; Play allows 500."
-            exit 1
-          fi
-          echo "Play notes ($bytes bytes):"
-          cat distribution/whatsnew/whatsnew-en-US
-      - name: Upload AAB to Google Play (open testing)
-        if: startsWith(github.ref, 'refs/tags/') && env.HAS_PLAY_CREDS == 'true'
-        uses: r0adkll/upload-google-play@v1
-        with:
-          serviceAccountJsonPlainText: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
-          packageName: com.gigaionllc.airclone
-          # Paths here are repo-root-relative — this action does not honor
-          # defaults.run.working-directory.
-          releaseFiles: app/build/app/outputs/bundle/release/app-release.aab
-          # `beta` IS "Open testing" — the Console's track names and the API's
-          # differ: internal=Internal testing, alpha=Closed testing,
-          # beta=Open testing, production=Production.
-          #
-          # `tracks` (plural), not `track`: the v0.6.5 run warned that the
-          # singular form "is deprecated and will be removed in a future
-          # release". Left alone that becomes a silent lane break on some later
-          # action bump.
-          tracks: beta
-          status: completed
-          releaseName: ${{ github.ref_name }}
-          whatsNewDirectory: distribution/whatsnew
-          # changesNotSentForReview: true  # ONLY if the first automated run
-          # fails with "changes cannot be sent for review automatically";
-          # remove again once a reviewed release exists (it then errors the
-          # other way).
-      # VERIFY BY ARTIFACT, NOT BY GREEN CHECK. An upload step can report
-      # success while nothing lands — a deprecated input quietly ignored, an
-      # edit committed against a different track. (This repo has been burned by
-      # exactly that shape before: `continue-on-error` hid a missing bundled
-      # rclone across three Windows releases.) So ask Play what it actually
-      # holds, and fail the release if the version code we just built is not
-      # in open testing.
-      - name: Verify the build really landed in open testing
-        if: startsWith(github.ref, 'refs/tags/') && env.HAS_PLAY_CREDS == 'true'
-        working-directory: .
-        env:
-          PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
-        run: |
-          set -euo pipefail
-          python3 -m pip install --quiet google-auth requests
-          printf '%s' "$PLAY_SERVICE_ACCOUNT_JSON" > "$RUNNER_TEMP/play-key.json"
-          # versionCode is the pubspec build number: `version: 1.2.3+456`.
-          code="$(sed -n 's/^version:.*+//p' app/pubspec.yaml | tr -d '[:space:]')"
-          echo "expecting version code $code in open testing"
-          GOOGLE_APPLICATION_CREDENTIALS="$RUNNER_TEMP/play-key.json" \
-            python3 tool/play_tracks.py --package com.gigaionllc.airclone --expect "beta=$code"
-          rm -f "$RUNNER_TEMP/play-key.json"
-
-      # Production is deliberately NOT automatic. Every tag lands in open
-      # testing; promoting the build users get is a human decision, made by
-      # running .github/workflows/promote-play.yml from the Actions tab. That
-      # workflow promotes the EXISTING version code rather than uploading
-      # again — Play rejects a version code it has already seen.
+      # Until v0.8.3 this job uploaded the AAB to open testing on every `v*`
+      # tag. That made tagging and publishing the same act, with no pre-release
+      # gate (an `-rc` tag reached testers exactly like a final one) and no way
+      # to get build artifacts from a tag without permanently burning a Play
+      # version code. It was also the only store lane in this repo that fired
+      # by itself; every other one is a button with an explicit mode.
+      #
+      # Open testing:  .github/workflows/publish-play.yml  (this AAB, by tag)
+      # Production:    .github/workflows/promote-play.yml  (promotes that code)
       - name: Upload to release
         if: startsWith(github.ref, 'refs/tags/')
         env:
@@ -993,9 +927,9 @@ jobs:
           # End users install the per-ABI APKs. The Play App Bundle (.aab) is the
           # Play CONSOLE upload artifact — attached here (with a clear name) as a
           # convenience for manual upload. It carries no private signing key (Play
-          # App Signing re-signs server-side), so publishing it is safe; once
-          # PLAY_SERVICE_ACCOUNT_JSON is set the CI auto-submits it and this asset
-          # is just a mirror.
+          # App Signing re-signs server-side), so publishing it is safe. It is NOT
+          # decoration: publish-play.yml downloads THIS asset by tag rather than
+          # rebuilding, so what testers install is what was built here.
           cp build/app/outputs/bundle/release/app-release.aab airclone-playstore.aab
           gh release upload "$GITHUB_REF_NAME" \
             build/app/outputs/flutter-apk/airclone-android-*.apk \

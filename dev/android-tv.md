@@ -290,13 +290,14 @@ So the split is:
 | Automated | Human, in the Console |
 | :--- | :--- |
 | manifest, banners, TV shell, D-pad verification | opt in to the Android TV form factor |
-| bundle build + upload to open testing (`release.yml` android job, on a `v*` tag) | answer the TV declaration |
+| bundle build (`release.yml` android job, on a `v*` tag), then upload to open testing (`publish-play.yml`, run by hand) | answer the TV declaration |
 | `tvBanner` + `tvScreenshots` upload (`play-images.yml` → `tool/play_images.py`) | submit for TV review |
 
 The TV-supporting bundle reaches users in two moves, and confusing them
-changes what production serves: **`release.yml` uploads** it to open testing on
-the tag, and **`promote-play.yml` promotes** that same version code to
-production later. The promote workflow cannot upload anything - Play rejects a
+changes what production serves: **`publish-play.yml` uploads** it to open
+testing from the tag's release asset, and **`promote-play.yml` promotes** that
+same version code to production later. (Before v0.8.3 the first of those
+happened automatically on the tag; it no longer does.) The promote workflow cannot upload anything - Play rejects a
 version code it has already seen, so promotion is a metadata edit on the build
 that is already up there.
 

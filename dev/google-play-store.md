@@ -4,12 +4,18 @@ Companion to `dev/windows-signing-and-store.md` (Microsoft Store) — same house
 **recurring, per-release** Play steps. The **one-time** service-account / CI setup lives in
 [`dev/play-ci-setup.md`](play-ci-setup.md) and is NOT repeated here.
 
-> **Status (2026-09-06): CI is LIVE.** Every `v*` tag builds the AAB, uploads it to **open testing**
-> (the API's `beta` track) via `r0adkll/upload-google-play@v1`, and then asks Play to confirm the
-> version code landed — a failed confirmation fails the release. Production promotion is the manual
-> `promote-play.yml`; CI never ships to production on its own. A manual Console upload is now only a
-> fallback for when the credential is missing or rotated. For the credential and CI state,
-> [`dev/play-ci-setup.md`](play-ci-setup.md) is the copy that wins.
+> **Status (2026-09-11): CI is LIVE, and publishing is now a button.** Every `v*` tag builds the AAB
+> and attaches it to the GitHub release. **Sending it to open testing is a separate manual run** of
+> `publish-play.yml` (Actions → *Publish to Google Play (open testing)* → tag + `mode=upload`), which
+> downloads that exact asset rather than rebuilding, uploads it to the API's `beta` track via
+> `r0adkll/upload-google-play@v1`, and then asks Play to confirm the version code landed — a failed
+> confirmation fails the run. Production promotion is a further manual `promote-play.yml`.
+>
+> **Changed in v0.8.3:** open testing used to happen automatically on every tag. It made tagging and
+> publishing one act, with no pre-release gate and no way to get artifacts from a tag without burning
+> a Play version code forever. Every store lane in this repo is now manual with an explicit mode.
+> A manual Console upload remains the fallback for when the credential is missing or rotated. For the
+> credential and CI state, [`dev/play-ci-setup.md`](play-ci-setup.md) is the copy that wins.
 
 > **PAID listing** — the Play version carries the small store-listing fee; listing copy must NOT claim
 > the app is free / no-paywall (see `docs/store/README.md`). Direct-download / self-build stays free.
@@ -84,8 +90,13 @@ Save. Listing edits do **not** require a new AAB and can ship independently of a
 > `store-ready/MANIFEST.md` is the copy that wins for which file fills which slot.
 
 **D. Upload the AAB**
-- **Automated (the normal path):** the android job uploads the AAB to **Open testing** on every tag
-  and then verifies it landed — nothing to do but watch the job.
+- **The normal path (a button):** Actions → ***Publish to Google Play (open testing)*** → Run
+  workflow → `tag` = the release tag, `mode` = `dry-run` first if you want to see the version code
+  and what's-new it resolved, then `mode=upload`. It downloads `airclone-playstore.aab` from that
+  release — no rebuild, so what testers install is what was tested — uploads it, and then verifies
+  it landed. Nothing to do but watch the job.
+- **A tag alone publishes nothing** (since v0.8.3). If you tagged and testers never saw it, this
+  workflow is the step you have not run yet.
 - **Manual (fallback only — the secret is absent or mid-rotation):** Play Console → **Test and
   release → Testing → Open testing → Create new release** → upload `airclone-playstore.aab` from the
   GitHub release assets → paste the what's-new → **Save → Review release → Start rollout to Open
@@ -94,9 +105,10 @@ Save. Listing edits do **not** require a new AAB and can ship independently of a
   create an app's first track release.
 
 **E. Verify the upload landed**
-- CI already asks Play. The `Verify the build really landed in open testing` step runs
-  `tool/play_tracks.py --expect beta=<pubspec build number>` and **fails the release** if Play does
-  not hold that code, so a green android job is real evidence rather than a green check.
+- CI already asks Play. The `Verify the build really landed in open testing` step of
+  `publish-play.yml` runs `tool/play_tracks.py --expect beta=<pubspec build number>` and **fails the
+  run** if Play does not hold that code, so a green publish job is real evidence rather than a green
+  check.
 - To read every track by hand at any time:
   `GOOGLE_APPLICATION_CREDENTIALS=key.json python tool/play_tracks.py --package com.gigaionllc.airclone`.
 - Delivery-path check, still worth doing on a release that changes install behaviour: open the
@@ -104,7 +116,8 @@ Save. Listing edits do **not** require a new AAB and can ship independently of a
   appears. The API assertion proves Play accepted the bundle, not that Play served it.
 
 **F. Promote to production — a button, not a Console visit** *(since 2026-08-16)*
-- CI publishes a tag to **open testing** automatically and never goes further on its own.
+- Nothing reaches production on its own; nothing reaches **open testing** on its own either. Both
+  are workflows someone runs.
 - Promote with **Actions → *Promote on Google Play* → Run workflow**: it promotes the version code
   already sitting in the track (Play rejects a re-upload of a code it has seen), defaults to a **10%
   staged rollout**, and widening later is the same workflow with `rollout=100`.
@@ -178,15 +191,14 @@ verification. Same for any future channel that re-signs our APKs, e.g. an F-Droi
   review automatically"*, set `changesNotSentForReview: true` for ONE run, then remove it (it errors
   the opposite way once a reviewed release exists). The release.yml step keeps this commented with the
   same note.
-- **Every tag goes to open testing, pre-release or not.** All **three** Play steps — prepare notes,
-  upload, and the `play_tracks.py --expect` verification — gate only on `refs/tags/*` plus the
-  secret; `tracks: beta` is hardcoded and there is **no `-beta.N`/`-rc` exclusion anywhere on the
-  Play path** (pre-release detection exists only for the GitHub Release flag). Open testing is
-  **public** — anyone with the opt-in link gets it. If a pre-release must stay private, gate all
-  three on the same `*alpha*|*beta*|*rc*` test `release.yml` already uses for the Release
-  pre-release flag — not a `-` match, which misses a tag like `v1.0.0.rc1` — or route it to
-  `internal` first. Gating only the upload leaves the verify step failing on a build it cannot find.
-  Production is never automatic either way.
+- **A pre-release tag no longer reaches testers by itself** *(fixed in v0.8.3)*. It used to: all
+  three Play steps lived in `release.yml` and gated only on `refs/tags/*` plus the secret, with
+  `tracks: beta` hardcoded and **no `-beta.N`/`-rc` exclusion anywhere on the Play path** — so an
+  `-rc` tag went to open testing exactly like a final one, and open testing is **public** (anyone
+  with the opt-in link gets it). The gate is now that a human runs `publish-play.yml`, which is
+  stronger than any tag-name pattern would have been — a pattern would still have missed a tag like
+  `v1.0.0.rc1`, which has no `-`. If you ever want a pre-release to reach testers privately, route it
+  to `internal` rather than `beta`; the `tracks:` value is the only change needed.
 - **Listing vs. release** — screenshots/description update independently of the AAB; you don't need a
   new build to fix copy.
 

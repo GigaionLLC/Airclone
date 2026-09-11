@@ -3,9 +3,10 @@ name: Promote on Google Play
 # Ships the build that is already in OPEN TESTING to production — from the
 # Actions tab, with no Play Console login.
 #
-# Why a separate, manual workflow: every tag auto-uploads to open testing
-# (release.yml), because testers should always be current. Production is a
-# decision, not a consequence of tagging, so it stays a button someone presses.
+# Why a separate, manual workflow: production is a decision, not a consequence
+# of tagging, so it stays a button someone presses. Open testing is now the same
+# shape — publish-play.yml puts a tag's AAB there, and this promotes that version
+# code onwards. Until v0.8.3 open testing was automatic on every tag; it isn't.
 #
 # It does NOT re-upload the AAB. Play rejects a version code it has already
 # seen, so promotion is a metadata edit on the existing version code — see

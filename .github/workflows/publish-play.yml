@@ -1,0 +1,159 @@
+name: Publish to Google Play (open testing)
+
+# Sends an already-built AAB to Google Play OPEN TESTING — from the Actions tab,
+# with no Play Console login.
+#
+# Why manual. Until v0.8.3 this was automatic: every `v*` tag uploaded to open
+# testing on the way past. That made tagging and publishing the same act, and it
+# was the odd one out — every other store lane in this repo is a button someone
+# presses with an explicit mode (ios-release.yml, mas-release.yml,
+# submit-msstore.yml, promote-play.yml). It also had two sharp edges:
+#
+#   * there was no pre-release gate, so an `-rc` or `-test` tag reached open
+#     testing exactly like a final one; and
+#   * Play permanently burns a version code on upload, so a tag pushed to get
+#     build artifacts cost a real version number that can never be reused.
+#
+# Cutting a tag is now just cutting a tag. Deciding testers should get it is a
+# separate decision, made here.
+#
+# It does NOT rebuild. It downloads the exact `airclone-playstore.aab` attached
+# to the chosen release, so what testers install is what was built and tested at
+# that tag. The AAB is signed with the Airclone upload key; Play App Signing
+# re-signs it server-side for delivery.
+#
+# Production is still one further step: promote-play.yml, which promotes the
+# version code this workflow put in open testing.
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag whose airclone-playstore.aab to publish (e.g. v0.8.3)'
+        required: true
+        type: string
+      mode:
+        description: 'dry-run = check the asset, notes and version code, upload nothing · upload = send it to open testing'
+        required: true
+        default: 'dry-run'
+        type: choice
+        options: [dry-run, upload]
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      # Check out the TAG, not the default branch: the release notes and the
+      # version code have to be the ones that belong to the artifact being
+      # published, not whatever main has drifted to since.
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.tag }}
+
+      - name: Refuse without credentials
+        env:
+          HAS_PLAY_CREDS: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON != '' }}
+        run: |
+          if [ "$HAS_PLAY_CREDS" != "true" ]; then
+            echo "::error::PLAY_SERVICE_ACCOUNT_JSON is not set — see dev/play-ci-setup.md."
+            exit 1
+          fi
+
+      - name: Download the AAB from the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          gh release download "${{ inputs.tag }}" \
+            --repo "$GITHUB_REPOSITORY" \
+            --pattern 'airclone-playstore.aab' \
+            --dir dist
+          # An empty or missing file here is the failure mode that matters: a
+          # silently absent asset would otherwise reach the upload step and fail
+          # with something far less obvious. (This repo has been burned by a
+          # green step that published nothing — verify the artifact.)
+          test -s dist/airclone-playstore.aab
+          ls -l dist/airclone-playstore.aab
+
+      # Store "What's new" is deliberately GENERIC, and the same text every
+      # release. It used to be dev/releases/<tag>.md with headings stripped and
+      # the result cut at 480 characters, so every store update shipped a
+      # mid-sentence fragment of notes written for a different audience — and had
+      # to be eyeballed by hand each time to see what survived the cut.
+      #
+      # The detailed notes live on the GitHub release, which is where anyone who
+      # wants them looks. See docs/store/store-release-notes.txt.
+      - name: Prepare Play release notes (plain text, <=500 chars)
+        run: |
+          set -euo pipefail
+          mkdir -p distribution/whatsnew
+          cp docs/store/store-release-notes.txt distribution/whatsnew/whatsnew-en-US
+          # Play truncates past 500 bytes SILENTLY, so fail loudly instead.
+          bytes=$(wc -c < distribution/whatsnew/whatsnew-en-US)
+          if [ "$bytes" -gt 500 ]; then
+            echo "::error::store notes are $bytes bytes; Play allows 500."
+            exit 1
+          fi
+          echo "Play notes ($bytes bytes):"
+          cat distribution/whatsnew/whatsnew-en-US
+
+      - name: Resolve the version code
+        id: code
+        run: |
+          set -euo pipefail
+          # versionCode is the pubspec build number: `version: 1.2.3+456`.
+          code="$(sed -n 's/^version:.*+//p' app/pubspec.yaml | tr -d '[:space:]')"
+          test -n "$code"
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+          echo "version code at ${{ inputs.tag }} is $code"
+
+      - name: What this would do (dry-run)
+        if: inputs.mode == 'dry-run'
+        run: |
+          echo "DRY RUN — nothing was uploaded."
+          echo "  tag:          ${{ inputs.tag }}"
+          echo "  version code: ${{ steps.code.outputs.code }}"
+          echo "  track:        beta (= Open testing in the Play Console)"
+          echo "Re-run with mode=upload to publish it."
+
+      - name: Upload AAB to Google Play (open testing)
+        if: inputs.mode == 'upload'
+        uses: r0adkll/upload-google-play@v1
+        with:
+          serviceAccountJsonPlainText: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+          packageName: com.gigaionllc.airclone
+          releaseFiles: dist/airclone-playstore.aab
+          # `beta` IS "Open testing" — the Console's track names and the API's
+          # differ: internal=Internal testing, alpha=Closed testing,
+          # beta=Open testing, production=Production.
+          #
+          # `tracks` (plural), not `track`: the v0.6.5 run warned that the
+          # singular form "is deprecated and will be removed in a future
+          # release". Left alone that becomes a silent lane break on some later
+          # action bump.
+          tracks: beta
+          status: completed
+          releaseName: ${{ inputs.tag }}
+          whatsNewDirectory: distribution/whatsnew
+
+      # VERIFY BY ARTIFACT, NOT BY GREEN CHECK. An upload step can report success
+      # while nothing lands — a deprecated input quietly ignored, an edit
+      # committed against a different track. So ask Play what it actually holds,
+      # and fail if the version code we just sent is not in open testing.
+      - name: Verify the build really landed in open testing
+        if: inputs.mode == 'upload'
+        env:
+          PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+        run: |
+          set -euo pipefail
+          python3 -m pip install --quiet google-auth requests
+          printf '%s' "$PLAY_SERVICE_ACCOUNT_JSON" > "$RUNNER_TEMP/play-key.json"
+          echo "expecting version code ${{ steps.code.outputs.code }} in open testing"
+          GOOGLE_APPLICATION_CREDENTIALS="$RUNNER_TEMP/play-key.json" \
+            python3 tool/play_tracks.py --package com.gigaionllc.airclone \
+              --expect "beta=${{ steps.code.outputs.code }}"
+          rm -f "$RUNNER_TEMP/play-key.json"
