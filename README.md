@@ -88,6 +88,22 @@ experience**, and brings it to the desktop *and* the phone:
   </tr>
 </table>
 
+### 🌐 In a browser, from anywhere
+
+<table>
+  <tr>
+    <td width="62%"><img src="docs/screenshots/webui-desktop.png" alt="Airclone's full desktop interface running in a web browser"><br><sub><b>The whole app, served over HTTP</b> — <code>airclone --webui</code>, or Settings → Remote access. Not a cut-down web client: the same panes, the same remotes, the same transfers.</sub></td>
+    <td width="38%"><img src="docs/screenshots/webui-phone.png" alt="The same Web UI at phone width, showing the touch interface"><br><sub><b>One address, either layout</b> — a narrow screen gets the phone interface automatically. Note the heading: <b>Host computer</b>. Those are the server's disks, not the phone's.</sub></td>
+  </tr>
+  <tr>
+    <td colspan="2" align="center"><img src="docs/screenshots/webui-login.png" alt="The Web UI sign-in page" width="620"><br><sub><b>There is always a password</b> — generated on first launch, no way to turn it off. It listens on <code>127.0.0.1</code> until you say otherwise, and says so loudly when you do. An unauthenticated visitor gets this 4 KB page and nothing else.</sub></td>
+  </tr>
+</table>
+
+**Everything happens on the machine running Airclone.** Mount a drive from your phone and it mounts on
+the server. Start a 200 GB sync and the server does it, at its network speed, and it keeps going after
+you close the tab. Full details in [the Web UI guide](docs/guide/web-ui.md).
+
 ### 📱 On your phone
 
 <p align="center">
@@ -135,6 +151,7 @@ This repo follows a structured documentation methodology. **Agents and contribut
 
 | You want to… | Read |
 | :--- | :--- |
+| **Use the app** | [User guide](docs/guide/README.md) — browsing, transferring, backup, scheduling, mounting, the console, and [the Web UI](docs/guide/web-ui.md) |
 | Understand the product | [Vision & North Star](wiki/core/01-vision-north-star.md) · [Product Context](wiki/core/02-product-context.md) |
 | Understand the architecture | [Core Architecture](wiki/core/08-core-architecture.md) *(framework choice + the `RcloneClient` seam)* |
 | Deploy / govern in an org | [Enterprise Readiness](wiki/core/19-enterprise-readiness.md) · [Security](wiki/core/15-security.md) |
@@ -177,16 +194,46 @@ docker compose run --rm flutter flutter analyze   # static analysis
 docker compose run --rm flutter flutter test      # unit tests
 ```
 
-**Downloads:** the store listings above ([App Store](https://apps.apple.com/app/id6790176897) ·
-[Google Play](https://play.google.com/store/apps/details?id=com.gigaionllc.airclone) ·
-[Microsoft Store](https://apps.microsoft.com/detail/9PJ6LRTS2B8X)) are the auto-updating route.
-Windows/macOS/Linux/Android builds are also published on the
-[Releases](https://github.com/GigaionLLC/Airclone/releases) page (alpha/beta builds are marked
-pre-release; **Windows** builds are code-signed and **macOS** builds are signed + notarized).
-**Windows and Android** builds bundle the rclone engine (nothing to download on first launch); other
-desktop builds fetch + verify it on first launch, and a desktop build can update the engine from
-Settings — except the Microsoft Store package, which updates its engine only when the app itself
-updates, through the Store.
+**Downloads:** see [Downloads](#-downloads) for every platform and both routes.
+
+**About the rclone engine:** **Windows and Android** builds bundle it, so there is nothing to
+download on first launch. Other desktop builds fetch and verify it the first time they run, and can
+update it later from Settings — except the Microsoft Store package, which updates its engine only
+when the app itself updates, through the Store. Alpha and beta builds on the Releases page are
+marked pre-release.
+
+## ⬇️ Downloads
+
+Every platform, both routes, in one place. **The store column installs and updates itself. The direct
+column is the same app, free, installed by you.** They are the same builds from the same CI — the
+store fee funds the code-signing certificates those stores require, nothing else.
+
+Direct links always resolve to the **newest release**, so they stay correct as versions move.
+
+| Platform | Store | Direct download | Notes |
+| :--- | :--- | :--- | :--- |
+| **Windows 10/11** | [Microsoft Store](https://apps.microsoft.com/detail/9PJ6LRTS2B8X) | [Installer `.exe`](https://github.com/GigaionLLC/Airclone/releases/latest/download/airclone-setup-x64.exe) · [Portable `.zip`](https://github.com/GigaionLLC/Airclone/releases/latest/download/airclone-windows-x64.zip) · [`.msix`](https://github.com/GigaionLLC/Airclone/releases/latest/download/airclone.msix) | Code-signed. rclone engine included. |
+| **macOS 10.15+** | [App Store](https://apps.apple.com/app/id6790176897) | [`.dmg`](https://github.com/GigaionLLC/Airclone/releases/latest/download/airclone-macos.dmg) · [`.zip`](https://github.com/GigaionLLC/Airclone/releases/latest/download/airclone-macos.zip) | Signed **and notarized** — no Gatekeeper warning. |
+| **Linux** | — | [`.AppImage`](https://github.com/GigaionLLC/Airclone/releases/latest/download/Airclone-x86_64.AppImage) · [`.flatpak`](https://github.com/GigaionLLC/Airclone/releases/latest/download/airclone.flatpak) · [`.tar.gz`](https://github.com/GigaionLLC/Airclone/releases/latest/download/airclone-linux-x64.tar.gz) | Start with the AppImage. See [which Linux build](#-on-linux). |
+| **Android** | [Google Play](https://play.google.com/store/apps/details?id=com.gigaionllc.airclone) | [Universal `.apk`](https://github.com/GigaionLLC/Airclone/releases/latest/download/airclone-android-universal.apk) · [arm64](https://github.com/GigaionLLC/Airclone/releases/latest/download/airclone-android-arm64-v8a.apk) · [arm32](https://github.com/GigaionLLC/Airclone/releases/latest/download/airclone-android-armeabi-v7a.apk) · [x86_64](https://github.com/GigaionLLC/Airclone/releases/latest/download/airclone-android-x86_64.apk) | Phone, tablet **and Android TV**. rclone engine included. Take the universal APK if unsure. |
+| **iPhone / iPad** | [App Store](https://apps.apple.com/app/id6790176897) | — | iOS has no sideload route. One purchase also covers the Mac app. |
+| **In a browser** | — | — | Not a download — the **[Web UI](docs/guide/web-ui.md)** is built into the desktop builds above. |
+
+**All releases, with notes and checksums:** [github.com/GigaionLLC/Airclone/releases](https://github.com/GigaionLLC/Airclone/releases)
+· [latest](https://github.com/GigaionLLC/Airclone/releases/latest)
+
+> **Which one should I pick?** If your platform has a store listing and you want it to update itself,
+> use the store. Otherwise take the first direct link for your platform. Both are the same app.
+
+### Reaching it from another device
+
+You do not need to install anything on the device you are *browsing from*. Turn on the
+**[Web UI](docs/guide/web-ui.md)** on the machine that has your remotes — `airclone --webui`, or
+Settings → Remote access — and open it in any browser. The layout follows the screen, so a phone gets
+the phone interface and a laptop gets the desktop one.
+
+Every mount, every listing and every transfer still happens on the machine running Airclone. The
+browser draws the picture.
 
 ## 💸 Pricing
 
@@ -206,7 +253,8 @@ convenience, not features. The store builds and the free builds are the same app
 
 What the fee buys is the managed path: the store installs it, keeps it updated, and vouches for the
 signature. Everything else — Linux, and any platform you would rather install by hand — is on the
-[Releases](https://github.com/GigaionLLC/Airclone/releases) page for free, forever.
+[Releases](https://github.com/GigaionLLC/Airclone/releases) page for free, forever. Both routes are
+side by side in [Downloads](#-downloads).
 
 ### 🐧 On Linux
 
