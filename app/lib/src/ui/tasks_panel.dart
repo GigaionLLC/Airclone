@@ -22,6 +22,7 @@ import '../state/transfer_options.dart';
 import '../state/transfer_service.dart';
 import '../state/windows_task_scheduler.dart';
 import '../state/backup_restore.dart';
+import '../state/task_kind.dart';
 import '../state/backup_retention.dart';
 import 'backup_actions.dart';
 import 'backup_wizard.dart';
@@ -749,9 +750,25 @@ class _TaskRow extends ConsumerWidget {
     // tasks dialog closes — the same widget-lifecycle trap that can silently
     // drop the bisync baseline flip (phase-3 plan §3).
     final container = ProviderScope.containerOf(context, listen: false);
+
+    // The SAME re-application the scheduler tick and the headless runner do
+    // (scheduler_controller.dart, headless_runner.dart). A backup is copy-only
+    // with versions kept whatever its stored options say, and a repeating Sync
+    // never runs uncapped — and "whatever its stored options say" has to hold
+    // here too, because the raw task editor can set a backup's mode to sync and
+    // this button dispatched those options untouched. That is the one outcome
+    // the constraint exists to prevent: a task called "Back up Documents"
+    // deleting at its destination to match the source.
+    final effectiveOptions = task.kind == TaskKind.transfer
+        ? withScheduledDeleteCap(task.options)
+        : backupOptions(task.options);
+
+    // Read from the EFFECTIVE options, not the stored ones: a backup forced back
+    // to copy has no baseline to establish, so it must not take the bisync path
+    // on the strength of a mode it is not going to run in.
     final needsBaseline =
-        task.options.mode == TransferMode.bisync &&
-        !task.options.baselineEstablished;
+        effectiveOptions.mode == TransferMode.bisync &&
+        !effectiveOptions.baselineEstablished;
 
     // Stamp lastRun on a scheduled task the instant before we actually dispatch
     // (mirrors the scheduler tick + headless runOne) so manually running a slot
@@ -778,7 +795,7 @@ class _TaskRow extends ConsumerWidget {
         dstFs: task.dstFs,
         srcLabel: task.srcLabel,
         dstLabel: task.dstLabel,
-        options: task.options,
+        options: effectiveOptions,
       );
       messenger.showSnackBar(SnackBar(content: Text('Started "${task.name}"')));
     } else {
