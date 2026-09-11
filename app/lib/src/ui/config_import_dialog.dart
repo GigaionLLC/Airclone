@@ -85,7 +85,13 @@ class _ConfigImportDialogState extends ConsumerState<_ConfigImportDialog> {
   // Merge, but let a colliding remote land ON the one already using its name
   // instead of beside it. Off by default: renaming keeps both and is always
   // recoverable, while replacing discards settings that may be the only copy.
-  bool _replaceCollisions = false;
+  /// Colliding remotes the user has chosen to OVERWRITE rather than rename.
+  ///
+  /// Per remote rather than one switch for the whole import: a config carried
+  /// between machines is usually a mix — some remotes genuinely changed and
+  /// should land on top, others must not. All-or-nothing forced the user to
+  /// hand-edit a `-imported` suffix off every name they wanted replaced.
+  final _replace = <String>{};
 
   // Secrets live only in these controllers (disposed on close).
   final _passphrase = TextEditingController();
@@ -287,7 +293,7 @@ class _ConfigImportDialogState extends ConsumerState<_ConfigImportDialog> {
       // own name and the create lands on the existing remote. The rename field's
       // contents are deliberately ignored rather than validated — nothing will
       // be written under that name.
-      if (d.collision && _replaceCollisions) {
+      if (d.collision && _replace.contains(d.name)) {
         finals.add(d.name);
         edited.add(
           ImportDecision(
@@ -594,7 +600,7 @@ class _ConfigImportDialogState extends ConsumerState<_ConfigImportDialog> {
         // Only once they have opted in. Leading with the cost of a mode nobody
         // has chosen is noise on the common path, and noise is what gets
         // scrolled past on the path where it matters.
-        if (collisions > 0 && _replaceCollisions) ...[
+        if (collisions > 0 && _replace.isNotEmpty) ...[
           const SizedBox(height: Space.x3),
           _replaceWarning(c),
         ],
@@ -632,16 +638,12 @@ class _ConfigImportDialogState extends ConsumerState<_ConfigImportDialog> {
             FilledButton.icon(
               onPressed: plan.isEmpty ? null : _applyMerge,
               icon: Icon(
-                _replaceCollisions ? Icons.swap_horiz : Icons.merge_type,
+                _replace.isEmpty ? Icons.merge_type : Icons.swap_horiz,
                 size: 16,
               ),
               // The button states the actual outcome. "Merge" over a plan that
               // overwrites six of your remotes is not a description of it.
-              label: Text(
-                _replaceCollisions && collisions > 0
-                    ? 'Replace + merge'
-                    : 'Merge',
-              ),
+              label: Text(_replace.isEmpty ? 'Merge' : 'Replace + merge'),
             ),
           ],
         ),
@@ -649,48 +651,70 @@ class _ConfigImportDialogState extends ConsumerState<_ConfigImportDialog> {
     );
   }
 
-  /// The merge-mode choice, sitting with the Merge button it modifies.
+  /// "Replace all" — ticks every colliding remote's own box at once.
   ///
   /// Merge's only answer to a name clash was a rename, so re-importing a
   /// corrected config left `foo` and `foo-imported` side by side with the app
   /// still using the stale `foo`. Replacing is the other reasonable intent — but
-  /// it is the destructive one, so it stays opt-in, per import, never
-  /// remembered, and the label says which remotes it would land on.
-  Widget _replaceCheckbox(AircloneColors c, int collisions) => InkWell(
-    onTap: () => setState(() => _replaceCollisions = !_replaceCollisions),
-    borderRadius: BorderRadius.circular(Radii.sm),
-    child: Padding(
-      padding: const EdgeInsets.symmetric(
-        horizontal: Space.x1,
-        vertical: Space.x1,
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          SizedBox(
-            height: 20,
-            width: 20,
-            child: Checkbox(
-              value: _replaceCollisions,
-              visualDensity: VisualDensity.compact,
-              onChanged: (v) => setState(() => _replaceCollisions = v ?? false),
+  /// it is the destructive one, so it stays opt-in, per import, never remembered.
+  ///
+  /// It used to be all-or-nothing, which was the wrong shape: a config carried
+  /// between machines is a MIX, and one switch meant hand-editing a `-imported`
+  /// suffix off every name you actually wanted replaced. This one is tristate —
+  /// with some ticked it shows a dash rather than claiming all or none, and
+  /// pressing it from there selects all.
+  Widget _replaceCheckbox(AircloneColors c, int collisions) {
+    final colliding = [
+      for (final d in _plan ?? const <ImportDecision>[])
+        if (d.collision) d.name,
+    ];
+    final all = colliding.isNotEmpty && colliding.every(_replace.contains);
+    final none = !colliding.any(_replace.contains);
+    void toggle() => setState(() {
+      if (all) {
+        _replace.clear();
+      } else {
+        _replace.addAll(colliding);
+      }
+      _previewError = null;
+    });
+    return InkWell(
+      onTap: toggle,
+      borderRadius: BorderRadius.circular(Radii.sm),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(
+          horizontal: Space.x1,
+          vertical: Space.x1,
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            SizedBox(
+              height: 20,
+              width: 20,
+              child: Checkbox(
+                value: all ? true : (none ? false : null),
+                tristate: true,
+                visualDensity: VisualDensity.compact,
+                onChanged: (_) => toggle(),
+              ),
             ),
-          ),
-          const SizedBox(width: Space.x2),
-          Text(
-            'Replace the $collisions existing',
-            style: TextStyle(
-              color: _replaceCollisions ? c.error : c.textMuted,
-              fontSize: 12,
-              fontWeight: _replaceCollisions
-                  ? FontWeight.w600
-                  : FontWeight.w400,
+            const SizedBox(width: Space.x2),
+            Text(
+              all
+                  ? 'Replacing all $collisions'
+                  : 'Replace all $collisions existing',
+              style: TextStyle(
+                color: all ? c.error : c.textMuted,
+                fontSize: 12,
+                fontWeight: all ? FontWeight.w600 : FontWeight.w400,
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
-    ),
-  );
+    );
+  }
 
   /// What replacing costs, shown only once it has been chosen.
   ///
@@ -775,7 +799,7 @@ class _ConfigImportDialogState extends ConsumerState<_ConfigImportDialog> {
                       style: TextStyle(color: c.textMuted, fontSize: 11),
                     ),
                   ),
-                if (d.collision && _replaceCollisions) ...[
+                if (d.collision && _replace.contains(d.name)) ...[
                   const SizedBox(height: 4),
                   Row(
                     children: [

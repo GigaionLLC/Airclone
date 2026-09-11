@@ -133,6 +133,16 @@ class _ScanFromDesktopScreenState
   ConfigModel? _existing;
   List<ImportDecision>? _plan;
   final _renames = <String, TextEditingController>{};
+
+  /// Colliding remotes the user has chosen to OVERWRITE rather than rename.
+  ///
+  /// Per remote, not one switch for the whole import: a config being carried
+  /// between two machines is usually a mix — a few remotes that genuinely
+  /// changed and should land on top, and others that must not. Making it
+  /// all-or-nothing forces the user to hand-edit a `-imported` suffix off every
+  /// name they wanted replaced, which is the complaint this answers.
+  final _replace = <String>{};
+
   String? _previewError;
 
   MergeReport? _report;
@@ -307,6 +317,21 @@ class _ScanFromDesktopScreenState
     final finals = <String>[];
     for (final d in plan) {
       var renamedTo = d.renamedTo;
+      // Replace short-circuits the rename entirely: the decision keeps its own
+      // name and the create lands on the remote already using it. The rename
+      // field is deliberately not validated — nothing will be written under it.
+      if (d.collision && _replace.contains(d.name)) {
+        finals.add(d.name);
+        edited.add(
+          ImportDecision(
+            name: d.name,
+            type: d.type,
+            collision: true,
+            replaceExisting: true,
+          ),
+        );
+        continue;
+      }
       if (d.collision) {
         final v = _renames[d.name]!.text.trim();
         if (v.isEmpty) {
@@ -341,6 +366,9 @@ class _ScanFromDesktopScreenState
       return null;
     }
     for (final d in edited) {
+      // A replace is MEANT to land on an existing remote — it is the one case
+      // where "that name is taken" is the intention rather than the error.
+      if (d.replaceExisting) continue;
       if (d.collision && existing.containsKey(d.renamedTo)) {
         setState(
           () => _previewError =
@@ -664,6 +692,7 @@ class _ScanFromDesktopScreenState
                           'Check each one below before merging.',
                 style: TextStyle(color: c.textFaint, fontSize: 12),
               ),
+              if (collisions > 0) _replaceAllRow(c, plan, collisions),
             ],
           ),
         ),
@@ -757,39 +786,145 @@ class _ScanFromDesktopScreenState
                   ),
                 if (d.collision) ...[
                   const SizedBox(height: Space.x2),
+                  // Replace, or rename — never both, so the name field goes away
+                  // when Replace is ticked. Leaving a field that will be ignored
+                  // is what makes a form feel like it is lying to you.
                   Row(
                     children: [
-                      Text(
-                        'Import as',
-                        style: TextStyle(color: c.textFaint, fontSize: 11),
+                      SizedBox(
+                        height: 22,
+                        width: 22,
+                        child: Checkbox(
+                          value: _replace.contains(d.name),
+                          visualDensity: VisualDensity.compact,
+                          materialTapTargetSize:
+                              MaterialTapTargetSize.shrinkWrap,
+                          onChanged: (v) => setState(() {
+                            if (v ?? false) {
+                              _replace.add(d.name);
+                            } else {
+                              _replace.remove(d.name);
+                            }
+                            _previewError = null;
+                          }),
+                        ),
                       ),
                       const SizedBox(width: Space.x2),
                       Expanded(
-                        child: SizedBox(
-                          height: 34,
-                          child: TextField(
-                            controller: _renames[d.name],
-                            decoration: InputDecoration(
-                              isDense: true,
-                              contentPadding: const EdgeInsets.symmetric(
-                                horizontal: Space.x2,
-                                vertical: Space.x2,
-                              ),
-                              border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(Radii.sm),
-                              ),
-                            ),
-                            style: TextStyle(color: c.text, fontSize: 12),
+                        child: Text(
+                          'Replace the existing "${d.name}"',
+                          style: TextStyle(
+                            color: _replace.contains(d.name)
+                                ? c.error
+                                : c.textMuted,
+                            fontSize: 11,
+                            fontWeight: _replace.contains(d.name)
+                                ? FontWeight.w600
+                                : FontWeight.w400,
                           ),
                         ),
                       ),
                     ],
                   ),
+                  if (!_replace.contains(d.name)) ...[
+                    const SizedBox(height: Space.x2),
+                    Row(
+                      children: [
+                        Text(
+                          'Import as',
+                          style: TextStyle(color: c.textFaint, fontSize: 11),
+                        ),
+                        const SizedBox(width: Space.x2),
+                        Expanded(
+                          child: SizedBox(
+                            height: 34,
+                            child: TextField(
+                              controller: _renames[d.name],
+                              decoration: InputDecoration(
+                                isDense: true,
+                                contentPadding: const EdgeInsets.symmetric(
+                                  horizontal: Space.x2,
+                                  vertical: Space.x2,
+                                ),
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(Radii.sm),
+                                ),
+                              ),
+                              style: TextStyle(color: c.text, fontSize: 12),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
                 ],
               ],
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  /// "Replace all" — ticks every colliding remote at once.
+  ///
+  /// Tristate on purpose: with some ticked it shows the dash rather than a lie
+  /// in either direction, and pressing it from there selects all (the reading of
+  /// a half-filled box that matches what someone reaching for it wants).
+  Widget _replaceAllRow(
+    AircloneColors c,
+    List<ImportDecision> plan,
+    int collisions,
+  ) {
+    final colliding = [
+      for (final d in plan)
+        if (d.collision) d.name,
+    ];
+    final all = colliding.every(_replace.contains);
+    final none = !colliding.any(_replace.contains);
+    void toggle() => setState(() {
+      if (all) {
+        _replace.clear();
+      } else {
+        _replace.addAll(colliding);
+      }
+      _previewError = null;
+    });
+    return Padding(
+      padding: const EdgeInsets.only(top: Space.x2),
+      child: InkWell(
+        onTap: toggle,
+        borderRadius: BorderRadius.circular(Radii.sm),
+        child: Padding(
+          padding: const EdgeInsets.all(Space.x1),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              SizedBox(
+                height: 22,
+                width: 22,
+                child: Checkbox(
+                  value: all ? true : (none ? false : null),
+                  tristate: true,
+                  visualDensity: VisualDensity.compact,
+                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  onChanged: (_) => toggle(),
+                ),
+              ),
+              const SizedBox(width: Space.x2),
+              Text(
+                all
+                    ? 'Replacing all $collisions'
+                    : 'Replace all $collisions with the incoming ones',
+                style: TextStyle(
+                  color: all ? c.error : c.textMuted,
+                  fontSize: 12,
+                  fontWeight: all ? FontWeight.w600 : FontWeight.w400,
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
