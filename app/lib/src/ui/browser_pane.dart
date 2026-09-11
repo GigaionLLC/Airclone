@@ -2519,12 +2519,11 @@ class _PaneToolbar extends ConsumerWidget {
           onPressed: () => ctrl.setViewMode(ViewMode.media),
           child: const Text('Media gallery'),
         ),
-        if (!isTouchPrimary)
-          MenuItemButton(
-            leadingIcon: _check(c, state.viewMode == ViewMode.tree),
-            onPressed: () => ctrl.setViewMode(ViewMode.tree),
-            child: const Text('Tree'),
-          ),
+        MenuItemButton(
+          leadingIcon: _check(c, state.viewMode == ViewMode.tree),
+          onPressed: () => ctrl.setViewMode(ViewMode.tree),
+          child: const Text('Tree'),
+        ),
         const Divider(height: 8),
         MenuItemButton(
           leadingIcon: _check(c, thumbsOn),

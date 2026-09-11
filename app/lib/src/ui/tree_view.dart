@@ -24,6 +24,14 @@ const double _disclosureWidth = 18;
 /// overflowing name the common case).
 const double _minNameWidth = 140;
 
+/// Below this pane width the tree drops its Size and Modified columns.
+///
+/// Chosen so a phone in portrait (~390dp) is comfortably under it and a
+/// half-width desktop pane is comfortably over: the two fixed columns are
+/// worth roughly 160dp, and giving that back to indentation is what makes the
+/// tree readable rather than merely present.
+const double kTreeDetailsMinWidth = 560;
+
 /// The tree view (tree-view plan §4.B): ONE flat `ListView` over the
 /// flattened forest — never a scrollable per level — with a disclosure arrow
 /// on folders, indentation by depth, and the Details columns.
@@ -325,15 +333,19 @@ class _TreeViewState extends ConsumerState<TreeView> {
       onKeyEvent: _onKey,
       child: LayoutBuilder(
         builder: (context, cons) {
+          // On a narrow pane the Size and Modified columns are dropped. They
+          // are fixed-width, so on a phone they plus the indentation leave the
+          // name nothing — and the indentation IS the tree. A tree squeezed to
+          // zero indent is a list with arrows on it.
+          final showDetails = cons.maxWidth >= kTreeDetailsMinWidth;
           // Everything in a row that is not the Name column; indentation may
           // eat the name down to _minNameWidth and no further.
           final fixed =
               Space.x3 * 2 +
               _disclosureWidth +
               22 +
-              Space.x2 * 3 +
-              widths.size +
-              widths.modified +
+              Space.x2 * (showDetails ? 3 : 1) +
+              (showDetails ? widths.size + widths.modified : 0) +
               28;
           final maxIndent = math.max(
             0.0,
@@ -357,6 +369,7 @@ class _TreeViewState extends ConsumerState<TreeView> {
                 dragData: _dragData(row),
                 indent: indent,
                 leading: _disclosure(row, c),
+                showDetails: showDetails,
                 tapOpensFolder: false,
                 onOpen: () {
                   _focus.requestFocus();

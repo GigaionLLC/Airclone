@@ -8,7 +8,6 @@ import '../rclone/models/remote.dart';
 import '../ui/column_header.dart' show SortKey, compareRcloneFiles;
 import '../ui/file_icon.dart' show isGalleryMedia;
 import '../ui/pane_drag.dart' show joinPath;
-import '../ui/touch.dart' show isTouchPrimary;
 import 'console/console_controller.dart';
 import 'engine_controller.dart';
 import 'tree_state.dart';
@@ -384,12 +383,17 @@ class BrowserController extends Notifier<BrowserState> {
     orElse: () => ViewMode.list,
   );
 
-  /// The tree is desktop-only (plan §1: a phone has no room for indentation
-  /// plus three columns, and the touch shell keeps its own navigation). A
-  /// remote remembered in tree mode on a desktop opens as a list on a phone,
-  /// so `viewMode == tree` always means "the tree is what is showing".
-  static ViewMode _allowedHere(ViewMode mode) =>
-      mode == ViewMode.tree && isTouchPrimary ? ViewMode.list : mode;
+  /// Every view mode is available on every platform.
+  ///
+  /// The tree used to be forced to a list on touch, on the reasoning that a
+  /// phone had no room for indentation plus three columns. That was true of
+  /// the row as it was built, not of the tree: `tree_view.dart` now drops the
+  /// Size and Modified columns below [kTreeDetailsMinWidth] and gives the
+  /// space back to indentation, so the tree reads on a phone. Kept as a named
+  /// seam rather than deleted because "which modes may run here" is a real
+  /// question a future platform may answer differently — the Web UI already
+  /// made one such assumption wrong.
+  static ViewMode _allowedHere(ViewMode mode) => mode;
 
   static SortKey _sortKeyFrom(String name) => SortKey.values.firstWhere(
     (v) => v.name == name,

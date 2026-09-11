@@ -34,6 +34,7 @@ class FileRow extends ConsumerStatefulWidget {
     this.leading,
     this.cursor = false,
     this.tapOpensFolder = true,
+    this.showDetails = true,
   });
 
   final RcloneFile file;
@@ -56,6 +57,15 @@ class FileRow extends ConsumerStatefulWidget {
 
   /// Left inset before [leading] — the tree's depth indentation.
   final double indent;
+
+  /// Whether to draw the Size and Modified columns.
+  ///
+  /// False only where the row genuinely has no room for them: the tree on a
+  /// narrow pane, where those two fixed columns plus the indentation would
+  /// leave the name nothing to occupy. Dropping them is what lets the tree
+  /// keep its indentation on a phone, and the indentation IS the tree — a
+  /// tree squeezed to zero indent is just a list with arrows.
+  final bool showDetails;
 
   /// A slot before the icon — the tree's disclosure arrow. Null in the list.
   final Widget? leading;
@@ -176,24 +186,26 @@ class _FileRowState extends ConsumerState<FileRow> {
                     style: TextStyle(color: c.text, fontSize: t.bodySize),
                   ),
                 ),
-                const SizedBox(width: Space.x2),
-                SizedBox(
-                  width: widths.size,
-                  child: Text(
-                    file.isDir ? '' : humanSize(file.size),
-                    textAlign: TextAlign.right,
-                    style: TextStyle(color: c.textFaint, fontSize: 12),
+                if (widget.showDetails) ...[
+                  const SizedBox(width: Space.x2),
+                  SizedBox(
+                    width: widths.size,
+                    child: Text(
+                      file.isDir ? '' : humanSize(file.size),
+                      textAlign: TextAlign.right,
+                      style: TextStyle(color: c.textFaint, fontSize: 12),
+                    ),
                   ),
-                ),
-                const SizedBox(width: Space.x2),
-                SizedBox(
-                  width: widths.modified,
-                  child: Text(
-                    relativeTime(file.modTime),
-                    textAlign: TextAlign.right,
-                    style: TextStyle(color: c.textFaint, fontSize: 12),
+                  const SizedBox(width: Space.x2),
+                  SizedBox(
+                    width: widths.modified,
+                    child: Text(
+                      relativeTime(file.modTime),
+                      textAlign: TextAlign.right,
+                      style: TextStyle(color: c.textFaint, fontSize: 12),
+                    ),
                   ),
-                ),
+                ],
                 SizedBox(
                   width: 28,
                   child: Builder(
