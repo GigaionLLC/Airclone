@@ -63,12 +63,18 @@ jobs:
           fi
 
       - name: Download the AAB from the release
+        # `tag` is a free-form dispatch input, so it reaches `run:` through env:
+        # and quoted, never spliced into the script text. Interpolation puts an
+        # attacker-chosen string into the shell before bash ever sees it, and
+        # anyone who can dispatch this workflow chooses that string.
+        # tool/check-workflows.py fails CI on the interpolated form.
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ inputs.tag }}
         run: |
           set -euo pipefail
           mkdir -p dist
-          gh release download "${{ inputs.tag }}" \
+          gh release download "$TAG" \
             --repo "$GITHUB_REPOSITORY" \
             --pattern 'airclone-playstore.aab' \
             --dir dist
@@ -103,20 +109,27 @@ jobs:
 
       - name: Resolve the version code
         id: code
+        env:
+          TAG: ${{ inputs.tag }}
         run: |
           set -euo pipefail
           # versionCode is the pubspec build number: `version: 1.2.3+456`.
           code="$(sed -n 's/^version:.*+//p' app/pubspec.yaml | tr -d '[:space:]')"
           test -n "$code"
           echo "code=$code" >> "$GITHUB_OUTPUT"
-          echo "version code at ${{ inputs.tag }} is $code"
+          echo "version code at $TAG is $code"
 
       - name: What this would do (dry-run)
         if: inputs.mode == 'dry-run'
+        # CODE is read from a pubspec at a ref the dispatcher chose, so it goes
+        # through env: for the same reason TAG does.
+        env:
+          TAG: ${{ inputs.tag }}
+          CODE: ${{ steps.code.outputs.code }}
         run: |
           echo "DRY RUN — nothing was uploaded."
-          echo "  tag:          ${{ inputs.tag }}"
-          echo "  version code: ${{ steps.code.outputs.code }}"
+          echo "  tag:          $TAG"
+          echo "  version code: $CODE"
           echo "  track:        beta (= Open testing in the Play Console)"
           echo "Re-run with mode=upload to publish it."
 
@@ -148,12 +161,13 @@ jobs:
         if: inputs.mode == 'upload'
         env:
           PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+          CODE: ${{ steps.code.outputs.code }}
         run: |
           set -euo pipefail
           python3 -m pip install --quiet google-auth requests
           printf '%s' "$PLAY_SERVICE_ACCOUNT_JSON" > "$RUNNER_TEMP/play-key.json"
-          echo "expecting version code ${{ steps.code.outputs.code }} in open testing"
+          echo "expecting version code $CODE in open testing"
           GOOGLE_APPLICATION_CREDENTIALS="$RUNNER_TEMP/play-key.json" \
             python3 tool/play_tracks.py --package com.gigaionllc.airclone \
-              --expect "beta=${{ steps.code.outputs.code }}"
+              --expect "beta=$CODE"
           rm -f "$RUNNER_TEMP/play-key.json"
