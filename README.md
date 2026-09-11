@@ -219,8 +219,9 @@ Three ways, all on the Releases page. Pick by how your desktop likes to install 
 | `airclone-linux-x64.tar.gz` | The raw files, for packaging it yourself or putting it where you want. Needs `libmpv`, `libsecret-1` and `libasound2` installed already — the other two carry their own. |
 
 The rclone engine is included in all three; there is nothing else to download. The
-AppImage still uses your system's ALSA (`libasound2`), which every desktop Linux has —
-bundling audio libraries breaks a machine's own sound setup rather than helping it.
+AppImage uses your system's ALSA (`libasound2`) when you have one — replacing a working
+one would break your machine's own sound setup — and carries a last-resort copy so it
+still starts on a slim system that has none.
 
 ## 🗺️ Roadmap
 
