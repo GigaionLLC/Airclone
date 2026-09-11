@@ -36,7 +36,8 @@ your platform.
 | :--- | :--- |
 | Windows | The engine ships with the app. Nothing to download. |
 | Android | The engine ships inside the app. Nothing to download. |
-| macOS (direct download), Linux | Airclone looks for an rclone on your machine. If it does not find one, it shows a card headed **Set up the rclone engine** with a **Download rclone engine** button. Press it once; there is nothing else to install. |
+| Linux | The `.tar.gz` normally includes the engine as a library (`librclone.so`), so Airclone runs straight away with nothing to download. If it finds an `rclone` on your machine it prefers that instead. |
+| macOS (direct download) | Airclone looks for an rclone on your machine. If it does not find one, it shows a card headed **Set up the rclone engine** with a **Download rclone engine** button. Press it once; there is nothing else to install. |
 | iPhone, iPad, Mac App Store | The engine runs inside the app itself. Nothing to download. |
 
 If the engine fails to start, the card is headed **Engine error** and offers **Retry download** and

@@ -64,8 +64,8 @@ compared in [Browsing your files](browsing.md).
   puts Settings in a tab rather than a dialog. Everything else — including the transfer dialog,
   saved tasks and the command console — is reachable there. See [Browsing your files](browsing.md).
 
-Two more differences that catch people out: the rclone engine ships inside the app on Windows and
-Android, is downloaded on first launch on Linux and the macOS direct-download build, and runs inside
+Two more differences that catch people out: the rclone engine ships inside the app on Windows,
+Android and Linux, is downloaded on first launch on the macOS direct-download build, and runs inside
 the app itself on iPhone, iPad and the Mac App Store build
 ([Getting started](getting-started.md)); and your rclone config sits in an ordinary folder on
 desktop but in private app storage on Android and iOS, where uninstalling the app deletes it
