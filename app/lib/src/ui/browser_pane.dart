@@ -1,3 +1,4 @@
+import 'browser_transfer_actions.dart';
 import 'network_stream_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -1035,6 +1036,15 @@ class BrowserPane extends ConsumerWidget {
     List<_Group> groups,
   ) async {
     if (state.remote == null || groups.isEmpty) return;
+    // In a browser there is no folder to download INTO — the browser's own
+    // download handling is the destination, and it is the only one the page is
+    // allowed to reach. So "Download" means "send it to this browser" here,
+    // rather than "copy it to a folder on the host", which is what it means
+    // everywhere else and would be a surprising thing to do remotely.
+    if (HostPlatform.isWeb) {
+      await downloadToBrowser(context, ref, state.remote!, groups);
+      return;
+    }
     final dir = await resolveDownloadDir(ref); // prompts / uses saved default
     if (dir == null || !context.mounted) return; // cancelled
     final local = Remote(
@@ -2301,6 +2311,21 @@ class _PaneToolbar extends ConsumerWidget {
           'Compare with other pane',
           () => showCompareDialog(context, ref),
         ),
+        // Web only: everywhere else the host's own file dialogs are reachable
+        // and "upload" is just a copy between two remotes it can already see.
+        if (HostPlatform.isWeb)
+          item(
+            Icons.upload_file,
+            'Upload file…',
+            hasRemote
+                ? () => uploadFromBrowser(
+                    context,
+                    ref,
+                    ref.read(paneProvider(index)).remote!,
+                    ref.read(paneProvider(index)).path,
+                  )
+                : null,
+          ),
         item(
           Icons.cloud_download_outlined,
           'Upload from URL…',

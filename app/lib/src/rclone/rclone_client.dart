@@ -31,21 +31,24 @@ abstract interface class RcloneClient {
 
 /// An engine that can accept raw bytes and write them to a remote.
 ///
-/// A CAPABILITY interface rather than a widening of [RcloneClient], for two
-/// reasons. The practical one: 24 test fakes `implements RcloneClient`, and
-/// every one of them would have to grow a method it does not care about. The
-/// honest one: not every client can do this. [WebRcloneClient] runs inside a
-/// browser and has no filesystem and no engine of its own — it is the thing
-/// ASKING for an upload, not the thing performing one. A capability the web
-/// client cannot have does not belong on the interface it must satisfy.
+/// A CAPABILITY interface rather than a widening of [RcloneClient]: 24 test
+/// fakes `implements RcloneClient` and every one of them would have to grow a
+/// method it does not care about.
 ///
-/// The two engines differ in how they do it, which is exactly what a seam is
-/// for:
+/// Three implementations, which differ entirely in HOW and not at all in what a
+/// caller writes — which is the point of a seam:
 ///
 ///   * the spawned `rcd` streams the bytes straight through to
 ///     `operations/uploadfile`, touching no disk;
 ///   * the in-process library cannot — `RcloneRPC` speaks JSON and nothing else
-///     — so it stages to a file and then copies. Callers never learn which.
+///     — so it stages to a file and then copies;
+///   * [WebRcloneClient] has no engine of its own, so it POSTs to the Web UI
+///     server, which then does one of the two above on the host.
+///
+/// (An earlier version of this comment claimed the web client could not be an
+/// uploader "because it is the thing asking". That was wrong: asking the server
+/// IS how a browser writes to a remote, and pretending otherwise would have put
+/// a second, parallel upload path in the UI layer for no benefit.)
 abstract interface class ObjectUploader {
   /// Writes [bytes] to `fs:remote`, replacing whatever is there.
   ///

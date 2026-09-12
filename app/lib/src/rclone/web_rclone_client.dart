@@ -11,6 +11,7 @@
 /// filesystem. The browser contributes a viewport and a pair of hands.
 library;
 
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:http/http.dart' as http;
@@ -30,7 +31,7 @@ class WebUiSessionExpired implements Exception {
 }
 
 /// Drives the rclone engine on the host, through the Web UI server.
-class WebRcloneClient implements RcloneClient {
+class WebRcloneClient implements RcloneClient, ObjectUploader {
   WebRcloneClient({http.Client? httpClient, Uri? base})
     : _http = httpClient ?? http.Client(),
       _base = base ?? Uri.base;
@@ -134,6 +135,50 @@ class WebRcloneClient implements RcloneClient {
       );
     } on RcloneException catch (e) {
       return EngineStatus(EngineState.error, message: e.message);
+    }
+  }
+
+  /// The same-origin URL that makes the browser SAVE an object rather than
+  /// display it. `download=1` is what adds `Content-Disposition: attachment` on
+  /// the server; everything else about the request is the preview request.
+  Uri downloadUrl(String fs, String remote) => _base
+      .resolve(kObjectPath)
+      .replace(queryParameters: {'fs': fs, 'remote': remote, 'download': '1'});
+
+  /// POSTs the bytes to the Web UI server, which writes them to the remote with
+  /// whichever engine the host is running.
+  ///
+  /// The body is the file itself, not a multipart envelope — see [kUploadPath].
+  /// The CSRF header is what distinguishes this from a cross-origin form post,
+  /// and the session cookie rides along automatically because the URL is
+  /// same-origin.
+  @override
+  Future<void> putObject(
+    String fs,
+    String remote,
+    Stream<List<int>> bytes, {
+    int? length,
+  }) async {
+    final uri = _base
+        .resolve(kUploadPath)
+        .replace(queryParameters: {'fs': fs, 'remote': remote});
+    final req = http.StreamedRequest('POST', uri)
+      ..headers[kWebUiCsrfHeader] = '1'
+      ..headers['Content-Type'] = 'application/octet-stream';
+    if (length != null) req.contentLength = length;
+    unawaited(
+      bytes
+          .forEach(req.sink.add)
+          .whenComplete(() => req.sink.close())
+          .catchError((_) {}),
+    );
+    final res = await http.Response.fromStream(await req.send());
+    if (res.statusCode < 200 || res.statusCode >= 300) {
+      throw RcloneException(
+        kUploadPath,
+        'upload failed: ${res.body}',
+        statusCode: res.statusCode,
+      );
     }
   }
 
