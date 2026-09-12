@@ -343,7 +343,7 @@ class _SizeDialogState extends ConsumerState<_SizeDialog> {
     return AlertDialog(
       backgroundColor: c.surfaceRaised,
       title: const Text('Folder size'),
-      content: SizedBox(
+      content: DialogBody(
         width: 360,
         child: Column(
           mainAxisSize: MainAxisSize.min,

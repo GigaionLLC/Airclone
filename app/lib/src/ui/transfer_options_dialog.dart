@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'dialog_body.dart';
 import '../state/advanced_mode.dart';
 import '../state/transfer_options.dart';
 import 'theme/tokens.dart';
@@ -182,7 +183,11 @@ class _TransferOptionsDialogState extends State<_TransferOptionsDialog> {
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(Radii.lg),
       ),
-      child: SizedBox(
+      // DialogBody, not SizedBox: 720 is the DESKTOP width, and this dialog is
+      // reachable from the shared browser pane on a phone too. Raw, it
+      // overflowed by 170px on a 320px screen. DialogBody clamps against the
+      // live MediaQuery, so it also follows a folding device across a resize.
+      child: DialogBody(
         width: 720,
         height: 560,
         child: DefaultTabController(
@@ -282,14 +287,20 @@ class _TransferOptionsDialogState extends State<_TransferOptionsDialog> {
       horizontal: Space.x5,
       vertical: Space.x3,
     ),
-    child: Row(
-      mainAxisAlignment: MainAxisAlignment.end,
+    // Wrap, not Row: three buttons need about 410px of their own, so on a phone
+    // - or a folded device, or a narrow window - a Row clips the rightmost one,
+    // and the rightmost one here is Run. It overflowed by 170px at 320px wide
+    // and 60px at 430px, which is every current iPhone. A Wrap drops them onto
+    // a second line instead. Same reasoning as DialogBody around the content.
+    child: Wrap(
+      alignment: WrapAlignment.end,
+      spacing: Space.x2,
+      runSpacing: Space.x2,
       children: [
         TextButton(
           onPressed: () => Navigator.of(context).pop(),
           child: Text('Cancel', style: TextStyle(color: c.textMuted)),
         ),
-        const SizedBox(width: Space.x2),
         OutlinedButton(
           onPressed: () =>
               Navigator.of(context).pop(_current.copyWith(dryRun: true)),
@@ -299,7 +310,6 @@ class _TransferOptionsDialogState extends State<_TransferOptionsDialog> {
           ),
           child: const Text('Dry run'),
         ),
-        const SizedBox(width: Space.x2),
         FilledButton(onPressed: _onRun, child: const Text('Run')),
       ],
     ),

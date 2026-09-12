@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'dialog_body.dart';
 import '../rclone/models/remote.dart';
 import '../rclone/rclone_client.dart';
 import 'format.dart';
@@ -93,7 +94,7 @@ class _ConnectionTestDialogState extends State<_ConnectionTestDialog> {
     return AlertDialog(
       backgroundColor: c.surfaceRaised,
       title: Text('Test connection · ${widget.remote.name}'),
-      content: SizedBox(
+      content: DialogBody(
         width: 380,
         child: Row(
           children: [

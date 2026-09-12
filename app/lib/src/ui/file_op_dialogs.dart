@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'dialog_body.dart';
 import 'theme/tokens.dart';
 
 /// Compact, themed dialogs for the browser's quick file operations
@@ -168,7 +169,7 @@ class _NameDialogState extends State<_NameDialog> {
           fontWeight: FontWeight.w600,
         ),
       ),
-      content: SizedBox(
+      content: DialogBody(
         width: 360,
         child: TextField(
           controller: _controller,

@@ -1,3 +1,4 @@
+import 'dialog_body.dart';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -186,7 +187,9 @@ class _PreviewDialog extends ConsumerWidget {
       ),
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 720, maxHeight: 640),
-        child: SizedBox(
+        // Clamped against the live screen — see DialogBody. The ConstrainedBox
+        // above caps the desktop size; this keeps it on a phone or a fold.
+        child: DialogBody(
           width: 720,
           height: 640,
           child: Column(
