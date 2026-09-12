@@ -77,10 +77,31 @@
     EXPLAIN it and show the fingerprint rather than hide it: training people to click through
     browser warnings is worse than the warning itself.
 
+  - `[x]` Chunked upload: in, but **chosen by size, not by a switch.** User asked whether it should
+    be an advanced setting that can be turned off, not being sure what the negatives were. There is
+    a real one, and it is specific: **chunking forces staging on the `rcd` engine.** A single
+    streamed `POST` goes straight through to `operations/uploadfile` with no temp file, but chunks
+    cannot — one rclone upload cannot be held open across N HTTP requests, so chunks must land on
+    disk and be assembled first. That is double the disk I/O, free space equal to the file, and a
+    slower common case: the same argument made against staging for downloads, applied consistently.
+    Smaller costs: abandoned partial uploads need a janitor, and small files pay round-trips for
+    nothing.
+
+    It is **free on the FFI engine**, where staging is forced anyway, so the trade-off exists only
+    on desktop with the binary engine.
+
+    The fact that most changes the calculus: chunking protects the **browser -> device** hop only.
+    Once bytes are on the device, rclone's own retry covers device -> cloud. So it is for phones on
+    patchy wifi and WAN uploads into a home server, and close to pure overhead on a LAN.
+
+    **Decision:** single streamed POST below a size threshold, chunked and resumable above it. The
+    ADVANCED SETTING IS THE THRESHOLD, not a boolean — "upload files larger than ___ in resumable
+    pieces" explains itself, where "use chunked uploads" asks the user to evaluate something they
+    have no way to judge. Zero disables chunking entirely, so the off switch still exists. Default
+    ~256 MB.
+
 * **Open:**
-  - `[ ]` Resumable/chunked upload in v1, or a follow-up? A browser cannot resume a plain `POST`, so
-    a drop at 90% restarts. Recommend designing the chunk protocol in from the start — it is the one
-    part that is painful to retrofit — even if the first release only uses one chunk.
+  - `[ ]` None.
 
 ## 4️⃣ Phase 4: Detailed Execution Plan
 
