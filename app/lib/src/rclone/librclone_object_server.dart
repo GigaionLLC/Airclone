@@ -337,6 +337,8 @@ class LibrcloneObjectServer {
   // A decoded `..` segment would climb out of the intended directory. rclone
   // resolves the path itself, but refusing here keeps the bridge from ever
   // being the thing that asked.
-  if (remote.split('/').contains('..')) return null;
+  // Both separators, for the reason the upload guard gives: rclone's local
+  // backend treats a backslash as one on Windows.
+  if (remote.split(RegExp(r'[/\\]')).contains('..')) return null;
   return (fs, remote);
 }

@@ -1,3 +1,4 @@
+import '../state/media_formats.dart';
 import '../rclone/rclone_client.dart';
 import 'dart:async';
 
@@ -145,7 +146,17 @@ class _MediaPreviewBodyState extends ConsumerState<MediaPreviewBody> {
     final Player player;
     VideoController? controller;
     try {
-      player = Player();
+      // Explicit configuration, NOT Player(). The default whitelist includes
+      // `file`, and media_kit hardcodes allowed_extensions=ALL alongside it, which
+      // between them let a crafted manifest open a local path. See
+      // kPreviewProtocols.
+      player = Player(
+        configuration: PlayerConfiguration(
+          protocolWhitelist: widget.isNetworkStream
+              ? kNetworkStreamProtocols
+              : kPreviewProtocols,
+        ),
+      );
       _player = player;
       if (!widget.audioOnly) {
         controller = VideoController(player);
@@ -202,16 +213,26 @@ class _MediaPreviewBodyState extends ConsumerState<MediaPreviewBody> {
       },
     );
 
+    final credentialledUrl = loopbackUrlWithCredentials(
+      widget.url,
+      widget.headers,
+    );
     try {
       // Awaited: open() rejects ASYNCHRONOUSLY, so a bare call would leave the
       // failure unobserved and the user staring at black forever.
       await player.open(
-        // sendableHeaders, not headers: these credentials belong to a loopback
-        // port on this machine, and a network stream's URL names a host we know
-        // nothing about. See ObjectRef.sendableHeaders.
+        // Credentials go in the URL when they can, and only then fall back to
+        // headers. mpv's http-header-fields is GLOBAL: every header given here
+        // is replayed on every request mpv makes for this stream, including the
+        // segments an HLS manifest names — so a manifest on the user's own
+        // remote could point a segment at someone else's host and be handed the
+        // engine's credential. A URL userinfo is scoped by whoever makes the
+        // request instead. See loopbackUrlWithCredentials.
         Media(
-          widget.url,
-          httpHeaders: ObjectRef(widget.url, widget.headers).sendableHeaders,
+          credentialledUrl ?? widget.url,
+          httpHeaders: credentialledUrl != null
+              ? const {}
+              : ObjectRef(widget.url, widget.headers).sendableHeaders,
         ),
         play: true,
       );

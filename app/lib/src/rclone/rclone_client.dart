@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 /// The ONE seam between Airclone and the rclone engine.
 ///
 /// `method` is an rclone RC method string (e.g. `"operations/list"`, `"config/listremotes"`).
@@ -92,6 +94,42 @@ class ObjectRef {
   /// credentials travel to loopback and nowhere else.
   Map<String, String> get sendableHeaders =>
       isLoopbackUrl(url) ? headers : const {};
+}
+
+/// Rewrites a loopback object URL to carry its credential IN THE URL, returning
+/// null when that is not possible.
+///
+/// **Why this exists.** [ObjectRef.sendableHeaders] decides whether the engine's
+/// credential may be sent, based on the URL it is given. That is correct for one
+/// request and insufficient for media: media_kit maps `Media.httpHeaders` onto
+/// mpv's `http-header-fields`, which is a GLOBAL, non-origin-scoped property.
+/// mpv attaches those headers to every HTTP request it makes for that stream —
+/// redirects, and the segments an HLS manifest names. So a manifest stored on
+/// the user's own remote (put there by anyone they share that folder with) can
+/// list a segment at `http://attacker.example/seg.ts`, and mpv sends the engine's
+/// `Authorization` header straight to it. The header boundary never sees that
+/// request; it only ever saw the top-level URL.
+///
+/// Credentials in the URL are scoped by the thing that actually makes the
+/// requests: a relative segment resolves against the manifest's URL and inherits
+/// the userinfo, while an absolute URL naming another host does not — which is
+/// exactly the rule wanted. `scheme://user:pass@host` is also a shape the
+/// diagnostics redactor already strips at ingest.
+String? loopbackUrlWithCredentials(String url, Map<String, String> headers) {
+  if (!isLoopbackUrl(url)) return null;
+  final auth = headers['Authorization'] ?? headers['authorization'];
+  if (auth == null || !auth.startsWith('Basic ')) return null;
+  final decoded = utf8.decode(base64.decode(auth.substring(6)));
+  final colon = decoded.indexOf(':');
+  if (colon < 0) return null;
+  final uri = Uri.parse(url);
+  return uri
+      .replace(
+        userInfo:
+            '${Uri.encodeComponent(decoded.substring(0, colon))}'
+            ':${Uri.encodeComponent(decoded.substring(colon + 1))}',
+      )
+      .toString();
 }
 
 /// Whether [url] addresses this machine's loopback interface.

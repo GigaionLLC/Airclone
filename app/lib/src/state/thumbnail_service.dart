@@ -1,3 +1,4 @@
+import 'media_formats.dart';
 import '../rclone/rclone_client.dart';
 import 'dart:async';
 import 'dart:convert';
@@ -312,7 +313,14 @@ class ThumbnailService {
   Future<Uint8List?> _captureVideoFrameMpv(ThumbRequest req) async {
     Player? player;
     try {
-      player = Player();
+      // The tight list, always. Manifests are never thumbnailed, but libmpv
+      // probes by CONTENT rather than extension, so a manifest named x.mp4 still
+      // demuxes as HLS here. See kPreviewProtocols.
+      player = Player(
+        configuration: const PlayerConfiguration(
+          protocolWhitelist: kPreviewProtocols,
+        ),
+      );
       // Attach an off-screen video output so libmpv decodes + renders frames.
       final controller = VideoController(player);
       await player.setVolume(0);

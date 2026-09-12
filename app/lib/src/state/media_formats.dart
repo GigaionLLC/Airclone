@@ -85,3 +85,52 @@ bool isVideoLikeExt(String ext) =>
 
 /// True when [ext] plays through the AUDIO pipeline.
 bool isAudioExt(String ext) => kAudioExts.contains(ext);
+
+/// Protocols libmpv is allowed to follow, for media Airclone fetches itself.
+///
+/// **This is not belt-and-braces; the default is actively unsafe for us.**
+/// `Player()` with no configuration is not "no whitelist" — media_kit applies a
+/// default that includes `file`, and it separately hardcodes
+/// `allowed_extensions=ALL` in the same mpv option string. That second part
+/// disables the check inside ffmpeg's HLS demuxer (`hls.c`) that would otherwise
+/// refuse a segment URI with no media extension. With both in force, a manifest
+/// naming `file:///etc/passwd` as a segment passes the protocol gate, passes the
+/// now-disabled extension gate, and is opened.
+///
+/// A manifest is attacker-authored text. It arrives either from a URL the user
+/// typed or from a file on a remote — and a file on a remote can be put there by
+/// anyone the user shares that folder with.
+///
+/// Removing `file` costs nothing here, which is the part worth checking before
+/// believing it: Airclone never hands a `file://` URL to the player. Every
+/// preview — device-local files included — resolves through `objectRef` to a
+/// `http://127.0.0.1:…` loopback URL served by the engine, and the network-stream
+/// dialog refuses the `file` scheme at entry.
+///
+/// `allowed_extensions=ALL` cannot be overridden through `PlayerConfiguration`,
+/// so the whitelist is the control we actually have.
+const List<String> kPreviewProtocols = [
+  'http', // the loopback engine
+  'tcp',
+  'https', // real HLS/DASH
+  'tls',
+  'crypto', // #EXT-X-KEY AES
+  'data', // inline keys and segments
+];
+
+/// The same, for a stream the user typed an address for.
+///
+/// Wider, because the dialog offers RTSP/RTMP/SRT and those need their
+/// transports — but still no `file`. The axis that governs a local-file read is
+/// local-vs-network, not who authored the URL.
+const List<String> kNetworkStreamProtocols = [
+  ...kPreviewProtocols,
+  'rtp',
+  'udp',
+  'rtmp',
+  'rtmps',
+  'rtsp',
+  'srt',
+  'mmsh',
+  'mmst',
+];

@@ -519,7 +519,11 @@ class WebUiServer {
     // A destination that climbs out of where the user is browsing is refused
     // here rather than left to rclone: the same stance resolveStaticFile takes
     // for reads.
-    if (remote.split('/').contains('..') || remote.codeUnits.contains(0)) {
+    // Split on BOTH separators: rclone's local backend treats a backslash as a
+    // separator on Windows, so a '/'-only split sees `..\..\x` as ONE segment
+    // and walks straight past a guard that looks like it means something.
+    final segments = remote.split(RegExp(r'[/\\]'));
+    if (segments.contains('..') || remote.codeUnits.contains(0)) {
       await request.drain<void>();
       return _json(request, HttpStatus.badRequest, {
         'error': 'That destination path is not allowed.',

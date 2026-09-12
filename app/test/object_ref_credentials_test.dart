@@ -11,6 +11,7 @@ import 'package:flutter_test/flutter_test.dart';
 /// nothing about. These tests pin the boundary so the credentials cannot follow
 /// them there.
 void main() {
+  credentialScoping();
   const creds = {'Authorization': 'Basic c2VjcmV0'};
 
   group('credentials travel to loopback', () {
@@ -53,5 +54,76 @@ void main() {
     const ref = ObjectRef.network('https://cdn.example.com/live.m3u8');
     expect(ref.headers, isEmpty);
     expect(ref.sendableHeaders, isEmpty);
+  });
+}
+
+/// media_kit maps Media.httpHeaders onto mpv's `http-header-fields`, which is
+/// GLOBAL: every header is replayed on every request mpv makes for that stream,
+/// including the segments an HLS manifest names. sendableHeaders only ever saw
+/// the top-level URL, so a manifest on the user's own remote could name a
+/// segment on someone else's host and be handed the engine's credential.
+///
+/// Credentials in the URL are scoped by whoever makes the request: a relative
+/// segment inherits the userinfo, an absolute URL to another host does not.
+void credentialScoping() {
+  group('loopbackUrlWithCredentials', () {
+    const basic = {
+      'Authorization': 'Basic YWlyY2xvbmU6czNjcjN0',
+    }; // airclone:s3cr3t
+
+    test('a loopback URL carries its credential in the URL', () {
+      final out = loopbackUrlWithCredentials(
+        'http://127.0.0.1:5572/[gdrive:]/a/v.m3u8',
+        basic,
+      );
+      expect(out, isNotNull);
+      final uri = Uri.parse(out!);
+      expect(uri.userInfo, 'airclone:s3cr3t');
+      expect(uri.host, '127.0.0.1');
+    });
+
+    test('a relative segment INHERITS it — the point of the change', () {
+      final out = loopbackUrlWithCredentials(
+        'http://127.0.0.1:5572/[gdrive:]/a/v.m3u8',
+        basic,
+      )!;
+      final seg = Uri.parse(out).resolve('seg1.ts');
+      expect(seg.userInfo, 'airclone:s3cr3t');
+    });
+
+    test('a segment on ANOTHER host does not', () {
+      final out = loopbackUrlWithCredentials(
+        'http://127.0.0.1:5572/[gdrive:]/a/v.m3u8',
+        basic,
+      )!;
+      final seg = Uri.parse(out).resolve('http://attacker.example/seg.ts');
+      expect(seg.userInfo, isEmpty);
+      expect(seg.host, 'attacker.example');
+    });
+
+    test('a non-loopback URL is refused outright', () {
+      expect(
+        loopbackUrlWithCredentials('https://cdn.example.com/live.m3u8', basic),
+        isNull,
+      );
+    });
+
+    test('no credential, nothing to embed', () {
+      expect(
+        loopbackUrlWithCredentials('http://127.0.0.1:5572/x', const {}),
+        isNull,
+      );
+    });
+
+    test('a Bearer token is not smuggled into userinfo', () {
+      // Only Basic maps onto userinfo. Anything else falls back to the header
+      // path rather than being mangled into a shape that means something else.
+      expect(
+        loopbackUrlWithCredentials('http://127.0.0.1:9/x', const {
+          'Authorization': 'Bearer abc',
+        }),
+        isNull,
+      );
+    });
   });
 }
