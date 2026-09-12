@@ -9,46 +9,51 @@ by design** — real IDs, key paths and account state live in the encrypted vaul
 (`python tool/vault.py unlock`, then
 `dev/vault/notes/apple-appstore-setup-record.md`).
 
-## State: last written 2026-09-11 — 0.7.6 IS LIVE; 0.8.2 STAGED AND PARKED; 0.8.3 RELEASED, NOT SUBMITTED
+## State: last written 2026-09-12 — 0.9.0 IS IN REVIEW on BOTH platforms
 
-> **Later the same day:** v0.8.3 shipped the issue #3 fix that 0.8.2 was parked for, to GitHub and
-> Play open testing only. Apple has **no 0.8.3 record**; the table below predates it and the
-> uploaded build 128 does not contain the fix. See *Why 0.8.2 is parked* below before acting.
-
-Read from App Store Connect on **2026-09-11** with `asc-version.yml -f mode=report`, so these rows
-are observed rather than remembered. What changed since the previous writing is instructive: 0.7.6
-was recorded here as `PREPARE_FOR_SUBMISSION` and is in fact **READY_FOR_SALE** — the lane finished
-after the note was written, which is exactly why this file says to ask rather than trust it.
+Read from App Store Connect on **2026-09-12** with `asc-version.yml -f mode=audit` and the submit
+workflow's own response, so these rows are observed rather than remembered. Re-read before acting:
+the previous writing recorded 0.7.6 as `PREPARE_FOR_SUBMISSION` when it was already
+**READY_FOR_SALE**, which is why this file says to ask rather than trust it.
 
 | | macOS | iOS |
 | :--- | :--- | :--- |
 | 0.6.8 / 0.7.5 / 0.7.6 | **READY_FOR_SALE** | READY_FOR_SALE (0.7.5 confirmed; assume same) |
-| 0.7.7 / 0.8.0 / 0.8.1 | ❌ no version record ever created | ❌ no version record ever created |
-| Version 0.8.2 | **PREPARE_FOR_SUBMISSION**, created 2026-09-11 | **PREPARE_FOR_SUBMISSION**, created 2026-09-11 |
-| 0.8.2 `releaseType` | MANUAL, set at creation | MANUAL, set at creation |
-| Build 128 uploaded | ✅ `mas-release.yml -f mode=upload` succeeded | ✅ `ios-release.yml -f mode=upload -f signing=secrets` succeeded |
-| Build 128 attached | ⛔ not attached | ⛔ not attached |
-| 0.8.2 submitted | ⛔ **parked on purpose — see below** | ⛔ **parked on purpose — see below** |
+| 0.7.7 / 0.8.0 / 0.8.1 / 0.8.3 | ❌ no version record ever created | ❌ no version record ever created |
+| 0.8.2 | ♻️ **renamed to 0.9.0** — the record was reused, not replaced | ♻️ **renamed to 0.9.0** |
+| Version 0.9.0 | **WAITING_FOR_REVIEW** | **WAITING_FOR_REVIEW** |
+| 0.9.0 `releaseType` | MANUAL | MANUAL |
+| Build attached | **131** (`08901e47-8b0f-4194-84ee-ed10fc4f1f21`) | **130** (`fbc5c467-6bb4-411e-9e9b-732acdd7d5df`) |
+| Review submission | `367e7d22-3e04-4532-b6a0-2efa9ce02766`, 2026-09-12T16:09:26Z | `3af92943-6fe7-4250-9e69-6c4b17bed43a`, 2026-09-12T16:11:07Z |
 
-`asc-submit-review.yml` has not run since **2026-09-09**; nothing has been submitted for review from
-here since then.
+**Why the record was renamed rather than created.** `asc_build.py` refuses `mode=create` while an
+editable version record exists, and 0.8.2 was sitting in `PREPARE_FOR_SUBMISSION`. So the path that
+works is `asc-version.yml -f mode=apply -f set_version=0.9.0`. 0.8.3 never got an Apple record at
+all and does not need one.
 
-**Why 0.8.2 is parked, and what changed on 2026-09-11.** Bug report
-[#3](https://github.com/GigaionLLC/Airclone/issues/3) — a Windows user seeing a blank sidebar and
-blank panes — landed while the submission was being prepared. The decision was to hold Apple,
-Google-production and Microsoft until that is fixed, and ship one later version to all three
-together. The 0.8.2 records and builds are harmless where they are.
+**Why macOS is build 131 and iOS is 130.** The Mac App Store build of v0.9.0 shipped a Web UI it
+could not serve: `webUiHostingSupported` is `!isWeb && isDesktop`, true on macOS, but
+`mas-release.yml` had no `flutter build web` step, so Settings offered Remote access and toggling it
+said *"Reinstall from a release build"* — a broken feature in a paid app pointing the customer away
+from the store they bought it from, which is the shape of the policy 10.2.5 rejection the Microsoft
+lane already paid for. Caught by the pre-submission audit, fixed in c0c9472, rebuilt as 131. iOS was
+never affected (`isDesktop` is false there), so it kept 130.
 
-**The fix is now released as v0.8.3** (build 129): an empty card reader refused the "do you exist?"
-question for its drive letter, the throw escaped the drive sweep into a synchronous provider, and
-all three widgets watching it rethrew into their own `build()`. The condition this was waiting on is
-met. **0.8.3 is deliberately NOT submitted to Apple yet** — the instruction on releasing it was "not
-necessarily to microsoft/google/apple yet", so it went to GitHub and Play open testing only.
+Build 131 was built from `main`, not the `v0.9.0` tag, because the tag predates that workflow fix.
+It therefore also carries the four commits after the tag, including the clipped-dialog fix. Apple's
+0.9.0 is slightly ahead of Play's 0.9.0 (version code 130); both are 0.9.0 to a user.
 
-When Apple is wanted, do not reuse the 0.8.2 record without thought: rename it
-(`asc-version.yml -f mode=apply -f set_version=0.8.3`) and upload build 129, or create a fresh 0.8.3
-record and leave 0.8.2 unsubmitted. **Build 128 predates the fix** — submitting it would ship the
-bug that caused the park.
+**What the audit caught that a green build never would.** `whatsNew` and `promotionalText` were both
+EMPTY on the renamed record — Apple refuses a submission outright for that, and nothing upstream
+reports it. Closed by `asc-listing.yml -f what=text -f mode=apply`, which sources `whatsNew` from
+`docs/store/store-release-notes.txt` and the rest from the per-platform listing doc. Run the audit
+after ANY rename: version-scoped localization fields do not follow the version string.
+
+**What is still manual.** Apple emails the outcome, usually within 48 hours. `releaseType` is MANUAL,
+so an approved version sits in `PENDING_DEVELOPER_RELEASE` until somebody releases it — and
+`asc_build.py` has **no release action**, so today that is a Console visit. Apple's API does support
+it (`appStoreVersionReleaseRequests`); a workflow for it is the one real automation gap left in this
+lane.
 
 0.7.7, 0.8.0 and 0.8.1 never got Apple records at all. That is not an error to repair — a version
 nobody submitted needs no record — but it does mean the App Store is several versions behind the
