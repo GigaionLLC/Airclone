@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 /// further lines in smaller text instead of being cut off.
 ///
 /// The sidebar's problem is not that long names are truncated — it is WHERE.
-/// `S3-BRAUNSYNOLOGY1_RC-DISK-C1`, `-M1` and `-O1` differ only in their last two
+/// `S3-LONGREMOTENAME_RC-DISK-C1`, `-M1` and `-O1` differ only in their last two
 /// characters, so a trailing ellipsis renders three different remotes as three
 /// identical rows and the only way to tell them apart is to widen the sidebar.
 ///

@@ -1,3 +1,4 @@
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../native/native_probes.dart';
 import '../rclone/models/remote.dart';
 
@@ -221,4 +222,34 @@ bool wouldHydrateOnReadFs(String fs, String pathWithinRemote) {
 bool wouldHydrateOnRead(Remote remote, String pathWithinRemote) {
   final local = localAbsolutePath(remote, pathWithinRemote);
   return local != null && isOnlineOnlyPlaceholder(local);
+}
+
+/// Files the user has explicitly asked to hydrate, keyed `fs|path`.
+///
+/// An online-only cloud placeholder gets no thumbnail, because drawing one means
+/// downloading the whole file. That is the right default and a poor absolute:
+/// sometimes you do want to see what a photo is, and the file is 3MB.
+///
+/// So the refusal is a default rather than a rule — right-click, `Show
+/// thumbnail`, and this remembers the choice for the session. Deliberately NOT
+/// persisted: an opt-in is about a file you are looking at now, and one made on
+/// a laptop's home wifi should not silently apply when the same folder is opened
+/// on a hotel connection next week.
+final thumbnailOptInProvider = NotifierProvider<ThumbnailOptIn, Set<String>>(
+  ThumbnailOptIn.new,
+);
+
+class ThumbnailOptIn extends Notifier<Set<String>> {
+  @override
+  Set<String> build() => const {};
+
+  static String keyFor(String fs, String pathWithinRemote) =>
+      '$fs|$pathWithinRemote';
+
+  bool has(String fs, String pathWithinRemote) =>
+      state.contains(keyFor(fs, pathWithinRemote));
+
+  void allow(String fs, String pathWithinRemote) {
+    state = {...state, keyFor(fs, pathWithinRemote)};
+  }
 }

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../state/cloud_placeholder.dart';
 import '../rclone/models/rclone_file.dart';
 import '../rclone/models/remote.dart';
 import '../state/browser_controller.dart';
@@ -196,20 +197,26 @@ class _GridTile extends StatelessWidget {
   }
 
   Widget _thumbBox(bool selected) {
+    // A file OR folder whose contents are not on this device. Shown as a cloud
+    // rather than a type icon so the download prompt on opening it is expected.
+    // Folders count: a provider marks a whole directory dataless, and one that
+    // would pull down gigabytes on entry is worth seeing before the click.
+    final onlineOnly = wouldHydrateOnRead(
+      remote,
+      state.path.isEmpty ? file.name : '${state.path}/${file.name}',
+    );
     final icon = Icon(
-      iconFor(file),
-      color: iconColorFor(file, c),
+      onlineOnly ? kOnlineOnlyIcon : iconFor(file),
+      color: onlineOnly ? c.textMuted : iconColorFor(file, c),
       size: gridSize * 0.34,
     );
 
     final Widget content = request != null
         ? ThumbnailImage(
             request: request!,
-            placeholder: Center(
-              child: Icon(iconFor(file), color: iconColorFor(file, c)),
-            ),
+            placeholder: Center(child: icon),
           )
-        : (file.isDir && folderPreviews)
+        : (file.isDir && folderPreviews && !onlineOnly)
         ? FolderThumbnail(
             remote: remote,
             parentPath: state.path,

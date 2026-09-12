@@ -66,6 +66,11 @@ ThumbRequest? buildThumbRequest(
   RcloneClient? client,
   RcloneFile f, {
   int size = 256,
+
+  /// Paths the user has explicitly allowed to hydrate — see
+  /// [thumbnailOptInProvider]. Passed in rather than read here so this stays a
+  /// plain function the callers can test.
+  Set<String> hydrationAllowed = const {},
 }) {
   final remote = state.remote;
   if (remote == null || client == null || f.isDir || !isThumbnailable(f)) {
@@ -76,7 +81,12 @@ ThumbRequest? buildThumbRequest(
   // that silently hydrates (downloads) the whole file from Proton/OneDrive/
   // iCloud "Files On-Demand". Show the kind icon instead. (Windows Cloud Files
   // API; a no-op on other platforms — see cloud_placeholder.dart.)
-  if (wouldHydrateOnRead(remote, within)) return null;
+  // ...unless the user asked for this one by name. See thumbnailOptInProvider:
+  // the refusal is a default, not a rule.
+  if (wouldHydrateOnRead(remote, within) &&
+      !hydrationAllowed.contains(ThumbnailOptIn.keyFor(remote.fs, within))) {
+    return null;
+  }
   // Cross-platform net: skip an absurdly large IMAGE original (videos stream a
   // keyframe, so they're gated by the placeholder check above, not by size).
   if (!isVideoThumbnailable(f) && f.size > kMaxPreviewImageBytes) return null;
@@ -103,7 +113,13 @@ Future<void> prewarmFolderThumbnails(
   final state = ref.read(paneProvider(index));
   final client = ref.read(engineControllerProvider).client;
   final reqs = <ThumbRequest>[
-    for (final f in state.visibleEntries) ?buildThumbRequest(state, client, f),
+    for (final f in state.visibleEntries)
+      ?buildThumbRequest(
+        state,
+        client,
+        f,
+        hydrationAllowed: ref.read(thumbnailOptInProvider),
+      ),
   ];
   final messenger = ScaffoldMessenger.maybeOf(context);
   if (reqs.isEmpty) {
@@ -367,8 +383,14 @@ class BrowserPane extends ConsumerWidget {
 
       // Build a thumbnail request for an image OR video when thumbnails are on
       // for this remote — shared by the grid and media views.
-      ThumbRequest? thumbReqFor(RcloneFile f) =>
-          thumbsOn ? buildThumbRequest(state, client, f) : null;
+      ThumbRequest? thumbReqFor(RcloneFile f) => thumbsOn
+          ? buildThumbRequest(
+              state,
+              client,
+              f,
+              hydrationAllowed: ref.watch(thumbnailOptInProvider),
+            )
+          : null;
 
       // Where an entry of the FLAT listing lives: the pane's folder.
       _EntryLoc flatLoc(RcloneFile f) => _EntryLoc(
@@ -442,8 +464,11 @@ class BrowserPane extends ConsumerWidget {
                 // Marked in the LIST, not discovered on click. The same probe
                 // buildThumbRequest already runs per row, so this costs nothing
                 // extra - it was simply never surfaced.
+                // Folders too: a cloud provider marks a whole directory
+                // dataless when its contents are not on this device, and a
+                // folder that would pull down gigabytes on entry is exactly
+                // what a user wants to see before clicking it.
                 onlineOnly:
-                    !f.isDir &&
                     state.remote != null &&
                     wouldHydrateOnRead(
                       state.remote!,
@@ -653,6 +678,10 @@ class BrowserPane extends ConsumerWidget {
       canPublicLink: feats?['PublicLink'] == true,
       isLocal: state.remote!.isLocal,
       isArchive: !file.isDir && looksLikeArchive(file.name),
+      onlineOnly:
+          !file.isDir &&
+          isThumbnailable(file) &&
+          wouldHydrateOnRead(state.remote!, loc.path),
       canSelect: isTouchPrimary,
       advanced: ref.read(advancedModeProvider),
       syncSourceLabel: ref.read(syncSourceProvider).isSet
@@ -693,6 +722,11 @@ class BrowserPane extends ConsumerWidget {
         await _revealLocal(ref, state, loc);
       case FileMenuAction.copyPath:
         await _copyPath(ref, state, loc);
+      case FileMenuAction.showThumbnail:
+        // Remembered for this session only — see thumbnailOptInProvider.
+        ref
+            .read(thumbnailOptInProvider.notifier)
+            .allow(state.remote!.fs, loc.path);
       case FileMenuAction.checksums:
         if (context.mounted) await _checksums(context, ref, state, loc);
       case FileMenuAction.download:

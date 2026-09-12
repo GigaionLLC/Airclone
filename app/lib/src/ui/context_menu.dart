@@ -15,6 +15,7 @@ enum FileMenuAction {
   revealInFolder,
   copyPath,
   checksums,
+  showThumbnail,
   download,
   copy,
   cut,
@@ -85,6 +86,7 @@ Future<FileMenuAction?> showFileContextMenu(
   bool canPublicLink = false,
   bool isLocal = false,
   bool isArchive = false,
+  bool onlineOnly = false,
   bool canSelect = false,
   bool advanced = false,
   String syncSourceLabel = '',
@@ -139,6 +141,15 @@ Future<FileMenuAction?> showFileContextMenu(
     _item(FileMenuAction.copyPath, Icons.content_copy_outlined, 'Copy path'),
     if (!isDir)
       _item(FileMenuAction.checksums, Icons.tag_outlined, 'Checksums…'),
+    // Only for a file whose contents are not on this device. The default is to
+    // draw no thumbnail rather than download one silently; this is how a user
+    // asks for that one file anyway.
+    if (onlineOnly)
+      _item(
+        FileMenuAction.showThumbnail,
+        Icons.cloud_download_outlined,
+        'Show thumbnail (downloads it)',
+      ),
     const _Entry.divider(),
     _item(FileMenuAction.copy, Icons.copy_outlined, 'Copy'),
     _item(FileMenuAction.cut, Icons.content_cut_outlined, 'Cut'),

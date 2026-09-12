@@ -308,7 +308,13 @@ A folder synced by OneDrive, Proton Drive, iCloud or Dropbox can hold files that
 the disk — only a placeholder. Opening one makes the system fetch the whole file first. Airclone
 recognises these on **Windows** (Files On-Demand) and on **macOS** (File Provider), and marks them in
 the file list with a **cloud outline** instead of the usual type icon, so you can see which files
-would need downloading before you touch them.
+would need downloading before you touch them. **Folders are marked the same way** when the provider
+says the folder's contents are not here — worth seeing before opening one that would pull down
+gigabytes.
+
+Asking for one thumbnail anyway is a right-click: `Show thumbnail (downloads it)`. That choice lasts
+for the session and is not remembered, because a decision made on home wifi should not still apply
+on a hotel connection next week.
 
 **Browsing costs nothing.** Names, sizes, dates, sorting, searching, renaming and moving all read the
 placeholder, never the file, so you can work through a synced folder freely on any connection.
@@ -320,7 +326,7 @@ placeholder, never the file, so you can work through a synced folder freely on a
 | Browse, sort, search, rename, move | Free. Nothing is downloaded. |
 | Preview / Quick Look | **Asks.** Shows the size and a `Download & preview` button. |
 | Checksum | **Asks**, the same way. |
-| Thumbnail | Skipped. You get the plain type icon rather than a silent download. |
+| Thumbnail | Skipped, and the file shows a cloud outline instead. Right-click → `Show thumbnail (downloads it)` if you want one for that file. |
 | Duplicate scan | Skips them, and tells you how many it skipped and how much they hold. |
 | Download, Copy, Sync, Backup | **Proceeds.** Downloading is the thing you asked for. |
 

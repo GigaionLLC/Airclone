@@ -2,14 +2,14 @@ import 'package:airclone/src/ui/overflow_name.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-/// Three of the user's remotes are `S3-BRAUNSYNOLOGY1_RC-DISK-C1`, `-M1` and
+/// Three of the user's remotes are `S3-LONGREMOTENAME_RC-DISK-C1`, `-M1` and
 /// `-O1`. A trailing ellipsis at the sidebar's ~145px label budget cuts all
-/// three to the same `S3-BRAUNSYNOLOGY1_RC-…`, so the list showed three
+/// three to the same `S3-LONGREMOTENAME_RC-…`, so the list showed three
 /// identical rows for three different remotes and the only way to tell them
 /// apart was to widen the sidebar — every launch, because the width is not
 /// persisted. This keeps line one at full size and drops only the overflow to a
 /// smaller second line, so the distinguishing tail is always on screen.
-const _long = 'S3-BRAUNSYNOLOGY1_RC-DISK-C1';
+const _long = 'S3-LONGREMOTENAME_RC-DISK-C1';
 
 /// Renders [name] in a box [width] wide, as the sidebar row does.
 Widget _host(String name, double width) => MaterialApp(
@@ -66,9 +66,9 @@ void main() {
     // the same truncated string.
     final tails = <String>[];
     for (final name in [
-      'S3-BRAUNSYNOLOGY1_RC-DISK-C1',
-      'S3-BRAUNSYNOLOGY1_RC-DISK-M1',
-      'S3-BRAUNSYNOLOGY1_RC-DISK-O1',
+      'S3-LONGREMOTENAME_RC-DISK-C1',
+      'S3-LONGREMOTENAME_RC-DISK-M1',
+      'S3-LONGREMOTENAME_RC-DISK-O1',
     ]) {
       await tester.pumpWidget(_host(name, 145));
       tails.add(_rendered(tester).join());
@@ -111,7 +111,7 @@ void main() {
             child: SizedBox(
               width: 90, // a narrow sidebar
               child: OverflowName(
-                'S3-BRAUNSYNOLOGY1_RC-DISK-C1',
+                'S3-LONGREMOTENAME_RC-DISK-C1',
                 style: const TextStyle(fontSize: 13),
                 overflowStyle: const TextStyle(fontSize: 11),
               ),

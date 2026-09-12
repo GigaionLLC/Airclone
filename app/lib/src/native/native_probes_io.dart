@@ -209,7 +209,10 @@ bool macosIsDataless(String absolutePath) {
   if (!Platform.isMacOS) return false;
   final int expected;
   try {
-    expected = File(absolutePath).lengthSync();
+    // FileStat, not File.lengthSync: a DIRECTORY can be dataless too, and
+    // lengthSync throws on one, which would silently make every online-only
+    // folder look local.
+    expected = FileStat.statSync(absolutePath).size;
   } catch (_) {
     return false;
   }
