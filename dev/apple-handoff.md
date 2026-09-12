@@ -49,11 +49,14 @@ reports it. Closed by `asc-listing.yml -f what=text -f mode=apply`, which source
 `docs/store/store-release-notes.txt` and the rest from the per-platform listing doc. Run the audit
 after ANY rename: version-scoped localization fields do not follow the version string.
 
-**What is still manual.** Apple emails the outcome, usually within 48 hours. `releaseType` is MANUAL,
-so an approved version sits in `PENDING_DEVELOPER_RELEASE` until somebody releases it — and
-`asc_build.py` has **no release action**, so today that is a Console visit. Apple's API does support
-it (`appStoreVersionReleaseRequests`); a workflow for it is the one real automation gap left in this
-lane.
+**What happens when Apple approves.** Apple emails the outcome, usually within 48 hours.
+`releaseType` is MANUAL, so an approved version sits in `PENDING_DEVELOPER_RELEASE` until somebody
+releases it — that stays a deliberate human decision, but it is no longer a Console visit. Run
+**Actions → *Release an approved version (Apple)*** with `mode=release` and the version typed exactly
+([`asc-release.yml`](../.github/workflows/asc-release.yml) → `asc_build.py --release`, which posts an
+`appStoreVersionReleaseRequests` and reads the state back). It refuses every state except
+`PENDING_DEVELOPER_RELEASE`, so it cannot be pointed at anything else by mistake. There is no undo:
+pulling a release back means removing the version from sale.
 
 0.7.7, 0.8.0 and 0.8.1 never got Apple records at all. That is not an error to repair — a version
 nobody submitted needs no record — but it does mean the App Store is several versions behind the

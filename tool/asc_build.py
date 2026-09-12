@@ -38,6 +38,9 @@ Options:
                           from one command rather than from a rejection.
   --apply                 actually send it. Without this nothing is written.
   --builds                just list the builds Apple has registered, and stop.
+  --release               publish a version Apple already APPROVED and that is
+                          waiting on us (PENDING_DEVELOPER_RELEASE). Refuses
+                          every other state. Needs --apply.
   --create-version X.Y.Z  create the version record itself (releaseType MANUAL).
   --submit-for-review     add the version to review. Refuses on any audit gap.
                           Needs --apply. This is the point of no return, and
@@ -111,6 +114,7 @@ MANUAL_RELEASE = "--manual-release" in ARGV
 # that string is passed here as --version, so the notes it refreshes and the
 # version it submits cannot be different ones.
 SUBMIT_FOR_REVIEW = "--submit-for-review" in ARGV
+RELEASE = "--release" in ARGV
 # Create the App Encryption Declaration - the resource that makes an export
 # compliance answer of YES possible at all. Without one, PATCHing
 # usesNonExemptEncryption=true is accepted, echoed back, and stored as nothing.
@@ -163,6 +167,10 @@ EDITABLE = {
 # API does not expose - so the most this tool can do is refuse to call it fine.
 # DEVELOPER_REJECTED is absent on purpose: that one is you withdrawing your own
 # submission, which is a normal thing to do.
+# Approved by Apple and waiting on US, because releaseType is MANUAL.
+# The only state --release will act on.
+PENDING_RELEASE = "PENDING_DEVELOPER_RELEASE"
+
 NEEDS_ATTENTION = {
     "REJECTED",
     "METADATA_REJECTED",
@@ -551,6 +559,85 @@ def submit_for_review():
     print("SUBMITTED. Releasing is still manual (releaseType MANUAL).")
 
 
+def release_approved():
+    """Release a version Apple has APPROVED but that is waiting on us.
+
+    releaseType is MANUAL everywhere in this project on purpose: approval and
+    publication being the same event is how a version ships before anyone looks
+    at it. The cost of that choice is that an approved version sits in
+    PENDING_DEVELOPER_RELEASE until somebody presses a button, and until now that
+    button was only in the App Store Connect console.
+
+    Deliberately NARROW. It refuses anything not already approved and waiting, so
+    it cannot submit, cannot attach, cannot edit metadata, and cannot rescue a
+    rejected version. The only state it can move is the last one.
+    """
+    vs = call("GET", "/v1/apps/%s/appStoreVersions?limit=200" % APP)
+    if not vs:
+        sys.exit(1)
+    cand = [v for v in vs["data"] if v["attributes"]["platform"] == PLATFORM]
+    if WANT_VERSION:
+        cand = [v for v in cand
+                if v["attributes"]["versionString"] == WANT_VERSION]
+    if not cand:
+        sys.exit("no %s version %s found" % (PLATFORM, WANT_VERSION or ""))
+
+    ready = [v for v in cand
+             if v["attributes"]["appStoreState"] == PENDING_RELEASE]
+    if not ready:
+        print("%s: nothing is waiting to be released." % PLATFORM)
+        for v in cand[:6]:
+            print("  %-10s %s" % (v["attributes"]["versionString"],
+                                  v["attributes"]["appStoreState"]))
+        print()
+        print("Only %s can be released here. IN_REVIEW means Apple has not"
+              % PENDING_RELEASE)
+        print("finished; READY_FOR_SALE means it is already out.")
+        sys.exit(1)
+
+    ver = ready[0]
+    va = ver["attributes"]
+    print("%s version %s  state=%s"
+          % (PLATFORM, va["versionString"], va["appStoreState"]))
+    print("  releaseType:    %s" % va.get("releaseType"))
+
+    if not APPLY:
+        print()
+        print("dry run - nothing released. Pass --apply to publish it.")
+        print("This makes version %s PUBLIC on the App Store."
+              % va["versionString"])
+        return
+
+    r = call("POST", "/v1/appStoreVersionReleaseRequests", {
+        "data": {
+            "type": "appStoreVersionReleaseRequests",
+            "relationships": {
+                "appStoreVersion": {
+                    "data": {"type": "appStoreVersions", "id": ver["id"]}},
+            },
+        },
+    })
+    if not r:
+        sys.exit(1)
+
+    # Read the STATE back rather than trusting the 201. A request Apple accepted
+    # but did not act on leaves the version exactly where it was, and the
+    # difference between "released" and "still waiting" is not visible from the
+    # POST alone.
+    back = call("GET", "/v1/appStoreVersions/%s" % ver["id"])
+    state = (((back or {}).get("data") or {})
+             .get("attributes", {}).get("appStoreState"))
+    print()
+    print("state=%s" % state)
+    if state == PENDING_RELEASE:
+        print("::error::still %s - Apple did not act on the release request."
+              % PENDING_RELEASE)
+        sys.exit(1)
+    print("RELEASED. %s is on its way to the App Store; Apple takes a little"
+          % va["versionString"])
+    print("while to finish distributing it.")
+
+
 def create_encryption_declaration():
     """POST an App Encryption Declaration. NOT the shipped answer - see below.
 
@@ -712,6 +799,9 @@ def create_version(version_string):
 
 
 def main():
+    if RELEASE:
+        release_approved()
+        return
     if SUBMIT_FOR_REVIEW:
         submit_for_review()
         return

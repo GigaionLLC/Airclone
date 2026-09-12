@@ -1,0 +1,131 @@
+name: Release an approved version (Apple)
+
+# Publishes a version Apple has ALREADY APPROVED and that is waiting on us.
+#
+# Every Apple version in this project is created with releaseType MANUAL, on
+# purpose: approval and publication being the same event is how a version ships
+# before anyone looks at it, and it was found silently set that way once already.
+# The cost of that choice is a last human step — an approved version sits in
+# PENDING_DEVELOPER_RELEASE until somebody presses release — and until this
+# workflow existed, that button was only in the App Store Connect console.
+#
+# This is the LAST step of the Apple lane, and the only one that makes the app
+# public:
+#
+#   ios-release.yml / mas-release.yml   build + upload
+#   asc-version.yml                     attach the build, notes, copyright, audit
+#   asc-submit-review.yml               Add for Review        <- point of no return
+#   asc-release.yml (here)              release the approved version   <- public
+#
+# Its own workflow rather than a mode on asc-submit-review.yml, for the reason
+# apple-revoke-cert.yml is separate: an irreversible action should not sit one
+# wrong dropdown away from a routine one. It is deliberately narrow — the backing
+# tool refuses every state except PENDING_DEVELOPER_RELEASE, so it cannot submit,
+# attach, edit metadata, or rescue a rejected version. The only state it can move
+# is the last one.
+#
+# There is no undo. Releasing publishes to the App Store; pulling it back means
+# removing the version from sale, which is a different and slower action.
+#
+# Google's equivalent is promote-play.yml (production, staged rollout).
+# Microsoft has no equivalent and must not get one: committing through the API
+# sets an advanced-pricing app's price to 0 — see AGENT.md rule 10.
+
+on:
+  workflow_dispatch:
+    inputs:
+      platform:
+        description: 'Which platform to release'
+        required: true
+        default: IOS
+        type: choice
+        options: [IOS, MAC_OS]
+      mode:
+        description: 'dry-run = show what is waiting and release nothing | release = publish it'
+        required: true
+        default: dry-run
+        type: choice
+        options: [dry-run, release]
+      confirm_version:
+        description: 'release only: type the version string exactly (e.g. 0.9.0)'
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Refuse without credentials
+        env:
+          HAS_KEY: ${{ secrets.APPSTORE_API_PRIVATE_KEY != '' }}
+        run: |
+          if [ "$HAS_KEY" != "true" ]; then
+            echo "::error::missing APPSTORE_API_PRIVATE_KEY (org secret)"
+            exit 1
+          fi
+
+      # Checked before the key is ever written to disk. A dry-run needs no
+      # confirmation; publishing does, and it has to match what is actually there.
+      - name: Refuse a release without a matching version
+        if: ${{ inputs.mode == 'release' }}
+        env:
+          CONFIRM: ${{ inputs.confirm_version }}
+        run: |
+          set -euo pipefail
+          if [ -z "$CONFIRM" ]; then
+            echo "::error::mode=release needs confirm_version (the exact version string)"
+            exit 1
+          fi
+          # Shape check, not just emptiness. asc_build.py parses argv by
+          # membership rather than with a parser, so a value that IS a flag
+          # (`--apply`, `--release`) would be read as one.
+          case "$CONFIRM" in
+            [0-9]*.[0-9]*) ;;
+            *) echo "::error::confirm_version must look like 1.2.3, got '$CONFIRM'"; exit 1;;
+          esac
+          echo "will PUBLISH ${{ inputs.platform }} version $CONFIRM to the App Store"
+
+      - uses: actions/setup-python@v6
+        with: { python-version: '3.12' }
+
+      - name: Install dependencies
+        run: pip install --quiet cryptography
+
+      - name: Release
+        env:
+          P8: ${{ secrets.APPSTORE_API_PRIVATE_KEY }}
+          KEY_ID: ${{ vars.APPSTORE_API_KEY_ID }}
+          ISSUER: ${{ secrets.APPSTORE_ISSUER_ID }}
+          # CONFIRM is the only free-form input here and it reaches a shell, so
+          # it arrives through env: and quoted rather than interpolated into the
+          # script text. tool/check-workflows.py fails CI on the other form.
+          CONFIRM: ${{ inputs.confirm_version }}
+        run: |
+          set -euo pipefail
+          umask 077
+          printf '%s' "$P8" > key.p8
+          # The pin is applied whenever the operator supplied one, not only on a
+          # release: without it a dry run previews whichever version Apple
+          # happens to list first, which is the divergence --version exists to
+          # close. --apply is what makes it write.
+          set -- --release
+          if [ -n "$CONFIRM" ]; then set -- "$@" --version "$CONFIRM"; fi
+          if [ "${{ inputs.mode }}" = "release" ]; then set -- "$@" --apply; fi
+          python tool/asc_build.py key.p8 "$KEY_ID" "$ISSUER" 6790176897 \
+            --platform ${{ inputs.platform }} "$@"
+
+      - name: Shred the key
+        if: always()
+        run: rm -f key.p8
+
+      - name: What happens next
+        if: ${{ success() && inputs.mode == 'release' }}
+        run: |
+          echo "Released. Apple takes a little while to finish distributing it,"
+          echo "so the App Store page can lag the state change by an hour or so."
+          echo "Record it in dev/apple-handoff.md."
