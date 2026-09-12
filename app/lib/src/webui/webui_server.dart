@@ -22,6 +22,7 @@
 /// `webui_login_page.dart` for why.
 library;
 
+import '../state/cloud_placeholder.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -471,6 +472,24 @@ class WebUiServer {
       });
     }
 
+    // A download is a CONTENT read, and this repo's standing rule is that every
+    // new content-read path consults the placeholder guard. Serving an
+    // online-only OneDrive/iCloud file would silently pull the whole thing down
+    // — the user's bandwidth, and on a metered plan their money — for a click
+    // that looked like it was moving a file they already had.
+    //
+    // Preview (no `download=1`) is deliberately left alone for now: it is
+    // shipped behaviour, and changing what previews are allowed to open is a
+    // separate decision from what a Save button may fetch.
+    if (request.uri.queryParameters['download'] == '1' &&
+        wouldHydrateOnReadFs(fs, remote)) {
+      return _json(request, HttpStatus.conflict, {
+        'error':
+            'That file is stored online-only on this device. Download it in '
+            'the Airclone app first, or make it available offline.',
+      });
+    }
+
     final ref = engineClient().objectRef(fs, remote);
     final upstream = _upstream;
     if (upstream == null) {
@@ -509,6 +528,15 @@ class WebUiServer {
     ]) {
       final value = upstreamResponse.headers.value(header);
       if (value != null) response.headers.set(header, value);
+    }
+    // `?download=1` turns a preview into a save. Everything else about the
+    // request is identical — same proxy, same Range support — so this is a
+    // header, not a second code path.
+    if (request.uri.queryParameters['download'] == '1') {
+      response.headers.set(
+        'Content-Disposition',
+        contentDispositionAttachment(remote),
+      );
     }
     // Already-compressed media gains nothing from a second pass, and
     // re-compressing invalidates the Content-Length we just copied.
@@ -621,4 +649,30 @@ class WebUiServer {
     response.write(body);
     return response.close();
   }
+}
+
+/// A `Content-Disposition` value that makes a browser SAVE the response, under
+/// the file's own name.
+///
+/// The filename is never interpolated raw. A name may contain a quote, a
+/// newline, a semicolon or non-ASCII characters, and a header is a line-oriented
+/// protocol: `attachment; filename="a";drop.txt` or a name carrying CRLF would
+/// let a remote's file name rewrite the response headers. So two forms are
+/// emitted, which is what RFC 6266 asks for:
+///
+///   * `filename=` with a conservative ASCII fallback, for old clients;
+///   * `filename*=UTF-8''…` percent-encoded, which every current browser prefers
+///     and which is the one that keeps the real name.
+String contentDispositionAttachment(String remotePath) {
+  final base =
+      remotePath.split('/').where((p) => p.isNotEmpty).lastOrNull ?? '';
+  final name = base.isEmpty ? 'download' : base;
+  // The ASCII fallback keeps only characters that are safe unquoted, so there is
+  // nothing left that could close the quote or break the line.
+  final ascii = name
+      .replaceAll(RegExp(r'[^A-Za-z0-9._-]'), '_')
+      .replaceAll(RegExp(r'^_+|_+$'), '');
+  final safeAscii = ascii.isEmpty ? 'download' : ascii;
+  final encoded = Uri.encodeComponent(name);
+  return "attachment; filename=\"$safeAscii\"; filename*=UTF-8''$encoded";
 }

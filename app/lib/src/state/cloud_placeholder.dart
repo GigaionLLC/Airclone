@@ -191,6 +191,27 @@ String _joinLocal(String root, String within) {
 /// True when reading the entry at [pathWithinRemote] under [remote] would
 /// hydrate an online-only cloud placeholder. The guard thumbnail builders and
 /// content-hash scans consult before fetching a file's bytes.
+/// [wouldHydrateOnRead] for a caller that holds only the RC `fs` string, with no
+/// [Remote] object — the Web UI server, which speaks in `fs` + `remote` and has
+/// no remotes list of its own.
+///
+/// Resolves only what can be resolved from the string alone: an `fs` that is
+/// already an absolute local root. A named remote (`gdrive:`, `crypt:`) needs
+/// the config to resolve its backing path, so this answers FALSE for it — the
+/// same answer [wouldHydrateOnRead] gives when a path cannot be resolved, and
+/// the same reasoning: an unresolved path is not evidence of a placeholder, and
+/// refusing to serve on a guess would break ordinary cloud files.
+bool wouldHydrateOnReadFs(String fs, String pathWithinRemote) {
+  final root = fs.trim();
+  if (root.isEmpty) return false;
+  // A remote is `name:` or `name:path`; a local root is a filesystem path.
+  final looksAbsolutePosix = root.startsWith('/');
+  final looksAbsoluteWindows = RegExp(r'^[A-Za-z]:[\/]').hasMatch(root);
+  if (!looksAbsolutePosix && !looksAbsoluteWindows) return false;
+  final local = _joinLocal(root, pathWithinRemote);
+  return isOnlineOnlyPlaceholder(local);
+}
+
 bool wouldHydrateOnRead(Remote remote, String pathWithinRemote) {
   final local = localAbsolutePath(remote, pathWithinRemote);
   return local != null && isOnlineOnlyPlaceholder(local);
