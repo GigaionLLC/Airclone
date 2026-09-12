@@ -128,6 +128,15 @@ Two things worth knowing:
 - **A dropped upload starts over.** There is no resume yet, so a large file over a poor connection
   is worth doing when the connection is good.
 
+## Playing media in a browser
+
+A browser brings its own video decoder, and it is a narrow one. **MP4, WebM and Ogg play; AVI, MKV,
+WMV, FLV and MPG do not** — not here, not in any web page. The desktop and phone apps carry their own
+decoder and play all of them, which is why the same file opens there and not here.
+
+Airclone says so rather than showing you a failure: open one of those and you get a note naming the
+format and pointing at `Download`. Nothing is wrong with the file or the server.
+
 ## Security
 
 **The Web UI is HTTPS only.** There is no plain-HTTP option, and nothing to turn on: browsers now

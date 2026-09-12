@@ -86,6 +86,48 @@ bool isVideoLikeExt(String ext) =>
 /// True when [ext] plays through the AUDIO pipeline.
 bool isAudioExt(String ext) => kAudioExts.contains(ext);
 
+/// Containers a BROWSER can decode, which is a much shorter list than libmpv's.
+///
+/// On the desktop and mobile apps, media plays through libmpv and the container
+/// barely matters. In the Web UI it does not: media_kit's web backend is an
+/// `HTMLVideoElement`, so playback is whatever the browser itself supports —
+/// broadly H.264/AAC in MP4, VP8/VP9 in WebM, and Ogg. An `.avi`, `.mkv`,
+/// `.wmv`, `.flv` or `.mpg` cannot play in a browser at all, no matter what the
+/// server sends.
+///
+/// This exists so the Web UI can say THAT, instead of showing the browser's own
+/// "no supported source was found" next to a Try again button that can never
+/// work. A user watching an .avi fail twice learns nothing; a user told their
+/// browser cannot play .avi knows to download it.
+///
+/// Deliberately conservative. `.mov` is here because an H.264 MOV plays widely,
+/// but a container being listed is not a promise: an exotic codec inside an MP4
+/// can still fail, and that case still falls through to the player's own error.
+const Set<String> kBrowserPlayableExts = {
+  'mp4',
+  'm4v',
+  'mov',
+  'webm',
+  'ogv',
+  'ogg',
+  'mp3',
+  'm4a',
+  'wav',
+  'flac',
+  'opus',
+  'aac',
+  // HLS is not natively playable in most browsers, but media_kit's web backend
+  // and Safari both handle it, and the alternative - refusing outright - would
+  // be wrong more often than right.
+  'm3u8',
+};
+
+/// True when [ext] is something a browser has no decoder for, so the Web UI
+/// should explain rather than fail.
+bool isUnplayableInBrowser(String ext) =>
+    (isVideoLikeExt(ext) || isAudioExt(ext)) &&
+    !kBrowserPlayableExts.contains(ext);
+
 /// Protocols libmpv is allowed to follow, for media Airclone fetches itself.
 ///
 /// **This is not belt-and-braces; the default is actively unsafe for us.**

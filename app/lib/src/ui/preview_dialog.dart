@@ -1,3 +1,4 @@
+import '../state/host_platform.dart';
 import '../state/media_formats.dart';
 import 'dialog_body.dart';
 import 'dart:convert';
@@ -253,7 +254,8 @@ class PreviewContent extends ConsumerWidget {
           }
         : null;
 
-    switch (_kindFor(file)) {
+    final kind = _kindFor(file);
+    switch (kind) {
       case _PreviewKind.image:
         return _ImageBody(ref0: ref0, background: imageBackground);
       case _PreviewKind.text:
@@ -263,18 +265,19 @@ class PreviewContent extends ConsumerWidget {
       case _PreviewKind.pdf:
         return _PdfBody(ref0: ref0);
       case _PreviewKind.video:
-        return MediaPreviewBody(
-          url: ref0.url,
-          headers: ref0.headers,
-          onOpenExternally: openExternally,
-          onPrevious: onPrevious,
-          onNext: onNext,
-        );
       case _PreviewKind.audio:
+        // In a browser, playback is the browser's own decoder - media_kit's web
+        // backend is an HTMLVideoElement - so an .avi or .mkv cannot play here
+        // however well the app behaves. Say that, instead of handing the user
+        // the browser's "no supported source was found" beside a Try again
+        // button that can never succeed.
+        if (HostPlatform.isWeb && isUnplayableInBrowser(_extOf(file.name))) {
+          return _BrowserCannotPlayBody(file: file);
+        }
         return MediaPreviewBody(
           url: ref0.url,
           headers: ref0.headers,
-          audioOnly: true,
+          audioOnly: kind == _PreviewKind.audio,
           onOpenExternally: openExternally,
           onPrevious: onPrevious,
           onNext: onNext,
@@ -564,6 +567,41 @@ class _UnsupportedBody extends StatelessWidget {
               icon: const Icon(Icons.open_in_new, size: 18),
               label: const Text('Open in another app'),
             ),
+    );
+  }
+}
+
+/// Shown in the Web UI for media a browser has no decoder for.
+///
+/// Not an error state, because nothing went wrong: media_kit's web backend is
+/// an `HTMLVideoElement`, so an `.avi` or `.mkv` was never going to play in a
+/// browser however well the server behaves. The desktop app plays it through
+/// libmpv, which is why the same file opens fine there and the difference needs
+/// explaining rather than reporting as a failure.
+///
+/// Deliberately offers no retry. The previous behaviour handed the user the
+/// browser's own "Failed to load because no supported source was found" beside
+/// a Try again button that could never succeed — which teaches a user that the
+/// app is unreliable, rather than that their browser has limits.
+class _BrowserCannotPlayBody extends StatelessWidget {
+  const _BrowserCannotPlayBody({required this.file});
+
+  final RcloneFile file;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = AircloneTheme.of(context);
+    final ext = _extOf(file.name);
+    return _Message(
+      icon: Icons.download_for_offline_outlined,
+      title: 'Your browser can’t play .$ext files',
+      detail:
+          '${file.name}\n'
+          '${humanSize(file.size)}\n\n'
+          'Browsers only play a few formats — MP4, WebM and Ogg. Download '
+          'this file and open it in a media player, or open it in the Airclone '
+          'app on this machine, which plays it directly.',
+      color: c.textMuted,
     );
   }
 }
