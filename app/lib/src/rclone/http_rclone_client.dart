@@ -161,7 +161,7 @@ Future<T> sendWithConnectionRetry<T>(
 
 /// Desktop [RcloneClient]: spawns `rclone rcd` bound to loopback with per-session
 /// credentials, and drives it over HTTP. See `wiki/core/08-core-architecture.md` §3.
-class HttpRcloneClient implements RcloneClient {
+class HttpRcloneClient implements RcloneClient, ObjectUploader {
   HttpRcloneClient({
     required this.rclonePath,
     this.configPath,
@@ -259,6 +259,76 @@ class HttpRcloneClient implements RcloneClient {
       lock.closeSync();
     } catch (_) {
       /* ignore */
+    }
+  }
+
+  /// Streams straight through to `operations/uploadfile`. No temp file: the
+  /// bytes go from the browser's socket to the engine's socket, so a 40GB upload
+  /// needs 40GB of destination and nothing else.
+  ///
+  /// The multipart envelope is built by hand because `dart:io`'s HttpClient has
+  /// no multipart support and the alternative is buffering the whole body to
+  /// hand to a helper — which is the one thing this method exists to avoid.
+  @override
+  Future<void> putObject(
+    String fs,
+    String remote,
+    Stream<List<int>> bytes, {
+    int? length,
+  }) async {
+    final port = _port;
+    final auth = _authHeader;
+    if (port == null || auth == null) {
+      throw StateError('The rclone engine is not running.');
+    }
+    // The last path segment is the file name; everything before it is the
+    // destination directory, which is what rclone wants in `remote`.
+    final slash = remote.lastIndexOf('/');
+    final dir = slash < 0 ? '' : remote.substring(0, slash);
+    final name = slash < 0 ? remote : remote.substring(slash + 1);
+    if (name.isEmpty) throw ArgumentError('remote has no file name: $remote');
+
+    final boundary =
+        '----airclone${DateTime.now().microsecondsSinceEpoch.toRadixString(16)}';
+    // A quote or CRLF in a file name would break out of the part header, the
+    // same way it would break a Content-Disposition response header.
+    final safeName = name.replaceAll(RegExp('[\\"\\r\\n]'), '_');
+    final head = utf8.encode(
+      '--$boundary\r\n'
+      'Content-Disposition: form-data; name="file"; filename="$safeName"\r\n'
+      'Content-Type: application/octet-stream\r\n\r\n',
+    );
+    final tail = utf8.encode('\r\n--$boundary--\r\n');
+    final uri = Uri.parse(
+      'http://127.0.0.1:$port/operations/uploadfile'
+      '?fs=${Uri.encodeQueryComponent(fs)}'
+      '&remote=${Uri.encodeQueryComponent(dir)}',
+    );
+    final client = HttpClient();
+    try {
+      final req = await client.postUrl(uri);
+      req.headers.set(HttpHeaders.authorizationHeader, auth);
+      req.headers.set(
+        HttpHeaders.contentTypeHeader,
+        'multipart/form-data; boundary=$boundary',
+      );
+      if (length != null) {
+        req.contentLength = head.length + length + tail.length;
+      }
+      req.add(head);
+      await req.addStream(bytes);
+      req.add(tail);
+      final res = await req.close();
+      final body = await res.transform(utf8.decoder).join();
+      if (res.statusCode < 200 || res.statusCode >= 300) {
+        throw RcloneException(
+          'operations/uploadfile',
+          'upload failed: $body',
+          statusCode: res.statusCode,
+        );
+      }
+    } finally {
+      client.close(force: true);
     }
   }
 

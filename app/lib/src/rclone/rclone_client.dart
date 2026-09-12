@@ -29,6 +29,38 @@ abstract interface class RcloneClient {
   ObjectRef objectRef(String fs, String remote);
 }
 
+/// An engine that can accept raw bytes and write them to a remote.
+///
+/// A CAPABILITY interface rather than a widening of [RcloneClient], for two
+/// reasons. The practical one: 24 test fakes `implements RcloneClient`, and
+/// every one of them would have to grow a method it does not care about. The
+/// honest one: not every client can do this. [WebRcloneClient] runs inside a
+/// browser and has no filesystem and no engine of its own — it is the thing
+/// ASKING for an upload, not the thing performing one. A capability the web
+/// client cannot have does not belong on the interface it must satisfy.
+///
+/// The two engines differ in how they do it, which is exactly what a seam is
+/// for:
+///
+///   * the spawned `rcd` streams the bytes straight through to
+///     `operations/uploadfile`, touching no disk;
+///   * the in-process library cannot — `RcloneRPC` speaks JSON and nothing else
+///     — so it stages to a file and then copies. Callers never learn which.
+abstract interface class ObjectUploader {
+  /// Writes [bytes] to `fs:remote`, replacing whatever is there.
+  ///
+  /// [length] is the byte count when it is known up front. The streaming
+  /// implementation needs it for a Content-Length; the staging one uses it to
+  /// check free space before accepting a single byte, which is the difference
+  /// between refusing an upload and filling the disk.
+  Future<void> putObject(
+    String fs,
+    String remote,
+    Stream<List<int>> bytes, {
+    int? length,
+  });
+}
+
 /// A URL + headers pair for fetching an object's bytes (preview/media).
 class ObjectRef {
   const ObjectRef(this.url, this.headers);

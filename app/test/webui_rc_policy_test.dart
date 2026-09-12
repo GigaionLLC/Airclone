@@ -2,6 +2,7 @@ import 'package:airclone/src/webui/webui_rc_policy.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  _uploadStaysOutOfTheAllowlist();
   group('the three that must never be reachable', () {
     test('core/command is refused', () {
       // This is the method that makes rclone's rc "equivalent to shell access
@@ -95,5 +96,16 @@ void main() {
         expect(entry.value.trim(), isNotEmpty, reason: entry.key);
       }
     });
+  });
+}
+
+/// Upload was added to the Web UI without widening this list, and that was the
+/// point. The browser posts to an app endpoint and the APP talks to the engine,
+/// so `operations/uploadfile` never becomes something a stolen session can call
+/// directly. This guards the decision, because the obvious way to implement
+/// upload is to forward the RC method, and the obvious way is the wrong one.
+void _uploadStaysOutOfTheAllowlist() {
+  test('operations/uploadfile is NOT browser-reachable', () {
+    expect(kAllowedRcMethods.contains('operations/uploadfile'), isFalse);
   });
 }

@@ -1,5 +1,7 @@
-import '../state/media_formats.dart';
 import 'dart:convert';
+import 'dart:io';
+
+import '../state/media_formats.dart';
 
 import 'librclone_ffi.dart';
 import 'librclone_object_server.dart';
@@ -11,7 +13,7 @@ import 'rclone_client.dart';
 /// librclone's `RcloneRPC`. This is the only legal way to run rclone on iOS / the
 /// Mac App Store (no `fork`/`exec`), and a tidier option on desktop.
 /// See dev/archive-plans/dual-engine-plan.md and [LibrcloneEngine].
-class FfiRcloneClient implements RcloneClient {
+class FfiRcloneClient implements RcloneClient, ObjectUploader {
   FfiRcloneClient({
     required this.libraryPath,
     this.configPath,
@@ -118,6 +120,65 @@ class FfiRcloneClient implements RcloneClient {
       );
     } catch (e) {
       return EngineStatus(EngineState.error, version: _version, message: '$e');
+    }
+  }
+
+  /// Stages to disk, then copies. The in-process engine has no HTTP server and
+  /// `RcloneRPC` speaks JSON only, so there is no socket to stream bytes down —
+  /// the same constraint that makes [LibrcloneObjectServer] materialize an
+  /// object before it can serve one, mirrored.
+  ///
+  /// The staging file is deleted on success AND on failure. Preview temp files
+  /// are left for cache policy to reclaim because they are small and
+  /// regenerable; a half-finished upload is neither. It is the user's data, it
+  /// can be enormous, and nothing will ever ask for it again.
+  @override
+  Future<void> putObject(
+    String fs,
+    String remote,
+    Stream<List<int>> bytes, {
+    int? length,
+  }) async {
+    final dir = previewCacheDir;
+    if (dir == null || dir.isEmpty) {
+      throw StateError('No staging directory is available for uploads.');
+    }
+    final stageDir = Directory('$dir${Platform.pathSeparator}uploads');
+    await stageDir.create(recursive: true);
+
+    // NO free-space preflight, deliberately. A reliable free-byte count means
+    // shelling out to `df` or `dir` and parsing locale-dependent text, and a
+    // wrong answer is worse than none: it would refuse uploads that would have
+    // succeeded. The write below fails honestly when the disk is full, and the
+    // staging file is removed either way. If this becomes a real complaint the
+    // fix is a platform channel returning a number, not a subprocess returning
+    // text.
+    final stamp = DateTime.now().microsecondsSinceEpoch.toRadixString(16);
+    final staged = File('${stageDir.path}${Platform.pathSeparator}$stamp.part');
+    try {
+      final sink = staged.openWrite();
+      try {
+        await sink.addStream(bytes);
+      } finally {
+        await sink.close();
+      }
+      final slash = remote.lastIndexOf('/');
+      final dstDir = slash < 0 ? '' : remote.substring(0, slash);
+      final name = slash < 0 ? remote : remote.substring(slash + 1);
+      if (name.isEmpty) throw ArgumentError('remote has no file name: $remote');
+      await rpc('operations/copyfile', {
+        'srcFs': staged.parent.path,
+        'srcRemote': staged.uri.pathSegments.last,
+        'dstFs': dstDir.isEmpty ? fs : '$fs/$dstDir',
+        'dstRemote': name,
+      });
+    } finally {
+      // Both paths: a failed upload leaves nothing behind either.
+      try {
+        if (staged.existsSync()) await staged.delete();
+      } catch (_) {
+        /* the OS will reclaim it; never mask the real error */
+      }
     }
   }
 
