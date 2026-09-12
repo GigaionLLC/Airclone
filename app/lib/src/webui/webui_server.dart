@@ -550,8 +550,11 @@ class WebUiServer {
       // Drain whatever is left, or the client sees a reset connection instead
       // of this message — the same reason _readBody drains before answering.
       await request.drain<void>().catchError((_) {});
+      // The detail goes to the LOG, not to the browser. An engine exception
+      // carries host filesystem paths, and a response body is the one place
+      // they can reach someone holding a stolen session.
       return _json(request, HttpStatus.badGateway, {
-        'error': 'The upload did not complete: $e',
+        'error': 'The upload did not complete.',
       });
     }
     return _json(request, HttpStatus.ok, {'ok': true, 'remote': remote});

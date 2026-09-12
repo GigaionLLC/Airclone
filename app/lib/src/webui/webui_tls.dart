@@ -105,16 +105,20 @@ Future<WebUiTlsMaterial> ensureTlsMaterial(String dir) async {
     await Directory(dir).create(recursive: true);
     final generated = generateSelfSigned();
     await cert.writeAsString(generated.$1);
-    await key.writeAsString(generated.$2);
-    // Best effort: the key is readable only by this user where the platform
-    // allows it to be said. Windows inherits the directory's ACL instead.
+    // TIGHTEN THE KEY'S PERMISSIONS BEFORE ITS CONTENT EXISTS, not after.
+    // Creating it, writing the key, and then chmod'ing leaves a window - short,
+    // but real on a multi-user machine - where the private key sits on disk at
+    // whatever the umask allowed. So: create it empty, restrict it, then write.
+    await key.create();
     if (!Platform.isWindows) {
       try {
         await Process.run('chmod', ['600', key.path]);
       } catch (_) {
-        /* not fatal - the directory is already under the app's own data */
+        // Not fatal: the file is already under the app's own data directory.
+        // Windows has no chmod and inherits that directory's ACL instead.
       }
     }
+    await key.writeAsString(generated.$2);
   }
   return WebUiTlsMaterial(
     certPath: cert.path,
