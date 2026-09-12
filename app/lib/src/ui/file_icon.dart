@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../state/media_formats.dart';
 import '../rclone/models/rclone_file.dart';
 import 'theme/tokens.dart';
 
@@ -28,28 +29,6 @@ const Set<String> _imageExts = {
   'tiff',
   'svg',
   'avif',
-};
-const Set<String> _videoExts = {
-  'mp4',
-  'mov',
-  'mkv',
-  'webm',
-  'avi',
-  'm4v',
-  'wmv',
-  'flv',
-  'mpg',
-  'mpeg',
-};
-const Set<String> _audioExts = {
-  'mp3',
-  'flac',
-  'wav',
-  'aac',
-  'ogg',
-  'm4a',
-  'opus',
-  'wma',
 };
 const Set<String> _archiveExts = {
   'zip',
@@ -108,8 +87,8 @@ FileKind kindOf(RcloneFile f) {
   if (f.isDir) return FileKind.folder;
   final ext = _extOf(f.name);
   if (_imageExts.contains(ext)) return FileKind.image;
-  if (_videoExts.contains(ext)) return FileKind.video;
-  if (_audioExts.contains(ext)) return FileKind.audio;
+  if (isVideoLikeExt(ext)) return FileKind.video;
+  if (isAudioExt(ext)) return FileKind.audio;
   if (ext == 'pdf') return FileKind.pdf;
   if (_archiveExts.contains(ext)) return FileKind.archive;
   if (_codeExts.contains(ext)) return FileKind.code;
@@ -128,7 +107,15 @@ FileKind kindOf(RcloneFile f) {
 bool isImageThumbnailable(RcloneFile f) => kindOf(f) == FileKind.image;
 
 /// True when [f] is a video we can capture a keyframe from for a thumbnail.
-bool isVideoThumbnailable(RcloneFile f) => kindOf(f) == FileKind.video;
+///
+/// A streaming MANIFEST is video for every other purpose but never this one. It
+/// holds no frame to capture; a live one reports no duration, so the blank-frame
+/// retry is skipped and the first black slate gets cached as permanently
+/// undecodable; and each attempt would hold a libmpv instance open against a
+/// network origin for the whole timeout, which is the starvation the video
+/// thumbnail semaphore exists to prevent.
+bool isVideoThumbnailable(RcloneFile f) =>
+    kindOf(f) == FileKind.video && !isPlaylistExt(_extOf(f.name));
 
 /// True when [f] can produce a visual thumbnail (image or video).
 bool isThumbnailable(RcloneFile f) =>

@@ -1,3 +1,4 @@
+import '../rclone/rclone_client.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -13,6 +14,14 @@ import 'theme/tokens.dart';
 /// engine and can genuinely take a while to start, so this is deliberately
 /// generous — it exists to kill the *infinite* black screen, not to be strict.
 const Duration _startTimeout = Duration(seconds: 45);
+
+/// The same deadline for a NETWORK stream, which has further to travel and more
+/// to do before a first frame: resolve a manifest, fetch the first segments,
+/// and negotiate with a server that may be throttling or still starting a live
+/// broadcast. 45 seconds is generous for a cloud object arriving through the
+/// local engine and tight for an HLS source on a slow link, so a stream gets
+/// its own, longer budget rather than inheriting one tuned for a different job.
+const Duration _networkStartTimeout = Duration(seconds: 120);
 
 /// Embeddable video / audio player powered by media_kit.
 ///
@@ -50,6 +59,7 @@ class MediaPreviewBody extends ConsumerStatefulWidget {
     required this.url,
     this.headers = const {},
     this.audioOnly = false,
+    this.isNetworkStream = false,
     this.onOpenExternally,
     this.onPrevious,
     this.onNext,
@@ -63,6 +73,12 @@ class MediaPreviewBody extends ConsumerStatefulWidget {
 
   /// When true, render the compact audio card instead of a video surface.
   final bool audioOnly;
+
+  /// True when [url] names a host outside this machine, rather than an object
+  /// served by the local engine. Buys a longer start deadline, and nothing else
+  /// — credentials are withheld by [ObjectRef.sendableHeaders] on the URL's own
+  /// merits, never on the strength of this flag.
+  final bool isNetworkStream;
 
   /// Hands this file to another app. When non-null the error card offers it as
   /// a fallback — the codec libmpv can't handle is often one the phone's own
@@ -172,22 +188,31 @@ class _MediaPreviewBodyState extends ConsumerState<MediaPreviewBody> {
         if (playing) _markStarted(generation);
       });
     }
-    _watchdog = Timer(_startTimeout, () {
-      if (mounted && _error == null && !_started) {
-        setState(
-          () => _fail(
-            "This media didn't start playing. It may use a format Airclone "
-            "can't decode, or the connection may be too slow to stream it.",
-          ),
-        );
-      }
-    });
+    _watchdog = Timer(
+      widget.isNetworkStream ? _networkStartTimeout : _startTimeout,
+      () {
+        if (mounted && _error == null && !_started) {
+          setState(
+            () => _fail(
+              "This media didn't start playing. It may use a format Airclone "
+              "can't decode, or the connection may be too slow to stream it.",
+            ),
+          );
+        }
+      },
+    );
 
     try {
       // Awaited: open() rejects ASYNCHRONOUSLY, so a bare call would leave the
       // failure unobserved and the user staring at black forever.
       await player.open(
-        Media(widget.url, httpHeaders: widget.headers),
+        // sendableHeaders, not headers: these credentials belong to a loopback
+        // port on this machine, and a network stream's URL names a host we know
+        // nothing about. See ObjectRef.sendableHeaders.
+        Media(
+          widget.url,
+          httpHeaders: ObjectRef(widget.url, widget.headers).sendableHeaders,
+        ),
         play: true,
       );
     } catch (e) {

@@ -1,3 +1,4 @@
+import '../state/media_formats.dart';
 import 'dart:convert';
 
 import 'librclone_ffi.dart';
@@ -131,7 +132,13 @@ class FfiRcloneClient implements RcloneClient {
         'Previews are unavailable in library mode (no preview cache configured).',
       );
     }
-    return server.objectRef(fs, remote);
+    // A streaming manifest needs the path-shaped URL: its segment names are
+    // relative, and a query-shaped URL loses the remote entirely when they are
+    // resolved. Everything else keeps the query form it has always used.
+    final ext = remote.split('.').last.toLowerCase();
+    return isPlaylistExt(ext)
+        ? server.objectRefPathShaped(fs, remote)
+        : server.objectRef(fs, remote);
   }
 }
 

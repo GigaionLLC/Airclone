@@ -1,3 +1,4 @@
+import 'network_stream_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -147,6 +148,12 @@ Future<void> showMobileCreateSheet(
                 showCopyUrlDialog(context, ref, index);
               },
       ),
+      // Unconditional, unlike the row above: a network stream is not on a
+      // remote, so there is nothing to require one for.
+      _tile(c, Icons.sensors, 'Open network stream', () {
+        close();
+        showNetworkStreamDialog(context);
+      }),
       if (!clipEmpty)
         _tile(c, Icons.content_paste, 'Paste here', () async {
           close();

@@ -1,3 +1,4 @@
+import '../rclone/rclone_client.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -315,7 +316,13 @@ class ThumbnailService {
       // Attach an off-screen video output so libmpv decodes + renders frames.
       final controller = VideoController(player);
       await player.setVolume(0);
-      await player.open(Media(req.url, httpHeaders: req.headers), play: true);
+      await player.open(
+        Media(
+          req.url,
+          httpHeaders: ObjectRef(req.url, req.headers).sendableHeaders,
+        ),
+        play: true,
+      );
       await controller.waitUntilFirstFrameRendered.timeout(
         _videoFirstFrameTimeout,
       );

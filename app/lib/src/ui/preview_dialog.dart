@@ -1,3 +1,4 @@
+import '../state/media_formats.dart';
 import 'dialog_body.dart';
 import 'dart:convert';
 
@@ -87,36 +88,13 @@ const Set<String> _textExts = {
   'toml',
 };
 
-const Set<String> _videoExts = {
-  'mp4',
-  'mkv',
-  'webm',
-  'mov',
-  'avi',
-  'm4v',
-  'mpg',
-  'mpeg',
-  'wmv',
-};
-
-const Set<String> _audioExts = {
-  'mp3',
-  'flac',
-  'wav',
-  'ogg',
-  'm4a',
-  'aac',
-  'opus',
-  'wma',
-};
-
 _PreviewKind _kindFor(RcloneFile file) {
   final ext = _extOf(file.name);
   if (_imageExts.contains(ext)) return _PreviewKind.image;
   if (_markdownExts.contains(ext)) return _PreviewKind.markdown;
   if (ext == 'pdf') return _PreviewKind.pdf;
-  if (_videoExts.contains(ext)) return _PreviewKind.video;
-  if (_audioExts.contains(ext)) return _PreviewKind.audio;
+  if (isVideoLikeExt(ext)) return _PreviewKind.video;
+  if (isAudioExt(ext)) return _PreviewKind.audio;
   if (_textExts.contains(ext)) return _PreviewKind.text;
 
   // Fall back to mimeType for extension-less files.

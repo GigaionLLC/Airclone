@@ -32,8 +32,45 @@ abstract interface class RcloneClient {
 /// A URL + headers pair for fetching an object's bytes (preview/media).
 class ObjectRef {
   const ObjectRef(this.url, this.headers);
+
+  /// A reference to an ARBITRARY network URL, carrying no credentials.
+  ///
+  /// Used by "open a network stream": the user names a host we know nothing
+  /// about, so there is nothing of ours that may be sent to it.
+  const ObjectRef.network(this.url) : headers = const {};
+
   final String url;
   final Map<String, String> headers;
+
+  /// The headers that may actually be sent when fetching [url].
+  ///
+  /// **This is a credential boundary, not a tidy-up.** [headers] holds the
+  /// engine's own authorization — the rcd file server's Basic auth, or the
+  /// in-process bridge's bearer token — and both are minted to protect a
+  /// loopback port on this machine. They were previously handed to the player
+  /// verbatim alongside whatever URL it was given, which was harmless while
+  /// every URL came from [RcloneClient.objectRef] and therefore pointed at
+  /// 127.0.0.1. The moment a user can type a URL, that same code path would
+  /// send the engine's credentials to a stranger's CDN.
+  ///
+  /// So the rule is enforced here rather than remembered at each call site:
+  /// credentials travel to loopback and nowhere else.
+  Map<String, String> get sendableHeaders =>
+      isLoopbackUrl(url) ? headers : const {};
+}
+
+/// Whether [url] addresses this machine's loopback interface.
+///
+/// Parse failures answer FALSE: an unparseable URL is not something to send
+/// credentials to. IPv6 loopback arrives from [Uri] as `::1` with the brackets
+/// already stripped.
+bool isLoopbackUrl(String url) {
+  final uri = Uri.tryParse(url);
+  if (uri == null) return false;
+  final host = uri.host.toLowerCase();
+  if (host == 'localhost' || host == '::1') return true;
+  // The whole 127.0.0.0/8 block, not just 127.0.0.1.
+  return RegExp(r'^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$').hasMatch(host);
 }
 
 enum EngineState { stopped, starting, running, error }

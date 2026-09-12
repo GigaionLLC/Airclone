@@ -95,13 +95,22 @@ class LibrcloneObjectServer {
       await res.close();
       return;
     }
-    if (req.method != 'GET' || req.uri.path != '/obj') {
+    if (req.method != 'GET') {
       res.statusCode = HttpStatus.notFound;
       await res.close();
       return;
     }
-    final fs = req.uri.queryParameters['fs'];
-    final remote = req.uri.queryParameters['remote'];
+    final String? fs;
+    final String? remote;
+    if (req.uri.path == '/obj') {
+      fs = req.uri.queryParameters['fs'];
+      remote = req.uri.queryParameters['remote'];
+    } else {
+      // Path-shaped form, `/o/[fs]/dir/file`. See objectRefPathShaped.
+      final parsed = parseObjectPath(req.uri.path);
+      fs = parsed?.$1;
+      remote = parsed?.$2;
+    }
     if (fs == null || remote == null) {
       res.statusCode = HttpStatus.badRequest;
       await res.close();
@@ -123,6 +132,27 @@ class LibrcloneObjectServer {
 
   /// Copy `fs:remote` into the cache (once) and return the local file. The copy
   /// runs as an async RC job so a large object never blocks the engine worker.
+  /// The path-shaped URL for [remote] on [fs], for content that fetches its own
+  /// RELATIVE references.
+  ///
+  /// The query-shaped [objectRef] is fine for a self-contained object, but a
+  /// streaming manifest is a list of segment names resolved against the URL it
+  /// was loaded from. Given `…/obj?fs=X&remote=dir/v.m3u8`, a relative `seg1.ts`
+  /// resolves to `…/seg1.ts` — losing the query entirely, and with it any idea
+  /// of which remote or directory was meant. Every segment then 404s, which
+  /// presents as a stream that simply never starts.
+  ///
+  /// Shaped like the rcd file server's `/[fs]/path` for the same reason it works
+  /// there: the remote path lives in the URL path, so relative resolution lands
+  /// back in the same directory on the same remote.
+  ObjectRef objectRefPathShaped(String fs, String remote) {
+    final segments = remote.split('/').map(Uri.encodeComponent).join('/');
+    final uri =
+        'http://${InternetAddress.loopbackIPv4.address}:$_port'
+        '/o/${Uri.encodeComponent('[$fs]')}/$segments';
+    return ObjectRef(uri, {'Authorization': 'Bearer $_token'});
+  }
+
   Future<File> _materialize(String fs, String remote) {
     final key = sha1.convert(utf8.encode('$fs\u0000$remote')).toString();
     final dst = File('$cacheDir${HostPlatform.pathSeparator}$key');
@@ -271,4 +301,28 @@ class LibrcloneObjectServer {
   }
   if (start > end || start >= total) return null;
   return (start, min(end, total - 1));
+}
+
+/// Splits `/o/[fs]/dir/file` back into its fs and remote path, or null when the
+/// shape does not match. Pure, so the encoding round-trip is testable.
+(String, String)? parseObjectPath(String path) {
+  if (!path.startsWith('/o/')) return null;
+  final rest = path.substring(3);
+  final slash = rest.indexOf('/');
+  if (slash <= 0) return null;
+  final rawFs = Uri.decodeComponent(rest.substring(0, slash));
+  if (!rawFs.startsWith('[') || !rawFs.endsWith(']')) return null;
+  final fs = rawFs.substring(1, rawFs.length - 1);
+  if (fs.isEmpty) return null;
+  final remote = rest
+      .substring(slash + 1)
+      .split('/')
+      .map(Uri.decodeComponent)
+      .join('/');
+  if (remote.isEmpty) return null;
+  // A decoded `..` segment would climb out of the intended directory. rclone
+  // resolves the path itself, but refusing here keeps the bridge from ever
+  // being the thing that asked.
+  if (remote.split('/').contains('..')) return null;
+  return (fs, remote);
 }

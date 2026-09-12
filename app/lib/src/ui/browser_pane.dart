@@ -1,3 +1,4 @@
+import 'network_stream_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -2305,6 +2306,13 @@ class _PaneToolbar extends ConsumerWidget {
           'Upload from URL…',
           hasRemote ? () => showCopyUrlDialog(context, ref, index) : null,
         ),
+        // No hasRemote guard, unlike its neighbours: a network stream is not
+        // ON a remote. That independence is the feature.
+        item(
+          Icons.sensors,
+          'Open network stream…',
+          () => showNetworkStreamDialog(context),
+        ),
         item(
           Icons.straighten,
           'Folder size',
@@ -2431,6 +2439,11 @@ class _PaneToolbar extends ConsumerWidget {
               ? () => showCopyUrlDialog(context, ref, index)
               : null,
           child: const Text('Upload from URL…'),
+        ),
+        MenuItemButton(
+          leadingIcon: Icon(Icons.sensors, size: 16, color: c.textMuted),
+          onPressed: () => showNetworkStreamDialog(context),
+          child: const Text('Open network stream…'),
         ),
         MenuItemButton(
           leadingIcon: Icon(Icons.straighten, size: 16, color: c.textMuted),
