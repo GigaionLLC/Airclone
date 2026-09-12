@@ -55,12 +55,20 @@ jobs:
       # screen, but the one a user sees only when packaging is broken. The
       # release job bundles the engine; a rig meant to show what Linux looks
       # like has to bundle it too, or every screenshot is of the error state.
+      # The pin is READ from release.yml rather than repeated here. Writing
+      # the version into this file made it a fifth pin site, and rclone-bump.yml
+      # updates four — so the next bump would have left this one behind, which
+      # is the exact drift that automation exists to prevent. A rig that
+      # photographs a different rclone than the release ships is worse than no
+      # rig.
       - name: Bundle rclone, as the release job does
         working-directory: app
-        env:
-          RCLONE_PIN: v1.75.1
         run: |
           set -euo pipefail
+          pin="$(grep -oP 'RCLONE_VERSION: \Kv[0-9.]+' ../.github/workflows/release.yml | head -1)"
+          [ -n "$pin" ] || { echo "could not read the rclone pin from release.yml"; exit 1; }
+          echo "using the release pin: $pin"
+          RCLONE_PIN="$pin"
           zip="rclone-${RCLONE_PIN}-linux-amd64.zip"
           curl -fsSL --retry 3 -o "$zip" "https://downloads.rclone.org/${RCLONE_PIN}/$zip"
           unzip -q "$zip" -d rclone-extract
