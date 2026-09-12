@@ -78,6 +78,45 @@ class DiagEntry {
 /// `token = {...}` blob must be caught before the generic key/value rule reduces
 /// it to a partial match.
 final List<(RegExp, String Function(Match))> _redactions = [
+  // FIRST, deliberately — rule ORDER is load-bearing here. The generic
+  // `key = value` rule below matches `key: -----BEGIN` and rewrites the PEM's
+  // own header, after which this pattern no longer matches and the key body
+  // walks through in full. Specific shapes go before greedy ones.
+  //
+  // A PEM block carries no '=' and no secret-ish keyword, so before this rule
+  // existed every pattern in the list walked past it. The app generates and
+  // reads private keys (webui_tls.dart), and a read failure puts the
+  // surrounding text into a log.
+  (
+    RegExp(
+      r'-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----',
+    ),
+    (_) => '<redacted private key>',
+  ),
+  // The same secret-ish key names in the `--flag value` argv shape, which has
+  // no separator for the `k = v` rule to match. Not hypothetical: the engine
+  // client's own comment says this ring redacts rc credentials at ingest "as a
+  // second line of defence" when -vv echoes them — and for `--rc-pass hunter2`
+  // that was simply untrue until this rule existed. console_redaction.dart
+  // already handled the argv shape; the two redactors were not at parity.
+  (
+    RegExp(
+      r'''(--[\w-]*(?:pass|token|secret|key|auth|credential|cookie)[\w-]*)\s+(?!-)([^\s]+)''',
+      caseSensitive: false,
+    ),
+    (m) => '${m[1]} <redacted>',
+  ),
+  // Presigned-URL signatures. X-Amz-Credential and X-Amz-Security-Token are
+  // caught by the key rule; the SIGNATURE is not — and for a presigned URL the
+  // signature IS the credential, the part that makes the link work without one.
+  // Azure's SAS parameters are the same story under shorter names.
+  (
+    RegExp(
+      r'''(X-Amz-Signature|sig|se|sp|sv|st|srt|ss|spr)=([^&\s"']+)''',
+      caseSensitive: false,
+    ),
+    (m) => '${m[1]}=<redacted>',
+  ),
   // `scheme://user:secret@host` — credentials embedded in a URL.
   (
     RegExp(r'([a-zA-Z][a-zA-Z0-9+.-]*://)[^/\s:@]+:[^/\s@]+@'),

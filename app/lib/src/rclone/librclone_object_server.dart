@@ -5,6 +5,7 @@ import 'dart:math';
 
 import 'package:crypto/crypto.dart';
 
+import '../state/diagnostics.dart';
 import '../state/host_platform.dart';
 import 'rclone_client.dart';
 
@@ -80,8 +81,21 @@ class LibrcloneObjectServer {
 
   Future<void> _serve(HttpServer server) async {
     await for (final req in server) {
-      // Never let one bad request tear the server down.
-      unawaited(_handle(req).catchError((_) {}));
+      // Never let one bad request tear the server down — but do not lose it
+      // either. This swallowed every failure silently, including the paths that
+      // throw before any response is written, so a regression here would have
+      // been invisible: no log, no diagnostics entry, just a preview that never
+      // arrived. The Web UI server's equivalent loop logs; this one now does too.
+      unawaited(
+        _handle(req).catchError(
+          (Object e) => logDiagnostic(
+            DiagLevel.warning,
+            'preview',
+            'The in-process object server could not serve a request.',
+            detail: '$e',
+          ),
+        ),
+      );
     }
   }
 

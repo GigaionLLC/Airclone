@@ -359,15 +359,26 @@ class HttpRcloneClient implements RcloneClient, ObjectUploader {
       'rcd',
       // Advanced: user-supplied global flags go FIRST — rclone (pflag) lets the
       // last occurrence of a repeated flag win, so ours below always take
-      // precedence. That keeps the rc listener loopback-bound with per-session
-      // creds no matter what a user pastes into the engine-flags setting.
+      // precedence.
+      //
+      // Ordering alone is NOT what keeps the rc listener safe, and the comment
+      // that used to stand here claimed it was. Last-wins beats a REPEAT of the
+      // same flag; it does nothing about a different flag that reaches the same
+      // behaviour, and `--rc-no-auth` has no later flag that undoes it. The real
+      // defence is kRefusedEngineFlags in state/engine_flags.dart, which removes
+      // those before they ever arrive here.
       ...extraArgs,
       '--rc-addr',
       '127.0.0.1:$port',
       '--rc-user',
       user,
-      '--rc-pass',
-      pass,
+      // --rc-pass is NOT here on purpose. A command line is world-readable:
+      // `ps -ef` on POSIX and Win32_Process on Windows show it to every other
+      // account on the machine, and this password is full rclone rc access,
+      // which rclone's own docs equate to shell access as this user. It travels
+      // as RCLONE_RC_PASS in the environment below instead — the same route
+      // RCLONE_CONFIG_PASS already used two lines further down, which is what
+      // makes this an oversight rather than a considered trade-off.
       '--rc-serve',
       '--rc-job-expire-duration',
       '24h',
@@ -380,6 +391,10 @@ class HttpRcloneClient implements RcloneClient, ObjectUploader {
     // RCLONE_CONFIG_PASS unlocks an encrypted config; inherits the parent env.
     final env = <String, String>{
       ...extraEnv,
+      // rclone reads every flag from RCLONE_<FLAG> too, so this is exactly
+      // --rc-pass without putting it in argv. Placed AFTER extraEnv so a user's
+      // engine environment cannot replace the per-session credential.
+      'RCLONE_RC_PASS': pass,
       if (configPassword != null && configPassword!.isNotEmpty)
         'RCLONE_CONFIG_PASS': configPassword!,
     };

@@ -19,6 +19,12 @@ defaults:
   run:
     working-directory: app
 
+
+# Every other workflow in this repo pins this; ci.yml did not, so its token
+# inherited the repo/org default - read-write unless someone changed it. It
+# runs on pull_request, which is the one trigger where that matters most.
+permissions:
+  contents: read
 jobs:
   analyze-test:
     runs-on: ubuntu-latest

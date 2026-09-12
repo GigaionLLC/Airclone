@@ -1005,13 +1005,23 @@ jobs:
       # secret values written to $GITHUB_ENV in the logs.
       - name: Decode release keystore
         if: env.AIRCLONE_KEYSTORE_BASE64 != ''
+        # Through env:, not an expression inside the script. GitHub substitutes
+        # the value into the script TEXT before any shell parses it, so a
+        # keystore password containing a quote or $(...) would execute on the
+        # runner, and one containing a newline would inject extra KEY=VALUE
+        # lines into $GITHUB_ENV that every later step inherits. The line above
+        # already did it correctly for the base64 blob.
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.AIRCLONE_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.AIRCLONE_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.AIRCLONE_KEY_PASSWORD }}
         run: |
           echo "$AIRCLONE_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/airclone-release.jks"
           {
             echo "AIRCLONE_KEYSTORE=$RUNNER_TEMP/airclone-release.jks"
-            echo "AIRCLONE_KEYSTORE_PASSWORD=${{ secrets.AIRCLONE_KEYSTORE_PASSWORD }}"
-            echo "AIRCLONE_KEY_ALIAS=${{ secrets.AIRCLONE_KEY_ALIAS }}"
-            echo "AIRCLONE_KEY_PASSWORD=${{ secrets.AIRCLONE_KEY_PASSWORD }}"
+            echo "AIRCLONE_KEYSTORE_PASSWORD=$KEYSTORE_PASSWORD"
+            echo "AIRCLONE_KEY_ALIAS=$KEY_ALIAS"
+            echo "AIRCLONE_KEY_PASSWORD=$KEY_PASSWORD"
           } >> "$GITHUB_ENV"
       # Split per ABI: rclone is ~76 MB per ABI, so per-ABI APKs keep the download
       # small. Virtually every modern phone wants arm64-v8a.

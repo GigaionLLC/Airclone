@@ -112,3 +112,60 @@ List<String> parseEngineFlags(String raw) {
 
   return tokens;
 }
+
+/// Flags a user may not put in front of the engine, because each one unpicks
+/// the rc listener's own protection.
+///
+/// Applied by [stripRcHardeningOverrides] at the point the ENGINE argv is built
+/// — deliberately NOT inside [parseEngineFlags]. That function is the shared
+/// quote-aware tokenizer, and the command console uses it too: stripping there
+/// removed the tokens the console's own safety classifier looks for, so a
+/// blocked flag became an invisible one and two of its tests went red. A
+/// tokenizer should tokenize; policy belongs where the policy applies.
+///
+/// **Why a denylist and not flag ordering.** The engine builds its argv with the
+/// user's flags FIRST and its own after, on the rule that rclone's parser lets
+/// the last occurrence win. That defends against a REPEAT of the same flag — a
+/// second `--rc-addr` cannot move the listener off loopback. It does nothing
+/// about a DIFFERENT flag that changes the same behaviour: `--rc-no-auth` turns
+/// authentication off outright and there is no later flag that turns it back
+/// on, so ordering never protected against it at all.
+///
+/// The listener is loopback-bound with per-session credentials because rclone's
+/// own documentation equates rc access to shell access as the user running it.
+/// Anything that widens who may reach it, or removes the need to authenticate,
+/// is refused rather than ordered around.
+const Set<String> kRefusedEngineFlags = {
+  '--rc-no-auth',
+  '--rc-htpasswd',
+  '--rc-allow-origin',
+  '--rc-user',
+  '--rc-pass',
+  '--rc-addr',
+  '--rc-cert',
+  '--rc-key',
+  '--rc-client-ca',
+};
+
+/// Drops any [kRefusedEngineFlags] from [tokens], and the value that follows a
+/// flag which takes one.
+///
+/// Silent by design at this layer: this is a safety net under a settings field,
+/// not the place to explain a refusal. The settings UI is where a user is told.
+List<String> stripRcHardeningOverrides(List<String> tokens) {
+  final out = <String>[];
+  for (var i = 0; i < tokens.length; i++) {
+    final token = tokens[i];
+    // `--flag=value` carries its value with it; `--flag value` does not.
+    final name = token.contains('=') ? token.split('=').first : token;
+    if (!kRefusedEngineFlags.contains(name)) {
+      out.add(token);
+      continue;
+    }
+    // A refused flag that takes a separate value must swallow that value too,
+    // or the value is left behind as a stray positional argument.
+    final takesValue = name != '--rc-no-auth';
+    if (takesValue && !token.contains('=') && i + 1 < tokens.length) i++;
+  }
+  return out;
+}

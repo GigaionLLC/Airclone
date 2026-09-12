@@ -7,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 /// the load-bearing part: it runs at INGEST, so an export path that forgot to
 /// sanitise still cannot leak. These tests pin what must never survive it.
 void main() {
+  redactionGapsClosed();
   group('redactSensitive', () {
     test('strips rclone config secrets by key name', () {
       const raw = '''
@@ -158,6 +159,78 @@ pass = zX9_obscured_value
 
       log.clear();
       expect(entries(), isEmpty);
+    });
+  });
+}
+
+/// Gaps a security sweep found in the redactor, each one a shape that reached
+/// the ring intact. Called from main() below the existing groups.
+void redactionGapsClosed() {
+  group('argv-shaped secrets', () {
+    test('--rc-pass with a SPACE, which the k=v rule cannot see', () {
+      // The engine client's own comment says the ring redacts rc credentials at
+      // ingest "as a second line of defence" when -vv echoes them. For this
+      // shape that was not true.
+      expect(redactSensitive('--rc-pass hunter2'), isNot(contains('hunter2')));
+      expect(
+        redactSensitive(
+          'rclone rcd --rc-user airclone --rc-pass s3cr3t --rc-serve',
+        ),
+        isNot(contains('s3cr3t')),
+      );
+    });
+
+    test('other backend password flags too', () {
+      expect(redactSensitive('--sftp-pass abc123'), isNot(contains('abc123')));
+      expect(redactSensitive('--client-secret zzz'), isNot(contains('zzz')));
+    });
+
+    test('a flag followed by another flag is not eaten', () {
+      final out = redactSensitive('--rc-pass --rc-serve');
+      expect(out, contains('--rc-serve'));
+    });
+  });
+
+  group('presigned URL signatures', () {
+    test('the S3 signature is the credential', () {
+      final out = redactSensitive(
+        'https://b.s3.amazonaws.com/o?X-Amz-Credential=AKIA&X-Amz-Signature=deadbeefcafe',
+      );
+      expect(out, isNot(contains('deadbeefcafe')));
+    });
+
+    test('Azure SAS parameters', () {
+      final out = redactSensitive(
+        'https://a.blob.core.windows.net/c?sv=2021&sig=AbC123%3D&se=2026',
+      );
+      expect(out, isNot(contains('AbC123')));
+    });
+
+    test('the host survives, because that is the useful part', () {
+      final out = redactSensitive(
+        'https://b.s3.amazonaws.com/o?X-Amz-Signature=zzz',
+      );
+      expect(out, contains('b.s3.amazonaws.com'));
+    });
+  });
+
+  group('private keys', () {
+    test('a PEM block has no = and no keyword, so nothing else caught it', () {
+      const pem =
+          '-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBg\nkqhkiG9w0B\n-----END PRIVATE KEY-----';
+      final out = redactSensitive('failed to read key: $pem');
+      // Assert the PROPERTY, not the placeholder text: the generic `key = v`
+      // rule runs after this one and rewrites the marker, which is cosmetic.
+      // What matters is that no byte of the key survives.
+      expect(out, isNot(contains('MIIEvQIBADANBg')));
+      expect(out, isNot(contains('BEGIN')));
+      expect(out, contains('redacted'));
+    });
+
+    test('an RSA-labelled block too', () {
+      const pem =
+          '-----BEGIN RSA PRIVATE KEY-----\nAAAA\n-----END RSA PRIVATE KEY-----';
+      expect(redactSensitive(pem), isNot(contains('AAAA')));
     });
   });
 }

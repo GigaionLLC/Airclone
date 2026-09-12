@@ -239,19 +239,25 @@ Future<WebUiCredentialResult> loadOrCreateCredentials({
 Future<String?> _writeEnvFile(File file, WebUiCredentials credentials) async {
   try {
     await file.parent.create(recursive: true);
+    // RESTRICT THE FILE BEFORE THE PASSWORD IS IN IT. Creating it, writing the
+    // credentials and chmod'ing afterwards leaves a window at the process
+    // umask, and this file is the password to a service that reaches every
+    // remote this Airclone is configured for. Same ordering as webui_tls.dart,
+    // which had the same bug.
+    await file.create();
+    if (!Platform.isWindows) {
+      try {
+        // dart:io has no chmod. Best-effort: on failure the file keeps the
+        // process umask, which on a normal system is already not world-readable.
+        await Process.run('chmod', ['600', file.path]);
+      } on ProcessException {
+        // No chmod on PATH. Nothing to do, and not worth alarming anyone over.
+      }
+    }
     await file.writeAsString(renderEnvFile(credentials), flush: true);
   } on IOException catch (e) {
     return 'The Web UI credentials could not be saved ($e). They will work for '
         'this run, but a new password will be generated next time.';
-  }
-  if (!Platform.isWindows) {
-    try {
-      // dart:io has no chmod. Best-effort: on failure the file keeps the
-      // process umask, which on a normal system is already not world-readable.
-      await Process.run('chmod', ['600', file.path]);
-    } on ProcessException {
-      // No chmod on PATH. Nothing to do, and not worth alarming anyone over.
-    }
   }
   return null;
 }

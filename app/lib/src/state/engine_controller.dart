@@ -599,7 +599,12 @@ class EngineController extends Notifier<EngineUi> {
         rclonePath: _rclonePath!,
         configPath: configPath,
         configPassword: password,
-        extraArgs: parseEngineFlags(ref.read(engineFlagsProvider)),
+        // Stripped HERE rather than in the tokenizer: this is the one place a
+        // user's flags become the engine's own argv, and it is the only place
+        // the rc-hardening policy applies. See kRefusedEngineFlags.
+        extraArgs: stripRcHardeningOverrides(
+          parseEngineFlags(ref.read(engineFlagsProvider)),
+        ),
         extraEnv: extraEnv,
       );
       // If rcd dies out from under us (crash, Android LMK), don't keep showing
