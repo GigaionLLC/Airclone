@@ -3,7 +3,7 @@
 ## 📊 State Dashboard
 | Metric | Value |
 | :--- | :--- |
-| **Status** | `SHIPPED` — **v0.8**, alongside [scheduling-and-backup-plan.md](scheduling-and-backup-plan.md). Phases A–E built and tested (`ui/tree_view.dart`, `state/tree_state.dart`; `test/tree_state_test.dart`, `test/tree_controller_test.dart`, `test/tree_node_paths_test.dart`). What §4.f wanted that is **not** built, and one thing built that §1 had scoped out, are recorded in Phase 6. |
+| **Status** | `SHIPPED` — **v0.8**, alongside [scheduling-and-backup-plan.md](../plans/scheduling-and-backup-plan.md). Phases A–E built and tested (`ui/tree_view.dart`, `state/tree_state.dart`; `test/tree_state_test.dart`, `test/tree_controller_test.dart`, `test/tree_node_paths_test.dart`). What §4.f wanted that is **not** built, and one thing built that §1 had scoped out, are recorded in Phase 6. |
 | **Version** | `v1.1.0` |
 | **Active Persona** | `Architect` |
 | **Last Updated** | 2026-09-09 |

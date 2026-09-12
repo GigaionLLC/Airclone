@@ -1,17 +1,16 @@
-# airclone
+# Airclone — the Flutter app
 
-A modern, intuitive, cross-platform GUI for rclone.
+This directory is the application. It is not where to start reading.
 
-## Getting Started
+| You want | Go to |
+| :--- | :--- |
+| What Airclone is, and downloads | [`../README.md`](../README.md) |
+| To work on it as an agent | [`../AGENT.md`](../AGENT.md) — read this first |
+| How it is put together | [`../wiki/core/00-system-index.md`](../wiki/core/00-system-index.md) |
+| Where a given thing lives | [`../wiki/core/04-directory-structure.md`](../wiki/core/04-directory-structure.md) |
+| To build, test, or release it | [`../dev/README.md`](../dev/README.md) |
 
-This project is a starting point for a Flutter application.
+Build and test run from the repository root, not from here — see the dev hub.
 
-A few resources to get you started if this is your first Flutter project:
-
-- [Learn Flutter](https://docs.flutter.dev/get-started/learn-flutter)
-- [Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Flutter learning resources](https://docs.flutter.dev/reference/learning-resources)
-
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+(This file used to be the unedited `flutter create` template, telling anyone who
+opened it that "this project is a starting point for a Flutter application".)

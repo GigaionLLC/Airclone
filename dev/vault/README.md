@@ -4,6 +4,14 @@ Working notes that belong in this repository's **history** but not in public vie
 account state, pricing and positioning, unreleased planning, anything commercially
 sensitive.
 
+**"Pricing" here means the reasoning, not the number.** A 2026-09-12 audit flagged every
+plaintext mention of $1.49 as a policy violation against this file. It is not: that price
+is printed on three public store listings, and scrubbing it from our own runbooks would
+cost the docs their meaning to protect nothing. What does belong in here is the material
+around it — why a price was chosen, cross-store parity reasoning, market availability
+decisions, unshipped tiers. The test to apply is *"could a stranger read this off a store
+page?"*, not *"does this contain a number?"*
+
 `vault.enc` **is committed.** The decrypted `notes/` directory is gitignored, as is the
 passphrase.
 

@@ -3,7 +3,7 @@
 ## 📊 State Dashboard
 | Metric | Value |
 | :--- | :--- |
-| **Status** | `PROPOSED` |
+| **Status** | `SHIPPED` — v0.11.0 (download, upload, HTTPS-only). Chunked upload and the idle certificate reload are the two parts NOT built; they are described here and nowhere else. |
 | **Version** | `v1.0.0` |
 | **Active Persona** | `Architect` |
 | **Last Updated** | 2026-09-12 |

@@ -3,7 +3,7 @@
 ## 📊 State Dashboard
 | Metric | Value |
 | :--- | :--- |
-| **Status** | `BUILT — awaiting a test build` |
+| **Status** | `SHIPPED` — v0.10.0 / v0.11.0 |
 | **Version** | `v1.0.0` |
 | **Active Persona** | `Architect` |
 | **Last Updated** | 2026-09-11 |
