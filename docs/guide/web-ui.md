@@ -61,9 +61,10 @@ network** button in Settings.
 When you do, Airclone says so: a warning in the log, and a banner in Settings that stays there the
 whole time it is running.
 
-The connection is **plain HTTP**. On a home network you control, that is usually fine. Across
-anything you do not control, put it behind a reverse proxy that terminates TLS (nginx, Caddy,
-Traefik) and point that at Airclone on loopback. Do not port-forward it to the internet as it is.
+The connection is encrypted — see [Security](#security) below for the certificate and the browser
+warning you should expect. Encryption is not exposure control, though: do not port-forward this to
+the internet. A password and a certificate protect the connection, not your patience with whoever
+finds the port.
 
 ## Signing in
 

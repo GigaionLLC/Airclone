@@ -97,7 +97,7 @@ rclone rcd <user extraArgs…> --rc-addr 127.0.0.1:<free port> --rc-user airclon
   written to the diagnostics ring once per session — one broken folder emits a notice per entry, and
   repeating that would spend the ring's whole budget restating a fact the first line already made.
 
-**librclone C ABI**, confirmed in-tree against rclone v1.74.4's `librclone/librclone.go`
+**librclone C ABI**, confirmed in-tree against rclone v1.75.1's `librclone/librclone.go` (the pin lives in `release.yml` as RCLONE_VERSION - check there, not here)
 ([`librclone_ffi.dart#L12`](../../app/lib/src/rclone/librclone_ffi.dart#L12)):
 `RcloneInitialize()`, `RcloneFinalize()`, `RcloneRPC(char*, char*) → {char* Output; int Status;}`,
 `RcloneFreeString(char*)`. **All FFI lives inside one long-lived worker isolate** — `DynamicLibrary`

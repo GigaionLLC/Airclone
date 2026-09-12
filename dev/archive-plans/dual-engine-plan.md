@@ -168,8 +168,8 @@ dummy-module/`go get`/env-snapshot pattern, targeting the librclone package as
 ## Phasing
 
 - **Phase 0 — SPIKE ✅ DONE (2026-07-11):** portable mingw (WinLibs UCRT gcc 16.1
-  at `C:\Users\c11ja\tools\mingw64`) → built `librclone.dll` (66.8 MB, 26s) from
-  v1.74.4 via the `C:\Users\c11ja\.airclone-librclone-desktop` work module → Dart
+  at `<user home>\tools\mingw64`) → built `librclone.dll` (66.8 MB, 26s) from
+  v1.74.4 via the `<user home>\.airclone-librclone-desktop` work module → Dart
   FFI round-trip **works**: all 4 exports resolve, struct-return-by-value marshals,
   `core/version`→200 (`v1.74.4-DEV`), `config/listremotes`→200 (read the real config),
   `RcloneFreeString`+`RcloneFinalize` clean. Spike files under

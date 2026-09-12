@@ -68,7 +68,7 @@ experience**, and brings it to the desktop *and* the phone:
 > [Releases](https://github.com/GigaionLLC/Airclone/releases) page: **Windows** builds are code-signed
 > (Azure Artifact Signing, "Gigaion, LLC") and **macOS** builds are Developer ID **signed +
 > notarized**. Airclone is also listed on the **App Store** (iOS and macOS), the **Microsoft Store**
-> (Windows), and **Google Play** (Android — every tag reaches open testing; production is promoted by
+> (Windows), and **Google Play** (Android — publishing to open testing and to production are both buttons someone presses; no tag does it by
 > hand). Windows and Android builds bundle the rclone engine (no first-run download). Stack:
 > **Flutter** over a single `RcloneClient` seam — see [Architecture at a glance](#-architecture-at-a-glance).
 
@@ -92,7 +92,7 @@ experience**, and brings it to the desktop *and* the phone:
 
 <table>
   <tr>
-    <td width="62%"><img src="docs/screenshots/webui-desktop.png" alt="Airclone's full desktop interface running in a web browser"><br><sub><b>The whole app, served over HTTP</b> — <code>airclone --webui</code>, or Settings → Remote access. Not a cut-down web client: the same panes, the same remotes, the same transfers.</sub></td>
+    <td width="62%"><img src="docs/screenshots/webui-desktop.png" alt="Airclone's full desktop interface running in a web browser"><br><sub><b>The whole app, served over HTTPS</b> — <code>airclone --webui</code>, or Settings → Remote access. Not a cut-down web client: the same panes, the same remotes, the same transfers.</sub></td>
     <td width="38%"><img src="docs/screenshots/webui-phone.png" alt="The same Web UI at phone width, showing the touch interface"><br><sub><b>One address, either layout</b> — a narrow screen gets the phone interface automatically. Note the heading: <b>Host computer</b>. Those are the server's disks, not the phone's.</sub></td>
   </tr>
   <tr>

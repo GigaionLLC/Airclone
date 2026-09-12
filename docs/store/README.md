@@ -191,8 +191,9 @@ can report success and land nothing.
 promotion is the separate manual [`promote-play.yml`](../../.github/workflows/promote-play.yml) —
 a rollout percent you pick (default **10%** staged, `dry_run` on by default), widened by re-running at
 a larger percent; narrowing a live rollout is refused unless you override it. Note
-what this boundary does *not* include — there is no pre-release gate, so an `-rc` tag reaches public
-open testing exactly like any other.
+what this boundary looked like BEFORE v0.8.3, because it explains why the lane is manual now: there
+was no pre-release gate, so an `-rc` tag reached public open testing exactly like any other. Getting
+to open testing is now its own deliberate run of `publish-play.yml`.
 
 | What | Where |
 | :--- | :--- |

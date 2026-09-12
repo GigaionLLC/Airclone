@@ -19,7 +19,7 @@ about closing their trust gaps and keeping the engine current.
 | Bisync safety | Ad-hoc Two-way sync no longer fires an unconfirmed `--resync` (baseline confirm dialog) and no longer loops per selected file (dirs-only); saved tasks gain **Re-establish baseline…** recovery |
 | Crypt safety | Unmissable "lost password = unrecoverable data" warnings (form + done screen); editing a crypt password now requires an explicit destructive confirm (it orphans all existing data) |
 | Scheduler | Last-run display, live next-run countdown, locked-engine skip warning, pure testable `dueTasks` selection |
-| Engine currency | Fail-closed SHA-256 (unverifiable download = hard error); min-version gate (≥ 1.73.5) with recovery CTA; **Update engine** in Settings (version row + check + one-click update); Android pin bumped to v1.74.4 (security patch: serve s3/webdav + local symlink CVEs); CI staleness check |
+| Engine currency | Fail-closed SHA-256 (unverifiable download = hard error); min-version gate (≥ 1.73.5) with recovery CTA; **Update engine** in Settings (version row + check + one-click update); Android pin bumped to v1.74.4 at the time (now v1.75.1) (security patch: serve s3/webdav + local symlink CVEs); CI staleness check |
 
 ## Big items (each needs its own change, in recommended order)
 

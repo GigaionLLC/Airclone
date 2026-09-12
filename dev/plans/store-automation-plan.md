@@ -2,7 +2,7 @@
 type: "plan"
 name: "Store Submission Automation"
 status: "superseded"
-description: "Original 2026-07-09 research behind the store lanes. All four are now live: Play (open testing on every tag), Microsoft (stage-only), iOS and macOS (dispatch lanes). Kept for the from-nothing Google Cloud / Play Console walkthrough and the dual-engine channel matrix."
+description: "Original 2026-07-09 research behind the store lanes. All four are now live: Play (open testing, manual since v0.8.3), Microsoft (stage-only), iOS and macOS (dispatch lanes). Kept for the from-nothing Google Cloud / Play Console walkthrough and the dual-engine channel matrix."
 ---
 
 # 🏪 Store Submission Automation
@@ -29,7 +29,7 @@ session that produced this; the operative conclusions:
 ## Google Play — WIRED (release.yml android job)
 
 `r0adkll/upload-google-play@v1` (still the de-facto standard; no first-party Google action exists)
-pushes the already-built AAB on every tagged release. Steps are gated on
+pushed the already-built AAB on every tagged release. SUPERSEDED: since v0.8.3 that is a manual publish-play.yml run. Steps were gated on
 `PLAY_SERVICE_ACCOUNT_JSON` existing, so nothing changed until the secret landed.
 
 > **As built, this went to the `beta` track — Play Console's *Open testing*, not internal** — and the

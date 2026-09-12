@@ -23,8 +23,8 @@ the previous writing recorded 0.7.6 as `PREPARE_FOR_SUBMISSION` when it was alre
 | 0.8.2 | ♻️ **renamed to 0.9.0** — the record was reused, not replaced | ♻️ **renamed to 0.9.0** |
 | Version 0.9.0 | **WAITING_FOR_REVIEW** | **WAITING_FOR_REVIEW** |
 | 0.9.0 `releaseType` | MANUAL | MANUAL |
-| Build attached | **131** (`08901e47-8b0f-4194-84ee-ed10fc4f1f21`) | **130** (`fbc5c467-6bb4-411e-9e9b-732acdd7d5df`) |
-| Review submission | `367e7d22-3e04-4532-b6a0-2efa9ce02766`, 2026-09-12T16:09:26Z | `3af92943-6fe7-4250-9e69-6c4b17bed43a`, 2026-09-12T16:11:07Z |
+| Build attached | **131** | **130** |
+| Review submission | created 2026-09-12T16:09:26Z (id in the vault) | created 2026-09-12T16:11:07Z (id in the vault) |
 
 **Why the record was renamed rather than created.** `asc_build.py` refuses `mode=create` while an
 editable version record exists, and 0.8.2 was sitting in `PREPARE_FOR_SUBMISSION`. So the path that

@@ -229,10 +229,11 @@ Distilled from the store runbooks — Microsoft, Play, Apple — and the release
    stays undispatchable for the whole release (which is exactly what an empty GitHub expression does,
    comments included).
 4. **Tag `vX.Y.Z` and push.** An `alpha`/`beta`/`rc` in the tag marks the *GitHub Release* pre-release —
-   and nothing more. There is no pre-release gate on Play: a `-rc` tag still publishes to public **open
-   testing** like any other. If that is not what you want, do not push the tag.
+   and nothing more. A tag publishes to NO store — since v0.8.3 every store lane is a button. Before
+   that there was no pre-release gate and an `-rc` tag reached public open testing like any other,
+   which is the hole the manual lanes closed.
 5. **Verify the artifacts — see the rule below.** Do not move on because the run is green.
-6. **Store lanes.** Play open testing already happened (see the table above). For the rest, start with
+6. **Store lanes.** Nothing has been published yet — the tag only built and attached artifacts. Start with
    the pre-submission truth audit in [`../docs/store/README.md`](../docs/store/README.md), then:
    - **Microsoft** — Actions → *Submit to Microsoft Store* with `mode: stage`, the only supported mode
      (`submit` is refused by [`tool/store_submit.py`](../tool/store_submit.py) because an API commit

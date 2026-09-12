@@ -233,7 +233,7 @@ those users and their permissions — so it is a deliberate, admin-level decisio
 
 ### 2a. What made this hard here — one identity, three meanings
 
-Worth reading before touching any of it, because the same string `jbraun@gigaion.com` named **three
+Worth reading before touching any of it, because the same string `<the builder's work address>` named **three
 different identities** during this setup and the errors never say which one is being refused:
 
 1. a **Microsoft account (MSA)** — the personal identity that *owns the Partner Center account*;

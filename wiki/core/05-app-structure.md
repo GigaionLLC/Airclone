@@ -131,7 +131,7 @@ folder row**, exactly like dragging into a folder in a native explorer.
 │ ▸ Copy  gdrive:/Q1/hero.png → s3:backups/2026   ▓▓▓▓▓▓░░  73%  8.4MB/s  ETA 0:03               │
 │ ▸ Sync  Local C:/Photos → onedrive:/Photos      ▓▓░░░░░░  18%  2.1MB/s  ETA 4:21               │
 ├────────────────────────────────────────────────────────────────────────────────────────────────┤
-│ ● engine ok · rclone 1.74.4              5 items · 1 selected · 8.4 MB · 120 GB free of 931 GB │
+│ ● engine ok · rclone 1.75.1              5 items · 1 selected · 8.4 MB · 120 GB free of 931 GB │
 └────────────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
