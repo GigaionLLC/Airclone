@@ -107,12 +107,45 @@ There is one address and one app. The layout follows the screen: a narrow window
 interface, with the bottom bar and the touch-sized rows, and a wide one gets the desktop interface,
 with the sidebar and the two panes. Resizing the window switches between them.
 
+## Moving files between your browser and the server
+
+**Download** sends the file to the browser you are using, rather than copying it to a folder on the
+server. That is the only place a web page can put a file, and it is almost certainly what you meant:
+you are sitting at the browser, not at the server. Select one or more files and choose `Download`.
+Each one arrives as a normal browser download.
+
+**Upload file…**, in the pane menu, picks a file from the machine you are browsing with and writes
+it into the folder you are looking at. It appears only in the Web UI, because everywhere else
+Airclone can already see both sides and "upload" is just a copy.
+
+Two things worth knowing:
+
+- **An online-only file will not download.** If a file is stored in the cloud and only a placeholder
+  is on the server's disk (OneDrive Files On-Demand, iCloud, Proton), downloading it would quietly
+  pull the whole thing down first — on the server's connection, possibly on someone's metered plan.
+  Airclone refuses and says so. Make it available offline first if you want it.
+- **A dropped upload starts over.** There is no resume yet, so a large file over a poor connection
+  is worth doing when the connection is good.
+
+## Security
+
+**The Web UI is HTTPS only.** There is no plain-HTTP option, and nothing to turn on: browsers now
+upgrade or block plain HTTP, so it would be a worse experience as well as a second thing to secure.
+
+**Your browser will warn you the first time.** This is expected, and not a sign anything is wrong.
+Airclone signs a certificate for your own machine, and no authority can vouch for a computer on your
+home network the way it can for a public website. Settings → `Remote access` shows the
+certificate's **fingerprint** — compare it with the one your browser shows, once, and then continue.
+
+If you would rather use your own certificate — from your own authority, or one renewed by a script —
+put `cert.pem` and `key.pem` in the `webui/imported/` folder beside Airclone's settings. Airclone
+uses that pair instead, and leaves its own alone so removing yours falls back rather than breaking.
+
 ## What it does not do
 
-- **It cannot upload from, or download to, the device you are browsing with.** "Local" in the Web UI
-  means the host's disks. Moving files between your phone and the server is not part of this yet.
 - **It is one account.** One username, one password, no separate logins for separate people.
-- **It does not do TLS itself.** See above.
+- **Uploads do not resume.** A dropped connection means starting the file again.
+- **Downloads are one file at a time.** There is no "download this folder as a zip" yet.
 - **You cannot host the Web UI from a phone.** Android and iOS builds do not include it — a phone is
   not the machine you point a browser at.
 
