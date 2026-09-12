@@ -18,13 +18,19 @@ const int _attrOffline = 0x00001000; // content not resident
 const int _invalidFileAttributes = 0xFFFFFFFF; // GetFileAttributesW failure
 
 /// True when reading [absolutePath]'s CONTENT would hydrate (download) an
-/// online-only cloud placeholder. Windows-only today; returns false on other
-/// platforms, on any error, and for an unresolvable path.
+/// online-only cloud placeholder. Windows (Cloud Files API) and macOS (File
+/// Provider, via SF_DATALESS); returns false elsewhere, on any error, and for
+/// an unresolvable path.
 ///
 /// Fail-OPEN by design: a false positive only costs a thumbnail (we show the
 /// kind icon instead); a false negative costs a silent multi-GB download. So we
 /// act only on a definitive "yes" and treat everything uncertain as local.
 bool isOnlineOnlyPlaceholder(String absolutePath) {
+  // macOS File Provider: iCloud Drive, and third-party providers like Dropbox
+  // and OneDrive, mark a non-resident file with SF_DATALESS. This used to be
+  // Windows-only, which meant a Mac user got the silent multi-gigabyte download
+  // this whole module exists to prevent.
+  if (macosIsDataless(absolutePath)) return true;
   final attrs = windowsFileAttributes(absolutePath);
   if (attrs == null || attrs == _invalidFileAttributes) return false;
   const mask = _attrRecallOnDataAccess | _attrRecallOnOpen | _attrOffline;

@@ -439,6 +439,16 @@ class BrowserPane extends ConsumerWidget {
                 file: f,
                 selected: selected,
                 selectionMode: selectionMode,
+                // Marked in the LIST, not discovered on click. The same probe
+                // buildThumbRequest already runs per row, so this costs nothing
+                // extra - it was simply never surfaced.
+                onlineOnly:
+                    !f.isDir &&
+                    state.remote != null &&
+                    wouldHydrateOnRead(
+                      state.remote!,
+                      state.path.isEmpty ? f.name : '${state.path}/${f.name}',
+                    ),
                 // Dragging a selected row carries the whole selection.
                 dragData: PaneDragData(
                   state.remote!,

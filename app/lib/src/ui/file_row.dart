@@ -35,9 +35,16 @@ class FileRow extends ConsumerStatefulWidget {
     this.cursor = false,
     this.tapOpensFolder = true,
     this.showDetails = true,
+    this.onlineOnly = false,
   });
 
   final RcloneFile file;
+
+  /// True when this is a cloud placeholder whose contents are not on this
+  /// device. Shown with a cloud icon so the download prompt on opening it is
+  /// expected rather than a surprise.
+  final bool onlineOnly;
+
   final bool selected;
 
   /// Touch multi-select mode: a plain tap toggles the row (folders included)
@@ -173,9 +180,11 @@ class _FileRowState extends ConsumerState<FileRow> {
                   child: selected
                       ? Icon(Icons.check_box, size: 16, color: c.primary)
                       : Icon(
-                          iconFor(file),
+                          widget.onlineOnly ? kOnlineOnlyIcon : iconFor(file),
                           size: 17,
-                          color: iconColorFor(file, c),
+                          color: widget.onlineOnly
+                              ? c.textMuted
+                              : iconColorFor(file, c),
                         ),
                 ),
                 const SizedBox(width: Space.x2),

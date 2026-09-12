@@ -21,3 +21,6 @@ int? windowsFileAttributes(String absolutePath) => null;
 /// The web build downloads no engine, so no real ABI applies. Named rather than
 /// empty so it is recognisable if it ever reaches a log.
 String nativeAbiName() => 'web';
+
+/// False: a browser has no filesystem, so nothing here is a macOS placeholder.
+bool macosIsDataless(String absolutePath) => false;

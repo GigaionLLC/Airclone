@@ -128,3 +128,91 @@ int? windowsFileAttributes(String absolutePath) {
 /// The running ABI as rclone names architectures, e.g. `windows_x64`,
 /// `macos_arm64`. Used to pick the right engine download.
 String nativeAbiName() => Abi.current().toString();
+
+// ── macOS dataless (online-only) files ───────────────────────────────────────
+
+/// `SF_DATALESS` from `<sys/stat.h>`: the file's data is not resident and the
+/// kernel will fetch it on read. macOS sets it on File Provider placeholders —
+/// iCloud Drive, and third-party providers like Dropbox and OneDrive.
+const int _sfDataless = 0x40000000;
+
+/// Byte offsets into macOS `struct stat` (the 64-bit-inode layout, which is the
+/// only one current macOS uses). Read back and VERIFIED at runtime rather than
+/// trusted — see [macosFileFlags].
+const int _statSizeOffset = 96; // off_t st_size
+const int _statFlagsOffset = 116; // uint32 st_flags
+const int _statStructBytes = 144;
+
+typedef _StatC = Int32 Function(Pointer<Utf8>, Pointer<Uint8>);
+typedef _StatDart = int Function(Pointer<Utf8>, Pointer<Uint8>);
+
+final _StatDart? _stat = _bindStat();
+
+_StatDart? _bindStat() {
+  if (!Platform.isMacOS) return null;
+  final process = DynamicLibrary.process();
+  // `stat$INODE64` is the 64-bit-inode entry point on x86_64; on arm64 the
+  // plain name already is it. Try the explicit one first so a Rosetta or older
+  // x86_64 process does not silently bind the 32-bit-inode layout, whose field
+  // offsets are different and would make every answer garbage.
+  for (final symbol in const ['stat\$INODE64', 'stat']) {
+    try {
+      return process.lookupFunction<_StatC, _StatDart>(symbol);
+    } catch (_) {
+      continue;
+    }
+  }
+  return null;
+}
+
+/// `st_flags` for [absolutePath], or null when it cannot be asked or cannot be
+/// trusted.
+///
+/// **Self-verifying, deliberately.** This reads two fields out of a C struct by
+/// byte offset, and a wrong offset does not fail loudly — it returns a
+/// plausible number, which here would mean telling the user a local file is
+/// online-only or the reverse. So it also reads `st_size` at its documented
+/// offset and compares that against [expectedSize], which the caller already
+/// knows from the directory listing. If they disagree, the layout is not what
+/// this code believes and it answers null rather than guessing.
+///
+/// That check is what makes it safe to ship a struct offset that cannot be
+/// tested from the machine it was written on.
+int? macosFileFlags(String absolutePath, {required int expectedSize}) {
+  final fn = _stat;
+  if (fn == null || absolutePath.isEmpty) return null;
+  Pointer<Utf8>? path;
+  Pointer<Uint8>? buffer;
+  try {
+    path = absolutePath.toNativeUtf8();
+    buffer = malloc.allocate<Uint8>(_statStructBytes);
+    if (fn(path, buffer) != 0) return null;
+    final size = (buffer.cast<Int8>() + _statSizeOffset).cast<Int64>().value;
+    if (size != expectedSize) return null; // layout is not what we assumed
+    return (buffer.cast<Int8>() + _statFlagsOffset).cast<Uint32>().value;
+  } catch (_) {
+    return null;
+  } finally {
+    if (path != null) malloc.free(path);
+    if (buffer != null) malloc.free(buffer);
+  }
+}
+
+/// True when macOS reports [absolutePath] as dataless — contents not on this
+/// device, fetched on read.
+///
+/// Reads the expected size through `dart:io` rather than asking the caller for
+/// it, so the verification in [macosFileFlags] costs the caller nothing and
+/// cannot be skipped by forgetting to pass it. Both reads are metadata, which
+/// is exactly what a placeholder answers for free.
+bool macosIsDataless(String absolutePath) {
+  if (!Platform.isMacOS) return false;
+  final int expected;
+  try {
+    expected = File(absolutePath).lengthSync();
+  } catch (_) {
+    return false;
+  }
+  final flags = macosFileFlags(absolutePath, expectedSize: expected);
+  return flags != null && (flags & _sfDataless) != 0;
+}

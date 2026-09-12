@@ -180,3 +180,13 @@ Color iconColorFor(RcloneFile f, AircloneColors c) {
       return c.textMuted;
   }
 }
+
+/// The icon shown INSTEAD of a type icon or thumbnail when a file is a cloud
+/// placeholder whose contents are not on this device.
+///
+/// A plain type icon was the old behaviour and it is indistinguishable from a
+/// file that simply has no thumbnail yet — so an online-only file looked like a
+/// normal one, and the user only discovered otherwise by clicking it and being
+/// asked to download. Marking it in the list is what makes that prompt
+/// unsurprising rather than an interruption.
+const IconData kOnlineOnlyIcon = Icons.cloud_outlined;

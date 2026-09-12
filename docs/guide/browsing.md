@@ -304,8 +304,11 @@ is on disk and offers `Clear cache`.
 
 ## Files stored online only
 
-On Windows, a folder synced by OneDrive, Proton Drive, iCloud or Dropbox can hold files that are not
-really on the disk — only a placeholder. Opening one makes Windows fetch the whole file first.
+A folder synced by OneDrive, Proton Drive, iCloud or Dropbox can hold files that are not really on
+the disk — only a placeholder. Opening one makes the system fetch the whole file first. Airclone
+recognises these on **Windows** (Files On-Demand) and on **macOS** (File Provider), and marks them in
+the file list with a **cloud outline** instead of the usual type icon, so you can see which files
+would need downloading before you touch them.
 
 **Browsing costs nothing.** Names, sizes, dates, sorting, searching, renaming and moving all read the
 placeholder, never the file, so you can work through a synced folder freely on any connection.
