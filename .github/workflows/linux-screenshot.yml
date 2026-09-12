@@ -1,0 +1,95 @@
+name: Linux screenshot
+
+# Runs the Linux build headlessly and uploads a PNG of the window.
+#
+# WHY THIS EXISTS. Nobody working on this project on Windows or macOS can see
+# what the Linux build looks like, so Linux visual bugs are reported by users,
+# reasoned about from screenshots they send, and fixed by guesswork. The white
+# window border on Ubuntu 24.04 was diagnosed twice from the same two
+# screenshots, wrongly the first time. A build that can be LOOKED AT ends that.
+#
+# Deliberately its own workflow, not a step in release.yml: driving a GUI under
+# Xvfb is the flakiest thing in this repo's CI, and a flaky step must never be
+# able to turn a release red. Dispatch it when a Linux visual change needs
+# checking.
+#
+# What it CANNOT tell you: Xvfb is X11 and is NOT composited, so it exercises
+# the fallback half of apply_window_chrome (margin collapsed), never the RGBA
+# half a real GNOME session takes. A clean shot here means the fallback works;
+# it is not proof for a composited desktop. The AppImage still has to be run by
+# a person on a real desktop for that.
+
+on:
+  workflow_dispatch:
+    inputs:
+      seconds:
+        description: 'Seconds to let the app settle before the screenshot'
+        required: false
+        default: '30'
+
+permissions:
+  contents: read
+
+jobs:
+  screenshot:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 3.47.0
+          channel: stable
+      - name: Install build and capture deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build libgtk-3-dev libmpv-dev mpv \
+            libsecret-1-dev xvfb imagemagick x11-utils \
+            libgl1-mesa-dri mesa-utils
+      - run: flutter config --enable-linux-desktop
+      - working-directory: app
+        run: flutter pub get
+      - working-directory: app
+        run: flutter build linux --release
+
+      - name: Run it under Xvfb and capture the window
+        working-directory: app
+        env:
+          # Flutter Linux needs a GL context. A CI runner has no GPU, so force
+          # Mesa's software rasteriser; without this the app dies before the
+          # first frame with "Failed to find appropriate EGL config".
+          LIBGL_ALWAYS_SOFTWARE: '1'
+          GALLIUM_DRIVER: llvmpipe
+          SECONDS_TO_SETTLE: ${{ inputs.seconds }}
+        run: |
+          set -euo pipefail
+          export DISPLAY=:99
+          Xvfb :99 -screen 0 1400x900x24 >/tmp/xvfb.log 2>&1 &
+          for _ in $(seq 1 30); do
+            xdpyinfo -display :99 >/dev/null 2>&1 && break
+            sleep 1
+          done
+          xdpyinfo -display :99 >/dev/null 2>&1 || { echo "Xvfb never came up"; cat /tmp/xvfb.log; exit 1; }
+
+          build/linux/x64/release/bundle/airclone >/tmp/app.log 2>&1 &
+          app_pid=$!
+          sleep "${SECONDS_TO_SETTLE:-30}"
+
+          # Capture whether or not the app is still alive — a crashed app's
+          # empty root window is itself the answer to "what does it look like".
+          import -window root /tmp/airclone-linux.png || true
+          echo "--- window tree ---"
+          xwininfo -root -children -display :99 | head -20 || true
+          echo "--- app output ---"
+          tail -40 /tmp/app.log || true
+          kill "$app_pid" 2>/dev/null || true
+
+          test -s /tmp/airclone-linux.png || { echo "no screenshot captured"; exit 1; }
+          identify /tmp/airclone-linux.png
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-screenshot
+          path: |
+            /tmp/airclone-linux.png
+            /tmp/app.log
+          if-no-files-found: error

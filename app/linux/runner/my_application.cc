@@ -21,6 +21,51 @@ static void first_frame_cb(MyApplication* self, FlView* view) {
   gtk_widget_show(gtk_widget_get_toplevel(GTK_WIDGET(view)));
 }
 
+
+// The window's own chrome, rather than whatever GTK theme happened to resolve.
+//
+// THE BUG THIS FIXES: a thick pale frame around the window on Ubuntu 24.04,
+// reported against the AppImage and present on BOTH X11 and Wayland — which is
+// the clue that it is not a display-server problem. linuxdeploy bundles
+// libgtk-3.so.0 into the AppImage but not GTK's theme data, GSettings schemas
+// or icon themes, so the bundled GTK cannot resolve the desktop's real theme
+// and falls back toward its compiled-in default. GTK draws client-side
+// decorations — the rounded corners and the drop shadow — into a margin it
+// allocates AROUND the window, and it paints that margin from the theme. With
+// the wrong theme, and with no alpha channel to make a shadow translucent, the
+// margin renders as a hard opaque frame in a colour that belongs to no part of
+// this app.
+//
+// Two defences, because they cover different halves and neither is conditional
+// on X11 vs Wayland:
+//
+//  1. Ask for an RGBA visual when the session is composited. That gives the
+//     window an alpha channel, which is what lets GTK draw the shadow as a
+//     shadow instead of as a solid block. This is the good path and keeps the
+//     rounded corners a GNOME user expects.
+//
+//  2. When there is no alpha to be had — no compositor, or no RGBA visual —
+//     collapse the decoration margin entirely. No margin, no frame. A square
+//     window without a drop shadow is a cosmetic loss; a white border around
+//     every window is a bug.
+static void apply_window_chrome(GtkWindow* window) {
+  GdkScreen* screen = gtk_widget_get_screen(GTK_WIDGET(window));
+  GdkVisual* rgba = gdk_screen_get_rgba_visual(screen);
+  if (rgba != nullptr && gdk_screen_is_composited(screen)) {
+    gtk_widget_set_visual(GTK_WIDGET(window), rgba);
+    return;
+  }
+
+  GtkCssProvider* css = gtk_css_provider_new();
+  gtk_css_provider_load_from_data(
+      css, "decoration { box-shadow: none; margin: 0; border-radius: 0; }",
+      -1, nullptr);
+  gtk_style_context_add_provider_for_screen(
+      screen, GTK_STYLE_PROVIDER(css),
+      GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
+  g_object_unref(css);
+}
+
 // Implements GApplication::activate.
 static void my_application_activate(GApplication* application) {
   MyApplication* self = MY_APPLICATION(application);
@@ -53,6 +98,10 @@ static void my_application_activate(GApplication* application) {
   } else {
     gtk_window_set_title(window, "airclone");
   }
+
+  // Must run BEFORE the window is realized: setting the visual on an
+  // already-realized window has no effect.
+  apply_window_chrome(window);
 
   gtk_window_set_default_size(window, 1280, 720);
 
