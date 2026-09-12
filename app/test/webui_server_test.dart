@@ -438,4 +438,72 @@ void main() {
       expect(body, contains('flutter build web'));
     });
   });
+  group('upload', () {
+    // The engine seam decides HOW bytes land; these cover what the endpoint
+    // must refuse before any engine is involved.
+    test('closed to an unauthenticated caller', () async {
+      final res = await send('POST', '/api/upload?fs=x:&remote=a.txt');
+      expect(res.statusCode, HttpStatus.unauthorized);
+      await res.drain<void>();
+    });
+
+    test('refused without the CSRF header', () async {
+      final cookie = await signIn();
+      final res = await send(
+        'POST',
+        '/api/upload?fs=x:&remote=a.txt',
+        cookie: cookie,
+        csrf: false,
+      );
+      expect(res.statusCode, HttpStatus.forbidden);
+      await res.drain<void>();
+    });
+
+    test('GET is not an upload', () async {
+      final cookie = await signIn();
+      final res = await send(
+        'GET',
+        '/api/upload?fs=x:&remote=a.txt',
+        cookie: cookie,
+      );
+      expect(res.statusCode, HttpStatus.methodNotAllowed);
+      await res.drain<void>();
+    });
+
+    test('fs and remote are required', () async {
+      final cookie = await signIn();
+      final res = await send('POST', '/api/upload', cookie: cookie);
+      expect(res.statusCode, HttpStatus.badRequest);
+      await res.drain<void>();
+    });
+
+    test('a destination that climbs out is refused', () async {
+      // Refused here rather than left to rclone, the same stance
+      // resolveStaticFile takes for reads.
+      final cookie = await signIn();
+      final res = await send(
+        'POST',
+        '/api/upload?fs=x:&remote=a/../../etc/passwd',
+        cookie: cookie,
+      );
+      expect(res.statusCode, HttpStatus.badRequest);
+      await res.drain<void>();
+    });
+
+    test(
+      'an engine that cannot upload says so, rather than failing oddly',
+      () async {
+        // _FakeClient implements RcloneClient but NOT ObjectUploader - which is
+        // the point of making upload a separate capability.
+        final cookie = await signIn();
+        final res = await send(
+          'POST',
+          '/api/upload?fs=x:&remote=a.txt',
+          cookie: cookie,
+        );
+        expect(res.statusCode, HttpStatus.serviceUnavailable);
+        await res.drain<void>();
+      },
+    );
+  });
 }

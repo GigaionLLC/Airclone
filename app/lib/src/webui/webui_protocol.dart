@@ -33,6 +33,12 @@ const String kRcPath = '/api/rc';
 /// Path of the object-bytes endpoint.
 const String kObjectPath = '/api/object';
 
+/// Raw bytes IN. The body is the file itself, not a multipart envelope: the
+/// browser can post a File directly, and parsing multipart on this side would
+/// mean adding a parser to a server whose whole body-reading story today is a
+/// 1 MiB in-memory cap. The name and destination travel as query parameters.
+const String kUploadPath = '/api/upload';
+
 /// Path of the session probe.
 const String kWhoamiPath = '/api/whoami';
 

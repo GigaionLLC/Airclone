@@ -218,6 +218,9 @@ class WebUiServer {
           return _handleRc(request);
         case kObjectPath:
           return _handleObject(request);
+        case kUploadPath:
+          if (!_requireCsrf(request)) return;
+          return _handleUpload(request);
       }
       return _json(request, HttpStatus.notFound, {
         'error': 'No such endpoint.',
@@ -463,6 +466,77 @@ class WebUiServer {
   /// Previews, thumbnails, audio and video all come through here. `Range` is
   /// forwarded both ways, which is what makes seeking in a video work rather
   /// than downloading the whole file first.
+  /// Receives a file and writes it to a remote.
+  ///
+  /// The body is the file's raw bytes and is **never buffered**: `request` is a
+  /// `Stream<List<int>>` and it is handed to the engine seam as one. That is why
+  /// this does not go through [_readBody], which is an in-memory accumulator
+  /// capped at 1 MiB and must stay that way — it exists for RC parameter
+  /// objects, and an upload is the opposite kind of thing.
+  ///
+  /// No multipart parsing here. The browser posts a `File` as the body directly,
+  /// so the name and destination ride as query parameters and the server needs
+  /// no parser it does not otherwise have.
+  ///
+  /// The engine, not this endpoint, decides how the bytes land: see
+  /// [ObjectUploader]. And note what is NOT here — `operations/uploadfile` is
+  /// not on the RC allowlist and this does not put it there. The browser talks
+  /// to Airclone; Airclone talks to rclone.
+  Future<void> _handleUpload(HttpRequest request) async {
+    if (request.method != 'POST') {
+      return _json(request, HttpStatus.methodNotAllowed, {
+        'error': 'POST required.',
+      });
+    }
+    final fs = request.uri.queryParameters['fs'];
+    final remote = request.uri.queryParameters['remote'];
+    if (fs == null || remote == null || remote.isEmpty) {
+      await request.drain<void>();
+      return _json(request, HttpStatus.badRequest, {
+        'error': 'fs and remote are required.',
+      });
+    }
+    // A destination that climbs out of where the user is browsing is refused
+    // here rather than left to rclone: the same stance resolveStaticFile takes
+    // for reads.
+    if (remote.split('/').contains('..') || remote.codeUnits.contains(0)) {
+      await request.drain<void>();
+      return _json(request, HttpStatus.badRequest, {
+        'error': 'That destination path is not allowed.',
+      });
+    }
+
+    final client = engineClient();
+    if (client is! ObjectUploader) {
+      await request.drain<void>();
+      return _json(request, HttpStatus.serviceUnavailable, {
+        'error': 'This engine cannot accept uploads.',
+      });
+    }
+
+    // Explicit, because `client` is typed by a `RcloneClient Function()` field
+    // and the guard above is what makes this safe.
+    final uploader = client as ObjectUploader;
+    final declared = request.headers.contentLength;
+    try {
+      await uploader.putObject(
+        fs,
+        remote,
+        request,
+        length: declared >= 0 ? declared : null,
+      );
+    } catch (e) {
+      log(WebUiLogLevel.error, 'Web UI upload failed.', detail: e);
+      // Drain whatever is left, or the client sees a reset connection instead
+      // of this message — the same reason _readBody drains before answering.
+      await request.drain<void>().catchError((_) {});
+      return _json(request, HttpStatus.badGateway, {
+        'error': 'The upload did not complete: $e',
+      });
+    }
+    return _json(request, HttpStatus.ok, {'ok': true, 'remote': remote});
+  }
+
   Future<void> _handleObject(HttpRequest request) async {
     final fs = request.uri.queryParameters['fs'];
     final remote = request.uri.queryParameters['remote'];
