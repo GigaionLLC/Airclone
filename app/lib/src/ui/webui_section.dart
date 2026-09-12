@@ -187,14 +187,33 @@ class _RunningPanel extends StatelessWidget {
           if (state.exposed) ...[
             _Banner(
               text: state.options.isAllInterfaces
-                  ? 'Reachable from every network this computer is on, over '
-                        'plain HTTP. Only the password below stands in front '
-                        'of your remotes.'
+                  ? 'Reachable from every network this computer is on. The '
+                        'connection is encrypted, but only the password below '
+                        'stands in front of your remotes.'
                   : 'Reachable from the network at '
-                        '${state.options.bindAddress}, over plain HTTP.',
+                        '${state.options.bindAddress}.',
               background: c.warningBg,
               foreground: c.warning,
               icon: Icons.public,
+            ),
+            const SizedBox(height: Space.x3),
+          ],
+          // Said plainly, not buried. The certificate is self-signed because
+          // nobody can issue a trusted one for a machine on a home network, so
+          // the first visit WILL warn. Telling the operator that, and giving
+          // them the fingerprint to check it against, is what keeps the warning
+          // meaningful — hiding it would teach them to click through warnings.
+          if (state.running && state.certFingerprint != null) ...[
+            _Banner(
+              text:
+                  'Your browser will warn the first time you visit, because '
+                  'this certificate signs for your own machine rather than a '
+                  'public website. That is expected. Check it shows this '
+                  'fingerprint before you continue - '
+                  '${state.certFingerprint}',
+              background: c.surfaceRaised,
+              foreground: c.textMuted,
+              icon: Icons.lock_outline,
             ),
             const SizedBox(height: Space.x3),
           ],

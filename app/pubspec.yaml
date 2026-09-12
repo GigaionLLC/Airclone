@@ -117,6 +117,7 @@ dependencies:
   # rclone/librclone_ffi.dart + rclone/ffi_rclone_client.dart and
   # dev/archive-plans/dual-engine-plan.md.
   ffi: ^2.1.0
+  basic_utils: ^5.8.2
 
 dev_dependencies:
   flutter_test:

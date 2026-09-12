@@ -44,6 +44,7 @@ class WebUiUi {
     this.credentialSource,
     this.message,
     this.bundleMissing = false,
+    this.certFingerprint,
   });
 
   final WebUiOptions options;
@@ -66,6 +67,13 @@ class WebUiUi {
   /// True when the server would start but has no interface to serve.
   final bool bundleMissing;
 
+  /// SHA-256 of the certificate now being served, or null when not running.
+  ///
+  /// Shown to the operator on purpose. The certificate is self-signed, so the
+  /// first visit produces a browser warning; the only way to tell that warning
+  /// apart from a real one is to compare what the browser shows against this.
+  final String? certFingerprint;
+
   /// Whether to warn that this is reachable beyond the machine.
   bool get exposed => running && !options.isLoopback;
 
@@ -79,6 +87,7 @@ class WebUiUi {
     WebUiCredentialSource? credentialSource,
     String? message,
     bool? bundleMissing,
+    String? certFingerprint,
   }) => WebUiUi(
     options: options ?? this.options,
     running: running ?? this.running,
@@ -89,6 +98,7 @@ class WebUiUi {
     credentialSource: credentialSource ?? this.credentialSource,
     message: message,
     bundleMissing: bundleMissing ?? this.bundleMissing,
+    certFingerprint: certFingerprint ?? this.certFingerprint,
   );
 }
 
@@ -182,12 +192,14 @@ class WebUiController extends Notifier<WebUiUi> {
         credentials: creds.credentials,
         engineClient: () => ref.read(engineControllerProvider).client!,
         bundle: bundle,
+        tlsDir: '${supportDir.path}${Platform.pathSeparator}webui',
         log: (level, message, {detail}) =>
             _toDiagnostics(diag, level, message, detail),
       );
       await server.start();
       _server = server;
       state = state.copyWith(
+        certFingerprint: server.tls?.fingerprint,
         running: true,
         busy: false,
         url: state.options.displayUrl,

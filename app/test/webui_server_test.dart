@@ -52,6 +52,11 @@ class _FakeClient implements RcloneClient {
 }
 
 void main() {
+  late Directory tlsDir;
+  setUpAll(() => tlsDir = Directory.systemTemp.createTempSync('acl_webui_tls'));
+  tearDownAll(() {
+    if (tlsDir.existsSync()) tlsDir.deleteSync(recursive: true);
+  });
   const creds = WebUiCredentials(
     username: 'airclone',
     password: 'correct-horse',
@@ -69,11 +74,18 @@ void main() {
       options: const WebUiOptions(enabled: true, port: 0),
       credentials: creds,
       engineClient: () => engine,
+      // One directory for the whole file: generating an RSA key pair takes
+      // about a second, and doing it per test would dominate the run.
+      tlsDir: tlsDir.path,
       log: (_, _, {detail}) {},
     );
     await server.start();
-    origin = 'http://127.0.0.1:${server.boundPort}';
-    http = HttpClient();
+    origin = 'https://127.0.0.1:${server.boundPort}';
+    http = HttpClient()
+      // The server is HTTPS with a self-signed certificate by design, which is
+      // exactly what a browser warns about. A test client has no user to warn,
+      // so it accepts it deliberately rather than by accident.
+      ..badCertificateCallback = (_, _, _) => true;
   });
 
   tearDown(() async {
@@ -389,9 +401,11 @@ void main() {
       expect(await nonceOf(), isNot(await nonceOf()));
     });
 
-    test('the cookie is not marked Secure over plain HTTP', () async {
-      // Marking it Secure on an http:// origin makes the browser discard it,
-      // which presents to the operator as "the password is wrong", forever.
+    test('the session cookie is marked Secure', () async {
+      // Unconditional now that the server is HTTPS-only. It used to depend on
+      // an x-forwarded-proto header, because Secure on a plain-HTTP origin
+      // makes the browser discard the cookie and that looks like a wrong
+      // password forever. There is no plain-HTTP origin any more.
       final res = await send(
         'POST',
         kLoginApiPath,
@@ -400,12 +414,11 @@ void main() {
       final cookie = res.cookies.firstWhere(
         (c) => c.name == kSessionCookieName,
       );
-      expect(cookie.secure, isFalse);
+      expect(cookie.secure, isTrue);
+      expect(cookie.httpOnly, isTrue);
+      expect(cookie.sameSite, SameSite.strict);
       await res.drain<void>();
     });
-  });
-
-  group('throttling', () {
     test('repeated failures start refusing attempts', () async {
       for (var i = 0; i < kLoginFailuresBeforeBackoff; i++) {
         final res = await send(

@@ -82,6 +82,7 @@ Future<int> _run(List<String> args) async {
     engineClient: () => container.read(engineControllerProvider).client!,
     bundle: resolveWebUiBundle(),
     log: _stdoutSink,
+    tlsDir: '${supportDir.path}${Platform.pathSeparator}webui',
   );
 
   try {

@@ -68,7 +68,7 @@ class WebUiOptions {
     final host = (isLoopback || isAllInterfaces)
         ? 'localhost'
         : (bindAddress.contains(':') ? '[$bindAddress]' : bindAddress);
-    return 'http://$host:$port/';
+    return 'https://$host:$port/';
   }
 
   WebUiOptions copyWith({bool? enabled, String? bindAddress, int? port}) =>

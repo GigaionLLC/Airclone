@@ -121,24 +121,27 @@ void main() {
   });
 
   group('displayUrl', () {
-    test('shows something the operator can actually paste', () {
+    test('shows an https URL the operator can actually paste', () {
+      // https, not http: the server is TLS-only, and handing someone an
+      // http:// URL for a port that speaks TLS produces a blank page or a
+      // protocol error rather than a warning they could act on.
       expect(
         const WebUiOptions(port: 5799).displayUrl,
-        'http://localhost:5799/',
+        'https://localhost:5799/',
       );
       // 0.0.0.0 is not reachable as typed, so offer the one address that is.
       expect(
         const WebUiOptions(bindAddress: '0.0.0.0', port: 80).displayUrl,
-        'http://localhost:80/',
+        'https://localhost:80/',
       );
       expect(
         const WebUiOptions(bindAddress: '192.168.1.10', port: 5799).displayUrl,
-        'http://192.168.1.10:5799/',
+        'https://192.168.1.10:5799/',
       );
       // IPv6 literals need brackets in a URL or the port is ambiguous.
       expect(
         const WebUiOptions(bindAddress: 'fd00::5', port: 5799).displayUrl,
-        'http://[fd00::5]:5799/',
+        'https://[fd00::5]:5799/',
       );
     });
   });

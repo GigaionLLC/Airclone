@@ -22,13 +22,13 @@
 /// `webui_login_page.dart` for why.
 library;
 
-import '../state/cloud_placeholder.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 
 import '../rclone/rclone_client.dart';
+import '../state/cloud_placeholder.dart';
 import 'webui_assets.dart';
 import 'webui_credentials.dart';
 import 'webui_login_page.dart';
@@ -36,6 +36,7 @@ import 'webui_options.dart';
 import 'webui_protocol.dart';
 import 'webui_rc_policy.dart';
 import 'webui_sessions.dart';
+import 'webui_tls.dart';
 
 /// Severity for [WebUiLogSink].
 enum WebUiLogLevel { info, warning, error }
@@ -56,6 +57,7 @@ class WebUiServer {
     required this.credentials,
     required this.engineClient,
     required this.log,
+    required this.tlsDir,
     this.bundle,
     WebUiSessions? sessions,
     LoginThrottle? throttle,
@@ -72,6 +74,15 @@ class WebUiServer {
   final RcloneClient Function() engineClient;
 
   final WebUiLogSink log;
+
+  /// Where the certificate and key live. See webui_tls.dart.
+  final String tlsDir;
+
+  /// The certificate actually in use, once started — the Settings panel
+  /// shows its fingerprint so the operator can check the browser warning
+  /// is about the certificate they started, not somebody else's.
+  WebUiTlsMaterial? get tls => _tls;
+  WebUiTlsMaterial? _tls;
 
   /// Null when this build did not ship the compiled web interface.
   final Directory? bundle;
@@ -97,9 +108,17 @@ class WebUiServer {
     // Fail loudly at startup rather than on the first denied call.
     debugAssertRcPolicyConsistent();
 
-    final server = await HttpServer.bind(
+    // HTTPS ONLY, with no plain listener and no redirect. Browsers no longer
+    // treat http:// as a neutral choice — Chrome's HTTPS-First upgrades or
+    // interstitials it — so a plain listener would be a worse experience AND a
+    // second door to keep shut. See webui_tls.dart for why self-signed is the
+    // right default here and why its warning is explained rather than hidden.
+    final tls = await ensureTlsMaterial(tlsDir);
+    _tls = tls;
+    final server = await HttpServer.bindSecure(
       options.bindAddress,
       options.port,
+      tls.toSecurityContext(),
       shared: false,
     );
     server.autoCompress = true;
@@ -108,19 +127,18 @@ class WebUiServer {
 
     log(
       WebUiLogLevel.info,
-      'Web UI listening on http://${options.bindAddress}:${server.port}/',
+      'Web UI listening on https://${options.bindAddress}:${server.port}/',
     );
     if (!options.isLoopback) {
       log(
         WebUiLogLevel.warning,
         options.isAllInterfaces
             ? 'The Web UI is reachable from every network this machine is on. '
-                  'It is protected only by the generated password, and the '
-                  'connection is plain HTTP — put it behind a reverse proxy '
-                  'with TLS if it crosses a network you do not control.'
+                  'The connection is encrypted, but the certificate is '
+                  'self-signed, so a browser will warn on the first visit — '
+                  'check the fingerprint rather than clicking through blind.'
             : 'The Web UI is bound to ${options.bindAddress}, which is not '
-                  'loopback, so it is reachable from the network over plain '
-                  'HTTP.',
+                  'loopback, so it is reachable from the network.',
       );
     }
     if (bundle == null) {
@@ -295,11 +313,13 @@ class WebUiServer {
       // Strict, not Lax: there is no cross-site flow into the Web UI that
       // anyone should be able to start.
       ..sameSite = SameSite.strict
-      // Only when TLS actually terminated in front of us. Setting Secure on a
-      // plain-HTTP connection makes the browser discard the cookie, which
-      // presents as "the password is wrong" forever.
-      ..secure =
-          request.headers.value('x-forwarded-proto')?.toLowerCase() == 'https';
+      // ALWAYS, now that the server is HTTPS-only. This used to be conditional
+      // on an x-forwarded-proto header, because setting Secure on a plain-HTTP
+      // connection makes the browser discard the cookie and that presents to
+      // the operator as "the password is wrong", forever. There is no longer a
+      // plain-HTTP connection to get this wrong on, so the session cookie is
+      // unconditionally withheld from any non-TLS request.
+      ..secure = true;
     request.response.cookies.add(cookie);
   }
 
