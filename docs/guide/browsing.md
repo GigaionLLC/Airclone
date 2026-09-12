@@ -244,10 +244,24 @@ Both render the same things:
 | Kind | Extensions recognised |
 |---|---|
 | Images | png, jpg, jpeg, gif, webp, bmp |
-| Video | mp4, mkv, webm, mov, avi, m4v, mpg, mpeg, wmv |
+| Video | mp4, mkv, webm, mov, avi, m4v, mpg, mpeg, wmv, flv |
+| Streams | m3u8, m3u (HLS), mpd (MPEG-DASH) |
 | Audio | mp3, flac, wav, ogg, m4a, aac, opus, wma |
 | Documents | pdf, md, markdown |
 | Text and code | txt, log, json, yaml, yml, dart, js, ts, py, sh, c, cpp, h, xml, csv, ini, conf, toml |
+
+### Streams and network playback
+
+A `.m3u8`, `.m3u` or `.mpd` on a remote is a **playlist**, not a video: a short text file listing
+the segments that make up the stream. Opening one plays it — Airclone fetches the segments as it
+goes. Playlists never get a thumbnail, because there is no picture in the file to take one from.
+
+You can also play a stream that is not on a remote at all. **Open network stream…**, in the pane
+menu and in the `+` sheet on a phone, takes an address and plays it: HLS, MPEG-DASH and RTSP, plus
+RTMP and SRT. It needs no remote, because a stream is not a file on one.
+
+Airclone sends **no account details** to an address you type. The sign-in Airclone uses for its own
+engine is for a port on your own machine, and it never travels anywhere else.
 
 A file with no extension falls back to the type the remote reports. Anything else gets a
 `No preview available` card with an `Open in another app` button where handing the file to another
