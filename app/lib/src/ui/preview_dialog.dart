@@ -1,3 +1,4 @@
+import '../state/cloud_placeholder.dart';
 import '../state/host_platform.dart';
 import '../state/media_formats.dart';
 import 'dialog_body.dart';
@@ -255,6 +256,24 @@ class PreviewContent extends ConsumerWidget {
         : null;
 
     final kind = _kindFor(file);
+    // A preview READS CONTENT, which is what hydrates a Files On-Demand
+    // placeholder. Listing this folder was free; opening this file is not.
+    if (wouldHydrateOnRead(remote, fullPath)) {
+      return _OnlineOnlyGate(
+        file: file,
+        proceed: () => _body(context, ref, kind, ref0, openExternally),
+      );
+    }
+    return _body(context, ref, kind, ref0, openExternally);
+  }
+
+  Widget _body(
+    BuildContext context,
+    WidgetRef ref,
+    _PreviewKind kind,
+    ObjectRef ref0,
+    VoidCallback? openExternally,
+  ) {
     switch (kind) {
       case _PreviewKind.image:
         return _ImageBody(ref0: ref0, background: imageBackground);
@@ -602,6 +621,59 @@ class _BrowserCannotPlayBody extends StatelessWidget {
           'this file and open it in a media player, or open it in the Airclone '
           'app on this machine, which plays it directly.',
       color: c.textMuted,
+    );
+  }
+}
+
+/// Asks before hydrating an online-only cloud placeholder for a preview.
+///
+/// **Why a preview needs this and a listing does not.** Listing and stat are
+/// free on a Files On-Demand placeholder — that is the whole point of one. It is
+/// reading the CONTENT that makes the OS fetch the entire file, and a preview
+/// reads content. So a user browsing a synced OneDrive/iCloud/Proton folder can
+/// look around freely, and only an explicit "yes" starts a download.
+///
+/// This used to fetch on open, which meant one click on a 4GB video began
+/// downloading 4GB on whatever connection the machine happened to be on. The
+/// same consent shape already guarded the checksum dialog; the preview simply
+/// never got it.
+///
+/// Deliberately NOT applied to copy, sync or download. There the hydration IS
+/// the operation the user asked for, and asking again would be nagging.
+class _OnlineOnlyGate extends StatefulWidget {
+  const _OnlineOnlyGate({required this.file, required this.proceed});
+
+  final RcloneFile file;
+
+  /// Builds the real preview, once the user has said yes.
+  final Widget Function() proceed;
+
+  @override
+  State<_OnlineOnlyGate> createState() => _OnlineOnlyGateState();
+}
+
+class _OnlineOnlyGateState extends State<_OnlineOnlyGate> {
+  bool _consented = false;
+
+  @override
+  Widget build(BuildContext context) {
+    if (_consented) return widget.proceed();
+    final c = AircloneTheme.of(context);
+    return _Message(
+      icon: Icons.cloud_download_outlined,
+      title: 'This file is stored online only',
+      detail:
+          '${widget.file.name}\n'
+          '${humanSize(widget.file.size)}\n\n'
+          'Only a placeholder is on this device. Previewing it downloads the '
+          'whole file first — which takes time on a slow connection and counts '
+          'against a metered one. Browsing and renaming need no download.',
+      color: c.textMuted,
+      action: FilledButton.icon(
+        onPressed: () => setState(() => _consented = true),
+        icon: const Icon(Icons.download, size: 18),
+        label: Text('Download ${humanSize(widget.file.size)} & preview'),
+      ),
     );
   }
 }

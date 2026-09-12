@@ -293,14 +293,36 @@ related to the Advanced mode setting and everybody has it.)
 
 Two things Airclone will refuse to do:
 
-- **It will not download an online-only file just to draw a thumbnail.** If a file is a cloud
-  placeholder — OneDrive, Proton Drive or iCloud "Files On-Demand" on Windows — fetching its bytes
-  would silently pull the whole thing down. Airclone shows the plain type icon instead.
+- **It will not download an online-only file just to draw a thumbnail.** See
+  [Files stored online only](#files-stored-online-only) below — Airclone shows the plain type icon
+  rather than pulling the whole file down to make a picture of it.
 - **It will not fetch an enormous image original.** Images above 128 MiB are skipped. Videos are not
   size-limited, because a frame is streamed rather than the whole file read.
 
 The disk cache is managed in Settings → `Storage & updates` → `Preview cache`, which shows how much
 is on disk and offers `Clear cache`.
+
+## Files stored online only
+
+On Windows, a folder synced by OneDrive, Proton Drive, iCloud or Dropbox can hold files that are not
+really on the disk — only a placeholder. Opening one makes Windows fetch the whole file first.
+
+**Browsing costs nothing.** Names, sizes, dates, sorting, searching, renaming and moving all read the
+placeholder, never the file, so you can work through a synced folder freely on any connection.
+
+**Reading the contents is what downloads it,** and Airclone always asks first:
+
+| Action | What happens |
+| :--- | :--- |
+| Browse, sort, search, rename, move | Free. Nothing is downloaded. |
+| Preview / Quick Look | **Asks.** Shows the size and a `Download & preview` button. |
+| Checksum | **Asks**, the same way. |
+| Thumbnail | Skipped. You get the plain type icon rather than a silent download. |
+| Duplicate scan | Skips them, and tells you how many it skipped and how much they hold. |
+| Download, Copy, Sync, Backup | **Proceeds.** Downloading is the thing you asked for. |
+
+That last row is the deliberate exception. Everywhere else a download would be a side effect of
+looking at something; in a transfer it is the point, and asking twice would just be nagging.
 
 ## The item menu
 
