@@ -29,9 +29,10 @@ The single most important decision in this project is **how we drive the rclone 
 `RcloneClient` interface. There are three cases, not two: desktop spawns `rclone rcd` and talks to the
 RC HTTP API; Android runs its bundled rclone binary as a jniLib, spawned as a loopback `rcd`; iOS and
 the Mac App Store build — neither of which may spawn a subprocess — link `librclone` in-process over
-`dart:ffi`, which desktop can also opt into. One function decides, `_resolveEngineMode` in
-`app/lib/src/state/engine_controller.dart`; the doc above owns the explanation. Read it before
-touching anything that talks to rclone.
+`dart:ffi`, which desktop can also opt into. The decision itself is pure and unit-tested in `resolveEngineMode`
+(`app/lib/src/state/engine_mode.dart`); `_resolveEngineMode` in
+`app/lib/src/state/engine_controller.dart` supplies what is actually available and calls it;
+the doc above owns the explanation. Read it before touching anything that talks to rclone.
 
 ### 5. 💾 Application state: [`wiki/core/07-state-context.md`](wiki/core/07-state-context.md)
 Store shapes, contexts, and data models.
@@ -155,6 +156,44 @@ Store shapes, contexts, and data models.
     the defect: **add the missing check in the same change as the fix**, or the next release spends
     another submission cycle learning it again. Account:
     [`dev/apple-handoff.md`](dev/apple-handoff.md).
+
+15. **A comment that states an invariant is not the invariant.** `http_rclone_client.dart` explained
+    that user flags go FIRST because rclone lets the last occurrence of a repeated flag win, "so the
+    rc listener stays loopback-bound no matter what a user pastes". Last-wins beats a *repeat* of the
+    same flag. It does nothing about a *different* flag reaching the same behaviour, and
+    `--rc-no-auth` has no later flag that undoes it — so the protection described had never existed.
+    The defence is now a denylist (`kRefusedEngineFlags`), and the comment says what ordering
+    actually buys. When a comment claims something is safe, find the code that makes it safe; if you
+    cannot point at it, it is not.
+    - Corollary, learned the same hour: **hardening belongs where the policy applies, not in the
+      shared helper.** Putting that denylist inside `parseEngineFlags` — the quote-aware tokenizer
+      the command console also uses — blinded the console's own safety classifier, because it must be
+      able to *see* a dangerous flag in order to refuse it. Two console tests caught it. A tokenizer
+      tokenizes.
+16. **A secret in argv is a secret you published.** `rcd` was started with `--rc-pass <password>` on
+    its command line, which `ps -ef` and `Win32_Process` show to every other account on the machine —
+    and rclone's own docs equate rc access to shell access as the user running it. It travels as
+    `RCLONE_RC_PASS` now, the same route `RCLONE_CONFIG_PASS` already used two lines below it, which
+    is what made it an oversight rather than a trade-off. Every credential reaching a subprocess goes
+    through `environment:`, never through an argument.
+17. **A library's default is a policy, not an absence.** `Player()` with no configuration is not
+    "no protocol whitelist" — media_kit ships one that includes `file`, and hardcodes
+    `allowed_extensions=ALL` beside it, which disables the check in ffmpeg's `hls.c` that would
+    otherwise refuse a segment with no media extension. Between them, a crafted `.m3u8` could open an
+    arbitrary local path. Before writing "there is no X configured", read the dependency's source and
+    find out what X defaults to.
+    - Second half of the same lesson: **guarding your input does not guard what the library does
+      next.** `ObjectRef.sendableHeaders` correctly refuses to send engine credentials to a
+      non-loopback URL, and survived an adversarial attempt to defeat it. It is still insufficient,
+      because media_kit maps headers onto mpv's *global* `http-header-fields`, which mpv replays on
+      every segment a manifest names. The boundary only ever saw the top-level URL. Credentials now
+      ride in the URL, where the thing making the requests scopes them.
+18. **Code you generate can contain characters you cannot see.** A redaction rule added in a shell
+    heredoc silently matched nothing for an hour: `\b` had become a literal **backspace byte (0x08)**
+    inside the regex. It compiled, `flutter analyze` passed, the tests around it passed, and a
+    security rule did nothing. Found with `cat -A`. When a change that looks obviously correct has no
+    effect, check the bytes before rewriting the logic — and prefer writing tricky literals to a file
+    with a quoted heredoc over threading them through another layer of escaping.
 
 ## ✅ Mandatory Wrap-Up Protocol
 Whenever a task or feature is complete — including when the user says "wrap up", "we're done", "ship
