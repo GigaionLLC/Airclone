@@ -51,6 +51,22 @@ jobs:
       - working-directory: app
         run: flutter build linux --release
 
+      # Without this the shot shows "The rclone engine was not found" — a real
+      # screen, but the one a user sees only when packaging is broken. The
+      # release job bundles the engine; a rig meant to show what Linux looks
+      # like has to bundle it too, or every screenshot is of the error state.
+      - name: Bundle rclone, as the release job does
+        working-directory: app
+        env:
+          RCLONE_PIN: v1.75.1
+        run: |
+          set -euo pipefail
+          zip="rclone-${RCLONE_PIN}-linux-amd64.zip"
+          curl -fsSL --retry 3 -o "$zip" "https://downloads.rclone.org/${RCLONE_PIN}/$zip"
+          unzip -q "$zip" -d rclone-extract
+          install -Dm755 "rclone-extract/rclone-${RCLONE_PIN}-linux-amd64/rclone"             build/linux/x64/release/bundle/rclone
+          test -s build/linux/x64/release/bundle/rclone
+
       - name: Run it under Xvfb and capture the window
         working-directory: app
         env:
