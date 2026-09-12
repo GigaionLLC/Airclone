@@ -238,6 +238,46 @@ jobs:
             "$RUNNER_TEMP/Airclone.xcarchive/Products/Applications/Airclone.app" 2>&1 \
             | grep -E 'Authority|Identifier' || true
 
+      # The Web UI's interface files, for `airclone --webui` and
+      # Settings -> Remote access. release.yml's desktop jobs have bundled
+      # these since v0.9.0; this job did NOT, so the Mac App Store build shipped
+      # a Settings section it could not serve. webUiHostingSupported is
+      # `!isWeb && isDesktop`, which is true on macOS, so a reviewer opening it
+      # got "This build does not include the web interface files ... Reinstall
+      # from a release build" - a broken feature in a paid app, telling the
+      # customer to go somewhere other than the store they bought it from.
+      #
+      # com.apple.security.network.server is already granted in
+      # MacAppStore.entitlements, so the sandbox permits the listener; only the
+      # files were missing.
+      #
+      # --no-web-resources-cdn is LOAD-BEARING, not a preference. Without it the
+      # bundle fetches CanvasKit and the Roboto font from gstatic.com on every
+      # page load: a phone-home this product does not do, and a hard failure on
+      # exactly the LAN-only machines this feature exists for.
+      - name: Build the Web UI interface files
+        run: flutter build web --release --no-web-resources-cdn
+      - name: Put the Web UI inside the archived app
+        # Into the ARCHIVE, for the same reason librclone goes there below: it is
+        # not an Xcode build input, and the re-sign in the next step is what
+        # seals it. Copying into build/macos/... instead would be silently lost,
+        # because `xcodebuild archive` rebuilds the app.
+        run: |
+          set -euo pipefail
+          APP="$RUNNER_TEMP/Airclone.xcarchive/Products/Applications/Airclone.app"
+          test -d "$APP"
+          dest="$APP/Contents/Resources/webui"
+          rm -rf "$dest"
+          mkdir -p "$APP/Contents/Resources"
+          cp -r build/web "$dest"
+          find "$dest" -name '*.symbols' -delete
+          # Assert the PACKAGED OUTPUT, never the copy's exit code: a step that
+          # copies nothing succeeds too. -s rather than -f because a zero-byte
+          # file is the failure mode that actually happens.
+          for must in index.html main.dart.js canvaskit/canvaskit.wasm; do
+            test -s "$dest/$must" || { echo "::error::Web UI bundle missing or empty: $must"; exit 1; }
+          done
+          echo "Web UI bundled OK ($(du -sh "$dest" | cut -f1))"
       - name: Put librclone inside the archived app, then re-sign
         # The engine is bundled AFTER archiving because it is not an Xcode build
         # input, and re-signed BEFORE export so the export's signature seals it.
