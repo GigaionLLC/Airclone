@@ -593,7 +593,12 @@ def release_approved():
         print("Only %s can be released here. IN_REVIEW means Apple has not"
               % PENDING_RELEASE)
         print("finished; READY_FOR_SALE means it is already out.")
-        sys.exit(1)
+        # A dry run that finds nothing waiting is an ANSWER, not a failure:
+        # "still in review" is the normal state for most of a release's life,
+        # and going red for it would train everyone to ignore a red run on the
+        # one workflow that publishes the app. Under --apply it stays an error,
+        # because there the operator asked to release something specific.
+        sys.exit(1 if APPLY else 0)
 
     ver = ready[0]
     va = ver["attributes"]
