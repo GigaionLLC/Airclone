@@ -273,9 +273,19 @@ stray multi-megabyte log cannot lock up the window.
 Both preview surfaces have a **delete** button, and Quick Look also offers it in the `⋯` sheet on a
 phone. It asks first, with the same confirmation the file list uses.
 
-**Rename** and **Copy path** are there too — in Quick Look's toolbar and its sheet. A rename keeps
-the file on screen under its new name, because a rename is not a reason to lose your place in a
-folder you are working through.
+Quick Look's `⋯` sheet carries the rest of the file's operations, so you rarely need to close it and
+find the file again:
+
+| | |
+| :--- | :--- |
+| **Rename** | Keeps the file on screen under its new name — a rename is not a reason to lose your place in a folder you are working through. |
+| **Public link** | A shareable link, where the backend can mint one. This is usually where you decide a file is the one to send. |
+| **Checksums** | The same dialog the file list offers. |
+| **Copy path** | The full `remote:path`, for the console, a script or a message. |
+| **Open in another app** | Hands the file to whatever your system uses for it. |
+
+Copying or moving to another folder is still done from the file list: those need a destination, and
+choosing one from inside a fullscreen preview is a different design problem than adding a button.
 
 In Quick Look the overlay **stays open and moves to the next file**, which is the point: culling a
 folder of photos is one confirmation per file instead of preview, close, find, delete, reopen. It

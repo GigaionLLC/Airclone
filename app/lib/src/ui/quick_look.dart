@@ -1,3 +1,5 @@
+import 'checksum_dialog.dart';
+import 'public_link_dialog.dart';
 import 'file_op_dialogs.dart';
 import '../state/file_ops.dart';
 import 'package:flutter/material.dart';
@@ -138,6 +140,47 @@ class _QuickLookState extends ConsumerState<_QuickLook> {
   /// preview to go and find the file in the list is the thing it was asking to
   /// avoid.
   late final List<RcloneFile> _files = [...widget.files];
+
+  /// The file's path within its remote, which most operations want.
+  String get _currentPath => widget.parentPath.isEmpty
+      ? _files[_i].name
+      : '${widget.parentPath}/${_files[_i].name}';
+
+  /// A shareable link, for backends that can mint one.
+  ///
+  /// Offered from the preview because that is where somebody decides a file is
+  /// the one they want to send — the alternative is closing the preview to find
+  /// the same file in the list and right-click it.
+  Future<void> _publicLink() async {
+    final client = ref.read(engineControllerProvider).client;
+    if (client == null) return;
+    await showPublicLinkDialog(
+      context,
+      client,
+      fs: widget.remote.fs,
+      remote: _currentPath,
+      name: _files[_i].name,
+    );
+  }
+
+  /// Checksums for the file on screen.
+  ///
+  /// Hash types are narrowed for a LOCAL remote for the reason the browser
+  /// gives: a local file is hashed by READING it, and the unrestricted call
+  /// computes about thirteen of them over the whole file.
+  Future<void> _checksums() async {
+    final client = ref.read(engineControllerProvider).client;
+    if (client == null) return;
+    await showChecksumDialog(
+      context,
+      client,
+      remoteInfo: widget.remote,
+      fs: widget.remote.fs,
+      remote: _currentPath,
+      name: _files[_i].name,
+      hashTypes: widget.remote.isLocal ? localHashTypes : null,
+    );
+  }
 
   /// Renames the file on screen, then keeps showing it under its new name.
   ///
@@ -362,6 +405,26 @@ class _QuickLookState extends ConsumerState<_QuickLook> {
               onTap: () {
                 Navigator.pop(sheetCtx);
                 _openExternally(ExternalOpenMode.share);
+              },
+            ),
+            // canPublicLink is not consulted here: the dialog itself reports a
+            // backend that cannot mint one, and hiding the entry would leave a
+            // user wondering whether Airclone or their provider lacks the
+            // feature.
+            ListTile(
+              leading: Icon(Icons.link_outlined, color: c.textMuted),
+              title: const Text('Public link'),
+              onTap: () {
+                Navigator.pop(sheetCtx);
+                _publicLink();
+              },
+            ),
+            ListTile(
+              leading: Icon(Icons.tag_outlined, color: c.textMuted),
+              title: const Text('Checksums'),
+              onTap: () {
+                Navigator.pop(sheetCtx);
+                _checksums();
               },
             ),
             ListTile(
