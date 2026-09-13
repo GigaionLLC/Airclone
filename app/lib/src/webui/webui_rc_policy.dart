@@ -40,6 +40,15 @@ const Map<String, String> kDeniedRcMethods = {
   'config/setpath':
       'Repoints the engine at a different rclone config file, which is both a '
       'host-level decision and an arbitrary-path read.',
+  'options/get':
+      "Returns the whole global option tree, including the rc block: "
+      'rc.Auth.BasicUser, rc.Auth.BasicPass and rc.HTTP.ListenAddr. Those are '
+      "the engine's OWN credentials and address - the ones this allowlist "
+      'stands in front of. One allowed call hands a session everything it '
+      'needs to talk to rcd directly and skip this list entirely, core/command '
+      'included. It was allowed until 2026-09-13, and had no caller, which is '
+      'how it survived: the rule at the top of this file is that the allowlist '
+      'is every method the app itself CALLS, and this never was one.',
 };
 
 /// Every RC method the Web UI will forward.
@@ -53,7 +62,7 @@ const Set<String> kAllowedRcMethods = {
   'core/transferred',
   'core/memstats',
   'core/bwlimit',
-  'options/get',
+  // options/get is DENIED - see kDeniedRcMethods.
 
   // ── Remotes and configuration ───────────────────────────────────────────
   // config/create and config/update can define a `local` remote pointing
