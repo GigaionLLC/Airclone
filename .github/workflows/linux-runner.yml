@@ -141,3 +141,74 @@ jobs:
             exit 1
           fi
           echo "libGLESv2 is in fallback-gles only"
+
+  # Does mounting actually work on Linux, through the call Airclone makes?
+  #
+  # WHY THIS EXISTS. The mount dialog offers only "Auto (next free letter)" and
+  # the drive letters D: to Z:, on every platform, and sends that value as
+  # mountPoint. rclone documents "*" as WINDOWS-ONLY ("On Windows mountPoint may
+  # be set to "*" to assign the next available drive letter"). On Linux it is a
+  # literal path, and rclone's first step is to open it. Every mount point in the
+  # app and its tests is a drive letter or "*", and no release records a Linux
+  # mount working - yet the guide and README tell Flatpak users to use the
+  # AppImage for mounting. That was inference from reading code, so this runs it.
+  #
+  # Kept as its own job: it needs only rclone and FUSE, not the Flutter build,
+  # so it answers in a couple of minutes.
+  mount-probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install FUSE
+        run: sudo apt-get update && sudo apt-get install -y fuse3
+      - name: rclone, pinned from release.yml and verified
+        run: |
+          set -euo pipefail
+          ver="$(grep -oP 'RCLONE_VERSION: \Kv[0-9.]+' .github/workflows/release.yml | head -1)"
+          zip="rclone-${ver}-linux-amd64.zip"
+          base="https://downloads.rclone.org/${ver}"
+          curl -fsSL --retry 3 -o "$RUNNER_TEMP/$zip" "$base/$zip"
+          curl -fsSL --retry 3 -o "$RUNNER_TEMP/SHA256SUMS" "$base/SHA256SUMS"
+          expected="$(awk -v f="$zip" '{ n=$NF; sub(/^[*.\/]+/, "", n); if (n == f) { print $1; exit } }' "$RUNNER_TEMP/SHA256SUMS")"
+          [ "$(sha256sum "$RUNNER_TEMP/$zip" | awk '{print $1}')" = "$expected" ]
+          unzip -q "$RUNNER_TEMP/$zip" -d "$RUNNER_TEMP/r"
+          install -m755 "$RUNNER_TEMP/r/rclone-${ver}-linux-amd64/rclone" "$RUNNER_TEMP/rclone"
+          env -u RCLONE_VERSION "$RUNNER_TEMP/rclone" version | head -1
+      - name: Mount through the RC API, as the app does
+        run: |
+          set -uo pipefail
+          R="$RUNNER_TEMP/rclone"
+          "$R" rcd --rc-addr 127.0.0.1:5572 --rc-user probe --rc-pass probe >"$RUNNER_TEMP/rcd.log" 2>&1 &
+          for i in $(seq 1 30); do curl -fsS -u probe:probe -X POST http://127.0.0.1:5572/core/version >/dev/null 2>&1 && break; sleep 0.5; done
+          rc() { curl -sS -u probe:probe -H 'Content-Type: application/json' -X POST "http://127.0.0.1:5572/$1" -d "$2"; echo; }
+
+          echo "=== 1. mountPoint '*' - exactly what the dialog's default Auto sends ==="
+          rc mount/mount '{"fs":":memory:","mountPoint":"*"}' | tee "$RUNNER_TEMP/star.json"
+
+          echo "=== 2. mountPoint 'D:' - a drive letter, the dialog's only other choice ==="
+          rc mount/mount '{"fs":":memory:","mountPoint":"D:"}' | tee "$RUNNER_TEMP/letter.json"
+
+          echo "=== 3. mountPoint = an empty directory - what Linux actually needs ==="
+          mkdir -p "$RUNNER_TEMP/mnt"
+          rc mount/mount "{\"fs\":\":memory:\",\"mountPoint\":\"$RUNNER_TEMP/mnt\"}" | tee "$RUNNER_TEMP/dir.json"
+          sleep 2
+          echo "--- kernel mount table ---"
+          mount | grep -F "$RUNNER_TEMP/mnt" || echo "(not in the mount table)"
+          echo "--- visible to an ordinary process? ---"
+          echo hello > "$RUNNER_TEMP/mnt/probe.txt" && cat "$RUNNER_TEMP/mnt/probe.txt"
+
+          echo "=== VERDICT ==="
+          star_ok=no; letter_ok=no; dir_ok=no
+          grep -q '"error"' "$RUNNER_TEMP/star.json" || star_ok=yes
+          grep -q '"error"' "$RUNNER_TEMP/letter.json" || letter_ok=yes
+          mount | grep -qF "$RUNNER_TEMP/mnt" && dir_ok=yes
+          echo "'*' mounted:        $star_ok"
+          echo "'D:' mounted:       $letter_ok"
+          echo "directory mounted:  $dir_ok"
+          rc mount/unmountall '{}' >/dev/null || true
+          # The job PASSES only when a directory mount works. It does not assert
+          # on '*' or 'D:': the point is to record what they do, and a future
+          # rclone that learns '*' on Linux should not turn this red.
+          [ "$dir_ok" = yes ]
+
