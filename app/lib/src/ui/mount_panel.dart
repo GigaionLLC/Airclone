@@ -125,6 +125,7 @@ class _MountDialogState extends ConsumerState<_MountDialog> {
   /// never worked there through the app. See state/mount_point.dart.
   static final bool _letters = mountsOntoDriveLetters(
     windows: HostPlatform.isWindows,
+    web: HostPlatform.isWeb,
   );
 
   /// The folder a non-Windows mount goes into.

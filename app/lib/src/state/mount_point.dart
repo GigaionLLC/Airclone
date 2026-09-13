@@ -26,8 +26,17 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 
-/// Whether mounts go onto drive letters (Windows) rather than folders.
-bool mountsOntoDriveLetters({required bool windows}) => windows;
+/// Whether the mount dialog offers drive letters rather than a folder.
+///
+/// Windows mounts onto drive letters. So does the Web UI, for a different
+/// reason: the dialog runs in a BROWSER there, which cannot know the host's
+/// operating system and cannot create or inspect a folder on the host
+/// (prepareMountFolder uses dart:io, which throws in a browser). The Web UI
+/// therefore keeps the behaviour it had before folder mounts existed - correct
+/// for a Windows host, and no worse than it was for any other. Folder mounts
+/// from the Web UI need the host to prepare the folder, which is separate work.
+bool mountsOntoDriveLetters({required bool windows, bool web = false}) =>
+    windows || web;
 
 /// A folder-safe name for [fs]: `gdrive:` -> `gdrive`, `gdrive:work/2026` ->
 /// `gdrive-work-2026`.

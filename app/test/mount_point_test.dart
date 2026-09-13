@@ -21,6 +21,16 @@ void main() {
     test('everything else mounts onto a folder', () {
       expect(mountsOntoDriveLetters(windows: false), isFalse);
     });
+
+    /// The Web UI runs this dialog in a browser, which cannot know the host's
+    /// OS or create a folder on it - prepareMountFolder would throw there. The
+    /// first version of the folder fix missed this and gave the Web UI a folder
+    /// field whose Mount button could only fail, breaking Web UI mounting from a
+    /// Windows host that had worked before.
+    test('the Web UI keeps drive letters, whatever the browser runs on', () {
+      expect(mountsOntoDriveLetters(windows: false, web: true), isTrue);
+      expect(mountsOntoDriveLetters(windows: true, web: true), isTrue);
+    });
   });
 
   group('the default folder', () {
