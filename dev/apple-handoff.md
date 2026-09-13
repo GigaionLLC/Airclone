@@ -9,54 +9,38 @@ by design** — real IDs, key paths and account state live in the encrypted vaul
 (`python tool/vault.py unlock`, then
 `dev/vault/notes/apple-appstore-setup-record.md`).
 
-## State: last written 2026-09-12 — 0.9.0 IS IN REVIEW on BOTH platforms
+## State: last written 2026-09-13 — 0.9.0 IS LIVE; 0.12.0 IS IN REVIEW
 
-Read from App Store Connect on **2026-09-12** with `asc-version.yml -f mode=audit` and the submit
-workflow's own response, so these rows are observed rather than remembered. Re-read before acting:
-the previous writing recorded 0.7.6 as `PREPARE_FOR_SUBMISSION` when it was already
-**READY_FOR_SALE**, which is why this file says to ask rather than trust it.
+Read back from App Store Connect by the workflows that changed it, so these rows are observed.
 
 | | macOS | iOS |
 | :--- | :--- | :--- |
-| 0.6.8 / 0.7.5 / 0.7.6 | **READY_FOR_SALE** | READY_FOR_SALE (0.7.5 confirmed; assume same) |
-| 0.7.7 / 0.8.0 / 0.8.1 / 0.8.3 | ❌ no version record ever created | ❌ no version record ever created |
-| 0.8.2 | ♻️ **renamed to 0.9.0** — the record was reused, not replaced | ♻️ **renamed to 0.9.0** |
-| Version 0.9.0 | **WAITING_FOR_REVIEW** | **WAITING_FOR_REVIEW** |
-| 0.9.0 `releaseType` | MANUAL | MANUAL |
-| Build attached | **131** | **130** |
-| Review submission | created 2026-09-12T16:09:26Z (id in the vault) | created 2026-09-12T16:11:07Z (id in the vault) |
+| 0.6.8 / 0.7.5 / 0.7.6 | READY_FOR_SALE | READY_FOR_SALE |
+| **0.9.0** | **READY_FOR_SALE**, released 2026-09-13, build 131 | **READY_FOR_SALE**, released 2026-09-13, build 130 |
+| 0.10.0 / 0.11.0 | ❌ no record — superseded while 0.9.0 held the lane | ❌ no record |
+| **0.12.0** | **WAITING_FOR_REVIEW**, build 134 | **WAITING_FOR_REVIEW**, build 134 |
+| 0.12.0 `releaseType` | MANUAL | MANUAL |
 
-**Why the record was renamed rather than created.** `asc_build.py` refuses `mode=create` while an
-editable version record exists, and 0.8.2 was sitting in `PREPARE_FOR_SUBMISSION`. So the path that
-works is `asc-version.yml -f mode=apply -f set_version=0.9.0`. 0.8.3 never got an Apple record at
-all and does not need one.
+**The trap that cost most of a day, and will again.** 0.9.0 sat in `PENDING_DEVELOPER_RELEASE` —
+Apple had APPROVED it and was waiting on us — while every status check reported it as blocking.
+`asc-version.yml` answers *any* non-editable state with the same sentence, *"no editable version -
+refusing to touch one in review"*, so **approved-and-waiting reads exactly like still-queued**. That
+refusal is correct; the mistake was asking it a question it does not answer, repeatedly, and
+concluding Apple was slow.
 
-**Why macOS is build 131 and iOS is 130.** The Mac App Store build of v0.9.0 shipped a Web UI it
-could not serve: `webUiHostingSupported` is `!isWeb && isDesktop`, true on macOS, but
-`mas-release.yml` had no `flutter build web` step, so Settings offered Remote access and toggling it
-said *"Reinstall from a release build"* — a broken feature in a paid app pointing the customer away
-from the store they bought it from, which is the shape of the policy 10.2.5 rejection the Microsoft
-lane already paid for. Caught by the pre-submission audit, fixed in c0c9472, rebuilt as 131. iOS was
-never affected (`isDesktop` is false there), so it kept 130.
+**Ask [`asc-release.yml`](../.github/workflows/asc-release.yml) `-f mode=dry-run` instead.** It
+prints the real `appStoreState`, writes nothing, and answers in one run what a day of inference did
+not. Reach for it before deciding Apple is the bottleneck.
 
-Build 131 was built from `main`, not the `v0.9.0` tag, because the tag predates that workflow fix.
-It therefore also carries the four commits after the tag, including the clipped-dialog fix. Apple's
-0.9.0 is slightly ahead of Play's 0.9.0 (version code 130); both are 0.9.0 to a user.
+**The lane is now a button end to end.** `asc-release.yml` takes an approved version to
+READY_FOR_SALE — first used 2026-09-13, on 0.9.0. `asc-submit-review.yml -f mode=cancel` withdraws an
+in-flight submission when one is genuinely superseded; it costs the queue position, so it is for
+"shipping this would ship known-old code", never for "this is taking a while".
 
-**What the audit caught that a green build never would.** `whatsNew` and `promotionalText` were both
-EMPTY on the renamed record — Apple refuses a submission outright for that, and nothing upstream
-reports it. Closed by `asc-listing.yml -f what=text -f mode=apply`, which sources `whatsNew` from
-`docs/store/store-release-notes.txt` and the rest from the per-platform listing doc. Run the audit
-after ANY rename: version-scoped localization fields do not follow the version string.
+**0.10.0 and 0.11.0 never got version records**, and that is not an error to repair. Apple reviews
+one version at a time; both were superseded while 0.9.0 held the lane. The App Store therefore goes
+0.7.6 → 0.9.0 → 0.12.0.
 
-**What happens when Apple approves.** Apple emails the outcome, usually within 48 hours.
-`releaseType` is MANUAL, so an approved version sits in `PENDING_DEVELOPER_RELEASE` until somebody
-releases it — that stays a deliberate human decision, but it is no longer a Console visit. Run
-**Actions → *Release an approved version (Apple)*** with `mode=release` and the version typed exactly
-([`asc-release.yml`](../.github/workflows/asc-release.yml) → `asc_build.py --release`, which posts an
-`appStoreVersionReleaseRequests` and reads the state back). It refuses every state except
-`PENDING_DEVELOPER_RELEASE`, so it cannot be pointed at anything else by mistake. There is no undo:
-pulling a release back means removing the version from sale.
 
 0.7.7, 0.8.0 and 0.8.1 never got Apple records at all. That is not an error to repair — a version
 nobody submitted needs no record — but it does mean the App Store is several versions behind the
