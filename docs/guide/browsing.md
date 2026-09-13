@@ -268,13 +268,14 @@ A file with no extension falls back to the type the remote reports. Anything els
 app is possible. Text and markdown are capped at 512 KB and truncated past that, with a note, so a
 stray multi-megabyte log cannot lock up the window.
 
-### Deleting from the preview
+### Operations from the preview
 
-Both preview surfaces have a **delete** button, and Quick Look also offers it in the `⋯` sheet on a
-phone. It asks first, with the same confirmation the file list uses.
+Both preview surfaces have a **delete** button. It asks first, with the same confirmation the file
+list uses.
 
-Quick Look's `⋯` sheet carries the rest of the file's operations, so you rarely need to close it and
-find the file again:
+Quick Look carries the rest of the file's operations behind its `⋯` menu, so you rarely need to
+close it and go and find the file again. The menu is the same everywhere: a bottom sheet on a phone,
+a drop-down from the toolbar on a desktop.
 
 | | |
 | :--- | :--- |
@@ -282,10 +283,15 @@ find the file again:
 | **Public link** | A shareable link, where the backend can mint one. This is usually where you decide a file is the one to send. |
 | **Checksums** | The same dialog the file list offers. |
 | **Copy path** | The full `remote:path`, for the console, a script or a message. |
-| **Open in another app** | Hands the file to whatever your system uses for it. |
+| **Delete** | Always last in the menu and set apart from the rest, because it is the one that cannot be undone. |
+| **Open in another app** | Hands the file to whatever your system uses for it. Not shown on iOS, which has no route for it. |
+| **Share…** | Phones only, where the system has a share sheet. |
 
 Copying or moving to another folder is still done from the file list: those need a destination, and
 choosing one from inside a fullscreen preview is a different design problem than adding a button.
+
+The smaller **Preview** dialog has delete and nothing else. It opens from the details panel, where
+`Copy path` and `Copy link` are already a row away from the `Preview` pill that opened it.
 
 In Quick Look the overlay **stays open and moves to the next file**, which is the point: culling a
 folder of photos is one confirmation per file instead of preview, close, find, delete, reopen. It

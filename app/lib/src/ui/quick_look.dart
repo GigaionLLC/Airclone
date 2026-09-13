@@ -380,9 +380,75 @@ class _QuickLookState extends ConsumerState<_QuickLook> {
     );
   }
 
-  /// Phone overflow: the actions that don't fit a slim top bar.
+  /// Every operation the preview offers, in menu order.
+  ///
+  /// ONE list, rendered by both shapes — the phone's bottom sheet and the
+  /// desktop overflow. It was not shared before, and the sheet only exists on a
+  /// phone, so public link, checksums and copy path were unreachable on a
+  /// desktop even though the code behind them was platform-neutral. An action
+  /// added here now appears everywhere by construction.
+  List<_PreviewAction> _actions() => [
+    for (final a in previewActionsFor(
+      canOpenExternally: canOpenExternally,
+      touch: widget.fullscreen,
+    ))
+      _bind(a),
+  ];
+
+  /// Gives one [PreviewAction] its icon, label and handler.
+  ///
+  /// An exhaustive switch on purpose: adding a case to the enum then fails to
+  /// compile until it is wired to something, which is the check that keeps
+  /// [previewActionsFor] and the rendered menu from drifting apart.
+  _PreviewAction _bind(PreviewAction a) => switch (a) {
+    PreviewAction.openExternally => (
+      icon: Icons.open_in_new,
+      label: 'Open in another app',
+      danger: false,
+      run: () => _openExternally(ExternalOpenMode.view),
+    ),
+    PreviewAction.share => (
+      icon: Icons.ios_share,
+      label: 'Share…',
+      danger: false,
+      run: () => _openExternally(ExternalOpenMode.share),
+    ),
+    PreviewAction.publicLink => (
+      icon: Icons.link_outlined,
+      label: 'Public link',
+      danger: false,
+      run: _publicLink,
+    ),
+    PreviewAction.checksums => (
+      icon: Icons.tag_outlined,
+      label: 'Checksums',
+      danger: false,
+      run: _checksums,
+    ),
+    PreviewAction.rename => (
+      icon: Icons.drive_file_rename_outline,
+      label: 'Rename',
+      danger: false,
+      run: _renameCurrent,
+    ),
+    PreviewAction.copyPath => (
+      icon: Icons.content_copy_outlined,
+      label: 'Copy path',
+      danger: false,
+      run: _copyPath,
+    ),
+    PreviewAction.delete => (
+      icon: Icons.delete_outline,
+      label: 'Delete',
+      danger: true,
+      run: _deleteCurrent,
+    ),
+  };
+
+  /// Touch overflow: the actions that don't fit a slim top bar.
   Future<void> _showActions() async {
     final c = AircloneTheme.of(context);
+    final actions = _actions();
     await showModalBottomSheet<void>(
       context: context,
       showDragHandle: true,
@@ -391,77 +457,59 @@ class _QuickLookState extends ConsumerState<_QuickLook> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            ListTile(
-              leading: Icon(Icons.open_in_new, color: c.textMuted),
-              title: const Text('Open in another app'),
-              onTap: () {
-                Navigator.pop(sheetCtx);
-                _openExternally(ExternalOpenMode.view);
-              },
-            ),
-            ListTile(
-              leading: Icon(Icons.ios_share, color: c.textMuted),
-              title: const Text('Share…'),
-              onTap: () {
-                Navigator.pop(sheetCtx);
-                _openExternally(ExternalOpenMode.share);
-              },
-            ),
-            // canPublicLink is not consulted here: the dialog itself reports a
-            // backend that cannot mint one, and hiding the entry would leave a
-            // user wondering whether Airclone or their provider lacks the
-            // feature.
-            ListTile(
-              leading: Icon(Icons.link_outlined, color: c.textMuted),
-              title: const Text('Public link'),
-              onTap: () {
-                Navigator.pop(sheetCtx);
-                _publicLink();
-              },
-            ),
-            ListTile(
-              leading: Icon(Icons.tag_outlined, color: c.textMuted),
-              title: const Text('Checksums'),
-              onTap: () {
-                Navigator.pop(sheetCtx);
-                _checksums();
-              },
-            ),
-            ListTile(
-              leading: Icon(
-                Icons.drive_file_rename_outline,
-                color: c.textMuted,
+            for (final a in actions) ...[
+              if (a.danger) const Divider(height: 1),
+              ListTile(
+                leading: Icon(a.icon, color: a.danger ? c.error : c.textMuted),
+                title: Text(
+                  a.label,
+                  style: a.danger ? TextStyle(color: c.error) : null,
+                ),
+                onTap: () {
+                  Navigator.pop(sheetCtx);
+                  a.run();
+                },
               ),
-              title: const Text('Rename'),
-              onTap: () {
-                Navigator.pop(sheetCtx);
-                _renameCurrent();
-              },
-            ),
-            ListTile(
-              leading: Icon(Icons.content_copy_outlined, color: c.textMuted),
-              title: const Text('Copy path'),
-              onTap: () {
-                Navigator.pop(sheetCtx);
-                _copyPath();
-              },
-            ),
-            // Delete is here as well as the top bar: on a phone the top bar is
-            // a thumb-stretch away, and this is the menu people already open
-            // for the other file actions. Placed LAST and behind a divider so
-            // it is never the tile under a wandering thumb.
-            const Divider(height: 1),
-            ListTile(
-              leading: Icon(Icons.delete_outline, color: c.error),
-              title: Text('Delete', style: TextStyle(color: c.error)),
-              onTap: () {
-                Navigator.pop(sheetCtx);
-                _deleteCurrent();
-              },
-            ),
+            ],
           ],
         ),
       ),
+    );
+  }
+
+  /// Pointer overflow: the same [_actions] as a menu under a `⋯` button.
+  Widget _overflowButton(BuildContext context) {
+    final c = AircloneTheme.of(context);
+    final actions = _actions();
+    return PopupMenuButton<int>(
+      icon: const Icon(Icons.more_horiz, color: Colors.white),
+      tooltip: 'More',
+      // The toolbar sits on near-black, so the menu needs the app surface
+      // rather than inheriting the overlay's palette.
+      color: c.surface,
+      onSelected: (i) => actions[i].run(),
+      itemBuilder: (_) => [
+        for (var i = 0; i < actions.length; i++) ...[
+          if (actions[i].danger) const PopupMenuDivider(),
+          PopupMenuItem<int>(
+            value: i,
+            child: Row(
+              children: [
+                Icon(
+                  actions[i].icon,
+                  size: 18,
+                  color: actions[i].danger ? c.error : c.textMuted,
+                ),
+                const SizedBox(width: Space.x2),
+                Text(
+                  actions[i].label,
+                  style: actions[i].danger ? TextStyle(color: c.error) : null,
+                ),
+              ],
+            ),
+          ),
+        ],
+      ],
     );
   }
 
@@ -526,7 +574,7 @@ class _QuickLookState extends ConsumerState<_QuickLook> {
                   name: file.name,
                   counter: many ? '${_i + 1} / ${_files.length}' : null,
                   onClose: () => Navigator.of(context).pop(),
-                  onActions: canOpenExternally ? _showActions : null,
+                  onActions: _showActions,
                 ),
               ),
             ),
@@ -595,6 +643,7 @@ class _QuickLookState extends ConsumerState<_QuickLook> {
                     tooltip: 'Pop out to a new window',
                     onPressed: _popOut,
                   ),
+                _overflowButton(context),
                 IconButton(
                   icon: const Icon(
                     Icons.drive_file_rename_outline,
@@ -752,6 +801,61 @@ class _TopBar extends StatelessWidget {
     );
   }
 }
+
+/// Everything the preview can do to the file on screen, in menu order.
+///
+/// An enum, and a pure function to select from it, so the SET of offered
+/// actions can be asserted without standing up an overlay, an engine and a
+/// remote. That is worth the indirection because the set is exactly what went
+/// wrong: the menu used to be shown only where files can be handed to another
+/// app, so on iOS — which has no such route — the whole menu vanished, taking
+/// delete and rename with it.
+enum PreviewAction {
+  openExternally,
+  share,
+  publicLink,
+  checksums,
+  rename,
+  copyPath,
+
+  /// Always last: destructive, and rendered apart from the rest in both shapes.
+  delete,
+}
+
+/// The actions to offer, given what the platform can do.
+///
+/// [canOpenExternally] is whether files can be handed to another app at all;
+/// [touch] is the edge-to-edge phone shape. Neither may gate anything but the
+/// two entries that genuinely depend on it.
+@visibleForTesting
+List<PreviewAction> previewActionsFor({
+  required bool canOpenExternally,
+  required bool touch,
+}) => [
+  if (canOpenExternally) PreviewAction.openExternally,
+  // Touch only: desktop has no share sheet, and [ExternalOpenMode.share]
+  // degrades there to a plain open — an entry that quietly does something else
+  // is worse than no entry.
+  if (canOpenExternally && touch) PreviewAction.share,
+  // canPublicLink is not consulted: the dialog itself reports a backend that
+  // cannot mint one, and hiding the entry would leave a user wondering whether
+  // Airclone or their provider lacks the feature.
+  PreviewAction.publicLink,
+  PreviewAction.checksums,
+  PreviewAction.rename,
+  PreviewAction.copyPath,
+  PreviewAction.delete,
+];
+
+/// One entry in the preview's action menu, rendered by both shapes.
+typedef _PreviewAction = ({
+  IconData icon,
+  String label,
+
+  /// Destructive: shown in the error colour and separated from everything else.
+  bool danger,
+  VoidCallback run,
+});
 
 /// A large translucent-circle nav chevron; greyed out when [onPressed] is null.
 class _NavButton extends StatelessWidget {
