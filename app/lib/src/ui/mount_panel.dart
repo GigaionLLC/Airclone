@@ -13,6 +13,9 @@ import 'disclosure.dart';
 import 'mount_options_editor.dart';
 import 'theme/tokens.dart';
 import '../state/build_flavor.dart';
+import '../state/host_platform.dart';
+import '../state/mount_point.dart';
+import 'package:file_selector/file_selector.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 /// Opens the Mount manager (mount remotes as drives + list/unmount running ones).
@@ -113,6 +116,23 @@ class _MountDialogState extends ConsumerState<_MountDialog> {
   final _subdir = TextEditingController();
   String? _remote;
   String _drive = '*'; // auto
+
+  /// Drive letters on Windows, a FOLDER everywhere else.
+  ///
+  /// This dialog used to offer drive letters on every platform. rclone honours
+  /// "*" and drive letters on Windows only, so on Linux and macOS every choice
+  /// here failed with "cannot open: *: no such file or directory" - mounting
+  /// never worked there through the app. See state/mount_point.dart.
+  static final bool _letters = mountsOntoDriveLetters(
+    windows: HostPlatform.isWindows,
+  );
+
+  /// The folder a non-Windows mount goes into.
+  final _folder = TextEditingController();
+
+  /// Set once the user types or picks a folder, so changing the remote stops
+  /// overwriting what they chose with a fresh default.
+  bool _folderEdited = false;
   String? _error;
   bool _starting = false;
 
@@ -137,12 +157,25 @@ class _MountDialogState extends ConsumerState<_MountDialog> {
     // The pin is per fs, and the subfolder is part of the fs — so typing one
     // has to re-check for a pin, not just picking the remote.
     _subdir.addListener(_applyPinnedDrive);
+    _subdir.addListener(_refreshDefaultFolder);
+  }
+
+  /// Keeps the suggested folder in step with the remote and subfolder, until
+  /// the user has chosen one of their own.
+  void _refreshDefaultFolder() {
+    if (_letters || _folderEdited || _remote == null) return;
+    final home = HostPlatform.environment['HOME'] ?? '';
+    if (home.isEmpty) return;
+    final next = defaultMountFolder(home: home, fs: _fs);
+    if (_folder.text != next) _folder.text = next;
   }
 
   @override
   void dispose() {
     _subdir.removeListener(_applyPinnedDrive);
+    _subdir.removeListener(_refreshDefaultFolder);
     _subdir.dispose();
+    _folder.dispose();
     super.dispose();
   }
 
@@ -158,8 +191,23 @@ class _MountDialogState extends ConsumerState<_MountDialog> {
   void _applyPinnedDrive() {
     if (_remote == null) return;
     final pinned = ref.read(mountLettersProvider)[_fs];
-    if (pinned == null) {
+    // A pin is a drive letter on Windows and a folder elsewhere. One of the
+    // wrong shape is ignored rather than applied: a letter handed to rclone on
+    // Linux is exactly the failure this dialog used to produce.
+    final rightShape =
+        pinned != null &&
+        (_letters ? !pinned.startsWith('/') : pinned.startsWith('/'));
+    if (pinned == null || !rightShape) {
       if (_rememberDrive) setState(() => _rememberDrive = false);
+      return;
+    }
+    if (!_letters) {
+      if (_folder.text == pinned && _rememberDrive) return;
+      setState(() {
+        _folder.text = pinned;
+        _folderEdited = true;
+        _rememberDrive = true;
+      });
       return;
     }
     if (pinned == _drive && _rememberDrive) return;
@@ -177,10 +225,28 @@ class _MountDialogState extends ConsumerState<_MountDialog> {
     });
     final sub = _subdir.text.trim();
     final fs = sub.isEmpty ? '$_remote:' : '$_remote:$sub';
+    final String mountPoint;
+    if (_letters) {
+      mountPoint = _drive;
+    } else {
+      // rclone will not create the folder and refuses a non-empty one with an
+      // error that says nothing useful, so both are handled here first.
+      final problem = await prepareMountFolder(_folder.text);
+      if (problem != null) {
+        if (mounted) {
+          setState(() {
+            _starting = false;
+            _error = problem;
+          });
+        }
+        return;
+      }
+      mountPoint = _folder.text.trim();
+    }
     try {
       final actual = await ref
           .read(mountControllerProvider.notifier)
-          .mount(fs: fs, mountPoint: _drive, options: _effectiveOptions);
+          .mount(fs: fs, mountPoint: mountPoint, options: _effectiveOptions);
       // Pinned AFTER the mount succeeds, and to the letter rclone actually
       // used: with Auto selected that is the assigned one, which is exactly the
       // "put it back where it was" case worth remembering.
@@ -195,7 +261,10 @@ class _MountDialogState extends ConsumerState<_MountDialog> {
       if (mounted) {
         setState(() {
           _starting = false;
-          _error = e is RcloneException ? e.message : '$e';
+          _error = friendlyMountError(
+            e is RcloneException ? e.message : '$e',
+            windows: HostPlatform.isWindows,
+          );
         });
       }
     }
@@ -273,7 +342,10 @@ class _MountDialogState extends ConsumerState<_MountDialog> {
     final types = ref.watch(mountTypesProvider).valueOrNull;
     final winfspMissing = types != null && types.isEmpty;
     return [
-      if (winfspMissing) _winfspBanner(c),
+      // An empty mount-type list means the FUSE layer is missing. That is WinFsp
+      // on Windows and FUSE elsewhere; naming WinFsp to a Linux user was wrong.
+      if (winfspMissing && _letters) _winfspBanner(c),
+      if (winfspMissing && !_letters) _fuseBanner(c),
       Row(
         children: [
           Expanded(
@@ -291,6 +363,7 @@ class _MountDialogState extends ConsumerState<_MountDialog> {
                 ],
                 onChanged: (v) {
                   setState(() => _remote = v);
+                  _refreshDefaultFolder();
                   _applyPinnedDrive();
                 },
               ),
@@ -311,31 +384,33 @@ class _MountDialogState extends ConsumerState<_MountDialog> {
           ),
         ],
       ),
-      Row(
-        children: [
-          Expanded(
-            child: _field(
-              c,
-              'Drive',
-              DropdownButtonFormField<String>(
-                initialValue: _drive,
-                isExpanded: true,
-                dropdownColor: c.surfaceRaised,
-                decoration: _dec(c, ''),
-                items: [
-                  const DropdownMenuItem(
-                    value: '*',
-                    child: Text('Auto (next free letter)'),
-                  ),
-                  for (final l in 'DEFGHIJKLMNOPQRSTUVWXYZ'.split(''))
-                    DropdownMenuItem(value: '$l:', child: Text('$l:')),
-                ],
-                onChanged: (v) => setState(() => _drive = v ?? '*'),
+      if (!_letters) _folderRow(c),
+      if (_letters)
+        Row(
+          children: [
+            Expanded(
+              child: _field(
+                c,
+                'Drive',
+                DropdownButtonFormField<String>(
+                  initialValue: _drive,
+                  isExpanded: true,
+                  dropdownColor: c.surfaceRaised,
+                  decoration: _dec(c, ''),
+                  items: [
+                    const DropdownMenuItem(
+                      value: '*',
+                      child: Text('Auto (next free letter)'),
+                    ),
+                    for (final l in 'DEFGHIJKLMNOPQRSTUVWXYZ'.split(''))
+                      DropdownMenuItem(value: '$l:', child: Text('$l:')),
+                  ],
+                  onChanged: (v) => setState(() => _drive = v ?? '*'),
+                ),
               ),
             ),
-          ),
-        ],
-      ),
+          ],
+        ),
       _rememberDriveRow(c),
       _optionsDisclosure(c),
       if (_error != null) ...[
@@ -400,7 +475,9 @@ class _MountDialogState extends ConsumerState<_MountDialog> {
             const SizedBox(width: Space.x2),
             Expanded(
               child: Text(
-                _drive == '*'
+                !_letters
+                    ? 'Always mount this in this folder'
+                    : _drive == '*'
                     ? 'Reuse whichever letter this mount gets, next time'
                     : 'Always mount this on $_drive',
                 style: TextStyle(color: c.textMuted, fontSize: 12),
@@ -450,6 +527,68 @@ class _MountDialogState extends ConsumerState<_MountDialog> {
       ],
     );
   }
+
+  /// Linux and macOS: the folder the drive appears in.
+  Widget _folderRow(AircloneColors c) => Row(
+    crossAxisAlignment: CrossAxisAlignment.end,
+    children: [
+      Expanded(
+        child: _field(
+          c,
+          'Folder',
+          TextField(
+            controller: _folder,
+            decoration: _dec(c, '/home/you/Airclone/remote'),
+            style: TextStyle(color: c.text, fontSize: 13),
+            onChanged: (_) => _folderEdited = true,
+          ),
+        ),
+      ),
+      const SizedBox(width: Space.x2),
+      Padding(
+        padding: const EdgeInsets.only(bottom: Space.x3),
+        child: OutlinedButton(
+          onPressed: () async {
+            final picked = await getDirectoryPath(
+              confirmButtonText: 'Mount here',
+              initialDirectory: _folder.text.isEmpty ? null : _folder.text,
+            );
+            if (picked == null || !mounted) return;
+            setState(() {
+              _folder.text = picked;
+              _folderEdited = true;
+            });
+          },
+          child: const Text('Choose…'),
+        ),
+      ),
+    ],
+  );
+
+  Widget _fuseBanner(AircloneColors c) => Container(
+    margin: const EdgeInsets.only(bottom: Space.x3),
+    padding: const EdgeInsets.all(Space.x3),
+    decoration: BoxDecoration(
+      color: c.warningBg,
+      borderRadius: BorderRadius.circular(Radii.md),
+    ),
+    child: Row(
+      children: [
+        Icon(Icons.info_outline, size: 16, color: c.warning),
+        const SizedBox(width: Space.x2),
+        Expanded(
+          child: Text(
+            HostPlatform.isMacOS
+                ? 'Mounting on macOS needs macFUSE or FUSE-T. Install one, then '
+                      'restart Airclone.'
+                : 'Mounting needs FUSE. Install it (for example '
+                      '`sudo apt install fuse3`), then restart Airclone.',
+            style: TextStyle(color: c.textMuted, fontSize: 11),
+          ),
+        ),
+      ],
+    ),
+  );
 
   Widget _winfspBanner(AircloneColors c) => Container(
     margin: const EdgeInsets.only(bottom: Space.x3),
