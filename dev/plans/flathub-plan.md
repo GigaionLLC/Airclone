@@ -124,17 +124,26 @@ disclosure included) and answers every reviewer. An agent does not draft that te
    which built the same v1.75.1 with `go install -mod=vendor` and a generated `rclone.go.mod.yml`. If
    the in-process engine is wanted too, `librclone.so` (`dev/desktop/build-librclone.sh`) can build
    from the same vendored tree.
-4. **The rclone runtime download is live inside a Flatpak.** `RcloneEngine.isStoreManaged()`
-   (`app/lib/src/rclone/rclone_engine.dart`) detects only the Windows MSIX. A Flatpak therefore still
-   offers Settings → "Update to vX" and the "Download rclone engine" button in
-   `app/lib/src/ui/engine_gate.dart`. Both download and execute rclone from `downloads.rclone.org`,
-   and a downloaded engine outranks the bundled one. That is defensible for the direct-download
-   bundle; a Flathub build must block it, because it sidesteps Flathub's source build and updates.
-5. **`FLATPAK_ID` cannot tell a Flathub install from the GitHub-release bundle.** Both set it, so
-   `linuxInstallSource` reports `InstallChannel.flathub` for the release `.flatpak` as well — its users
-   are told "Airclone updates through Flathub" and get no update check. A Flathub build needs an
-   explicit marker, such as `--env=AIRCLONE_INSTALL_CHANNEL=flathub` in finish-args, and blockers 4
-   and 5 should key on that marker.
+4. ~~**The rclone runtime download is live inside a Flatpak.**~~ **Fixed upstream, 2026-09-13.**
+   `RcloneEngine.isStoreManaged()` now returns true for a *marked* Flathub build
+   (`kFlathubChannel`, `app/lib/src/state/build_flavor.dart`) as well as the MSIX, so a Flathub
+   build never downloads and executes rclone, and never offers "Update to vX". The "Download
+   rclone engine" button in `engine_gate.dart` is also hidden for any store-managed build — it
+   was previously shown on the Microsoft Store build too, where it could only throw. The
+   **unmarked** GitHub-release bundle is deliberately unchanged: it is a direct download and may
+   update its engine.
+5. ~~**`FLATPAK_ID` cannot tell a Flathub install from the GitHub-release bundle.**~~ **Fixed
+   upstream, 2026-09-13.** `linuxInstallSource` keys on `flathubChannelMarked`, which needs BOTH
+   `FLATPAK_ID` and `AIRCLONE_INSTALL_CHANNEL=flathub` — the marker alone does not count, so a stray
+   environment variable cannot switch off updates on an unsandboxed install. An unmarked Flatpak is
+   a direct download: the GitHub update check runs, and no "Flathub" wording appears. Sandbox
+   *limits* (mounting) still key on `FLATPAK_ID`, since they apply to both builds.
+   **What the Flathub manifest must do:** set `--env=AIRCLONE_INSTALL_CHANNEL=flathub` in
+   `finish-args`. The manifest in `app/linux/packaging/` must NOT — it builds the direct-download
+   bundle, and `flatpak_policy_test.dart` fails if it ever gains the marker. The README also claimed
+   the release `.flatpak` "updates like any other app"; it does not (the bundle is built with
+   `--runtime-repo` only, so `flatpak update` refreshes the runtime and not Airclone), and now says
+   so.
 6. **Runtime.** Move off GNOME 48.
    * GNOME ships libsecret in the runtime; freedesktop, which Fladder uses, would need libsecret from
      [shared-modules](https://github.com/flathub/shared-modules).
@@ -197,7 +206,7 @@ The OpenURI portal's `OpenDirectory` is the sandbox-native route.
 
 ### A. Upstream, in this repo — AI-assisted work is fine here, and gets disclosed
 
-1. Add an explicit install-channel marker for Flathub builds, and key both "updates through Flathub"
+1. ~~Add an explicit install-channel marker for Flathub builds~~ **Done 2026-09-13 — see blockers 4 and 5.** Key both "updates through Flathub"
    and the rclone runtime download (blockers 4 and 5) on it. Mount gating stays on `FLATPAK_ID`.
 2. Fix the MetaInfo (blocker 7) and the lowercase window title. Add `<screenshots>` once real images
    exist, with URLs pinned to a release tag.

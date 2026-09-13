@@ -32,6 +32,7 @@ import 'host_platform.dart';
 
 import '../native/native_probes.dart' as native;
 import '../rclone/rclone_engine.dart' show RcloneEngine;
+import 'build_flavor.dart';
 
 /// The distribution channel this install came from.
 enum InstallChannel {
@@ -165,7 +166,16 @@ InstallSource androidInstallSource(String? installer, String packageName) {
 /// and Snap both advertise themselves there, and both own their own updates.
 /// Pure for testing; production passes [HostPlatform.environment].
 InstallSource linuxInstallSource(Map<String, String> env) {
-  if ((env['FLATPAK_ID'] ?? '').isNotEmpty) {
+  // The MARKER, not FLATPAK_ID. Every Flatpak sets FLATPAK_ID, including the
+  // single-file bundle on each GitHub release, so keying on it told those users
+  // "Airclone updates through Flathub" and skipped the update check - for an app
+  // that is not on Flathub, in a bundle that cannot update itself. An unmarked
+  // Flatpak is a direct download and is treated as one. See
+  // [flathubChannelMarked].
+  //
+  // Sandbox LIMITS still key on FLATPAK_ID (mountPossibleFor, via
+  // kRunningInFlatpak), because those apply to both builds equally.
+  if (flathubChannelMarked(env)) {
     return const InstallSource(
       channel: InstallChannel.flathub,
       storeName: 'Flathub',

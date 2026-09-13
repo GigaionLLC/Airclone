@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:airclone/src/state/build_flavor.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -46,5 +48,55 @@ void main() {
     test('either one alone is enough to rule it out', () {
       expect(mountPossibleFor(macAppStore: true, flatpak: true), isFalse);
     });
+  });
+
+  /// Two questions that used to be answered by one check, FLATPAK_ID, and must
+  /// not be. "Am I sandboxed?" decides what the app CAN do - it cannot mount,
+  /// there is no /dev/fuse - and is true of every Flatpak. "Did Flathub ship
+  /// me?" decides who owns updates, and is true only of a build that says so.
+  /// The GitHub-release .flatpak is the first and not the second.
+  group('sandboxed is not the same as distributed by Flathub', () {
+    const bundle = {'FLATPAK_ID': 'com.gigaionllc.airclone'};
+    const flathub = {
+      'FLATPAK_ID': 'com.gigaionllc.airclone',
+      kInstallChannelEnv: kFlathubChannelValue,
+    };
+
+    test('both are sandboxed, so neither can mount', () {
+      expect(runningInFlatpak(bundle), isTrue);
+      expect(runningInFlatpak(flathub), isTrue);
+      expect(
+        mountPossibleFor(macAppStore: false, flatpak: runningInFlatpak(bundle)),
+        isFalse,
+        reason: 'the sandbox limit applies to the bundle too',
+      );
+    });
+
+    test('only the marked build is Flathub', () {
+      expect(flathubChannelMarked(bundle), isFalse);
+      expect(flathubChannelMarked(flathub), isTrue);
+    });
+
+    test('the marker without a sandbox is not Flathub', () {
+      expect(
+        flathubChannelMarked({kInstallChannelEnv: kFlathubChannelValue}),
+        isFalse,
+      );
+    });
+  });
+
+  /// The manifest in app/linux/packaging builds the DIRECT-DOWNLOAD bundle.
+  /// If it ever sets the Flathub marker, the GitHub .flatpak is misreported as
+  /// Flathub again and loses its update check - the bug this test guards.
+  test('the release-bundle manifest does not claim to be Flathub', () {
+    final f = File('linux/packaging/com.gigaionllc.airclone.yml');
+    if (!f.existsSync()) return;
+    expect(
+      f.readAsStringSync(),
+      isNot(contains(kInstallChannelEnv)),
+      reason:
+          'marking the direct-download manifest recreates the Flatpak update '
+          'bug; only a Flathub-submitted manifest may set it',
+    );
   });
 }

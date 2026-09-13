@@ -40,6 +40,38 @@ bool get kRunningInFlatpak => runningInFlatpak(HostPlatform.environment);
 bool runningInFlatpak(Map<String, String> environment) =>
     (environment['FLATPAK_ID'] ?? '').isNotEmpty;
 
+/// The environment variable a FLATHUB build sets to say where it came from.
+///
+/// Needed because [runningInFlatpak] cannot answer that. Flatpak exports
+/// `FLATPAK_ID` into every sandboxed process, so the single-file `.flatpak`
+/// attached to each GitHub release sets it exactly as a Flathub install would.
+/// Treating any Flatpak as Flathub told the release-bundle users that "Airclone
+/// updates through Flathub" - Airclone is not on Flathub - and switched off the
+/// update check, so a bundle that cannot update itself never heard about a new
+/// version either.
+///
+/// A future Flathub manifest sets this in `finish-args`
+/// (`--env=AIRCLONE_INSTALL_CHANNEL=flathub`). The manifest in
+/// `app/linux/packaging/` must NOT: that one builds the direct-download bundle,
+/// and marking it would recreate the bug. See dev/plans/flathub-plan.md.
+const String kInstallChannelEnv = 'AIRCLONE_INSTALL_CHANNEL';
+
+/// The value of [kInstallChannelEnv] that means a Flathub build.
+const String kFlathubChannelValue = 'flathub';
+
+/// True only for a Flatpak that was BUILT FOR Flathub.
+///
+/// Both halves are required. The marker alone is not enough: an environment
+/// variable set on an ordinary, unsandboxed install would otherwise switch off
+/// its update check and its engine updates, and a stray `export` should not
+/// be able to do that.
+bool flathubChannelMarked(Map<String, String> environment) =>
+    runningInFlatpak(environment) &&
+    environment[kInstallChannelEnv] == kFlathubChannelValue;
+
+/// [flathubChannelMarked] for the running process.
+bool get kFlathubChannel => flathubChannelMarked(HostPlatform.environment);
+
 /// Whether mounting a remote as a drive can work here.
 ///
 /// Pure and parameterised, like the rest of this file.

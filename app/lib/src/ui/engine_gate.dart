@@ -5,6 +5,7 @@ import '../state/android_native.dart';
 import '../state/engine_controller.dart';
 import '../state/host_platform.dart';
 import 'theme/tokens.dart';
+import '../rclone/rclone_engine.dart';
 
 /// Shown until the engine is ready (locating / not-installed / provisioning /
 /// error). Shared by the desktop work area and the phone shell's Files tab.
@@ -27,7 +28,12 @@ class EngineGate extends ConsumerWidget {
 
     // On Android the engine is bundled in the APK: there is nothing to
     // download, so the gate only ever offers a re-check.
-    final canDownload = !HostPlatform.isAndroid;
+    // A store-managed build refuses to download the engine (installAndStart
+    // throws), so offering the button there only produced an error. That was
+    // already true of the Microsoft Store build; a marked Flathub build now
+    // joins it. Android bundles its engine and never downloads one.
+    final canDownload =
+        !HostPlatform.isAndroid && !RcloneEngine.isStoreManaged();
     // Scroll view inside the Center: centered when it fits, scrollable when a
     // phone's soft keyboard (or a tiny window) squeezes the viewport.
     return Center(

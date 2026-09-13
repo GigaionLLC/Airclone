@@ -86,7 +86,15 @@ class RcloneEngine {
 
   static bool? _storeManaged;
 
-  static bool _detectStoreManaged() => isWindowsPackagedApp();
+  // A marked Flathub build joins the MSIX. It must not fetch and execute rclone
+  // from downloads.rclone.org: Flathub builds from source and delivers updates
+  // itself, and a downloaded engine outranks the bundled one, so a single
+  // download would silently replace what Flathub reviewed.
+  //
+  // An UNMARKED Flatpak - the GitHub-release bundle - is deliberately not here.
+  // It is a direct download and may update its engine like any other.
+  static bool _detectStoreManaged() =>
+      isWindowsPackagedApp() || kFlathubChannel;
 
   /// The rclone executable that ships inside the APK as a per-ABI jniLib named
   /// `librclone.so` (see dev/android/build-rclone.ps1). The installer extracts
@@ -194,9 +202,12 @@ class RcloneEngine {
     // — the MSIX shares the compiled exe with the installer, so nothing at compile
     // time distinguishes them). Unpackaged builds fall through and may update.
     if (isStoreManaged()) {
+      // Store-agnostic now that Flathub can land here: naming the Microsoft
+      // Store to a Linux user would be the same kind of false statement the
+      // Flatpak fix exists to remove.
       throw StateError(
-        'This build is managed by the Microsoft Store — the bundled rclone '
-        'engine updates when the app itself updates.',
+        'This build is managed by its store — the bundled rclone engine '
+        'updates when the app itself updates.',
       );
     }
     final triple = _targetTriple();

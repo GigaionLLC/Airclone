@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:airclone/src/state/install_source.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:airclone/src/state/build_flavor.dart';
 
 /// The store-routing rules behind the v0.6.0 Microsoft Store certification
 /// failure (policy 10.2.5: a Store product must update only through the Store).
@@ -63,11 +64,55 @@ void main() {
   });
 
   group('linuxInstallSource', () {
-    test('Flatpak and Snap own their own updates', () {
+    /// This test used to assert the bug. It read "Flatpak and Snap own their
+    /// own updates" and expected a bare FLATPAK_ID to mean Flathub - but every
+    /// Flatpak sets FLATPAK_ID, including the single-file bundle attached to
+    /// each GitHub release. Airclone is not on Flathub, so those users were told
+    /// "Airclone updates through Flathub" and the update check was skipped for
+    /// a bundle that cannot update itself.
+    test('an unmarked Flatpak is the GitHub bundle, not Flathub', () {
+      final s = linuxInstallSource({'FLATPAK_ID': 'com.gigaionllc.airclone'});
+      expect(s.channel, InstallChannel.directDownload);
       expect(
-        linuxInstallSource({'FLATPAK_ID': 'com.gigaionllc.airclone'}).channel,
-        InstallChannel.flathub,
+        s.managedByStore,
+        isFalse,
+        reason: 'the update check must run for the release bundle',
       );
+      expect(s.storeName, isNot('Flathub'));
+    });
+
+    test('a Flatpak built for Flathub says so, and Flathub owns updates', () {
+      final s = linuxInstallSource({
+        'FLATPAK_ID': 'com.gigaionllc.airclone',
+        kInstallChannelEnv: kFlathubChannelValue,
+      });
+      expect(s.channel, InstallChannel.flathub);
+      expect(s.managedByStore, isTrue);
+      expect(s.storeName, 'Flathub');
+    });
+
+    /// A stray environment variable must not be able to switch off updates on
+    /// an ordinary install. The marker only counts inside a real sandbox.
+    test('the marker outside a Flatpak changes nothing', () {
+      final s = linuxInstallSource({kInstallChannelEnv: kFlathubChannelValue});
+      expect(s.channel, InstallChannel.directDownload);
+      expect(s.managedByStore, isFalse);
+    });
+
+    test('a marker with any other value is not Flathub', () {
+      for (final v in ['', 'Flathub', 'FLATHUB', 'github', 'snap']) {
+        expect(
+          linuxInstallSource({
+            'FLATPAK_ID': 'com.gigaionllc.airclone',
+            kInstallChannelEnv: v,
+          }).channel,
+          InstallChannel.directDownload,
+          reason: 'value "$v"',
+        );
+      }
+    });
+
+    test('Snap still owns its own updates', () {
       expect(
         linuxInstallSource({'SNAP': '/snap/airclone/12'}).channel,
         InstallChannel.snapStore,
