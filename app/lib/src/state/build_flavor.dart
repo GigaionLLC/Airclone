@@ -72,6 +72,22 @@ bool flathubChannelMarked(Map<String, String> environment) =>
 /// [flathubChannelMarked] for the running process.
 bool get kFlathubChannel => flathubChannelMarked(HostPlatform.environment);
 
+/// Where the other Linux packages live, for a Flatpak user who needs one that
+/// can mount. The LATEST release page, not a pinned version: a link baked into a
+/// build should still land on something current years later.
+const String kReleasesPageUrl =
+    'https://github.com/GigaionLLC/Airclone/releases/latest';
+
+/// The console's answer to `rclone mount` inside a Flatpak.
+///
+/// The generic answer points at the toolbar's Mount button, which is the wrong
+/// place to send a Flatpak user twice over: it is hidden without Advanced mode,
+/// and inside the sandbox it can only explain that mounting is impossible.
+const String kFlatpakMountConsoleHint =
+    'This Flatpak build cannot mount at all: Flatpak runs apps in a sandbox, '
+    'so a mounted drive would be visible only to Airclone. Use the AppImage or '
+    'the tar.gz to mount a remote as a drive.';
+
 /// Whether mounting a remote as a drive can work here.
 ///
 /// Pure and parameterised, like the rest of this file.

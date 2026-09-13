@@ -8,6 +8,9 @@
 /// match of the raw line (see [console_command.dart]).
 library;
 
+import '../build_flavor.dart';
+import '../host_platform.dart';
+
 /// How dangerous a command is, which drives the console's guardrails.
 enum CommandTier {
   /// Read-only or additive — runs freely (`ls`, `lsjson`, `size`, `cat`, `copy`…).
@@ -202,7 +205,12 @@ const Map<String, String> _inAppAlternative = {
 /// Three distinct cases, because the old single string was wrong for two of
 /// them: a typo'd verb was told it "leaks secrets", and a safe verb carrying a
 /// blocked flag was reported as though the VERB were forbidden.
-String blockedMessage(String verb, List<String> flags) {
+String blockedMessage(
+  String verb,
+  List<String> flags, {
+  Map<String, String>? environment,
+}) {
+  final env = environment ?? HostPlatform.environment;
   final info = kRcloneCommands[verb];
   if (info == null) {
     return 'Unknown command "$verb". The console accepts a curated set of '
@@ -218,7 +226,12 @@ String blockedMessage(String verb, List<String> flags) {
       }
     }
   }
-  final alternative = _inAppAlternative[verb];
+  // In a Flatpak, "use Mount as a drive in the toolbar" sends people to a button
+  // that is hidden without Advanced mode and cannot mount inside the sandbox
+  // even when it is shown. Answer the question they are actually asking.
+  final alternative = verb == 'mount' && runningInFlatpak(env)
+      ? kFlatpakMountConsoleHint
+      : _inAppAlternative[verb];
   final why =
       'Blocked: "$verb" is not permitted in the console '
       '(it leaks secrets, mutates config, or runs a server).';

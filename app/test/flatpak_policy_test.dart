@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:airclone/src/state/build_flavor.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:airclone/src/state/console/rclone_commands.dart';
 
 /// Mounting a remote as a drive is FUSE, and two shipped builds cannot do it:
 /// the Mac App Store build (the App Sandbox forbids it) and the Flatpak (our
@@ -98,5 +99,78 @@ void main() {
           'marking the direct-download manifest recreates the Flatpak update '
           'bug; only a Flathub-submitted manifest may set it',
     );
+  });
+
+  /// A Flatpak cannot mount, and that is not Airclone's to fix. What IS
+  /// Airclone's to fix is a user concluding it is broken. Reported as: "make it
+  /// obvious for the shortcomings of Flatpak so they don't blame Airclone".
+  ///
+  /// Three places a user runs into mounting. Before this, only one explained
+  /// itself, and that one needed Advanced mode to be found.
+  group('a Flatpak user is told, wherever they look', () {
+    const flatpak = {'FLATPAK_ID': 'com.gigaionllc.airclone'};
+
+    /// The console's generic answer to `rclone mount` pointed at the toolbar's
+    /// Mount button - hidden without Advanced mode, and unable to mount inside
+    /// the sandbox even when shown.
+    test('the console does not send them to a button that cannot work', () {
+      final msg = blockedMessage('mount', const [], environment: flatpak);
+      expect(msg, isNot(contains('toolbar')));
+      expect(msg, contains('AppImage'));
+      expect(msg.toLowerCase(), contains('sandbox'));
+    });
+
+    test('outside a Flatpak the console still points at Mount as a drive', () {
+      final msg = blockedMessage('mount', const [], environment: const {});
+      expect(msg, contains('Mount as a drive'));
+      expect(msg, isNot(contains('AppImage')));
+    });
+
+    test('the hint names the limit as the sandbox, not as Airclone', () {
+      expect(kFlatpakMountConsoleHint.toLowerCase(), contains('sandbox'));
+      expect(kFlatpakMountConsoleHint, contains('AppImage'));
+    });
+
+    /// The dialog links out only for the direct-download bundle. A build shipped
+    /// by Flathub must not send users to download a different package: the
+    /// Microsoft Store already rejected an Airclone submission for a GitHub link.
+    test('the releases link is the latest page, not a pinned version', () {
+      expect(kReleasesPageUrl, endsWith('/releases/latest'));
+      expect(kReleasesPageUrl, startsWith('https://'));
+    });
+
+    test('the link is withheld from a marked Flathub build', () {
+      // The dialog gates on kFlathubChannel; this pins the predicate it reads.
+      expect(
+        flathubChannelMarked(flatpak),
+        isFalse,
+        reason: 'bundle: link shown',
+      );
+      expect(
+        flathubChannelMarked({
+          ...flatpak,
+          kInstallChannelEnv: kFlathubChannelValue,
+        }),
+        isTrue,
+        reason: 'Flathub: link withheld',
+      );
+    });
+
+    /// Settings used to drop the Mounts group entirely in a Flatpak. That is the
+    /// worst of the three: somebody who read that Airclone mounts drives looks
+    /// there first and finds nothing. The source is read directly because the
+    /// branch depends on kRunningInFlatpak, a process-wide getter.
+    test('Settings explains the missing Mounts group instead of hiding it', () {
+      final f = File('lib/src/ui/settings_screen.dart');
+      if (!f.existsSync()) return;
+      final src = f.readAsStringSync();
+      expect(src, contains('_FlatpakMountNotice'));
+      expect(
+        src,
+        contains('else if (desktop && kRunningInFlatpak)'),
+        reason:
+            'the Flatpak branch must sit beside the Mounts group, not vanish',
+      );
+    });
   });
 }

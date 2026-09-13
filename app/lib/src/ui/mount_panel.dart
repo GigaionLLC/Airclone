@@ -12,6 +12,8 @@ import 'dialog_body.dart';
 import 'disclosure.dart';
 import 'mount_options_editor.dart';
 import 'theme/tokens.dart';
+import '../state/build_flavor.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 /// Opens the Mount manager (mount remotes as drives + list/unmount running ones).
 Future<void> showMountDialog(BuildContext context) =>
@@ -64,10 +66,11 @@ Future<void> showMountUnavailableInFlatpakDialog(BuildContext context) {
           'Airclone — not to your file manager, your editor, or anything else — '
           'which is the whole point of mounting one. No permission setting '
           'changes that.\n\n'
-          'To mount a remote as a drive, use the AppImage or the tar.gz from the '
-          'releases page instead. Everything else Airclone does works here, and '
-          'browsing a remote in Airclone needs no mount at all — it is usually '
-          'faster than one.',
+          'This is a limit of Flatpak itself, not something Airclone can fix '
+          'from inside it.\n\n'
+          'To mount a remote as a drive, use the AppImage or the tar.gz instead. '
+          'Everything else Airclone does works here, and browsing a remote in '
+          'Airclone needs no mount at all — it is usually faster than one.',
           style: TextStyle(color: c.textMuted, fontSize: 13, height: 1.45),
         ),
       ),
@@ -78,6 +81,19 @@ Future<void> showMountUnavailableInFlatpakDialog(BuildContext context) {
         Space.x4,
       ),
       actions: [
+        // The direct-download bundle gets a link to the package that CAN
+        // mount. A build shipped BY Flathub does not: sending its users off to
+        // download a different package from outside the store is the kind of
+        // link a store rejects, and the Microsoft Store already failed an
+        // Airclone submission on policy 10.2.5 for linking to GitHub releases.
+        if (!kFlathubChannel)
+          TextButton(
+            onPressed: () => launchUrl(
+              Uri.parse(kReleasesPageUrl),
+              mode: LaunchMode.externalApplication,
+            ),
+            child: const Text('Get the AppImage'),
+          ),
         FilledButton(
           onPressed: () => Navigator.of(ctx).pop(),
           child: const Text('Got it'),

@@ -51,6 +51,7 @@ import 'scan_from_desktop_sheet.dart';
 import 'tasks_panel.dart';
 import 'theme/tokens.dart';
 import 'webui_section.dart';
+import 'mount_panel.dart';
 
 /// Opens the app settings dialog (theme, engine path override, update check).
 Future<void> showSettingsDialog(BuildContext context) =>
@@ -193,6 +194,18 @@ class SettingsContent extends ConsumerWidget {
           const SizedBox(height: Space.x5),
           const _GroupHeader('Mounts'),
           const _MountDefaultsSection(),
+        ] else if (desktop && kRunningInFlatpak) ...[
+          // A Flatpak cannot mount, and the group used to simply vanish. That is
+          // the one outcome worse than a dead control: somebody who reads that
+          // Airclone mounts drives, opens Settings to find where, and finds
+          // nothing, reasonably concludes Airclone is broken. The limit is the
+          // PACKAGE's, and this says so where they are already looking.
+          //
+          // Not gated on Advanced mode, unlike the Mount button, because this
+          // group never was: an AppImage user sees Mounts here in either mode.
+          const SizedBox(height: Space.x5),
+          const _GroupHeader('Mounts'),
+          const _FlatpakMountNotice(),
         ],
         const SizedBox(height: Space.x5),
         const _GroupHeader('Storage & updates'),
@@ -2674,4 +2687,39 @@ class _UpdateResult extends ConsumerWidget {
           ],
         ),
       );
+}
+
+/// Settings → Mounts in a Flatpak: why the group has no controls.
+///
+/// Deliberately the same message as the toolbar's dialog, reached from the one
+/// place a user looks without needing Advanced mode to find the button first.
+class _FlatpakMountNotice extends StatelessWidget {
+  const _FlatpakMountNotice();
+
+  @override
+  Widget build(BuildContext context) {
+    final c = AircloneTheme.of(context);
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(top: 2),
+          child: Icon(Icons.usb_off_outlined, size: 16, color: c.textMuted),
+        ),
+        const SizedBox(width: Space.x2),
+        Expanded(
+          child: Text(
+            'The Flatpak build cannot mount a remote as a drive. Flatpak runs '
+            'apps in a sandbox, so a mounted drive would only be visible to '
+            'Airclone. Use the AppImage or tar.gz to mount.',
+            style: TextStyle(color: c.textMuted, fontSize: 13, height: 1.4),
+          ),
+        ),
+        TextButton(
+          onPressed: () => showMountUnavailableInFlatpakDialog(context),
+          child: const Text('Why?'),
+        ),
+      ],
+    );
+  }
 }
