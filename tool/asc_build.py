@@ -32,7 +32,24 @@ Options:
                           not exist yet
   --copyright             set the copyright from the listing document
   --manual-release        set the release type to MANUAL, so an approved version
-                          waits for a human instead of publishing itself
+                          waits for a human instead of publishing itself.
+                          Shorthand for --release-type MANUAL.
+  --release-type T        MANUAL (default) | AFTER_APPROVAL | SCHEDULED.
+                          AFTER_APPROVAL publishes the instant review passes, so
+                          nobody sees the build between approval and the public
+                          seeing it. Choose it deliberately, never by default.
+                          SCHEDULED also needs --release-date.
+  --release-date ISO      earliestReleaseDate for SCHEDULED, e.g.
+                          2026-09-20T17:00:00Z. A floor, not a promise: it never
+                          publishes before approval.
+  --phased-release on|off Apple's 7-day staged rollout to users with automatic
+                          updates on, the counterpart of a Play staged rollout.
+                          Does NOT slow down anyone who taps Update themselves.
+                          Pairs well with AFTER_APPROVAL: ships itself, but
+                          gradually, and can be halted.
+  --phased-state S        ACTIVE | PAUSED | COMPLETE, to steer a rollout that is
+                          already running. PAUSED holds it (up to 30 days);
+                          COMPLETE releases it to everyone at once.
   --audit                 report EVERYTHING Apple needs before submission and
                           write nothing. The point is to find a missing field
                           from one command rather than from a rejection.
@@ -150,6 +167,51 @@ PLATFORM = opt("--platform", "MAC_OS")
 WANT_VERSION = opt("--version")
 WANT_BUILD = opt("--build")
 SET_VERSION = opt("--set-version")
+
+# Which of Apple's three release types to set, and to audit against.
+#
+# MANUAL stays the default, and is still what the audit demands unless told
+# otherwise. That is not a style preference: AFTER_APPROVAL makes approval and
+# publication the SAME event, and this project has already caught a version set
+# that way without anyone choosing it - which is why the audit checks this field
+# at all. What changes here is only that the choice becomes EXPRESSIBLE, so
+# "publish itself" can be an instruction rather than an accident.
+#
+#   MANUAL          an approved version waits for a human to press release
+#   AFTER_APPROVAL  Apple publishes it the moment review passes
+#   SCHEDULED       publishes at --release-date, and never before approval
+RELEASE_TYPES = ("MANUAL", "AFTER_APPROVAL", "SCHEDULED")
+RELEASE_TYPE = opt("--release-type") or ("MANUAL" if MANUAL_RELEASE else None)
+RELEASE_DATE = opt("--release-date")
+
+# Phased release: Apple's equivalent of a Play staged rollout. Over seven days,
+# to users with automatic updates on, pausable for up to 30 days. It is a
+# SEPARATE resource hanging off the version, not an attribute of it, which is
+# why it needs its own flags rather than another release type.
+#
+# It does not gate manual updates: anyone who goes to the App Store and taps
+# Update gets it immediately regardless. It shapes the automatic wave only.
+PHASED = opt("--phased-release")
+PHASED_STATE = opt("--phased-state")
+PHASED_STATES = ("ACTIVE", "PAUSED", "COMPLETE")
+
+if RELEASE_TYPE is not None and RELEASE_TYPE not in RELEASE_TYPES:
+    sys.exit("--release-type must be one of %s" % ", ".join(RELEASE_TYPES))
+if RELEASE_TYPE == "SCHEDULED" and not RELEASE_DATE:
+    sys.exit("--release-type SCHEDULED needs --release-date "
+             "(ISO 8601 UTC, e.g. 2026-09-20T17:00:00Z)")
+if RELEASE_DATE and RELEASE_TYPE != "SCHEDULED":
+    sys.exit("--release-date only applies to --release-type SCHEDULED")
+if PHASED is not None and PHASED not in ("on", "off"):
+    sys.exit("--phased-release must be on or off")
+if PHASED_STATE is not None and PHASED_STATE not in PHASED_STATES:
+    sys.exit("--phased-state must be one of %s" % ", ".join(PHASED_STATES))
+
+# What the audit insists on. Auditing against a hardcoded MANUAL would fail a
+# version that is correctly configured for AFTER_APPROVAL, so the audit checks
+# the version matches the INTENT. Drifting into AFTER_APPROVAL still fails,
+# because then the intent is MANUAL and they do not match.
+AUDIT_RELEASE_TYPE = RELEASE_TYPE or "MANUAL"
 DOC = ("docs/store/apple/listing-ios-en-US.md" if PLATFORM == "IOS"
        else "docs/store/apple/listing-en-US.md")
 
@@ -338,6 +400,76 @@ def pick_build():
     return usable[0]
 
 
+def phased_for(vid):
+    """The version's phased release record, or None when it has none."""
+    r = call("GET", "/v1/appStoreVersions/%s/appStoreVersionPhasedRelease" % vid)
+    return (r or {}).get("data")
+
+
+def apply_phased(vid):
+    """Create, remove or re-state the phased release on this version.
+
+    Separate from the release TYPE on purpose. The two answer different
+    questions - "who decides when it goes out" and "how fast it reaches people
+    once it does" - and the useful CI combination is both at once:
+    AFTER_APPROVAL so nobody has to press anything, phased so it still arrives
+    gradually and can be halted.
+    """
+    existing = phased_for(vid)
+
+    if PHASED == "off":
+        if not existing:
+            print("  phased release: already off")
+            return
+        if not APPLY:
+            print("  phased release: ON -> off (dry run)")
+            return
+        call("DELETE", "/v1/appStoreVersionPhasedReleases/%s" % existing["id"])
+        print("  phased release: removed")
+        return
+
+    if PHASED == "on" and not existing:
+        if not APPLY:
+            print("  phased release: off -> ON (dry run)")
+            return
+        r = call("POST", "/v1/appStoreVersionPhasedReleases", {
+            "data": {
+                "type": "appStoreVersionPhasedReleases",
+                # INACTIVE is the correct CREATION state: the seven days start
+                # when the version goes live, not when the record is made.
+                # Creating it ACTIVE is rejected for an unreleased version.
+                "attributes": {"phasedReleaseState": "INACTIVE"},
+                "relationships": {"appStoreVersion": {
+                    "data": {"type": "appStoreVersions", "id": vid}}},
+            }
+        })
+        if r is None:
+            print("::error::could not enable phased release")
+            sys.exit(1)
+        existing = r.get("data")
+        print("  phased release: enabled (starts when the version goes live)")
+
+    if PHASED_STATE:
+        if not existing:
+            sys.exit("--phased-state needs a phased release; "
+                     "pass --phased-release on first")
+        now = (existing.get("attributes") or {}).get("phasedReleaseState")
+        if now == PHASED_STATE:
+            print("  phased state:   already %s" % now)
+            return
+        if not APPLY:
+            print("  phased state:   %s -> %s (dry run)" % (now, PHASED_STATE))
+            return
+        r = call("PATCH", "/v1/appStoreVersionPhasedReleases/%s" % existing["id"],
+                 {"data": {"id": existing["id"],
+                           "type": "appStoreVersionPhasedReleases",
+                           "attributes": {"phasedReleaseState": PHASED_STATE}}})
+        if r is None:
+            print("::error::could not set phased state to %s" % PHASED_STATE)
+            sys.exit(1)
+        print("  phased state:   %s -> %s" % (now, PHASED_STATE))
+
+
 def audit(ver):
     """Everything Apple checks at submission, in one place.
 
@@ -370,9 +502,28 @@ def audit(ver):
     # publication the same event.
     row("copyright", bool(va.get("copyright")), va.get("copyright") or "EMPTY")
     rel = va.get("releaseType") or "?"
-    row("release type", rel == "MANUAL",
-        rel + (" - approval and publication are the SAME event"
-               if rel != "MANUAL" else ""))
+    # Checked against what was ASKED FOR, not against a fixed MANUAL. The
+    # warning text still fires for AFTER_APPROVAL even when it IS the intent,
+    # because somebody reading this output should never have to remember which
+    # flag produced it.
+    note = ""
+    if rel == "AFTER_APPROVAL":
+        note = " - approval and publication are the SAME event"
+    elif rel == "SCHEDULED":
+        note = " - publishes at %s, once approved" % (
+            va.get("earliestReleaseDate") or "AN UNSET DATE")
+    elif rel != AUDIT_RELEASE_TYPE:
+        note = " - expected %s" % AUDIT_RELEASE_TYPE
+    row("release type", rel == AUDIT_RELEASE_TYPE, rel + note)
+
+    # Informational, never a gap: shipping without a phased release is a valid
+    # choice and always has been. It is reported because "did that flag
+    # actually take" is exactly the question this audit exists to answer.
+    ph = phased_for(vid)
+    ph_state = ((ph or {}).get("attributes") or {}).get("phasedReleaseState")
+    row("phased release", True,
+        ("%s - reaches automatic updates over 7 days" % ph_state) if ph
+        else "off - everyone gets it at once")
     b = call("GET", "/v1/appStoreVersions/%s/build" % vid)
     row("build attached", bool((b or {}).get("data")),
         (b or {}).get("data", {}).get("id", "none") if (b or {}).get("data") else "none")
@@ -557,7 +708,13 @@ def submit_for_review():
     if not a.get("submittedDate"):
         print("::error::Apple did not record a submittedDate - not submitted.")
         sys.exit(1)
-    print("SUBMITTED. Releasing is still manual (releaseType MANUAL).")
+    if AUDIT_RELEASE_TYPE == "MANUAL":
+        print("SUBMITTED. Releasing is still manual (releaseType MANUAL).")
+    elif AUDIT_RELEASE_TYPE == "SCHEDULED":
+        print("SUBMITTED. It publishes ITSELF at %s, once approved."
+              % RELEASE_DATE)
+    else:
+        print("SUBMITTED. It publishes ITSELF the moment review passes.")
 
 
 def release_approved():
@@ -836,7 +993,8 @@ def create_version(version_string):
         print("  --set-version %s" % version_string)
         sys.exit(1)
 
-    print("%s: would create version %s, releaseType MANUAL" % (PLATFORM, version_string))
+    print("%s: would create version %s, releaseType %s"
+          % (PLATFORM, version_string, AUDIT_RELEASE_TYPE))
     if not APPLY:
         print()
         print("dry run - nothing sent. Pass --apply to write.")
@@ -847,7 +1005,7 @@ def create_version(version_string):
             "attributes": {
                 "platform": PLATFORM,
                 "versionString": version_string,
-                "releaseType": "MANUAL",
+                "releaseType": AUDIT_RELEASE_TYPE,
             },
             "relationships": {
                 "app": {"data": {"type": "apps", "id": APP}},
@@ -928,9 +1086,14 @@ def main():
         doc = io.open(DOC, encoding="utf-8").read()
         attrs["copyright"] = fenced(doc, "## Copyright")
         print("  copyright:      %s" % attrs["copyright"])
-    if MANUAL_RELEASE and va.get("releaseType") != "MANUAL":
-        attrs["releaseType"] = "MANUAL"
-        print("  release type:   %s -> MANUAL" % va.get("releaseType"))
+    if RELEASE_TYPE and va.get("releaseType") != RELEASE_TYPE:
+        attrs["releaseType"] = RELEASE_TYPE
+        print("  release type:   %s -> %s"
+              % (va.get("releaseType"), RELEASE_TYPE))
+    if RELEASE_TYPE == "SCHEDULED" and va.get("earliestReleaseDate") != RELEASE_DATE:
+        attrs["earliestReleaseDate"] = RELEASE_DATE
+        print("  release date:   %s -> %s"
+              % (va.get("earliestReleaseDate"), RELEASE_DATE))
 
     if not APPLY:
         print()

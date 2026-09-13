@@ -36,10 +36,35 @@ on:
         default: false
         type: boolean
       manual_release:
-        description: 'Set release type to MANUAL (approved version waits for a human)'
+        description: 'Set release type to MANUAL (approved version waits for a human). Ignored when release_type is set.'
         required: true
         default: false
         type: boolean
+      release_type:
+        description: 'MANUAL = a human presses release | AFTER_APPROVAL = publishes itself the instant review passes | SCHEDULED = publishes at release_date, never before approval'
+        required: false
+        default: ''
+        type: choice
+        options: ['', 'MANUAL', 'AFTER_APPROVAL', 'SCHEDULED']
+      release_date:
+        description: 'SCHEDULED only: ISO 8601 UTC, e.g. 2026-09-20T17:00:00Z'
+        required: false
+        type: string
+      phased_release:
+        description: >-
+          Apple 7-day staged rollout to users with automatic updates on (the
+          counterpart of a Play staged rollout). Does not slow anyone who taps
+          Update themselves.
+        required: false
+        default: ''
+        type: choice
+        options: ['', 'on', 'off']
+      phased_state:
+        description: 'Steer a rollout already running: ACTIVE resumes, PAUSED holds it, COMPLETE gives it to everyone at once'
+        required: false
+        default: ''
+        type: choice
+        options: ['', 'ACTIVE', 'PAUSED', 'COMPLETE']
       notes:
         description: 'Also set the App Review notes from the listing doc'
         required: true
@@ -109,6 +134,10 @@ jobs:
           VERSION: ${{ inputs.version }}
           BUILD: ${{ inputs.build }}
           SET_VERSION: ${{ inputs.set_version }}
+          RELEASE_TYPE: ${{ inputs.release_type }}
+          RELEASE_DATE: ${{ inputs.release_date }}
+          PHASED_RELEASE: ${{ inputs.phased_release }}
+          PHASED_STATE: ${{ inputs.phased_state }}
         run: |
           set -euo pipefail
           umask 077
@@ -158,7 +187,19 @@ jobs:
             ARGS="$ARGS --apply"; set -- "$@" --create-version "$VERSION"
           fi
           if [ "${{ inputs.copyright }}" = "true" ]; then ARGS="$ARGS --copyright"; fi
-          if [ "${{ inputs.manual_release }}" = "true" ]; then ARGS="$ARGS --manual-release"; fi
+          # release_type WINS over manual_release when both are given: it is
+          # the explicit control and the boolean is the legacy shorthand.
+          if [ -n "$RELEASE_TYPE" ]; then
+            set -- "$@" --release-type "$RELEASE_TYPE"
+          elif [ "${{ inputs.manual_release }}" = "true" ]; then
+            ARGS="$ARGS --manual-release"
+          fi
+          # RELEASE_DATE is a free-form string from a dispatch input, so it is
+          # passed as an argument from env rather than interpolated into the
+          # script - same rule the tag inputs follow (see check-workflows.py).
+          if [ -n "$RELEASE_DATE" ]; then set -- "$@" --release-date "$RELEASE_DATE"; fi
+          if [ -n "$PHASED_RELEASE" ]; then set -- "$@" --phased-release "$PHASED_RELEASE"; fi
+          if [ -n "$PHASED_STATE" ]; then set -- "$@" --phased-state "$PHASED_STATE"; fi
           if [ "${{ inputs.notes }}" = "true" ]; then ARGS="$ARGS --notes"; fi
           if [ "${{ inputs.attach }}" = "false" ]; then ARGS="$ARGS --no-attach"; fi
           if [ -n "$VERSION" ] && [ "${{ inputs.mode }}" != "create" ]; then

@@ -34,6 +34,15 @@ on:
         description: 'submit only: type the version string exactly (e.g. 0.7.5)'
         required: false
         type: string
+      release_type:
+        description: >-
+          What the audit should EXPECT this version to be set to. Leave blank
+          for MANUAL. Set it to match whatever asc-version.yml configured, or
+          the audit fails a version that is correctly set to publish itself.
+        required: false
+        default: ''
+        type: choice
+        options: ['', 'MANUAL', 'AFTER_APPROVAL', 'SCHEDULED']
       refresh_listing:
         description: 'Re-push the listing text from the repo docs before auditing'
         required: true
@@ -139,16 +148,26 @@ jobs:
           ISSUER: ${{ secrets.APPSTORE_ISSUER_ID }}
           APPLE_REVIEW_CONTACT: ${{ secrets.APPLE_REVIEW_CONTACT }}
           CONFIRM: ${{ inputs.confirm_version }}
+          RELEASE_TYPE: ${{ inputs.release_type }}
         run: |
           set -euo pipefail
           umask 077
           printf '%s' "$P8" > key.p8
+          # The audit refuses on any gap, and "release type is not what was
+          # asked for" is one. Without this, submitting a version that
+          # asc-version.yml deliberately set to AFTER_APPROVAL would be blocked
+          # by an audit still expecting MANUAL.
+          if [ -n "$RELEASE_TYPE" ]; then
+            set -- --release-type "$RELEASE_TYPE"
+          else
+            set --
+          fi
           if [ "${{ inputs.mode }}" = "submit" ]; then
             # --version pins it to the string the operator typed, so a submit
             # cannot land on a different version than the one they confirmed.
-            set -- --submit-for-review --apply --version "$CONFIRM"
+            set -- "$@" --submit-for-review --apply --version "$CONFIRM"
           else
-            set -- --submit-for-review
+            set -- "$@" --submit-for-review
           fi
           python tool/asc_build.py key.p8 "$KEY_ID" "$ISSUER" 6790176897 \
             --platform ${{ inputs.platform }} "$@"
