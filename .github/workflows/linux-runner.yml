@@ -94,6 +94,33 @@ jobs:
         working-directory: .
         run: bash dev/linux/test-apprun.sh
 
+      # build-appimage.sh refuses to package without the bundled rclone engine,
+      # and rightly: an AppImage without it downloads one on first run. The
+      # release job bundles it in a step this workflow did not have, which is
+      # exactly what failed the first run of this job.
+      #
+      # The version is READ from release.yml rather than repeated here.
+      # rclone-bump.yml rewrites the pin in release.yml, so a second hardcoded
+      # copy would drift silently the first time rclone is bumped. The variable
+      # is `ver`, never RCLONE_VERSION: rclone maps that name to its own
+      # --version flag and dies parsing it (see the release job's note).
+      - name: Bundle rclone, as the release does (verified)
+        run: |
+          set -euo pipefail
+          ver="$(grep -oP 'RCLONE_VERSION: \Kv[0-9.]+' ../.github/workflows/release.yml | head -1)"
+          [ -n "$ver" ] || { echo "::error::could not read the rclone pin from release.yml"; exit 1; }
+          zip="rclone-${ver}-linux-amd64.zip"
+          base="https://downloads.rclone.org/${ver}"
+          curl -fsSL --retry 3 -o "$zip" "$base/$zip"
+          curl -fsSL --retry 3 -o SHA256SUMS.txt "$base/SHA256SUMS"
+          expected="$(awk -v f="$zip" '{ n=$NF; sub(/^[*.\/]+/, "", n); if (n == f) { print $1; exit } }' SHA256SUMS.txt)"
+          [ -n "$expected" ] || { echo "no checksum for $zip in SHA256SUMS"; exit 1; }
+          actual="$(sha256sum "$zip" | awk '{print $1}')"
+          [ "$actual" = "$expected" ] || { echo "rclone checksum mismatch (expected $expected, got $actual)"; exit 1; }
+          unzip -q "$zip" -d rclone-extract
+          install -Dm755 "rclone-extract/rclone-${ver}-linux-amd64/rclone" build/linux/x64/release/bundle/rclone
+          echo "bundled rclone $ver"
+
       # Build the AppImage itself, which is where the fallback checks are FATAL:
       # libGLESv2 must be staged in usr/lib/fallback-gles and nowhere else. Until
       # now those checks ran only inside release.yml, after a tag was public.
