@@ -1,3 +1,4 @@
+import '../rclone/models/rclone_file.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -55,6 +56,11 @@ Future<void> showChecksumDialog(
   required String remote,
   required String name,
   List<String>? hashTypes,
+
+  /// The listing entry, when the caller has it. Carries the host's answer about
+  /// whether this file is online-only, which is the only answer available in a
+  /// browser - see [RcloneFile.onlineOnly].
+  RcloneFile? entry,
 }) => showDialog<void>(
   context: context,
   builder: (_) => _ChecksumDialog(
@@ -64,6 +70,7 @@ Future<void> showChecksumDialog(
     remote: remote,
     name: name,
     hashTypes: hashTypes,
+    entry: entry,
   ),
 );
 
@@ -75,6 +82,7 @@ class _ChecksumDialog extends StatefulWidget {
     required this.remote,
     required this.name,
     this.hashTypes,
+    this.entry,
   });
   final RcloneClient client;
   final Remote remoteInfo;
@@ -82,6 +90,7 @@ class _ChecksumDialog extends StatefulWidget {
   final String remote;
   final String name;
   final List<String>? hashTypes;
+  final RcloneFile? entry;
 
   @override
   State<_ChecksumDialog> createState() => _ChecksumDialogState();
@@ -100,7 +109,11 @@ class _ChecksumDialogState extends State<_ChecksumDialog> {
     // Computing a LOCAL file's checksum reads all of it — which HYDRATES an
     // online-only cloud placeholder (Proton/OneDrive/iCloud), downloading it in
     // full. Gate behind explicit consent instead of fetching on open.
-    if (wouldHydrateOnRead(widget.remoteInfo, widget.remote)) {
+    if (wouldHydrateOnRead(
+      widget.remoteInfo,
+      widget.remote,
+      entry: widget.entry,
+    )) {
       _needsConsent = true;
     } else {
       _load();

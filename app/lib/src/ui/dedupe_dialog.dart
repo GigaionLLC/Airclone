@@ -1,3 +1,4 @@
+import '../rclone/models/rclone_file.dart';
 import 'package:flutter/material.dart';
 
 import '../rclone/models/remote.dart';
@@ -157,7 +158,14 @@ class _DedupeDialogState extends State<_DedupeDialog> {
           allCount++;
           if (s is num && s > 0) allBytes += s.toInt();
           if (localAbsolutePath(widget.remote, within) != null) resolved++;
-          if (wouldHydrateOnRead(widget.remote, within)) {
+          // The map came straight from operations/list, so on web it
+          // already carries the host's answer; rebuilding the entry is how
+          // that reaches the guard instead of being discarded here.
+          if (wouldHydrateOnRead(
+            widget.remote,
+            within,
+            entry: RcloneFile.fromJson(m),
+          )) {
             onlineCount++;
             if (s is num && s > 0) onlineBytes += s.toInt();
           }

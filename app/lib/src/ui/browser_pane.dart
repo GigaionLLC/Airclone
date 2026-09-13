@@ -1208,6 +1208,7 @@ class BrowserPane extends ConsumerWidget {
       fs: state.remote!.fs,
       remote: loc.path,
       name: loc.file.name,
+      entry: loc.file,
       // Local files are hashed by reading them — restrict to the common types
       // so the stat doesn't compute ~13 hashes over the whole file.
       hashTypes: state.remote!.isLocal ? localHashTypes : null,

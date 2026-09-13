@@ -58,19 +58,26 @@ Future<void> downloadToBrowser(
   }
 }
 
-/// Picks a file in the browser and writes it to [remote] under [folderPath].
+/// Picks files in the browser and writes them to [remote] under [folderPath].
 ///
 /// Goes through [ObjectUploader], so the UI never learns whether the host
 /// streamed the bytes to rclone or staged them first — that is the engine's
 /// business and it differs between them.
+///
+/// PLURAL. This picked a single file until a user pointed out that the button
+/// exists for people who cannot drag and drop, and handing them one file at a
+/// time is not the same feature. Uploads run one after another rather than at
+/// once: the browser holds each body in memory while it is posted, and a
+/// parallel pick of twenty photos is a tab that dies rather than a faster
+/// upload.
 Future<void> uploadFromBrowser(
   BuildContext context,
   WidgetRef ref,
   Remote remote,
   String folderPath,
 ) async {
-  final picked = await openFile();
-  if (picked == null || !context.mounted) return;
+  final picked = await openFiles();
+  if (picked.isEmpty || !context.mounted) return;
 
   final client = ref.read(engineControllerProvider).client;
   if (client is! ObjectUploader) {
@@ -80,21 +87,50 @@ Future<void> uploadFromBrowser(
     return;
   }
 
-  final name = picked.name;
-  final dest = folderPath.isEmpty ? name : '$folderPath/$name';
   final messenger = ScaffoldMessenger.of(context);
-  messenger.showSnackBar(SnackBar(content: Text('Uploading $name…')));
-  try {
-    final size = await picked.length();
-    await (client as ObjectUploader).putObject(
-      remote.fs,
-      dest,
-      picked.openRead(),
-      length: size,
+  final uploader = client as ObjectUploader;
+  var done = 0;
+  final failed = <String>[];
+  for (final file in picked) {
+    final name = file.name;
+    final dest = folderPath.isEmpty ? name : '$folderPath/$name';
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text(
+          picked.length == 1
+              ? 'Uploading $name…'
+              : 'Uploading $name (${done + 1} of ${picked.length})…',
+        ),
+      ),
     );
-    messenger.showSnackBar(SnackBar(content: Text('Uploaded $name.')));
-  } catch (e) {
-    messenger.showSnackBar(SnackBar(content: Text('Upload failed: $e')));
+    try {
+      await uploader.putObject(
+        remote.fs,
+        dest,
+        file.openRead(),
+        length: await file.length(),
+      );
+      done++;
+    } catch (_) {
+      // One bad file does not abandon the rest of the pick - the standing rule
+      // for anything batched here. What failed is named at the end.
+      failed.add(name);
+    }
+  }
+  if (failed.isEmpty) {
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text(done == 1 ? 'Uploaded 1 file.' : 'Uploaded $done files.'),
+      ),
+    );
+  } else {
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text(
+          'Uploaded $done, failed ${failed.length}: ${failed.join(', ')}',
+        ),
+      ),
+    );
   }
 }
 

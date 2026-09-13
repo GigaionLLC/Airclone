@@ -178,6 +178,7 @@ class _QuickLookState extends ConsumerState<_QuickLook> {
       fs: widget.remote.fs,
       remote: _currentPath,
       name: _files[_i].name,
+      entry: _files[_i],
       hashTypes: widget.remote.isLocal ? localHashTypes : null,
     );
   }
