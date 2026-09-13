@@ -1,3 +1,4 @@
+import '../state/diagnostics.dart';
 import '../state/media_formats.dart';
 import '../rclone/rclone_client.dart';
 import 'dart:async';
@@ -23,6 +24,34 @@ const Duration _startTimeout = Duration(seconds: 45);
 /// local engine and tight for an HLS source on a slow link, so a stream gets
 /// its own, longer budget rather than inheriting one tuned for a different job.
 const Duration _networkStartTimeout = Duration(seconds: 120);
+
+/// Why a LOCAL playlist so often cannot play, in words the error itself will
+/// never say.
+///
+/// A `.m3u8` is not media. It names other files by a path relative to its own
+/// location, so a copy saved on its own has nothing to point at: the player
+/// dutifully asks for a sibling that was never downloaded and reports a failure
+/// naming a URL the user has never seen. Reported by a user who downloaded one
+/// from a site where it played, which is the normal way to arrive here.
+///
+/// Only for a playlist we are serving OURSELVES. A network stream resolves its
+/// children against their own origin, where they actually live, so the same
+/// message there means something else entirely and this hint would be a lie.
+@visibleForTesting
+String? playlistHintFor({required String url, required bool isNetworkStream}) {
+  if (isNetworkStream) return null;
+  final path = Uri.tryParse(url)?.path ?? url;
+  final name = path.split('/').last;
+  final dot = name.lastIndexOf('.');
+  if (dot < 0 || dot == name.length - 1) return null;
+  if (!kPlaylistExts.contains(name.substring(dot + 1).toLowerCase())) {
+    return null;
+  }
+  return 'A playlist file does not contain any media. It points at other files '
+      'next to it, so a copy saved on its own has nothing to play. To play the '
+      'original, use Tools > Open network stream and paste the address you '
+      'downloaded it from.';
+}
 
 /// Embeddable video / audio player powered by media_kit.
 ///
@@ -266,9 +295,24 @@ class _MediaPreviewBodyState extends ConsumerState<MediaPreviewBody> {
   }
 
   /// Records a failure. Call inside setState — it only mutates fields.
+  ///
+  /// The message is REDACTED first. libmpv reports the URL it could not open,
+  /// and for an object served by the local engine that URL carries the engine's
+  /// own password in its userinfo — so the raw text puts a live credential on
+  /// screen, where the first thing anybody does with a playback error is
+  /// screenshot it and send it to us. That is exactly how this was found.
+  /// [redactSensitive] is the same pass the diagnostics ring applies at ingest;
+  /// it also replaces the user's name in a path, which costs nothing here and
+  /// makes any screenshot of this card safe to share.
   void _fail(String message) {
     _watchdog?.cancel();
-    _error = message.trim().isEmpty ? 'Playback failed.' : message.trim();
+    final clean = redactSensitive(message).trim();
+    final hint = playlistHintFor(
+      url: widget.url,
+      isNetworkStream: widget.isNetworkStream,
+    );
+    final body = clean.isEmpty ? 'Playback failed.' : clean;
+    _error = hint == null ? body : [body, hint].join('\n\n');
     _loading = false;
   }
 
