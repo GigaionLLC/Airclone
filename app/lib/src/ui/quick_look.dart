@@ -139,6 +139,65 @@ class _QuickLookState extends ConsumerState<_QuickLook> {
   /// avoid.
   late final List<RcloneFile> _files = [...widget.files];
 
+  /// Renames the file on screen, then keeps showing it under its new name.
+  ///
+  /// The rename dialog is given the CURRENT sibling names so it can refuse a
+  /// collision before the engine does — the same set the file list passes, minus
+  /// this file itself.
+  ///
+  /// The entry is replaced in place rather than the overlay closing: a rename is
+  /// not a reason to lose your place in a folder you are working through.
+  Future<void> _renameCurrent() async {
+    final file = _files[_i];
+    final name = await showRenameDialog(
+      context,
+      file.name,
+      taken: {
+        for (final f in _files)
+          if (f.name != file.name) f.name,
+      },
+    );
+    if (name == null || name == file.name || !mounted) return;
+    final path = widget.parentPath.isEmpty
+        ? file.name
+        : '${widget.parentPath}/${file.name}';
+    try {
+      await ref.read(fileOpsProvider).rename(widget.remote, path, name);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Could not rename ${file.name}.')));
+      return;
+    }
+    if (!mounted) return;
+    widget.onChanged?.call();
+    setState(() {
+      _files[_i] = RcloneFile(
+        name: name,
+        path: widget.parentPath.isEmpty ? name : '${widget.parentPath}/$name',
+        isDir: file.isDir,
+        size: file.size,
+        mimeType: file.mimeType,
+        modTime: file.modTime,
+      );
+    });
+  }
+
+  /// Copies the file's full `remote:path` to the clipboard — the string you
+  /// paste into the console, a script, or a message to somebody else.
+  Future<void> _copyPath() async {
+    final file = _files[_i];
+    final within = widget.parentPath.isEmpty
+        ? file.name
+        : '${widget.parentPath}/${file.name}';
+    await Clipboard.setData(ClipboardData(text: '${widget.remote.fs}$within'));
+    if (!mounted) return;
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('Path copied.')));
+  }
+
   /// Deletes the file on screen, after asking.
   ///
   /// Destructive, so it goes through the same [showDeleteConfirm] the browser
@@ -305,6 +364,25 @@ class _QuickLookState extends ConsumerState<_QuickLook> {
                 _openExternally(ExternalOpenMode.share);
               },
             ),
+            ListTile(
+              leading: Icon(
+                Icons.drive_file_rename_outline,
+                color: c.textMuted,
+              ),
+              title: const Text('Rename'),
+              onTap: () {
+                Navigator.pop(sheetCtx);
+                _renameCurrent();
+              },
+            ),
+            ListTile(
+              leading: Icon(Icons.content_copy_outlined, color: c.textMuted),
+              title: const Text('Copy path'),
+              onTap: () {
+                Navigator.pop(sheetCtx);
+                _copyPath();
+              },
+            ),
             // Delete is here as well as the top bar: on a phone the top bar is
             // a thumb-stretch away, and this is the menu people already open
             // for the other file actions. Placed LAST and behind a divider so
@@ -454,6 +532,14 @@ class _QuickLookState extends ConsumerState<_QuickLook> {
                     tooltip: 'Pop out to a new window',
                     onPressed: _popOut,
                   ),
+                IconButton(
+                  icon: const Icon(
+                    Icons.drive_file_rename_outline,
+                    color: Colors.white,
+                  ),
+                  tooltip: 'Rename',
+                  onPressed: _renameCurrent,
+                ),
                 // Issue #4: delete without leaving the preview. Placed BEFORE
                 // Close and separated from it, because the two sit next to
                 // each other and only one of them is undoable.

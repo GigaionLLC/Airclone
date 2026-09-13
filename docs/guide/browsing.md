@@ -273,6 +273,10 @@ stray multi-megabyte log cannot lock up the window.
 Both preview surfaces have a **delete** button, and Quick Look also offers it in the `⋯` sheet on a
 phone. It asks first, with the same confirmation the file list uses.
 
+**Rename** and **Copy path** are there too — in Quick Look's toolbar and its sheet. A rename keeps
+the file on screen under its new name, because a rename is not a reason to lose your place in a
+folder you are working through.
+
 In Quick Look the overlay **stays open and moves to the next file**, which is the point: culling a
 folder of photos is one confirmation per file instead of preview, close, find, delete, reopen. It
 closes when the last file is gone. The folder behind it re-lists straight away, so what you see is
