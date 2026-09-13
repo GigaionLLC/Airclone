@@ -13,6 +13,40 @@ happened": nothing was logged between 2026-07-02 and 2026-07-15, or between 2026
      it is: it used to say ABOVE, which pushed it further down the file with every entry until
      it sat hundreds of lines under the newest one and pointed writers at the wrong place. -->
 
+## [2026-09-12] - v0.13.2: two user-found bugs, and v0.13.2 to all three stores
+
+**Agent:** Claude Opus 5 - `main`
+**Files Modified:** `rclone/models/remote.dart`, `ui/media_preview.dart`,
+`ui/quick_look.dart`, `docs/guide/browsing.md`, `docs/guide/troubleshooting.md`,
+`dev/releases/v0.13.1.md` + `v0.13.2.md`, `dev/plans/advanced-file-manager-research.md`,
+`dev/backlog/backlog-index.md`, plus four new test files.
+**Database/API Changes:** tags `v0.13.1`, `v0.13.2`. Issue #4 answered and closed. Apple: v0.12.0
+submissions **withdrawn** on both platforms, v0.13.2 (build 137) attached and submitted, both
+`WAITING_FOR_REVIEW`. Play: **v0.13.2 live in open testing** (code 137, verified against the track
+listing); production still 0.8.0. Microsoft: submission `1152921505701879359` **staged**, the
+v0.12.0 draft cleared, waiting on a human to press *Submit for certification*.
+
+**Two bugs a user found in v0.13.1 within minutes of each other, both worse than they read**
+
+1. **rclone SKIPS a reparse point** when listing its parent - no error, no warning, no entry. On
+   Windows that meant `OneDrive`, `iCloudDrive`, and because of Known Folder Move **`Desktop` and
+   `Music`**, were invisible. 83 entries vs 97 with `-L` on the reporter's home directory. The fix
+   is `copy_links` on the LISTING call only, via `listFsFor()`; see
+   [[airclone-reparse-points-hidden]] for the drive-letter trap and why not globally.
+2. **The player error card printed the engine's live RC password**, because libmpv echoes the URL it
+   failed to open and that URL carries the credential by design. Diagnostics redaction had been
+   correct the whole time; the UI had never been wired to it.
+
+**The lesson worth carrying**, and the reason both are logged rather than just fixed: redaction at
+ingest does not protect a second rendering path, and `rclone lsjson` proving a behaviour is not the
+same as proving the RC accepts it over HTTP. The listing fix was re-verified by spawning a real
+`rcd` and POSTing `operations/list` to it.
+
+**Also in this run:** issue #4 finished (preview operations reachable on every platform, not just a
+phone - they were absent entirely on iOS and in the Web UI), and
+`dev/plans/advanced-file-manager-research.md` written as RESEARCH ONLY.
+
+
 ## [2026-09-12] - v0.8.3 through v0.13.1: a browser, a security audit, and the disk you do not have
 
 **Agent:** Claude Opus 5 - `main`
