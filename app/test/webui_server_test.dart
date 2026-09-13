@@ -656,4 +656,77 @@ void main() {
       await res.drain<void>();
     });
   });
+
+  /// The two parameter-level escapes, as real requests over the real socket.
+  ///
+  /// The unit tests prove the guard's logic. These prove the guard is actually
+  /// in the request path - that a direct POST, which never runs the browser's
+  /// ServeController, is refused BEFORE the engine is touched. That second part
+  /// is what engine.calls checks: a refusal that still forwarded the call would
+  /// pass a status-code assertion and change nothing.
+  group('parameter guards on the RC proxy', () {
+    Future<(int, List<String>)> rc(
+      String method,
+      Map<String, dynamic> params,
+    ) async {
+      final cookie = await signIn();
+      engine.calls.clear();
+      final res = await send(
+        'POST',
+        kRcPath,
+        cookie: cookie,
+        json: {'method': method, 'params': params},
+      );
+      await res.drain<void>();
+      return (res.statusCode, List<String>.of(engine.calls));
+    }
+
+    test('the reported serve/start payload never reaches the engine', () async {
+      final (status, calls) = await rc('serve/start', {
+        'type': 'webdav',
+        'fs': '/',
+        'addr': ':8080',
+      });
+      expect(status, HttpStatus.forbidden);
+      expect(calls, isNot(contains('serve/start')));
+    });
+
+    test('a loopback serve the app itself would send is forwarded', () async {
+      final (status, calls) = await rc('serve/start', {
+        'type': 'webdav',
+        'fs': 'gdrive:Photos',
+        'addr': '127.0.0.1:8080',
+      });
+      expect(status, isNot(HttpStatus.forbidden));
+      expect(calls, contains('serve/start'));
+    });
+
+    test('copyurl at cloud metadata never reaches the engine', () async {
+      final (status, calls) = await rc('operations/copyurl', {
+        'fs': 'gdrive:',
+        'remote': 'loot.json',
+        'url': 'http://169.254.169.254/latest/meta-data/iam/',
+      });
+      expect(status, HttpStatus.forbidden);
+      expect(calls, isNot(contains('operations/copyurl')));
+    });
+
+    test('copyurl at the host itself never reaches the engine', () async {
+      final (status, calls) = await rc('operations/copyurl', {
+        'fs': 'gdrive:',
+        'remote': 'x',
+        'url': 'http://127.0.0.1:5572/',
+      });
+      expect(status, HttpStatus.forbidden);
+      expect(calls, isNot(contains('operations/copyurl')));
+    });
+
+    /// Everything else is untouched: the guard must not become a second,
+    /// accidental allowlist.
+    test('an unrelated method is not inspected', () async {
+      final (status, calls) = await rc('core/version', const {});
+      expect(status, isNot(HttpStatus.forbidden));
+      expect(calls, contains('core/version'));
+    });
+  });
 }

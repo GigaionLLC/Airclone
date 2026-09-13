@@ -33,6 +33,7 @@ import 'webui_assets.dart';
 import 'webui_credentials.dart';
 import 'webui_login_page.dart';
 import 'webui_options.dart';
+import 'webui_param_guards.dart';
 import 'webui_protocol.dart';
 import 'webui_rc_policy.dart';
 import 'webui_sessions.dart';
@@ -457,13 +458,35 @@ class WebUiServer {
       });
     }
 
+    // PARAMETER checks for the two allowed methods whose arguments can do what
+    // the method name does not suggest. rcPolicyFor never sees params, and the
+    // client-side rules for both run in the browser, where a direct POST to
+    // this endpoint never executes them. See webui_param_guards.dart.
+    final paramViolation = switch (method) {
+      'serve/start' => serveStartViolation(params),
+      'operations/copyurl' => await copyUrlViolation(params),
+      _ => null,
+    };
+    if (paramViolation != null) {
+      log(
+        WebUiLogLevel.warning,
+        'Web UI refused $method from ${_peerKey(request)}: $paramViolation',
+      );
+      return _json(request, HttpStatus.forbidden, {
+        'error': paramViolation,
+        'method': method,
+      });
+    }
+
     // Allowed, but a genuine escalation in capability — it republishes the
     // host's files on a port of its own. Worth a line even on the happy path.
+    // The password is stripped first: this used to log params verbatim, and
+    // the headless --webui host logs to stdout, where nothing redacts it.
     if (method == 'serve/start') {
       log(
         WebUiLogLevel.warning,
         'Web UI started an rclone serve endpoint on this host.',
-        detail: params,
+        detail: redactServeParams(params),
       );
     }
 
