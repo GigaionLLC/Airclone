@@ -10,6 +10,7 @@ library;
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:airclone/src/rclone/models/rclone_file.dart';
 import 'package:airclone/src/rclone/rclone_client.dart';
 import 'package:airclone/src/webui/webui_credentials.dart';
 import 'package:airclone/src/webui/webui_options.dart';
@@ -23,6 +24,10 @@ class _FakeClient implements RcloneClient {
   final List<String> calls = [];
   Object? nextError;
 
+  /// Answer to return instead of the echo, for a test that needs a real
+  /// `operations/list` shape to be annotated.
+  Map<String, dynamic>? nextResult;
+
   @override
   Future<Map<String, dynamic>> rpc(
     String method, [
@@ -33,6 +38,11 @@ class _FakeClient implements RcloneClient {
     if (err != null) {
       nextError = null;
       throw err;
+    }
+    final canned = nextResult;
+    if (canned != null) {
+      nextResult = null;
+      return canned;
     }
     return {'method': method, 'params': params};
   }
@@ -518,5 +528,132 @@ void main() {
         await res.drain<void>();
       },
     );
+  });
+
+  /// A user's Web UI downloaded several hundred Proton Drive files on one page
+  /// load, and drew no cloud badges. Both are the same fault: the browser was
+  /// answering a question only the host can answer, because the web build's
+  /// native probes truthfully report "there is no filesystem here".
+  ///
+  /// The unit tests for [annotatePlaceholders] prove the logic. These prove the
+  /// WIRING - that the annotation survives the RC proxy, real HTTP and JSON, and
+  /// arrives in a shape [RcloneFile.fromJson] reads - which is the part that was
+  /// actually broken and the part a unit test cannot see.
+  group('placeholder annotation over real HTTP', () {
+    late Directory files;
+    setUp(() {
+      files = Directory.systemTemp.createTempSync('acl_ph');
+      File('${files.path}/a.png').writeAsBytesSync([1, 2, 3]);
+      File('${files.path}/b.png').writeAsBytesSync([4, 5, 6]);
+    });
+    tearDown(() {
+      if (files.existsSync()) files.deleteSync(recursive: true);
+    });
+
+    Future<List<dynamic>> listOver(String fs, String remote) async {
+      final cookie = await signIn();
+      engine.nextResult = {
+        'list': [
+          {'Path': 'a.png', 'Name': 'a.png', 'IsDir': false, 'Size': 3},
+          {'Path': 'b.png', 'Name': 'b.png', 'IsDir': false, 'Size': 3},
+        ],
+      };
+      final res = await send(
+        'POST',
+        kRcPath,
+        cookie: cookie,
+        json: {
+          'method': 'operations/list',
+          'params': {'fs': fs, 'remote': remote},
+        },
+      );
+      expect(res.statusCode, 200);
+      final body = jsonDecode(await res.transform(utf8.decoder).join());
+      return (body as Map)['list'] as List;
+    }
+
+    test('a local root comes back with every entry answered', () async {
+      final list = await listOver(files.path, '');
+      expect(list, hasLength(2));
+      for (final e in list) {
+        expect((e as Map).containsKey(kOnlineOnlyField), isTrue);
+      }
+    });
+
+    test('and the client model reads it', () async {
+      final list = await listOver(files.path, '');
+      final parsed = [
+        for (final e in list)
+          RcloneFile.fromJson((e as Map).cast<String, dynamic>()),
+      ];
+      // These are ordinary files on a temp disk, so the host's answer is a
+      // definite "resident" - NOT null, which is what an unanswered entry
+      // would give and what the browser used to see for everything.
+      expect(parsed.map((f) => f.onlineOnly), everyElement(isFalse));
+    });
+
+    test('a named remote is left unanswered, not answered "no"', () async {
+      final list = await listOver('gdrive:', 'Photos');
+      for (final e in list) {
+        expect((e as Map).containsKey(kOnlineOnlyField), isFalse);
+      }
+      final parsed = RcloneFile.fromJson(
+        (list.first as Map).cast<String, dynamic>(),
+      );
+      expect(parsed.onlineOnly, isNull);
+    });
+  });
+
+  /// The object endpoint's guard was widened from `download=1` to EVERY content
+  /// read, which is what stops a thumbnail hydrating a file. Widening a refusal
+  /// is exactly the change that can start refusing everything, and that would
+  /// break every preview, thumbnail and video in the Web UI at once.
+  group('widening the hydration guard did not break ordinary files', () {
+    late Directory files;
+    setUp(() {
+      files = Directory.systemTemp.createTempSync('acl_obj');
+      File('${files.path}/plain.png').writeAsBytesSync([1, 2, 3]);
+    });
+    tearDown(() {
+      if (files.existsSync()) files.deleteSync(recursive: true);
+    });
+
+    // The fake engine's object URL points at a dead port, so the request cannot
+    // succeed. It does not need to: what is being proven is that the guard let
+    // it THROUGH to the engine, and 409 is the one status that means it did not.
+    test('a resident file is not refused as a placeholder', () async {
+      final cookie = await signIn();
+      final res = await send(
+        'GET',
+        '$kObjectPath?fs=${Uri.encodeQueryComponent(files.path)}'
+            '&remote=plain.png',
+        cookie: cookie,
+      );
+      expect(res.statusCode, isNot(HttpStatus.conflict));
+      await res.drain<void>();
+    });
+
+    test('nor when it is a download rather than a preview', () async {
+      final cookie = await signIn();
+      final res = await send(
+        'GET',
+        '$kObjectPath?fs=${Uri.encodeQueryComponent(files.path)}'
+            '&remote=plain.png&download=1',
+        cookie: cookie,
+      );
+      expect(res.statusCode, isNot(HttpStatus.conflict));
+      await res.drain<void>();
+    });
+
+    test('nor a file on a named remote, which cannot be resolved', () async {
+      final cookie = await signIn();
+      final res = await send(
+        'GET',
+        '$kObjectPath?fs=gdrive:&remote=Photos/holiday.jpg',
+        cookie: cookie,
+      );
+      expect(res.statusCode, isNot(HttpStatus.conflict));
+      await res.drain<void>();
+    });
   });
 }
