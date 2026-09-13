@@ -25,11 +25,11 @@ on:
         type: choice
         options: [IOS, MAC_OS]
       mode:
-        description: 'dry-run = audit and show what would be submitted | submit = send it to Apple'
+        description: 'dry-run = audit and show what would be submitted | submit = send it to Apple | cancel = WITHDRAW an in-flight submission so a newer version can take its place (loses the queue position)'
         required: true
         default: dry-run
         type: choice
-        options: [dry-run, submit]
+        options: [dry-run, submit, cancel]
       confirm_version:
         description: 'submit only: type the version string exactly (e.g. 0.7.5)'
         required: false
@@ -96,7 +96,7 @@ jobs:
       # land on a different version than the one being submitted. In dry-run it
       # reports only, so a dry-run still changes nothing.
       - name: Refresh the listing from the repo
-        if: ${{ inputs.refresh_listing }}
+        if: ${{ inputs.refresh_listing && inputs.mode != 'cancel' }}
         env:
           P8: ${{ secrets.APPSTORE_API_PRIVATE_KEY }}
           KEY_ID: ${{ vars.APPSTORE_API_KEY_ID }}
@@ -119,7 +119,20 @@ jobs:
           if [ "${{ inputs.mode }}" = "submit" ]; then set -- "$@" --apply; fi
           python tool/asc_listing.py key.p8 "$KEY_ID" "$ISSUER" 6790176897             --platform ${{ inputs.platform }} "$@"
 
+      - name: Cancel the in-flight submission
+        if: ${{ inputs.mode == 'cancel' }}
+        env:
+          P8: ${{ secrets.APPSTORE_API_PRIVATE_KEY }}
+          KEY_ID: ${{ vars.APPSTORE_API_KEY_ID }}
+          ISSUER: ${{ secrets.APPSTORE_ISSUER_ID }}
+        run: |
+          set -euo pipefail
+          umask 077
+          printf '%s' "$P8" > key.p8
+          python tool/asc_build.py key.p8 "$KEY_ID" "$ISSUER" 6790176897             --platform ${{ inputs.platform }} --cancel-review --apply
+
       - name: Submit
+        if: ${{ inputs.mode != 'cancel' }}
         env:
           P8: ${{ secrets.APPSTORE_API_PRIVATE_KEY }}
           KEY_ID: ${{ vars.APPSTORE_API_KEY_ID }}

@@ -114,6 +114,7 @@ MANUAL_RELEASE = "--manual-release" in ARGV
 # that string is passed here as --version, so the notes it refreshes and the
 # version it submits cannot be different ones.
 SUBMIT_FOR_REVIEW = "--submit-for-review" in ARGV
+CANCEL_REVIEW = "--cancel-review" in ARGV
 RELEASE = "--release" in ARGV
 # Create the App Encryption Declaration - the resource that makes an export
 # compliance answer of YES possible at all. Without one, PATCHing
@@ -643,6 +644,67 @@ def release_approved():
     print("while to finish distributing it.")
 
 
+def cancel_review():
+    """Withdraw an in-flight review submission so a newer version can take its place.
+
+    Apple reviews ONE version at a time. A submission sitting in
+    WAITING_FOR_REVIEW blocks every later version from being prepared at all -
+    asc_build.py's own pick_version() refuses to touch a version in review, which
+    is correct and also means a superseded submission can wedge the lane.
+
+    Cancelling is not free: the queue position goes with it, and the replacement
+    starts at the back. So this is for the case where the pending version is
+    genuinely superseded - shipping it would ship known-old code - and never a
+    way to 'retry' a submission that is merely taking a while.
+
+    Cancels the SUBMISSION, not the version record. The version returns to
+    PREPARE_FOR_SUBMISSION and keeps its build, notes and screenshots.
+    """
+    subs = call("GET", "/v1/reviewSubmissions?filter[app]=%s&limit=50" % APP)
+    if subs is None:
+        sys.exit(1)
+    live = [x for x in subs.get("data", [])
+            if x["attributes"].get("platform") == PLATFORM
+            and x["attributes"].get("state") not in ("COMPLETE", "CANCELING")]
+    if not live:
+        print("%s: no in-flight review submission to cancel." % PLATFORM)
+        for x in subs.get("data", [])[:5]:
+            a = x["attributes"]
+            print("  %-10s %s" % (a.get("platform"), a.get("state")))
+        return
+
+    for x in live:
+        a = x["attributes"]
+        print("%s submission %s  state=%s  submitted=%s"
+              % (PLATFORM, x["id"], a.get("state"), a.get("submittedDate")))
+
+    if not APPLY:
+        print()
+        print("dry run - nothing cancelled. Pass --apply to withdraw it.")
+        print("The queue position is lost; the replacement starts at the back.")
+        return
+
+    for x in live:
+        r = call("PATCH", "/v1/reviewSubmissions/%s" % x["id"], {
+            "data": {"id": x["id"], "type": "reviewSubmissions",
+                     "attributes": {"canceled": True}},
+        })
+        if r is None:
+            sys.exit(1)
+        # Read the state back: a PATCH Apple accepted but did not act on leaves
+        # the submission exactly where it was, and the lane still wedged.
+        back = call("GET", "/v1/reviewSubmissions/%s" % x["id"])
+        state = ((back or {}).get("data") or {}).get("attributes", {}).get("state")
+        print("submission %s is now state=%s" % (x["id"], state))
+        if state not in ("CANCELING", "COMPLETE"):
+            print("::error::submission %s did not cancel (state=%s)"
+                  % (x["id"], state))
+            sys.exit(1)
+    print()
+    print("CANCELLED. The version record keeps its build and metadata and goes")
+    print("back to PREPARE_FOR_SUBMISSION, so it can be renamed or resubmitted.")
+
+
 def create_encryption_declaration():
     """POST an App Encryption Declaration. NOT the shipped answer - see below.
 
@@ -804,6 +866,9 @@ def create_version(version_string):
 
 
 def main():
+    if CANCEL_REVIEW:
+        cancel_review()
+        return
     if RELEASE:
         release_approved()
         return
