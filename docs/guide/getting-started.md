@@ -269,7 +269,7 @@ The phone shell has no keyboard shortcuts.
 - [Backing up a folder](backup.md) — the copy-only wizard that keeps old versions.
 - [Scheduling](scheduling.md) — what runs by itself, and on which platforms.
 - [Photo backup on Android](photos-android.md) — camera roll to a remote.
-- [Mounting and sharing](mount-and-share.md) — drive letters and LAN servers, desktop only.
+- [Mounting and sharing](mount-and-share.md) — drives and LAN servers, desktop only.
 - [Config and moving between devices](config-and-devices.md) — where your remotes are stored, and
   how to carry them to another machine.
 - [The command console](console.md) — running rclone commands inside Airclone.

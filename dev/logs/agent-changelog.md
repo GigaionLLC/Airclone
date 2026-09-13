@@ -13,6 +13,49 @@ happened": nothing was logged between 2026-07-02 and 2026-07-15, or between 2026
      it is: it used to say ABOVE, which pushed it further down the file with every entry until
      it sat hundreds of lines under the newest one and pointed writers at the wrong place. -->
 
+## [2026-09-13] - v0.13.6: mounting never worked on Linux, and the Flatpak can mount after all
+
+**Agent:** Claude Opus 5 - `main`
+**Files Modified:** new `state/mount_point.dart`, `state/flatpak_host_access.dart`,
+`linux/packaging/fusermount-wrapper.sh`, `dev/linux/test-apprun.sh`,
+`dev/linux/test-fusermount-wrapper.sh`, `.github/workflows/linux-runner.yml`; changed
+`ui/mount_panel.dart`, `ui/settings_screen.dart`, `state/build_flavor.dart`, `state/mount_policy.dart`,
+`state/console/rclone_commands.dart`, `linux/runner/my_application.cc`, `dev/linux/build-appimage.sh`,
+`dev/linux/build-flatpak.sh`, the Flatpak manifest, the mount guide, troubleshooting, README.
+**Database/API Changes:** tags `v0.13.4`, `v0.13.5`, `v0.13.6`, GitHub only - no store submission.
+v0.13.4 shipped with no Linux downloads (see below); its and v0.13.5's notes now carry corrections.
+
+**Four things a future session should not have to rediscover**
+
+1. **Mounting never worked on Linux or macOS through the app.** The dialog offered only `*` and
+   drive letters on every platform, and rclone honours those on Windows alone. Proven on real Linux
+   by `linux-runner.yml`'s `mount-probe` job, through the same RC call the app makes: `*` and `D:`
+   fail with `cannot open`, an empty folder mounts. The guide had said so honestly ("One real
+   limitation today") while its own table said Linux mounting was "Yes". **macOS is still unproven**
+   - official darwin rclone builds are cross-compiled with cgo off, and `cmount` needs cgo there.
+2. **CI on push never compiled the Linux C++.** `ci.yml` is format, analyze and Dart tests;
+   `flutter build linux` ran only in `release.yml`. That is how v0.13.4 shipped a runner calling
+   `fl_engine_start`, a PRIVATE flutter_linux symbol - the public header (3.47.0) exports four
+   functions and none starts an engine. `linux-runner.yml` now builds, packages and probes on every
+   Linux change. **The public API cannot run Dart on Linux without a GL context**; `--version` and
+   `--help` are answered in C++ before GTK starts, and `--webui` checks for `libGLESv2` first.
+3. **A Flatpak CAN mount**, through a fusermount wrapper run on the host with
+   `flatpak-spawn --host`, which needs `org.freedesktop.Flatpak` - a grant to run ANY host command.
+   The manifest must never request it (a test reads `finish-args`); the user grants it, the app reads
+   `/.flatpak-info`. Precedent is rclone-manager on Flathub (Zarestia-Dev/rclone-manager#52, #113).
+   Earlier copy saying "no permission setting changes that" was false and is gone.
+4. **Tests that return early pass hollowly, and several did.** Four folder-preparation tests skipped
+   themselves on every platform because every temp dir fails the path rules; a launcher test harness
+   passed because a Windows `C:` path split `PATH` and the fake `ldconfig` was never reached; a `sed`
+   mutation "proved" a test while changing nothing. Use `skip:` so a skip reports as skipped, confirm a
+   mutation actually applied before trusting what it shows, and never pass `$TEMP` from this Windows
+   shell to a POSIX `PATH`.
+
+**Not verified on real hardware:** a mount from a real Flatpak with the permission granted (and
+whether rclone unmounts it on exit - it checks `/proc/self/mountinfo` first, which may not see a host
+mount), the AppImage's spare `libGLESv2` on a machine that needs it, and anything about macOS mounting.
+
+
 ## [2026-09-12] - v0.13.2: two user-found bugs, and v0.13.2 to all three stores
 
 **Agent:** Claude Opus 5 - `main`

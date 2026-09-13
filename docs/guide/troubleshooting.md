@@ -411,10 +411,18 @@ Both are **desktop only** in practice, and both live behind **Advanced mode**.
 - **Mounting needs a filesystem driver.** On Windows, if WinFsp is not
   installed the mount panel shows: "Mounting on Windows needs WinFsp. Install it
   from winfsp.dev, then restart Airclone." No drive letters are offered until
-  then.
+  then. On Linux the panel asks for FUSE instead, for example
+  `sudo apt install fuse3`.
+- **Mounting on Linux did nothing before v0.13.6.** The mount panel offered
+  only drive letters, which Linux does not use, so every mount was refused. It
+  now asks for a folder. Update if you are on an earlier version.
+- **The Flatpak mounts only with an extra permission** you grant yourself. The
+  mount panel explains it and shows the command; see
+  [mount-and-share](mount-and-share.md#mounting-from-the-flatpak-needs-one-permission).
 - **The Mac App Store build cannot mount or serve at all.** FUSE is impossible
   under the App Sandbox, so those buttons are hidden rather than offered and
-  failed. The direct-download macOS build can do both.
+  failed. The direct-download macOS build can serve; mounting there has not been
+  tested end to end.
 - **Closing Airclone with mounts live** raises a confirmation first, then
   unmounts before stopping the engine. That is there so a close cannot leave a
   drive letter that looks mounted but answers nothing.

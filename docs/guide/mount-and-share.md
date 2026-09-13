@@ -39,8 +39,8 @@ Mounting needs a filesystem driver that only a desktop operating system provides
 | Platform | Mount button | Notes |
 |---|---|---|
 | Windows | Yes | Needs WinFsp installed first. See below. |
-| macOS (downloaded build) | Yes | Needs a FUSE driver installed separately. |
-| Linux — AppImage or tar.gz | Yes | Needs FUSE installed separately. |
+| macOS (downloaded build) | Not yet confirmed | The mount manager now asks for a folder, which is what macOS needs, but mounting on macOS has not been tested end to end. Needs macFUSE or FUSE-T installed separately. |
+| Linux — AppImage or tar.gz | Yes, into a folder | Needs FUSE installed separately. Fixed in v0.13.6 — see below. |
 | Linux — **Flatpak** | With one permission | You grant it yourself; see below. Until then the app explains it in Settings → Mounts, the Mount button, and the console. |
 | macOS from the Mac App Store | No | Hidden entirely. The App Sandbox cannot run FUSE, so the button and the Settings → Mounts group do not appear rather than failing when pressed. |
 | Android, iOS | No | Not supported. |
@@ -102,11 +102,20 @@ Two things about the button that are worth knowing before you hunt for it:
 An organisation can also switch mounting off for a whole fleet. When that has been done, the manager
 opens and says `Mounting is disabled by policy.` and nothing can be started from it.
 
-### One real limitation today
+### Drive letters on Windows, a folder everywhere else
 
-The mount manager asks for a **drive letter**: either `Auto (next free letter)` or a specific letter
-from `D:` to `Z:`. There is no field for choosing a folder to mount into, which is how mounting works
-on macOS and Linux. In this release the mount manager is built around the Windows model.
+On Windows a mount becomes a **drive letter**. On Linux and macOS it appears in a **folder**, and the
+mount manager asks for one.
+
+Before v0.13.6 the mount manager offered only drive letters, on every platform. Those mean nothing to
+Linux or macOS, so **mounting from Airclone did not work on Linux in any earlier version** — every
+choice the manager offered was refused. If you tried and gave up, that is why, and it works now.
+
+### Mounting from the Web UI
+
+The Web UI still offers drive letters only. It runs in your browser, which cannot tell what system is
+serving it or create a folder on that machine. So mounting through the Web UI works when Airclone is
+running on **Windows**. For a Linux or macOS machine, mount from the Airclone app on that machine.
 
 ### Installing WinFsp on Windows
 
@@ -118,6 +127,16 @@ available, the manager shows this banner at the top:
 Install WinFsp, close Airclone completely, and open it again. The banner goes away once the engine
 can see the driver.
 
+### Installing FUSE on Linux
+
+The AppImage and the tar.gz mount through FUSE, which your distribution provides. If it is missing,
+the manager says:
+
+> Mounting needs FUSE. Install it (for example `sudo apt install fuse3`), then restart Airclone.
+
+On Fedora the package is `fuse3` as well. If a mount fails because your account may not use FUSE, the
+manager says so: on most systems adding yourself to the `fuse` group and signing in again fixes it.
+
 ## Mounting a remote
 
 The engine has to be running: the status bar at the bottom of the window should read
@@ -128,15 +147,21 @@ The engine has to be running: the status bar at the bottom of the window should 
    to your home folder; that is not a configured remote, so it is not a useful thing to mount.
 3. **Subfolder** — optional. Leave it empty to mount the whole remote, or type a path to mount just
    that folder.
-4. **Drive** — `Auto (next free letter)`, or pick a letter yourself.
-5. Tick the box under the dropdown if you want the same letter next time. With a letter chosen it
-   reads `Always mount this on X:`; with `Auto` chosen it reads
-   `Reuse whichever letter this mount gets, next time`, and the letter is remembered after the mount
-   succeeds — whatever was actually assigned.
+4. **Where it appears:**
+   - **Windows — Drive.** `Auto (next free letter)`, or pick a letter yourself.
+   - **Linux and macOS — Folder.** Filled in for you as `Airclone/<remote>` in your home folder, for
+     example `/home/you/Airclone/gdrive`. Type another path or press **Choose…** to pick one.
+     Airclone creates the folder if it does not exist. It must be **empty**, so nothing already in it
+     is hidden while the drive is mounted; a folder with files in it is refused before anything is
+     mounted. Folders under system locations such as `/tmp`, `/run` or `/etc` are refused too.
+5. Tick the box underneath if you want the same place next time. On Windows, with a letter chosen it
+   reads `Always mount this on X:`, and with `Auto` chosen it reads
+   `Reuse whichever letter this mount gets, next time` — the letter actually assigned is remembered
+   after the mount succeeds. On Linux and macOS it reads `Always mount this in this folder`.
 6. Press **Mount**.
 
-The letter is remembered per mounted path, not per remote, so `gdrive:` and `gdrive:work` can each
-keep their own. Unticking the box forgets the pin rather than leaving a stale one behind.
+The choice is remembered per mounted path, not per remote, so `gdrive:` and `gdrive:work` can each
+keep their own. Unticking the box forgets it rather than leaving a stale one behind.
 
 If the mount fails, the reason is shown in red inside the dialog.
 
@@ -179,7 +204,7 @@ have changed anything away from what Airclone ships.
 ## Managing mounted drives
 
 The lower half of the mount manager is **Mounted drives**. With nothing mounted it reads
-`Nothing mounted.` Each live mount gets a row showing its drive letter and the path it is serving,
+`Nothing mounted.` Each live mount gets a row showing its drive letter or folder and the path it is serving,
 with two buttons:
 
 - **Refresh cache (pick up outside changes)** — re-reads the folder listings so changes made
@@ -202,8 +227,8 @@ and asks first:
 
 The buttons are `Keep Airclone open` and `Disconnect and close`. Clicking outside the dialog does not
 dismiss it, and counts as neither answer — the app stays open. If you confirm, Airclone unmounts
-first and stops the engine afterwards, so you are never left with a drive letter that looks alive but
-is backed by nothing.
+first and stops the engine afterwards, so you are never left with a drive that looks alive but is
+backed by nothing.
 
 ## Why the in-app explorer is usually faster
 

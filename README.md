@@ -269,7 +269,13 @@ Three ways, all on the Releases page. Pick by how your desktop likes to install 
 The rclone engine is included in all three; there is nothing else to download. The
 AppImage uses your system's ALSA (`libasound2`) when you have one — replacing a working
 one would break your machine's own sound setup — and carries a last-resort copy so it
-still starts on a slim system that has none.
+still starts on a slim system that has none. It does the same for OpenGL ES
+(`libGLESv2`), used only when your system has a graphics driver but not that one library,
+which is the usual case on WSL.
+
+**Mounting** a remote as a drive works from the AppImage and the tar.gz, into a folder such
+as `~/Airclone/gdrive`, once FUSE is installed (`sudo apt install fuse3`). It did not work on
+Linux before v0.13.6.
 
 ## 🗺️ Roadmap
 
