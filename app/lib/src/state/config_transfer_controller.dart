@@ -14,6 +14,7 @@ import 'cache_crypto.dart';
 import 'config_backups.dart';
 import 'config_encryption.dart';
 import 'config_io.dart';
+import 'build_flavor.dart';
 import 'engine_controller.dart';
 import 'host_platform.dart';
 import 'jobs_controller.dart';
@@ -1024,11 +1025,39 @@ class ConfigTransferController {
   ///  - otherwise (desktop default) ask rclone where its config lives via a short
   ///    `rclone config file` subprocess (the same source the engine spawns with).
   /// Null when it can't be determined (no engine binary / probe failed).
+  /// The config file the engine is actually using, or null when it cannot be
+  /// found.
+  ///
+  /// The platform test here is [configMustBeAppPrivateHere], NOT "is Android".
+  /// It used to be the latter, and that is
+  /// [issue #5](https://github.com/GigaionLLC/Airclone/issues/5): importing a
+  /// config on iOS failed with "Couldn't locate the active config file to
+  /// replace" whichever method was used, because iOS fell through to the
+  /// desktop branch below and that branch SPAWNS `rclone config file` - a
+  /// subprocess iOS cannot run at all. The Mac App Store build had the same
+  /// fault for the same reason, and with it every caller here: backup, restore,
+  /// merge, "remove all remotes" and "export an exact copy".
+  ///
+  /// [configMustBeAppPrivateHere] exists precisely for this - its own doc names
+  /// this error string - and the one function that produces that string was the
+  /// one that never called it.
   Future<File?> _activeConfigFile() async {
     await _ensureSettingsLoaded();
-    if (HostPlatform.isAndroid) {
+    if (configMustBeAppPrivateHere) {
       final support = await getApplicationSupportDirectory();
-      return File('${support.path}/rclone.conf');
+      final path = resolveConfigPath(
+        appPrivateOnly: true,
+        appPrivateConfigPath: '${support.path}/rclone.conf',
+        override: _ref.read(settingsControllerProvider).configPathOverride,
+      );
+      if (path == null) return null;
+      // A fresh install importing a config has no config file yet, and the
+      // callers cope with that (backupActiveConfig returns null for a file that
+      // is not there, and the write creates it). The DIRECTORY still has to
+      // exist for that write to land.
+      final file = File(path);
+      await file.parent.create(recursive: true);
+      return file;
     }
     final override = _ref.read(settingsControllerProvider).configPathOverride;
     if (override != null && override.isNotEmpty) return File(override);
