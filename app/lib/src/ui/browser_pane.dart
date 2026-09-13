@@ -401,7 +401,8 @@ class BrowserPane extends ConsumerWidget {
       );
 
       // Open the immersive Quick Look on [f], navigable across the listing.
-      void quickLook(RcloneFile f) => _preview(context, state, flatLoc(f));
+      void quickLook(RcloneFile f) =>
+          _preview(context, state, flatLoc(f), ref: ref, index: index);
 
       switch (state.viewMode) {
         case ViewMode.grid:
@@ -507,7 +508,13 @@ class BrowserPane extends ConsumerWidget {
             paneRemote: state.remote!,
             scrollController: ref.watch(paneScrollProvider(index)),
             physics: physics,
-            onPreview: (row) => _preview(context, state, _treeLoc(state, row)),
+            onPreview: (row) => _preview(
+              context,
+              state,
+              _treeLoc(state, row),
+              ref: ref,
+              index: index,
+            ),
             onContextMenu: (row, pos) =>
                 _showFileMenu(context, ref, state, _treeLoc(state, row), pos),
             onDropInto: (row, data) =>
@@ -1374,7 +1381,17 @@ List<_Group> _selectionGroups(BrowserState state) {
 }
 
 /// Quick Look [loc], navigable across the folder it lives in.
-Future<void> _preview(BuildContext context, BrowserState state, _EntryLoc loc) {
+///
+/// [ref] and [index] are here only so a delete made INSIDE the overlay re-lists
+/// the pane behind it. Without that the file stays on screen until something
+/// else happens to refresh, which reads as the delete having failed.
+Future<void> _preview(
+  BuildContext context,
+  BrowserState state,
+  _EntryLoc loc, {
+  WidgetRef? ref,
+  int? index,
+}) {
   final remote = state.remote;
   if (remote == null) return Future<void>.value();
   return showQuickLook(
@@ -1383,6 +1400,9 @@ Future<void> _preview(BuildContext context, BrowserState state, _EntryLoc loc) {
     loc.parentPath,
     loc.visibleSiblings,
     loc.visibleSiblings.indexOf(loc.file),
+    onChanged: (ref != null && index != null)
+        ? () => _reloadFolders(ref, index, [loc.parentPath])
+        : null,
   );
 }
 

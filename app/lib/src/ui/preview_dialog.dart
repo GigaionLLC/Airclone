@@ -1,3 +1,5 @@
+import 'file_op_dialogs.dart';
+import '../state/file_ops.dart';
 import '../state/cloud_placeholder.dart';
 import '../state/host_platform.dart';
 import '../state/media_formats.dart';
@@ -175,7 +177,26 @@ class _PreviewDialog extends ConsumerWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              _Header(file: file, kind: kind),
+              _Header(
+                file: file,
+                kind: kind,
+                // Folders are not previewable here, so this is always a file.
+                onDelete: () async {
+                  final ok = await showDeleteConfirm(
+                    context,
+                    file.name,
+                    isDir: file.isDir,
+                  );
+                  if (!ok || !context.mounted) return;
+                  await ref
+                      .read(fileOpsProvider)
+                      .deleteEntry(remote, file, parentPath);
+                  // Unlike Quick Look there is no next file to move to, so the
+                  // dialog closes. The pane re-lists on its own when the
+                  // inspector's selection goes stale.
+                  if (context.mounted) Navigator.of(context).pop();
+                },
+              ),
               Divider(height: 1, thickness: 1, color: c.border),
               Expanded(
                 child: PreviewContent(
@@ -309,10 +330,13 @@ class PreviewContent extends ConsumerWidget {
 
 /// Header: type icon, file name, human size, close button.
 class _Header extends StatelessWidget {
-  const _Header({required this.file, required this.kind});
+  const _Header({required this.file, required this.kind, this.onDelete});
 
   final RcloneFile file;
   final _PreviewKind kind;
+
+  /// Supplied by the dialog, which owns the remote and the path.
+  final VoidCallback? onDelete;
 
   @override
   Widget build(BuildContext context) {
@@ -355,6 +379,15 @@ class _Header extends StatelessWidget {
             ),
           ),
           const SizedBox(width: Space.x2),
+          // Issue #4: delete from the preview itself. Before Close and spaced
+          // away from it — they sit side by side and only one is undoable.
+          if (onDelete != null)
+            IconButton(
+              icon: const Icon(Icons.delete_outline, size: 20),
+              color: c.textMuted,
+              tooltip: 'Delete',
+              onPressed: onDelete,
+            ),
           IconButton(
             icon: const Icon(Icons.close, size: 20),
             color: c.textMuted,

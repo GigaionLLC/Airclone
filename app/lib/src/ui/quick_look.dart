@@ -1,3 +1,5 @@
+import 'file_op_dialogs.dart';
+import '../state/file_ops.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -35,8 +37,13 @@ Future<void> showQuickLook(
   Remote remote,
   String parentPath,
   List<RcloneFile> entries,
-  int startIndex,
-) {
+  int startIndex, {
+
+  /// Called when something in here CHANGED the folder — a delete, today. The
+  /// pane cannot see an edit made inside an overlay, and a pop result would be
+  /// lost when the barrier is tapped, so this fires the moment it happens.
+  VoidCallback? onChanged,
+}) {
   final files = entries.where((e) => !e.isDir).toList();
   if (files.isEmpty) return Future<void>.value();
 
@@ -77,6 +84,7 @@ Future<void> showQuickLook(
       files: files,
       initialIndex: initial,
       fullscreen: fullscreen,
+      onChanged: onChanged,
     ),
     transitionBuilder: (ctx, anim, _, child) => FadeTransition(
       opacity: anim,
@@ -103,6 +111,7 @@ class _QuickLook extends ConsumerStatefulWidget {
     required this.files,
     required this.initialIndex,
     required this.fullscreen,
+    this.onChanged,
   });
 
   final Remote remote;
@@ -113,12 +122,59 @@ class _QuickLook extends ConsumerStatefulWidget {
   /// Touch platforms: render edge-to-edge with the system bars hidden.
   final bool fullscreen;
 
+  /// See showQuickLook.
+  final VoidCallback? onChanged;
+
   @override
   ConsumerState<_QuickLook> createState() => _QuickLookState();
 }
 
 class _QuickLookState extends ConsumerState<_QuickLook> {
   late int _i = widget.initialIndex;
+
+  /// The files still on screen. A copy of `_files`, because Quick Look can
+  /// now DELETE one and the list has to shrink under the pager without closing
+  /// the overlay — issue #4 asked for delete first, and deleting by leaving the
+  /// preview to go and find the file in the list is the thing it was asking to
+  /// avoid.
+  late final List<RcloneFile> _files = [...widget.files];
+
+  /// Deletes the file on screen, after asking.
+  ///
+  /// Destructive, so it goes through the same [showDeleteConfirm] the browser
+  /// uses rather than a bespoke prompt — one confirmation wording for the whole
+  /// app, and rule 4 is not satisfied by an icon that looks dangerous.
+  ///
+  /// On success the overlay STAYS OPEN and moves to the next file, which is what
+  /// makes this worth having: culling a folder of photos is one keystroke per
+  /// file instead of preview, close, find, delete, reopen. It closes only when
+  /// the last one is gone.
+  Future<void> _deleteCurrent() async {
+    final file = _files[_i];
+    final ok = await showDeleteConfirm(context, file.name, isDir: file.isDir);
+    if (!ok || !mounted) return;
+    try {
+      await ref
+          .read(fileOpsProvider)
+          .deleteEntry(widget.remote, file, widget.parentPath);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Could not delete ${file.name}.')));
+      return;
+    }
+    if (!mounted) return;
+    widget.onChanged?.call();
+    setState(() {
+      _files.removeAt(_i);
+      // Step back only at the end of the list; otherwise the index already
+      // points at what was the next file.
+      if (_i >= _files.length) _i = _files.length - 1;
+    });
+    if (_files.isEmpty && mounted) Navigator.of(context).pop();
+  }
+
   late final PageController _pager = PageController(
     initialPage: widget.initialIndex,
   );
@@ -150,7 +206,7 @@ class _QuickLookState extends ConsumerState<_QuickLook> {
   /// the path for the keyboard arrows and the on-screen chevrons (desktop),
   /// animating so it feels the same as a swipe.
   void _go(int delta) {
-    final next = (_i + delta).clamp(0, widget.files.length - 1);
+    final next = (_i + delta).clamp(0, _files.length - 1);
     if (next != _i) {
       _pager.animateToPage(
         next,
@@ -187,11 +243,11 @@ class _QuickLookState extends ConsumerState<_QuickLook> {
   void _popOut() {
     final client = ref.read(engineControllerProvider).client;
     if (client == null) return;
-    final current = widget.files[_i];
+    final current = _files[_i];
     final images = <PopoutImageEntry>[];
     var initial = 0;
     var auth = '';
-    for (final f in widget.files) {
+    for (final f in _files) {
       if (!isImagePreview(f)) continue;
       final ObjectRef r;
       try {
@@ -217,7 +273,7 @@ class _QuickLookState extends ConsumerState<_QuickLook> {
       ref,
       widget.remote,
       widget.parentPath,
-      widget.files[_i],
+      _files[_i],
       mode: mode,
     );
   }
@@ -249,6 +305,19 @@ class _QuickLookState extends ConsumerState<_QuickLook> {
                 _openExternally(ExternalOpenMode.share);
               },
             ),
+            // Delete is here as well as the top bar: on a phone the top bar is
+            // a thumb-stretch away, and this is the menu people already open
+            // for the other file actions. Placed LAST and behind a divider so
+            // it is never the tile under a wandering thumb.
+            const Divider(height: 1),
+            ListTile(
+              leading: Icon(Icons.delete_outline, color: c.error),
+              title: Text('Delete', style: TextStyle(color: c.error)),
+              onTap: () {
+                Navigator.pop(sheetCtx);
+                _deleteCurrent();
+              },
+            ),
           ],
         ),
       ),
@@ -258,10 +327,10 @@ class _QuickLookState extends ConsumerState<_QuickLook> {
   /// The swipeable page stack, shared by both shapes.
   Widget _pagerView() => PageView.builder(
     controller: _pager,
-    itemCount: widget.files.length,
+    itemCount: _files.length,
     onPageChanged: (p) => setState(() => _i = p),
     itemBuilder: (context, p) {
-      final f = widget.files[p];
+      final f = _files[p];
       return PreviewContent(
         key: ValueKey(f.path),
         remote: widget.remote,
@@ -274,7 +343,7 @@ class _QuickLookState extends ConsumerState<_QuickLook> {
         // pretend. A swipe and the arrow keys already move the pager; these
         // exist for a device that has neither, which is a television remote.
         onPrevious: p > 0 ? () => _go(-1) : null,
-        onNext: p < widget.files.length - 1 ? () => _go(1) : null,
+        onNext: p < _files.length - 1 ? () => _go(1) : null,
       );
     },
   );
@@ -287,8 +356,8 @@ class _QuickLookState extends ConsumerState<_QuickLook> {
   // ── touch: edge-to-edge ────────────────────────────────────────────────────
 
   Widget _buildFullscreen() {
-    final file = widget.files[_i];
-    final many = widget.files.length > 1;
+    final file = _files[_i];
+    final many = _files.length > 1;
     return Material(
       color: Colors.black,
       child: Stack(
@@ -314,7 +383,7 @@ class _QuickLookState extends ConsumerState<_QuickLook> {
                 duration: const Duration(milliseconds: 160),
                 child: _TopBar(
                   name: file.name,
-                  counter: many ? '${_i + 1} / ${widget.files.length}' : null,
+                  counter: many ? '${_i + 1} / ${_files.length}' : null,
                   onClose: () => Navigator.of(context).pop(),
                   onActions: canOpenExternally ? _showActions : null,
                 ),
@@ -330,8 +399,8 @@ class _QuickLookState extends ConsumerState<_QuickLook> {
 
   Widget _buildWindowed(BuildContext context) {
     final c = AircloneTheme.of(context);
-    final file = widget.files[_i];
-    final many = widget.files.length > 1;
+    final file = _files[_i];
+    final many = _files.length > 1;
 
     return Focus(
       autofocus: true,
@@ -364,7 +433,7 @@ class _QuickLookState extends ConsumerState<_QuickLook> {
                 ),
                 const SizedBox(width: Space.x3),
                 Text(
-                  '${_i + 1} / ${widget.files.length}',
+                  '${_i + 1} / ${_files.length}',
                   style: const TextStyle(color: Colors.white70, fontSize: 12),
                 ),
                 if (canOpenExternally)
@@ -385,6 +454,15 @@ class _QuickLookState extends ConsumerState<_QuickLook> {
                     tooltip: 'Pop out to a new window',
                     onPressed: _popOut,
                   ),
+                // Issue #4: delete without leaving the preview. Placed BEFORE
+                // Close and separated from it, because the two sit next to
+                // each other and only one of them is undoable.
+                IconButton(
+                  icon: const Icon(Icons.delete_outline, color: Colors.white),
+                  tooltip: 'Delete',
+                  onPressed: _deleteCurrent,
+                ),
+                const SizedBox(width: Space.x2),
                 IconButton(
                   icon: const Icon(Icons.close, color: Colors.white),
                   tooltip: 'Close',
@@ -423,7 +501,7 @@ class _QuickLookState extends ConsumerState<_QuickLook> {
                           child: Center(
                             child: _NavButton(
                               icon: Icons.chevron_right,
-                              onPressed: _i < widget.files.length - 1
+                              onPressed: _i < _files.length - 1
                                   ? () => _go(1)
                                   : null,
                             ),
