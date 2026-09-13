@@ -268,6 +268,31 @@ plainly empty.
 
 ---
 
+## A local folder is in Explorer or Finder but not in Airclone
+
+Fixed in **v0.13.2**. If you are on an older build, this is why.
+
+rclone treats a *reparse point* as a symlink and skips it when listing the folder
+that contains it. On Windows that is not an exotic case: `OneDrive` and
+`iCloudDrive` are reparse points, and OneDrive's Known Folder Move turns
+`Desktop`, `Documents`, `Pictures` and `Music` into them as well. Any of those
+could be missing from a listing with no error and nothing to click. The same
+applies to a symlinked folder on macOS and Linux.
+
+Airclone now follows them when listing a local folder, so they appear where you
+expect. Nothing else about them changed: they behaved normally once you were
+inside one, and they still do.
+
+Two things this is **not**, if a folder is still missing after updating:
+
+- **A hidden file setting.** Airclone has none; it shows what the engine reports.
+- **A permission problem.** The legacy compatibility junctions in your home
+  folder (`Application Data`, `Cookies`, `My Documents` and friends) are now
+  visible too, and Windows genuinely refuses to open them. They are a quirk of
+  the operating system, not a fault in the app.
+
+---
+
 ## "object not found", or a file that is visibly there will not open
 
 Almost always a stale listing. The file list you are looking at was fetched at
@@ -289,6 +314,22 @@ folder's contents with the old one's; listings are now discarded if you have
 moved on before they return. What it cannot know about is a change made
 somewhere else. There is no live notification from a cloud remote, so a refresh
 is the only way to find out.
+
+---
+
+## A playlist file will not play
+
+A `.m3u8`, `.m3u` or `.mpd` is not media. It is a list that names other files by
+a path relative to its own location, so a copy saved on its own has nothing to
+play: the player asks for a neighbouring file that was never downloaded, and
+reports a failure naming an address you have never seen.
+
+To play the original, use **Tools -> Open network stream** and paste the address
+you downloaded the playlist from. Airclone fetches it the way a browser does, so
+the relative paths inside it resolve against the server they came from.
+
+A playlist *will* play from a remote when everything it names is next to it -
+a whole folder you downloaded together, or one you produced yourself.
 
 ---
 
