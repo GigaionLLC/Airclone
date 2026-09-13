@@ -18,6 +18,10 @@ apply_standard_settings(${BINARY_NAME})
 
 # Add preprocessor definitions for the application ID.
 add_definitions(-DAPPLICATION_ID="${APPLICATION_ID}")
+# The app version for `--version` / `--help`, answered in C++ before GTK starts
+# (see my_application.cc). FLUTTER_VERSION is written from pubspec.yaml by
+# flutter_tools into flutter/ephemeral/generated_config.cmake on every build.
+add_definitions(-DAIRCLONE_VERSION="${FLUTTER_VERSION}")
 
 # Add dependency libraries. Add any application-specific dependencies here.
 target_link_libraries(${BINARY_NAME} PRIVATE flutter)

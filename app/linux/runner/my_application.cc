@@ -1,5 +1,8 @@
 #include "my_application.h"
 
+#include <dlfcn.h>
+#include <string.h>
+
 #include <flutter_linux/flutter_linux.h>
 #ifdef GDK_WINDOWING_X11
 #include <gdk/gdkx.h>
@@ -14,34 +17,103 @@ struct _MyApplication {
   char** dart_entrypoint_arguments;
 };
 
-// True when the forwarded CLI args ask for a run that must NOT open a window.
+// `--version` / `--help`, answered HERE in C++, before GTK or GL exist at all.
 //
-// THE BUG THIS FIXES: `./Airclone-x86_64.AppImage --webui` aborted with
+// THE BUG THIS FIXES: `./Airclone-x86_64.AppImage --version` aborted with
 //
 //   Couldn't open libGLESv2.so.2: cannot open shared object file
 //
-// and so did `--version`. Neither flag wants a window, and main.dart branches
-// on both BEFORE it calls runApp - but Dart never got the chance, because this
-// file builds a GtkWindow and an FlView first, and realizing an FlView creates
-// a GL context. On a headless box, a container, or WSL without a GPU stack,
-// that is fatal before a single line of Dart runs.
+// because the flag did not exist and fell through to the normal launch, which
+// builds a window. Dart cannot answer it on Linux without a GL context: the
+// public flutter_linux API has no way to START an engine without realizing an
+// FlView (fl_engine_new_headless creates one, but only the private
+// fl_engine_start runs it, and FlView calls that from its realize callback,
+// after the OpenGL manager is set up). So these two are handled before
+// g_application_register, which is where GTK opens the display.
 //
-// Mirrors isHeadlessInvocation + isWebUiInvocation on the Dart side and
-// ContainsHeadlessFlag in the Windows runner. Three copies of one list is not
-// ideal; a drift here costs a stray window (or a crash), never silence, which
-// is why it is acceptable and why the Dart side stays the source of truth.
-static bool IsWindowlessInvocation(char** args) {
+// The Dart side answers the same flags on Windows and macOS - see
+// lib/src/headless/cli_info.dart. cli_info_test.dart reads this file and fails
+// if the two stop listing the same options.
+static bool HasArg(char** args, const char* want) {
+  if (args == nullptr) return false;
+  for (char** a = args; *a != nullptr; a++) {
+    if (g_strcmp0(*a, want) == 0) return true;
+  }
+  return false;
+}
+
+static bool WantsCliInfo(char** args) {
+  return HasArg(args, "--version") || HasArg(args, "--help") ||
+         HasArg(args, "-h");
+}
+
+// The version from pubspec.yaml, without the build number, to match what the
+// app reports everywhere else. Supplied by runner/CMakeLists.txt from the
+// FLUTTER_VERSION that flutter_tools generates at build time.
+static void PrintVersion() {
+#ifdef AIRCLONE_VERSION
+  g_autofree gchar* version = g_strdup(AIRCLONE_VERSION);
+  gchar* plus = strchr(version, '+');
+  if (plus != nullptr) *plus = '\0';
+  g_print("Airclone %s\n", version);
+#else
+  g_print("Airclone (version unknown)\n");
+#endif
+}
+
+static void PrintHelp() {
+  PrintVersion();
+  g_print(
+      "\n"
+      "Usage: airclone [options]\n"
+      "\n"
+      "With no options, Airclone opens its window.\n"
+      "\n"
+      "Options:\n"
+      "  --webui                 Serve the interface to browsers instead of\n"
+      "                          opening a window. Prints its URL and the\n"
+      "                          generated password on first run.\n"
+      "  --webui-bind ADDRESS    Address for --webui. Default 127.0.0.1\n"
+      "                          (loopback only).\n"
+      "  --webui-port PORT       Port for --webui. Default 5799.\n"
+      "\n"
+      "  --run-due               Run every scheduled task that is due, then exit.\n"
+      "  --run-task ID           Run one saved task by id, then exit.\n"
+      "\n"
+      "  --version               Print the version and exit.\n"
+      "  --help, -h              Print this and exit.\n"
+      "\n"
+      "On Linux, --webui still needs OpenGL ES libraries to start, even with\n"
+      "no display in use. If it reports libGLESv2 missing, install your\n"
+      "distribution's Mesa GLES package (for example: sudo apt install libgles2).\n");
+}
+
+// Flags that run Dart without wanting a window. Dart branches on these before
+// runApp, but on Linux the engine still needs a GL context to start at all, so
+// they cannot skip GTK the way --version can. What they CAN do is fail with a
+// useful message instead of aborting.
+static bool WantsWindowlessDart(char** args) {
   if (args == nullptr) return false;
   for (char** a = args; *a != nullptr; a++) {
     if (g_strcmp0(*a, "--webui") == 0) return true;
     if (g_strcmp0(*a, "--run-due") == 0) return true;
     if (g_strcmp0(*a, "--run-task") == 0) return true;
     if (g_str_has_prefix(*a, "--run-task=")) return true;
-    if (g_strcmp0(*a, "--version") == 0) return true;
-    if (g_strcmp0(*a, "--help") == 0) return true;
-    if (g_strcmp0(*a, "-h") == 0) return true;
   }
   return false;
+}
+
+// Whether the OpenGL ES library the Flutter engine loads is present.
+//
+// The reporter's machine (WSL) HAD a display - libEGL loaded and warned about
+// DRI3 - and was missing only libGLESv2. libepoxy, which Flutter uses, opens
+// exactly "libGLESv2.so.2" and aborts the process when it cannot. Checking the
+// same name first turns a core dump into a message saying what to install.
+static bool GlesAvailable() {
+  void* handle = dlopen("libGLESv2.so.2", RTLD_LAZY | RTLD_LOCAL);
+  if (handle == nullptr) return false;
+  dlclose(handle);
+  return true;
 }
 
 G_DEFINE_TYPE(MyApplication, my_application, GTK_TYPE_APPLICATION)
@@ -99,36 +171,6 @@ static void apply_window_chrome(GtkWindow* window) {
 // Implements GApplication::activate.
 static void my_application_activate(GApplication* application) {
   MyApplication* self = MY_APPLICATION(application);
-
-  // NO WINDOW, NO GL. fl_engine_new_headless runs the same Dart entrypoint with
-  // no view attached, so nothing touches EGL and the binary works on a machine
-  // with no display stack at all - which is the whole point of --webui.
-  //
-  // Plugins are still registered: FlEngine implements FlPluginRegistry, and the
-  // Web UI host needs path_provider and friends to answer. A plugin that truly
-  // requires a window would fail when CALLED rather than at startup, and none
-  // on this path do.
-  //
-  // g_application_hold keeps the GApplication alive with no window to hold it
-  // open; the Dart entrypoint owns the exit (runWebUi and runHeadless both end
-  // the process themselves).
-  if (IsWindowlessInvocation(self->dart_entrypoint_arguments)) {
-    g_autoptr(FlDartProject) headless_project = fl_dart_project_new();
-    fl_dart_project_set_dart_entrypoint_arguments(
-        headless_project, self->dart_entrypoint_arguments);
-
-    FlEngine* engine = fl_engine_new_headless(headless_project);
-    g_autoptr(GError) engine_error = nullptr;
-    if (!fl_engine_start(engine, &engine_error)) {
-      g_printerr("Failed to start Airclone without a window: %s\n",
-                 engine_error->message);
-      g_application_quit(application);
-      return;
-    }
-    fl_register_plugins(FL_PLUGIN_REGISTRY(engine));
-    g_application_hold(application);
-    return;
-  }
 
   GtkWindow* window =
       GTK_WINDOW(gtk_application_window_new(GTK_APPLICATION(application)));
@@ -202,6 +244,37 @@ static gboolean my_application_local_command_line(GApplication* application,
   MyApplication* self = MY_APPLICATION(application);
   // Strip out the first argument as it is the binary name.
   self->dart_entrypoint_arguments = g_strdupv(*arguments + 1);
+
+  // Before g_application_register: that is where GTK initialises and opens
+  // the display, and --version must not need one.
+  if (WantsCliInfo(self->dart_entrypoint_arguments)) {
+    if (HasArg(self->dart_entrypoint_arguments, "--help") ||
+        HasArg(self->dart_entrypoint_arguments, "-h")) {
+      PrintHelp();
+    } else {
+      PrintVersion();
+    }
+    *exit_status = 0;
+    return TRUE;
+  }
+
+  if (WantsWindowlessDart(self->dart_entrypoint_arguments) &&
+      !GlesAvailable()) {
+    g_printerr(
+        "Airclone could not start: libGLESv2.so.2 (OpenGL ES) is not "
+        "installed.\n"
+        "\n"
+        "On Linux the app's engine needs it to start, even for --webui, where\n"
+        "no window is shown. Install your distribution's Mesa GLES package, for\n"
+        "example:\n"
+        "\n"
+        "  sudo apt install libgles2      (Debian, Ubuntu, WSL)\n"
+        "  sudo dnf install mesa-libGLES  (Fedora)\n"
+        "\n"
+        "then run the same command again.\n");
+    *exit_status = 1;
+    return TRUE;
+  }
 
   g_autoptr(GError) error = nullptr;
   if (!g_application_register(application, nullptr, &error)) {

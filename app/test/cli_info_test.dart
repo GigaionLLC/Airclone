@@ -99,32 +99,82 @@ void main() {
     });
   });
 
-  /// The window-suppression list is written THREE times: here in Dart, in
-  /// `linux/runner/my_application.cc`, and in `windows/runner/main.cpp`. They
-  /// cannot import each other, so this reads the two native files and checks
-  /// they still name every flag that must not open a window.
+  /// The native runners, read as text.
   ///
-  /// A drift costs a stray empty window, or on a headless Linux box the crash
-  /// this whole change is about - so it is worth a test that reads the C++.
-  group('the native runners suppress the same flags', () {
+  /// READ THIS BEFORE TRUSTING A PASS. A test that greps C++ proves what the
+  /// source SAYS, never that it compiles. The first version of this group
+  /// asserted the Linux runner contained `fl_engine_new_headless` - and it
+  /// passed happily on a runner calling `fl_engine_start`, a PRIVATE
+  /// flutter_linux symbol absent from the public headers, which then failed to
+  /// compile in the v0.13.4 release job. This group was enforcing the bug.
+  ///
+  /// Compilation is `.github/workflows/linux-runner.yml`, which builds the
+  /// runner on every change to app/linux and runs `--version` with no display.
+  /// What stays here is what text CAN prove: the design, and flag parity.
+  group('the native runners', () {
     final flags = ['--webui', '--run-due', '--run-task', '--version', '--help'];
 
-    test('the Linux runner', () {
+    test('the Linux runner uses no private flutter_linux API', () {
       final f = File('linux/runner/my_application.cc');
       if (!f.existsSync()) return; // not checked out in this context
       final src = f.readAsStringSync();
+      // A CALL, with its opening paren. The symbol may still be NAMED in a
+      // comment explaining why it is not used, and that is the point of it.
       expect(
         src,
-        contains('IsWindowlessInvocation'),
-        reason: 'the headless branch is gone',
+        isNot(contains('fl_engine_start(')),
+        reason:
+            'fl_engine_start is private to flutter_linux; the public API '
+            'cannot start an engine without realizing an FlView',
       );
+    });
+
+    /// On Linux Dart cannot answer these without a GL context, so C++ does, and
+    /// it must do so BEFORE g_application_register - which is where GTK
+    /// initialises and opens the display.
+    test('the Linux runner answers --version before GTK starts', () {
+      final f = File('linux/runner/my_application.cc');
+      if (!f.existsSync()) return;
+      final src = f.readAsStringSync();
+      final answered = src.indexOf('if (WantsCliInfo(');
+      final register = src.indexOf('g_application_register(');
+      expect(answered, greaterThan(0), reason: 'the C++ answer is gone');
+      expect(register, greaterThan(0));
       expect(
-        src,
-        contains('fl_engine_new_headless'),
-        reason: 'a window would be created again, and with it a GL context',
+        answered,
+        lessThan(register),
+        reason:
+            'answering after register means GTK has already opened a display',
       );
-      for (final flag in flags) {
-        expect(src, contains('"$flag"'), reason: '$flag would open a window');
+    });
+
+    /// The reporter's WSL machine had a display and lacked only libGLESv2.
+    /// libepoxy aborts the process when it cannot open that exact name, so the
+    /// runner checks the same name first and says what to install.
+    test('the Linux runner turns a missing GLES library into a message', () {
+      final f = File('linux/runner/my_application.cc');
+      if (!f.existsSync()) return;
+      final src = f.readAsStringSync();
+      expect(src, contains('"libGLESv2.so.2"'));
+      expect(src, contains('GlesAvailable()'));
+      expect(src, contains('apt install libgles2'));
+    });
+
+    /// --help is written twice: Dart's usageText for Windows and macOS, and the
+    /// C++ PrintHelp for Linux. They cannot share a string, so they are held to
+    /// the same flags.
+    test('the Linux --help lists every startup flag Dart does', () {
+      final f = File('linux/runner/my_application.cc');
+      if (!f.existsSync()) return;
+      final src = f.readAsStringSync();
+      final help = src.substring(src.indexOf('static void PrintHelp()'));
+      for (final flag in [...flags, '--webui-bind', '--webui-port']) {
+        expect(help, contains(flag), reason: 'Linux --help omits $flag');
+        expect(
+          usageText('x'),
+          contains(flag),
+          reason: 'Dart --help omits $flag',
+        );
       }
     });
 
