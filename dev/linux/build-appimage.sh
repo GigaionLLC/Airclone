@@ -167,6 +167,43 @@ else
   echo "  NOTE: the build host has no libasound either — no fallback staged"
 fi
 
+say "Staging a last-resort OpenGL ES"
+# libGLESv2 follows the ALSA reasoning above, with one more reason to be careful.
+#
+# The reported failure: `--webui` on WSL aborted with "Couldn't open
+# libGLESv2.so.2". That machine HAD a working EGL - libEGL loaded and Mesa warned
+# about DRI3 - and was missing only this one library. Flutter's engine loads it
+# through libepoxy, which aborts the process when it cannot.
+#
+# Why not bundle it normally: on Linux libGLESv2 is a libglvnd DISPATCH library.
+# It draws nothing; it forwards every call to whichever vendor driver is
+# installed - Mesa, or NVIDIA's proprietary one. A copy in usr/lib would sit
+# ahead of the host's on EVERY machine and could take a working NVIDIA desktop's
+# GPU away from it. The exclusion of GL from the bundle above is right.
+#
+# Why a fallback is still safe: it goes in usr/lib/fallback-gles, which AppRun
+# adds to the search path only when the host has NO libGLESv2 at all. A host with
+# one never sees ours. And it is its OWN directory, not usr/lib/fallback: sharing
+# with ALSA would mean an NVIDIA machine that merely lacks libasound gets our
+# libGLESv2 dragged in ahead of its own driver.
+#
+# What it cannot do: a dispatch library with no vendor behind it has nothing to
+# forward to. AppRun therefore only uses it when an EGL vendor IS present, and
+# otherwise leaves the runner to print what to install - which is the honest
+# outcome on a machine with no graphics stack at all.
+GLES_FALLBACK="$APPDIR/usr/lib/fallback-gles"
+mkdir -p "$GLES_FALLBACK"
+gles="$(ldconfig -p | awk '$1 == "libGLESv2.so.2" { print $NF; exit }')"
+if [ -z "$gles" ]; then
+  # FATAL, unlike ALSA's note. This fallback was added on purpose for a reported
+  # failure, and the release build host installs libgles2 (via libgtk-3-dev ->
+  # libepoxy-dev). Silently shipping without it is how a fix quietly regresses.
+  echo "libGLESv2.so.2 is not on this build host - cannot stage the GLES fallback." >&2
+  exit 1
+fi
+cp -L "$gles" "$GLES_FALLBACK/libGLESv2.so.2"
+echo "  staged $(basename "$gles") as a fallback only"
+
 # linuxdeploy leaves AppRun as a SYMLINK straight to the executable, which means
 # nothing can be decided at launch. Replace it with a launcher that can.
 #
@@ -181,13 +218,29 @@ cat > "$APPDIR/AppRun" <<'APPRUN'
 # Airclone AppImage launcher.
 HERE="$(dirname "$(readlink -f "$0")")"
 
-# Use the bundled ALSA ONLY when the system has none. ldconfig lives in /sbin on
-# most distros and is not always on a user's PATH, so try both; if neither can be
-# run we assume the system has one, which is the safe guess — shadowing a working
-# ALSA is worse than the app failing to start on a machine that has none.
-if ! { /sbin/ldconfig -p 2>/dev/null || ldconfig -p 2>/dev/null; } \
-     | grep -q 'libasound\.so\.2'; then
-  export LD_LIBRARY_PATH="$HERE/usr/lib/fallback${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+# ldconfig lives in /sbin on most distros and is not always on a user's PATH,
+# so try both. Read ONCE: both checks below use it.
+LIBS="$({ /sbin/ldconfig -p 2>/dev/null || ldconfig -p 2>/dev/null; })"
+
+# If ldconfig could not be run at all, assume the system has everything. That is
+# the safe guess in both cases: shadowing a working library is worse than failing
+# to start on a machine that genuinely lacks one.
+if [ -n "$LIBS" ]; then
+  # Use the bundled ALSA ONLY when the system has none.
+  if ! printf '%s\n' "$LIBS" | grep -q 'libasound\.so\.2'; then
+    export LD_LIBRARY_PATH="$HERE/usr/lib/fallback${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+  fi
+
+  # Use the bundled libGLESv2 ONLY when the system has none AND has what it
+  # needs to work: libGLdispatch, the glvnd core it links against, and an EGL
+  # vendor driver for it to forward to. Without a vendor it would load and then
+  # fail later with a worse message than the one the runner prints when it is
+  # simply absent. See build-appimage.sh, "Staging a last-resort OpenGL ES".
+  if ! printf '%s\n' "$LIBS" | grep -q 'libGLESv2\.so\.2' &&
+     printf '%s\n' "$LIBS" | grep -q 'libGLdispatch\.so\.0' &&
+     printf '%s\n' "$LIBS" | grep -qE 'libEGL_(mesa|nvidia)\.so\.0'; then
+    export LD_LIBRARY_PATH="$HERE/usr/lib/fallback-gles${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+  fi
 fi
 
 exec "$HERE/usr/bin/airclone" "$@"
@@ -208,6 +261,21 @@ for lib in libmpv.so.2 libsecret-1.so.0; do
     exit 1
   fi
 done
+
+# libGLESv2 must be in the fallback directory and NOWHERE ELSE. A copy anywhere on
+# the normal search path would be loaded ahead of the host's on every machine,
+# which is precisely the breakage the fallback design exists to avoid.
+if [ ! -s "$APPDIR/usr/lib/fallback-gles/libGLESv2.so.2" ]; then
+  echo "libGLESv2.so.2 is missing from usr/lib/fallback-gles." >&2
+  exit 1
+fi
+stray="$(find "$APPDIR" -name 'libGLESv2.so*' -not -path '*/fallback-gles/*' -print)"
+if [ -n "$stray" ]; then
+  echo "libGLESv2 landed outside the fallback, where it would shadow the host's:" >&2
+  echo "$stray" >&2
+  exit 1
+fi
+echo "  libGLESv2.so.2 staged as a fallback only, and nowhere else"
 
 say "Checking the rclone engine is where the app will look for it"
 # Deliberately NOT a find-anywhere check like the loop above. RcloneEngine

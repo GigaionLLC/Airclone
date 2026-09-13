@@ -14,19 +14,23 @@ name: Linux runner (compile)
 # the runner, the Linux CMake, and pubspec (which changes the plugin set, and
 # therefore generated_plugin_registrant.cc) that can break this compile.
 #
-# Compile only: no rclone bundling, no packaging, no upload. Those are
-# release.yml's job and are not what this is checking.
+# It also packages the AppImage and tests its launcher, because the AppImage
+# script's own fatal checks (libGLESv2 staged as a fallback and nowhere else)
+# otherwise run only inside release.yml, after a tag is public. Nothing is
+# uploaded: no rclone bundling, no release, no artifact.
 
 on:
   push:
     branches: [main]
     paths:
       - 'app/linux/**'
+      - 'dev/linux/**'
       - 'app/pubspec.yaml'
       - '.github/workflows/linux-runner.yml'
   pull_request:
     paths:
       - 'app/linux/**'
+      - 'dev/linux/**'
       - 'app/pubspec.yaml'
       - '.github/workflows/linux-runner.yml'
   workflow_dispatch:
@@ -50,7 +54,7 @@ jobs:
       # Same set release.yml installs; see its comments for why each is needed.
       - name: Install build deps
         working-directory: .
-        run: sudo apt-get update && sudo apt-get install -y ninja-build libgtk-3-dev libmpv-dev mpv libsecret-1-dev
+        run: sudo apt-get update && sudo apt-get install -y ninja-build libgtk-3-dev libmpv-dev mpv libsecret-1-dev desktop-file-utils
       # Pinned to the release pin. A floating channel here would test a
       # different embedder than the one that ships.
       - uses: subosito/flutter-action@v2
@@ -82,3 +86,31 @@ jobs:
           for flag in --webui --webui-bind --webui-port --run-due --run-task --version --help; do
             grep -q -- "$flag" <<<"$out" || { echo "::error::--help does not mention $flag"; exit 1; }
           done
+
+      # The launcher's library decisions, against simulated hosts. Runs on real
+      # Linux, where /sbin/ldconfig exists - the script redirects the extracted
+      # copy away from it, or every case would test this runner's own libraries.
+      - name: AppRun chooses its fallbacks correctly
+        working-directory: .
+        run: bash dev/linux/test-apprun.sh
+
+      # Build the AppImage itself, which is where the fallback checks are FATAL:
+      # libGLESv2 must be staged in usr/lib/fallback-gles and nowhere else. Until
+      # now those checks ran only inside release.yml, after a tag was public.
+      - name: Package the AppImage
+        working-directory: .
+        run: bash dev/linux/build-appimage.sh app/build/linux/x64/release/bundle "$RUNNER_TEMP/Airclone-x86_64.AppImage"
+
+      - name: The packaged AppImage holds libGLESv2 as a fallback only
+        working-directory: .
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP"
+          ./Airclone-x86_64.AppImage --appimage-extract >/dev/null
+          test -s squashfs-root/usr/lib/fallback-gles/libGLESv2.so.2
+          stray="$(find squashfs-root -name 'libGLESv2.so*' -not -path '*/fallback-gles/*')"
+          if [ -n "$stray" ]; then
+            echo "::error::libGLESv2 outside the fallback would shadow the host's: $stray"
+            exit 1
+          fi
+          echo "libGLESv2 is in fallback-gles only"
