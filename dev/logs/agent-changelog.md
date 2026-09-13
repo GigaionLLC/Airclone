@@ -13,6 +13,65 @@ happened": nothing was logged between 2026-07-02 and 2026-07-15, or between 2026
      it is: it used to say ABOVE, which pushed it further down the file with every entry until
      it sat hundreds of lines under the newest one and pointed writers at the wrong place. -->
 
+## [2026-09-12] - v0.8.3 through v0.13.1: a browser, a security audit, and the disk you do not have
+
+**Agent:** Claude Opus 5 - `main`
+**Files Modified:** 255 across the v0.8.0→v0.13.1 range, 109 of them new, +19.7k/-3.7k. Seven
+releases, logged as one entry because nothing was logged at all for six of them and a gap is worse
+than a summary. `dev/releases/v0.8.3.md` through `v0.13.1.md` are the per-version record; this is
+what a future session needs to know that those do not say.
+**Database/API Changes:** tags `v0.8.3`, `v0.9.0`, `v0.10.0`, `v0.11.0`, `v0.12.0`, `v0.13.0`,
+`v0.13.1`. Apple: v0.9.0 released to the App Store and Mac App Store, v0.12.0 submitted. Microsoft:
+v0.12.0 **staged and waiting on a human** to press *Submit for certification* in Partner Center.
+Play: open testing published per tag by hand; **production is still on 0.8.0** (code 126) because
+promoting is a deliberate act, not a side effect of a tag.
+
+**What shipped**
+
+- **v0.8.3** — [issue #3](https://github.com/GigaionLLC/Airclone/issues/3): an empty card reader
+  blanked the window. See [`bug-reports.md`](../bug-reports.md), whose worked example is this fix.
+- **v0.9.0** — the **Web UI**. Airclone serves its own Flutter web build over an authenticated
+  local server. Linux also began shipping its own engine.
+- **v0.10.0** — network stream playback, and one media-format table
+  (`state/media_formats.dart`) instead of five drifting extension lists.
+- **v0.11.0** — file transfer through the Web UI, and the Web UI became **HTTPS-only** with a
+  generated self-signed certificate and an import directory for a real one.
+- **v0.12.0** — online-only cloud files are marked rather than silently downloaded, including a
+  macOS `SF_DATALESS` probe, and folders carry the marker too.
+- **v0.13.0 / v0.13.1** — [issue #4](https://github.com/GigaionLLC/Airclone/issues/4): file
+  operations from inside the preview.
+
+**The security audit (v0.10–v0.11), because it changed rules rather than lines**
+
+Three findings are worth carrying forward, all of them in code that had already been reviewed:
+
+1. **media_kit's DEFAULT protocol whitelist includes `file`**, with `allowed_extensions=ALL`
+   hardcoded. A crafted `.m3u8` naming a local path could therefore open it. Preview now passes an
+   explicit protocol list with **no `file`** (`kPreviewProtocols`), and network streaming gets a
+   wider one only because the user typed the URL.
+2. **mpv's `http-header-fields` is GLOBAL**, so engine credentials were replayed to any host a
+   manifest named. Headers now cross `sendableHeaders`, which returns `{}` for anything that is not
+   loopback.
+3. **A redaction rule silently died** because a word-boundary escape written through an unquoted
+   heredoc arrived as a literal backspace byte instead of the two characters it was typed as. It compiled, analysed clean, and disabled the rule. `cat -A` found it.
+
+Rules 15–18 in [`AGENT.md`](../../AGENT.md) came out of this run: invariants get a comment saying
+*why*, secrets never go in argv, a library's default is not a safe default, and invisible characters
+are real. Rule ordering in `state/diagnostics.dart` is load-bearing — the PEM rule must run first
+or the generic `key = value` rule mangles the header before it matches.
+
+**What a future session should not have to rediscover**
+
+- **Apple's `PENDING_DEVELOPER_RELEASE` looks exactly like "still queued"** through
+  `asc-version.yml`, which answers every non-editable state with the same refusal. That misread cost
+  hours on a version that was approved and waiting on us. `asc-release.yml -f mode=dry-run` prints
+  the real state; `tool/asc_build.py --release` then releases it.
+- **Play open testing is manual since v0.8.3** (`publish-play.yml`). It fired on every tag before
+  that, which is the kind of thing you find out by seeing a build in testing you did not send.
+- `dev/plans/advanced-file-manager-research.md` is **research, not a task list** — bulk transfers,
+  multi-user and federation, with the finding that transfers are already parallel and unbounded.
+
+
 ## [2026-09-09] - v0.8.0: backups, a scheduler you can find, and the runs nobody is watching
 
 **Agent:** Claude Opus 5 - `main`
