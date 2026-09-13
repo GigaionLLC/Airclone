@@ -41,32 +41,52 @@ Mounting needs a filesystem driver that only a desktop operating system provides
 | Windows | Yes | Needs WinFsp installed first. See below. |
 | macOS (downloaded build) | Yes | Needs a FUSE driver installed separately. |
 | Linux — AppImage or tar.gz | Yes | Needs FUSE installed separately. |
-| Linux — **Flatpak** | No | Explained wherever you look: Settings → Mounts, the Mount button (Advanced mode), and `rclone mount` in the console. See below. |
+| Linux — **Flatpak** | With one permission | You grant it yourself; see below. Until then the app explains it in Settings → Mounts, the Mount button, and the console. |
 | macOS from the Mac App Store | No | Hidden entirely. The App Sandbox cannot run FUSE, so the button and the Settings → Mounts group do not appear rather than failing when pressed. |
 | Android, iOS | No | Not supported. |
 
-### The Flatpak cannot mount, and no setting changes that
+### Mounting from the Flatpak needs one permission
 
-If you installed Airclone as a Flatpak — from a software centre, or with
-`flatpak install` — mounting is the one feature you do not have. This is a limit of Flatpak, not of
-Airclone, and Airclone says so wherever you would go looking: **Settings → Mounts** explains it in
-any mode, **Mount as a drive** explains it when pressed, and typing `rclone mount` in the console
-answers the same way.
+A drive mounted inside the Flatpak sandbox would be visible **only to Airclone** — not to your file
+manager, not to your editor — and other programs seeing the files is the whole reason to mount one.
+So Airclone mounts through a small helper that runs *outside* the sandbox, where the drive is
+visible to everything.
 
-It is not a permission you can grant, so there is nothing to look for in Flatseal. A Flatpak runs
-with its own view of the filesystem, so a drive mounted inside it would be visible **only to
-Airclone** — not to your file manager, not to your editor — and other programs seeing the files is
-the entire reason to mount one.
+That helper needs one permission, `org.freedesktop.Flatpak`, and Airclone does not ask for it on its
+own. It lets Airclone run commands on your computer outside the sandbox — **not only the mount** — so
+whether that trade is worth it is your decision, not a default. Flathub does not let apps request it
+for the same reason.
 
-If you want a mounted drive on Linux, use the **AppImage** or the **tar.gz** instead; both can. The
-explanation offers a link to them, except in a build installed from Flathub itself.
+To grant it, run this once in a terminal, then restart Airclone:
 
-**Why not point the Flatpak at an rclone installed on your system?** Because it does not help. The
-Flatpak can see that binary, but running it from inside the sandbox mounts the drive inside the
-sandbox too, which is the original problem. Running it *outside* the sandbox takes a permission
-(`org.freedesktop.Flatpak`) that lets the app run any command on your computer — the sandbox in
-name only — to deliver a feature the AppImage already has. If
-you only want to work with your files inside Airclone, you do not need a mount at all — browsing a
+```bash
+flatpak override --user --talk-name=org.freedesktop.Flatpak com.gigaionllc.airclone
+```
+
+Flatseal's **D-Bus session bus** switch also works, but grants more than this one name. To take the
+permission away again:
+
+```bash
+flatpak override --user --no-talk-name=org.freedesktop.Flatpak com.gigaionllc.airclone
+```
+
+Avoid `flatpak override --user --reset` for this: without an app name it resets your overrides for
+every Flatpak you have installed.
+
+Until you grant it, Airclone says all of this wherever you would go looking — **Settings → Mounts**,
+**Mount as a drive**, and `rclone mount` in the console — rather than a mount failing with no
+explanation. Once granted, the mount dialog says it is using the permission, so it stays something
+you can see you are relying on.
+
+**If you would rather not grant it**, use the **AppImage** or the **tar.gz** instead; both mount
+without it. The explanation links to them, except in a build installed from Flathub itself.
+
+**Why not point the Flatpak at an rclone installed on your system?** On its own it does not help. The
+Flatpak can see that binary, but running it from inside the sandbox mounts inside the sandbox too,
+which is the original problem. Reaching outside needs the same permission as above — and with it
+granted, the bundled rclone already mounts.
+
+If you only want to work with your files inside Airclone, you do not need a mount at all: browsing a
 remote directly is usually faster than one (see [below](#why-the-in-app-explorer-is-usually-faster)).
 
 Two things about the button that are worth knowing before you hunt for it:

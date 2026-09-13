@@ -84,9 +84,9 @@ const String kReleasesPageUrl =
 /// place to send a Flatpak user twice over: it is hidden without Advanced mode,
 /// and inside the sandbox it can only explain that mounting is impossible.
 const String kFlatpakMountConsoleHint =
-    'This Flatpak build cannot mount at all: Flatpak runs apps in a sandbox, '
-    'so a mounted drive would be visible only to Airclone. Use the AppImage or '
-    'the tar.gz to mount a remote as a drive.';
+    'In the Flatpak, mounting needs a permission that lets Airclone run commands '
+    'outside its sandbox. "Mount as a drive" explains how to grant it; the '
+    'AppImage and the tar.gz mount without it.';
 
 /// Whether mounting a remote as a drive can work here.
 ///
@@ -96,17 +96,29 @@ const String kFlatpakMountConsoleHint =
 /// Two shipped builds cannot have that, and both would otherwise offer a button
 /// that fails:
 ///  - the **Mac App Store** build, where the App Sandbox forbids FUSE outright,
-///  - a **Flatpak**, whose manifest
-///    (`app/linux/packaging/com.gigaionllc.airclone.yml`) deliberately does not
-///    request `--device=all`. Asking for blanket device access to mount a drive
-///    is a far bigger permission than the feature is worth, so the feature goes
-///    rather than the sandbox.
+///  - a **Flatpak**, UNLESS the user has granted it host command access.
+///
+/// The Flatpak case is conditional, not a flat no. A mount made inside the
+/// sandbox is invisible to every other program, so the Flatpak mounts through a
+/// fusermount wrapper that runs on the host (app/linux/packaging/
+/// fusermount-wrapper.sh). That needs `org.freedesktop.Flatpak`, which lets the
+/// app run any command on the host. The manifest does not request it - Flathub
+/// would not accept it, and it is too broad to grant every user silently - so
+/// [flatpakHostMount] is whether the user granted it themselves. See
+/// state/flatpak_host_access.dart.
+///
+/// Note what is NOT requested for this: `--device=all`. Exposing /dev/fuse
+/// inside the sandbox would still mount into the sandbox's own namespace, where
+/// nothing else can see it.
 ///
 /// Gating it here means every entry point — the toolbar button, the dialog, and
 /// `MountController.mount()` — already honours it, and the build hides the
 /// feature instead of failing at run time.
-bool mountPossibleFor({required bool macAppStore, required bool flatpak}) =>
-    !macAppStore && !flatpak;
+bool mountPossibleFor({
+  required bool macAppStore,
+  required bool flatpak,
+  bool flatpakHostMount = false,
+}) => !macAppStore && (!flatpak || flatpakHostMount);
 
 /// Whether a live QR scan is possible here, for importing a config by camera.
 ///

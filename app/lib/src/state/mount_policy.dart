@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'build_flavor.dart';
+import 'flatpak_host_access.dart';
 
 /// Enterprise kill-switch for the Mount feature (parallels [serveEnabledProvider]).
 /// Defaults to enabled; a managed-config/MDM source can override it to disable
@@ -12,12 +13,13 @@ import 'build_flavor.dart';
 /// Gating it at this one provider means every existing entry point already
 /// honours it, and a MAS build hides the UI rather than failing at runtime.
 /// See state/build_flavor.dart and dev/plans/apple-appstore-plan.md Gate C1.
-/// A **Flatpak** is folded in for the same reason: our manifest does not request
-/// `--device=all`, so there is no `/dev/fuse` inside the sandbox and mounting
-/// cannot work however the UI is dressed. See [mountPossibleFor].
+/// A **Flatpak** is folded in too, but conditionally: it can mount once the user
+/// has granted it host command access, through the host-side fusermount wrapper.
+/// See [mountPossibleFor] and state/flatpak_host_access.dart.
 final mountEnabledProvider = Provider<bool>(
   (ref) => mountPossibleFor(
     macAppStore: kMacAppStoreBuild,
     flatpak: kRunningInFlatpak,
+    flatpakHostMount: kFlatpakHostCommandsAllowed,
   ),
 );

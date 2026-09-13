@@ -9,6 +9,7 @@
 library;
 
 import '../build_flavor.dart';
+import '../flatpak_host_access.dart';
 import '../host_platform.dart';
 
 /// How dangerous a command is, which drives the console's guardrails.
@@ -209,8 +210,10 @@ String blockedMessage(
   String verb,
   List<String> flags, {
   Map<String, String>? environment,
+  bool? flatpakHostMount,
 }) {
   final env = environment ?? HostPlatform.environment;
+  final hostMount = flatpakHostMount ?? kFlatpakHostCommandsAllowed;
   final info = kRcloneCommands[verb];
   if (info == null) {
     return 'Unknown command "$verb". The console accepts a curated set of '
@@ -229,7 +232,10 @@ String blockedMessage(
   // In a Flatpak, "use Mount as a drive in the toolbar" sends people to a button
   // that is hidden without Advanced mode and cannot mount inside the sandbox
   // even when it is shown. Answer the question they are actually asking.
-  final alternative = verb == 'mount' && runningInFlatpak(env)
+  // Only a Flatpak WITHOUT host access gets the permission hint. Once the user
+  // has granted it, "Mount as a drive" simply works, and telling them they still
+  // need a permission would send them looking for a problem they have solved.
+  final alternative = verb == 'mount' && runningInFlatpak(env) && !hostMount
       ? kFlatpakMountConsoleHint
       : _inAppAlternative[verb];
   final why =

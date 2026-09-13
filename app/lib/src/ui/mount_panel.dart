@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../rclone/models/mount_options.dart';
@@ -13,6 +14,7 @@ import 'disclosure.dart';
 import 'mount_options_editor.dart';
 import 'theme/tokens.dart';
 import '../state/build_flavor.dart';
+import '../state/flatpak_host_access.dart';
 import '../state/host_platform.dart';
 import '../state/mount_point.dart';
 import 'package:file_selector/file_selector.dart';
@@ -22,22 +24,25 @@ import 'package:url_launcher/url_launcher.dart';
 Future<void> showMountDialog(BuildContext context) =>
     showDialog<void>(context: context, builder: (_) => const _MountDialog());
 
-/// Why mounting is missing in a Flatpak, and what to use instead.
+/// Mounting in a Flatpak, before the user has granted the permission it needs.
 ///
-/// Shown rather than hiding the button, because hiding it reads as "Airclone
-/// cannot do this" when the truth is "this PACKAGE cannot, and another one can".
+/// THIS REPLACES A DIALOG THAT WAS NOT TRUE. It said "No permission setting
+/// changes that" - but one does. rclone-manager, an rclone GUI on Flathub, mounts
+/// from its Flatpak exactly this way, and its users fix the failure in Flatseal.
+/// Telling a user no fix exists, when a search turns one up, would cost more
+/// trust than the limitation itself.
 ///
-/// There is deliberately no "grant a permission" instruction, because no
-/// permission delivers it. `--device=all` would expose /dev/fuse, but a Flatpak
-/// has its own MOUNT NAMESPACE: a drive mounted inside the sandbox is visible
-/// only to Airclone, and the entire point of mounting is that OTHER programs —
-/// a file manager, an editor — can open the files. The only way out is
-/// `--talk-name=org.freedesktop.Flatpak`, which lets the app run arbitrary
-/// commands on the host and is a sandbox escape in everything but name. Trading
-/// the sandbox away for one feature that two other packages already provide
-/// would be a bad bargain, so the answer is the other package.
+/// The honest version says three things: WHY a sandboxed mount needs help from
+/// outside the sandbox, WHAT the permission that provides it actually allows -
+/// running any command on the computer, not only the mount - and that the
+/// AppImage and tar.gz mount without it. Then the user decides.
+///
+/// It is the user's call rather than a default because the permission is broad:
+/// Flathub will not let an app request it, and granting it silently to everyone
+/// who installs the bundle would undo the reason to install a Flatpak at all.
 Future<void> showMountUnavailableInFlatpakDialog(BuildContext context) {
   final c = AircloneTheme.of(context);
+  final command = flatpakHostAccessCommand();
   return showDialog<void>(
     context: context,
     builder: (ctx) => AlertDialog(
@@ -51,7 +56,7 @@ Future<void> showMountUnavailableInFlatpakDialog(BuildContext context) {
           const SizedBox(width: Space.x2),
           Expanded(
             child: Text(
-              'Mounting needs a different package',
+              'Mounting needs one more permission',
               style: TextStyle(
                 color: c.text,
                 fontSize: 17,
@@ -62,19 +67,45 @@ Future<void> showMountUnavailableInFlatpakDialog(BuildContext context) {
         ],
       ),
       content: DialogBody(
-        width: 460,
-        child: Text(
-          'This is the Flatpak build, and it runs in a sandbox with its own view '
-          'of the filesystem. A drive mounted inside it would be visible only to '
-          'Airclone — not to your file manager, your editor, or anything else — '
-          'which is the whole point of mounting one. No permission setting '
-          'changes that.\n\n'
-          'This is a limit of Flatpak itself, not something Airclone can fix '
-          'from inside it.\n\n'
-          'To mount a remote as a drive, use the AppImage or the tar.gz instead. '
-          'Everything else Airclone does works here, and browsing a remote in '
-          'Airclone needs no mount at all — it is usually faster than one.',
-          style: TextStyle(color: c.textMuted, fontSize: 13, height: 1.45),
+        width: 480,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'This is the Flatpak build, which runs in a sandbox. A drive '
+              'mounted inside the sandbox would be visible only to Airclone, '
+              'so Airclone mounts through a small helper that runs outside it.'
+              '\n\n'
+              'That helper needs a permission Airclone does not ask for on its '
+              'own, because it lets Airclone run commands on your computer '
+              'outside the sandbox — not only the mount. If you are comfortable '
+              'with that, run this once in a terminal, then restart Airclone:',
+              style: TextStyle(color: c.textMuted, fontSize: 13, height: 1.45),
+            ),
+            const SizedBox(height: Space.x3),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(Space.x3),
+              decoration: BoxDecoration(
+                color: c.surfaceSunken,
+                borderRadius: BorderRadius.circular(Radii.md),
+              ),
+              child: SelectableText(
+                command,
+                style: TextStyle(
+                  color: c.text,
+                  fontSize: 12,
+                  fontFamily: 'monospace',
+                ),
+              ),
+            ),
+            const SizedBox(height: Space.x3),
+            Text(
+              'Or use the AppImage or the tar.gz, which mount without it.',
+              style: TextStyle(color: c.textMuted, fontSize: 13, height: 1.45),
+            ),
+          ],
         ),
       ),
       actionsPadding: const EdgeInsets.fromLTRB(
@@ -84,6 +115,10 @@ Future<void> showMountUnavailableInFlatpakDialog(BuildContext context) {
         Space.x4,
       ),
       actions: [
+        TextButton(
+          onPressed: () => Clipboard.setData(ClipboardData(text: command)),
+          child: const Text('Copy command'),
+        ),
         // The direct-download bundle gets a link to the package that CAN
         // mount. A build shipped BY Flathub does not: sending its users off to
         // download a different package from outside the store is the kind of
@@ -343,6 +378,11 @@ class _MountDialogState extends ConsumerState<_MountDialog> {
     final types = ref.watch(mountTypesProvider).valueOrNull;
     final winfspMissing = types != null && types.isEmpty;
     return [
+      // In a Flatpak this dialog is only reachable once host command access was
+      // granted. Say so here, where the mount happens, so the permission stays
+      // something the user can see they are relying on rather than something
+      // they granted once and forgot.
+      if (kRunningInFlatpak) _flatpakHostNote(c),
       // An empty mount-type list means the FUSE layer is missing. That is WinFsp
       // on Windows and FUSE elsewhere; naming WinFsp to a Linux user was wrong.
       if (winfspMissing && _letters) _winfspBanner(c),
@@ -564,6 +604,25 @@ class _MountDialogState extends ConsumerState<_MountDialog> {
         ),
       ),
     ],
+  );
+
+  Widget _flatpakHostNote(AircloneColors c) => Padding(
+    padding: const EdgeInsets.only(bottom: Space.x3),
+    child: Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(Icons.shield_outlined, size: 14, color: c.textFaint),
+        const SizedBox(width: Space.x2),
+        Expanded(
+          child: Text(
+            'Mounting from the Flatpak uses the permission you granted it to run '
+            'commands on this computer. Remove it any time in Flatseal, or with '
+            '`${flatpakHostAccessRevokeCommand()}`.',
+            style: TextStyle(color: c.textFaint, fontSize: 11, height: 1.4),
+          ),
+        ),
+      ],
+    ),
   );
 
   Widget _fuseBanner(AircloneColors c) => Container(

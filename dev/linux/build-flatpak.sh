@@ -77,6 +77,8 @@ cp -a "$BUNDLE"/. "$CTX/bundle/"
 cp "$PKG/$APP_ID.desktop" "$PKG/$APP_ID.metainfo.xml" "$CTX/"
 cp "$PKG"/icons/*.png "$CTX/icons/"
 cp "$PKG/$APP_ID.yml" "$CTX/"
+# The host-side fusermount the manifest installs, for mounting. See the manifest.
+cp "$PKG/fusermount-wrapper.sh" "$CTX/"
 
 # /app/bin/airclone. Keeps the bundle intact under /app/airclone (see the
 # manifest) while giving Flatpak the single `command` it expects on PATH.

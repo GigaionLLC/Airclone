@@ -94,6 +94,14 @@ jobs:
         working-directory: .
         run: bash dev/linux/test-apprun.sh
 
+      # The Flatpak's host-side fusermount, against a fake flatpak-spawn: the
+      # permission check comes first, fuse3 falls back to fuse2, and exactly the
+      # right descriptors cross to the host. A wrong descriptor mounts the drive
+      # on the host and leaves rclone waiting for /dev/fuse forever.
+      - name: The Flatpak fusermount wrapper forwards what rclone needs
+        working-directory: .
+        run: bash dev/linux/test-fusermount-wrapper.sh
+
       # build-appimage.sh refuses to package without the bundled rclone engine,
       # and rightly: an AppImage without it downloads one on first run. The
       # release job bundles it in a step this workflow did not have, which is

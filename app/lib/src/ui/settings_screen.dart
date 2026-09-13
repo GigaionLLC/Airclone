@@ -2709,15 +2709,15 @@ class _FlatpakMountNotice extends StatelessWidget {
         const SizedBox(width: Space.x2),
         Expanded(
           child: Text(
-            'The Flatpak build cannot mount a remote as a drive. Flatpak runs '
-            'apps in a sandbox, so a mounted drive would only be visible to '
-            'Airclone. Use the AppImage or tar.gz to mount.',
+            'The Flatpak build can mount only with a permission that lets '
+            'Airclone run commands outside its sandbox. The AppImage and tar.gz '
+            'mount without it.',
             style: TextStyle(color: c.textMuted, fontSize: 13, height: 1.4),
           ),
         ),
         TextButton(
           onPressed: () => showMountUnavailableInFlatpakDialog(context),
-          child: const Text('Why?'),
+          child: const Text('How to enable'),
         ),
       ],
     );
