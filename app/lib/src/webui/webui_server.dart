@@ -469,7 +469,11 @@ class WebUiServer {
 
     try {
       final result = await engineClient().rpc(method, params);
-      return await _json(request, HttpStatus.ok, result);
+      return await _json(
+        request,
+        HttpStatus.ok,
+        annotatePlaceholders(method, params, result),
+      );
     } on RcloneException catch (e) {
       // rclone said no. That is frequently NORMAL (a backend without `about`,
       // a missing path) and the client maps it onto its own error handling, so
@@ -579,15 +583,24 @@ class WebUiServer {
     // — the user's bandwidth, and on a metered plan their money — for a click
     // that looked like it was moving a file they already had.
     //
-    // Preview (no `download=1`) is deliberately left alone for now: it is
-    // shipped behaviour, and changing what previews are allowed to open is a
-    // separate decision from what a Save button may fetch.
-    if (request.uri.queryParameters['download'] == '1' &&
-        wouldHydrateOnReadFs(fs, remote)) {
+    // This used to fire only for `download=1`, leaving preview and THUMBNAILS
+    // to fetch whatever they liked. That was the leak: a browser cannot run the
+    // placeholder probe, so the Web UI asked for a thumbnail of every file in
+    // the folder and this endpoint served them all, hydrating an entire Proton
+    // Drive directory from one page load. Reported with the provider's own
+    // sync log as evidence.
+    //
+    // So the guard is on the ENDPOINT, which is the only place that sees every
+    // content read. `hydrate=1` is the deliberate opt-in - the Web UI's
+    // equivalent of the desktop's "Show thumbnail" - and it is never sent
+    // automatically.
+    if (wouldHydrateOnReadFs(fs, remote) &&
+        request.uri.queryParameters['hydrate'] != '1') {
       return _json(request, HttpStatus.conflict, {
         'error':
             'That file is stored online-only on this device. Download it in '
             'the Airclone app first, or make it available offline.',
+        'placeholder': true,
       });
     }
 

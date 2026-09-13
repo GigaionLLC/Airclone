@@ -1,5 +1,7 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../native/native_probes.dart';
+import '../rclone/models/rclone_file.dart';
 import '../rclone/models/remote.dart';
 
 /// Guards against silently HYDRATING cloud "Files On-Demand" placeholders.
@@ -110,7 +112,7 @@ String? resolveLocalBackingRoot(
     if (rest.isEmpty) return base;
     return base.isEmpty ? rest : _joinLocal(base, rest);
   }
-  if (RegExp(r'^[A-Za-z]:[\/]').hasMatch(target)) return target;
+  if (RegExp(r'^[A-Za-z]:[\\/]').hasMatch(target)) return target;
   return null;
 }
 
@@ -209,17 +211,82 @@ String _joinLocal(String root, String within) {
 /// the same reasoning: an unresolved path is not evidence of a placeholder, and
 /// refusing to serve on a guess would break ordinary cloud files.
 bool wouldHydrateOnReadFs(String fs, String pathWithinRemote) {
+  if (!isLocalFsRoot(fs)) return false;
+  return isOnlineOnlyPlaceholder(_joinLocal(fs.trim(), pathWithinRemote));
+}
+
+/// Adds to an `operations/list` result what the browser cannot work out for
+/// itself: which entries are online-only.
+///
+/// A cloud placeholder is a filesystem attribute on the machine holding the
+/// file. The browser rendering the Web UI has no access to it, and the web
+/// build's probe stubs answer "there is no filesystem here" - a true statement
+/// about the browser and the wrong answer about the file, because the file is
+/// on the host. The result was a Web UI that drew no cloud badges and then
+/// requested a thumbnail of every online-only file in the folder, hydrating a
+/// whole Proton Drive directory from one page load.
+///
+/// So the host answers, once, on the listing the browser is already fetching.
+/// No extra round trip and no per-entry endpoint to rate limit.
+///
+/// Only for an `fs` that is an absolute local root: [wouldHydrateOnReadFs]
+/// resolves nothing else, and a named remote would need the config. Entries it
+/// cannot answer for are left UNANNOTATED rather than marked `false`, so the
+/// client can tell "the host checked and it is resident" from "nobody knows".
+/// Mutates and returns [result]; anything that is not a listing passes through.
+Map<String, dynamic> annotatePlaceholders(
+  String method,
+  Map<String, dynamic> params,
+  Map<String, dynamic> result,
+) {
+  if (method != 'operations/list') return result;
+  final fs = params['fs']?.toString() ?? '';
+  final list = result['list'];
+  if (!isLocalFsRoot(fs) || list is! List) return result;
+  final base = params['remote']?.toString() ?? '';
+  for (final entry in list) {
+    if (entry is! Map) continue;
+    final path = entry['Path']?.toString();
+    if (path == null || path.isEmpty) continue;
+    // `Path` is relative to the LISTED FOLDER, not to the fs root.
+    entry[kOnlineOnlyField] = wouldHydrateOnReadFs(
+      fs,
+      base.isEmpty ? path : '$base/$path',
+    );
+  }
+  return result;
+}
+
+/// Whether [fs] is an absolute local path root rather than a named remote, and
+/// therefore something [wouldHydrateOnReadFs] can actually answer for.
+///
+/// Exposed because the difference matters to the Web UI server: for a local
+/// root, "not a placeholder" is a CHECKED fact worth sending to the browser;
+/// for anything else it is only an unanswered question, and the two must not
+/// arrive looking the same.
+bool isLocalFsRoot(String fs) {
   final root = fs.trim();
   if (root.isEmpty) return false;
   // A remote is `name:` or `name:path`; a local root is a filesystem path.
-  final looksAbsolutePosix = root.startsWith('/');
-  final looksAbsoluteWindows = RegExp(r'^[A-Za-z]:[\/]').hasMatch(root);
-  if (!looksAbsolutePosix && !looksAbsoluteWindows) return false;
-  final local = _joinLocal(root, pathWithinRemote);
-  return isOnlineOnlyPlaceholder(local);
+  return root.startsWith('/') || RegExp(r'^[A-Za-z]:[\\/]').hasMatch(root);
 }
 
-bool wouldHydrateOnRead(Remote remote, String pathWithinRemote) {
+bool wouldHydrateOnRead(
+  Remote remote,
+  String pathWithinRemote, {
+  RcloneFile? entry,
+}) {
+  // The HOST's answer wins when there is one. In the Web UI the probes below
+  // run in a browser, where they cannot see a filesystem at all and correctly
+  // report nothing - which this function then read as "safe to read", so the
+  // Web UI drew no cloud badges and requested a thumbnail of every online-only
+  // file in the folder. The server annotates the listing precisely so this
+  // question has a real answer there; see RcloneFile.onlineOnly.
+  //
+  // Null is not false: an entry nobody could answer for falls through to the
+  // local probes, which is the desktop path and unchanged by this.
+  final reported = entry?.onlineOnly;
+  if (reported != null) return reported;
   final local = localAbsolutePath(remote, pathWithinRemote);
   return local != null && isOnlineOnlyPlaceholder(local);
 }
@@ -251,5 +318,28 @@ class ThumbnailOptIn extends Notifier<Set<String>> {
 
   void allow(String fs, String pathWithinRemote) {
     state = {...state, keyFor(fs, pathWithinRemote)};
+    allowHydration(fs, pathWithinRemote);
   }
 }
+
+/// The same opt-ins, reachable without a `ref`.
+///
+/// [WebRcloneClient] has to know: the Web UI server now refuses to serve the
+/// bytes of an online-only file unless the URL says the user asked for it, and
+/// the client that builds those URLs is a plain object with no provider access.
+/// A Riverpod-only record would leave "Download and preview" clicking straight
+/// into the refusal it is meant to lift.
+///
+/// Session-scoped and never persisted, for the reason [thumbnailOptInProvider]
+/// gives: a choice made on home wifi should not silently apply in a hotel next
+/// week.
+final Set<String> _hydrationOptIns = <String>{};
+
+void allowHydration(String fs, String pathWithinRemote) =>
+    _hydrationOptIns.add(ThumbnailOptIn.keyFor(fs, pathWithinRemote));
+
+bool hydrationAllowedFor(String fs, String pathWithinRemote) =>
+    _hydrationOptIns.contains(ThumbnailOptIn.keyFor(fs, pathWithinRemote));
+
+@visibleForTesting
+void clearHydrationOptIns() => _hydrationOptIns.clear();

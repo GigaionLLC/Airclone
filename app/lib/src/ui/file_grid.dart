@@ -204,6 +204,7 @@ class _GridTile extends StatelessWidget {
     final onlineOnly = wouldHydrateOnRead(
       remote,
       state.path.isEmpty ? file.name : '${state.path}/${file.name}',
+      entry: file,
     );
     final icon = Icon(
       onlineOnly ? kOnlineOnlyIcon : iconFor(file),

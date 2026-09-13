@@ -279,10 +279,24 @@ class PreviewContent extends ConsumerWidget {
     final kind = _kindFor(file);
     // A preview READS CONTENT, which is what hydrates a Files On-Demand
     // placeholder. Listing this folder was free; opening this file is not.
-    if (wouldHydrateOnRead(remote, fullPath)) {
+    if (wouldHydrateOnRead(remote, fullPath, entry: file)) {
       return _OnlineOnlyGate(
         file: file,
-        proceed: () => _body(context, ref, kind, ref0, openExternally),
+        // Recorded so the Web UI's object URL can carry the opt-in: the server
+        // refuses an online-only file's bytes unless the request says a human
+        // asked, and consenting here IS that human. On desktop this is a no-op
+        // beyond remembering the choice - nothing between here and the engine
+        // is checking.
+        onConsent: () => allowHydration(remote.fs, fullPath),
+        // Rebuilt AFTER consent, so the ref is constructed with the opt-in in
+        // place rather than captured before it.
+        proceed: () => _body(
+          context,
+          ref,
+          kind,
+          client.objectRef(remote.fs, fullPath),
+          openExternally,
+        ),
       );
     }
     return _body(context, ref, kind, ref0, openExternally);
@@ -674,7 +688,14 @@ class _BrowserCannotPlayBody extends StatelessWidget {
 /// Deliberately NOT applied to copy, sync or download. There the hydration IS
 /// the operation the user asked for, and asking again would be nagging.
 class _OnlineOnlyGate extends StatefulWidget {
-  const _OnlineOnlyGate({required this.file, required this.proceed});
+  const _OnlineOnlyGate({
+    required this.file,
+    required this.proceed,
+    this.onConsent,
+  });
+
+  /// Called once, the moment the user accepts the download.
+  final VoidCallback? onConsent;
 
   final RcloneFile file;
 
@@ -703,7 +724,10 @@ class _OnlineOnlyGateState extends State<_OnlineOnlyGate> {
           'against a metered one. Browsing and renaming need no download.',
       color: c.textMuted,
       action: FilledButton.icon(
-        onPressed: () => setState(() => _consented = true),
+        onPressed: () {
+          widget.onConsent?.call();
+          setState(() => _consented = true);
+        },
         icon: const Icon(Icons.download, size: 18),
         label: Text('Download ${humanSize(widget.file.size)} & preview'),
       ),

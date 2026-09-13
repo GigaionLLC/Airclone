@@ -18,6 +18,7 @@ import 'package:http/http.dart' as http;
 import 'package:url_launcher/url_launcher.dart';
 
 import '../webui/webui_protocol.dart';
+import '../state/cloud_placeholder.dart';
 import 'rclone_client.dart';
 
 /// Thrown when the server says the session is gone. Surfaced distinctly from a
@@ -192,7 +193,16 @@ class WebRcloneClient implements RcloneClient, ObjectUploader {
   ObjectRef objectRef(String fs, String remote) {
     final uri = _base
         .resolve(kObjectPath)
-        .replace(queryParameters: {'fs': fs, 'remote': remote});
+        .replace(
+          queryParameters: {
+            'fs': fs,
+            'remote': remote,
+            // The server refuses an online-only file's bytes unless the request
+            // says a human asked for them; without this the "Download and preview"
+            // button would click straight into the refusal it exists to lift.
+            if (hydrationAllowedFor(fs, remote)) 'hydrate': '1',
+          },
+        );
     return ObjectRef(uri.toString(), const {});
   }
 }

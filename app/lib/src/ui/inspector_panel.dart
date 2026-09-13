@@ -253,7 +253,7 @@ class _InspectorPanelState extends ConsumerState<InspectorPanel> {
         isThumbnailable(f) &&
         client != null &&
         // Don't hydrate an online-only cloud placeholder just to preview it.
-        !wouldHydrateOnRead(remote, joinPath(state.path, f.name));
+        !wouldHydrateOnRead(remote, joinPath(state.path, f.name), entry: f);
 
     final placeholder = Center(
       child: Icon(iconFor(f), color: iconColorFor(f, c), size: 56),

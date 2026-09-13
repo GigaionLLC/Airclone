@@ -72,7 +72,7 @@ class _FolderThumbnailState extends ConsumerState<FolderThumbnail> {
                 !e.isDir &&
                 isImageThumbnailable(e) &&
                 e.size <= kMaxPreviewImageBytes &&
-                !wouldHydrateOnRead(remote, '$folderPath/${e.name}'),
+                !wouldHydrateOnRead(remote, '$folderPath/${e.name}', entry: e),
           )
           .take(4)
           .toList();
