@@ -61,6 +61,23 @@ class NativePaneDraggable extends StatelessWidget {
   }
 }
 
+/// One dropped file delivered as BYTES rather than a filesystem path.
+///
+/// The path route is better wherever it exists - the host hands rclone a path
+/// and nothing crosses the UI - but a browser never provides one, so the Web UI
+/// needs this. [bytes] may be read ONCE, and only before the callback that
+/// received this returns.
+class DroppedBytes {
+  const DroppedBytes({required this.name, required this.bytes, this.size});
+
+  final String name;
+
+  /// Byte length when the platform reports one; null is common and fine.
+  final int? size;
+
+  final Stream<List<int>> bytes;
+}
+
 /// Wraps [child] as a drop target. Handles two kinds of drops:
 /// - **In-app** drags carrying [PaneDragData] in `localData` → [onDrop].
 /// - **OS files** dragged in from Explorer/Finder → [onOsFiles] (their absolute
@@ -77,6 +94,7 @@ class NativePaneDropRegion extends StatefulWidget {
     required this.child,
     this.onDrop,
     this.onOsFiles,
+    this.onOsFileData,
     this.scrollController,
     this.highlightColor,
     this.borderRadius,
@@ -84,6 +102,7 @@ class NativePaneDropRegion extends StatefulWidget {
 
   final void Function(PaneDragData data)? onDrop;
   final void Function(List<String> paths)? onOsFiles;
+  final Future<void> Function(DroppedBytes file)? onOsFileData;
   final ScrollController? scrollController;
   final Widget child;
   final Color? highlightColor;
@@ -160,13 +179,50 @@ class _NativePaneDropRegionState extends State<NativePaneDropRegion> {
     return paths;
   }
 
+  /// Reads each dropped item as BYTES and hands it to [onOsFileData].
+  ///
+  /// Sequential, and awaited INSIDE the `onFile` callback, because the reader
+  /// contract says the stream must be requested there and may be taken only
+  /// once. Passing the stream outwards to consume later yields a closed one,
+  /// which would look exactly like the silent failure this replaces.
+  Future<void> _readDroppedData(List<DropItem> items) async {
+    final sink = widget.onOsFileData;
+    if (sink == null) return;
+    for (final item in items) {
+      final reader = item.dataReader;
+      if (reader == null) continue;
+      final done = Completer<void>();
+      reader.getFile(
+        null,
+        (file) async {
+          try {
+            await sink(
+              DroppedBytes(
+                name:
+                    file.fileName ?? await reader.getSuggestedName() ?? 'file',
+                size: file.fileSize,
+                bytes: file.getStream(),
+              ),
+            );
+          } finally {
+            if (!done.isCompleted) done.complete();
+          }
+        },
+        onError: (_) {
+          if (!done.isCompleted) done.complete();
+        },
+      );
+      await done.future;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     // No drags can start on touch (see NativePaneDraggable), so the drop
     // machinery is dead weight there — skip it entirely.
     if (isTouchPrimary) return widget.child;
     return DropRegion(
-      formats: widget.onOsFiles != null
+      formats: widget.onOsFiles != null || widget.onOsFileData != null
           ? const [Formats.plainText, Formats.fileUri]
           : const [Formats.plainText],
       hitTestBehavior: HitTestBehavior.opaque,
@@ -179,7 +235,10 @@ class _NativePaneDropRegionState extends State<NativePaneDropRegion> {
           return DropOperation.copy;
         }
         // OS files (no in-app localData): accept only where uploads happen.
-        return widget.onOsFiles != null
+        // BOTH routes count. Promising copy when only the PATH route exists is
+        // what made a browser drop vanish: the badge said it would work, the
+        // format was never provided, and nothing happened.
+        return widget.onOsFiles != null || widget.onOsFileData != null
             ? DropOperation.copy
             : DropOperation.none;
       },
@@ -200,10 +259,20 @@ class _NativePaneDropRegionState extends State<NativePaneDropRegion> {
           );
           return;
         }
+        // PATHS FIRST wherever they exist: the host then has rclone copy the
+        // file itself and no bytes travel through the UI at all.
         if (widget.onOsFiles != null) {
           final paths = await _readDroppedPaths(items);
-          if (paths.isNotEmpty) widget.onOsFiles!(paths);
+          if (paths.isNotEmpty) {
+            widget.onOsFiles!(paths);
+            return;
+          }
         }
+        // Nothing gave up a path. In a BROWSER nothing ever will - a page is
+        // handed a File object and deliberately never the local path behind it -
+        // so the Web UI reached exactly here on every drop and silently did
+        // nothing, having already shown a copy badge. Read the bytes instead.
+        await _readDroppedData(items);
       },
       child: Stack(
         children: [

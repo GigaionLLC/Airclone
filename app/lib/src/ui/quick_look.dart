@@ -591,135 +591,151 @@ class _QuickLookState extends ConsumerState<_QuickLook> {
     final file = _files[_i];
     final many = _files.length > 1;
 
-    return Focus(
-      autofocus: true,
-      onKeyEvent: _onKey,
-      // Fills the window, like the phone's fullscreen shape. This used to be a
-      // card capped at 1100px wide, which meant the preview stayed the same
-      // small size no matter how big the window or monitor was — the bigger
-      // your screen, the more of it went to dimmed background. A thin margin is
-      // kept (rather than going truly edge-to-edge as on touch) so it still
-      // reads as an overlay ON the app rather than a separate screen, and so
-      // the rounded content area keeps its shape.
-      child: Padding(
-        padding: const EdgeInsets.all(Space.x4),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    file.name,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
+    // MaterialType.transparency, purely so there IS a Material ancestor.
+    //
+    // showGeneralDialog gives its page builder no Material, and without one
+    // every Text here inherits Flutter's fallback DefaultTextStyle: red-ish,
+    // oversized, and double-underlined in yellow. The fullscreen shape below
+    // has had a Material all along, so the phone looked right while the
+    // desktop and Web UI rendered the file name, the counter, the media error
+    // card and the online-only notice as that debug style. Reported twice as
+    // "very ugly and hard to read because of all the underlines".
+    //
+    // Transparency rather than a surface colour: the barrier and the black
+    // preview ground are the intended background, and a Material of any other
+    // type would paint over them.
+    return Material(
+      type: MaterialType.transparency,
+      child: Focus(
+        autofocus: true,
+        onKeyEvent: _onKey,
+        // Fills the window, like the phone's fullscreen shape. This used to be a
+        // card capped at 1100px wide, which meant the preview stayed the same
+        // small size no matter how big the window or monitor was — the bigger
+        // your screen, the more of it went to dimmed background. A thin margin is
+        // kept (rather than going truly edge-to-edge as on touch) so it still
+        // reads as an overlay ON the app rather than a separate screen, and so
+        // the rounded content area keeps its shape.
+        child: Padding(
+          padding: const EdgeInsets.all(Space.x4),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      file.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                   ),
-                ),
-                const SizedBox(width: Space.x3),
-                Text(
-                  '${_i + 1} / ${_files.length}',
-                  style: const TextStyle(color: Colors.white70, fontSize: 12),
-                ),
-                if (canOpenExternally)
-                  IconButton(
-                    icon: const Icon(Icons.open_in_new, color: Colors.white),
-                    tooltip: 'Open in another app',
-                    onPressed: () => _openExternally(ExternalOpenMode.view),
+                  const SizedBox(width: Space.x3),
+                  Text(
+                    '${_i + 1} / ${_files.length}',
+                    style: const TextStyle(color: Colors.white70, fontSize: 12),
                   ),
-                // Desktop only, images only: pop the current image into its
-                // own resizable OS window (the in-app overlay stays open).
-                if (isPopoutSupportedOn(Theme.of(context).platform) &&
-                    isImagePreview(file))
+                  if (canOpenExternally)
+                    IconButton(
+                      icon: const Icon(Icons.open_in_new, color: Colors.white),
+                      tooltip: 'Open in another app',
+                      onPressed: () => _openExternally(ExternalOpenMode.view),
+                    ),
+                  // Desktop only, images only: pop the current image into its
+                  // own resizable OS window (the in-app overlay stays open).
+                  if (isPopoutSupportedOn(Theme.of(context).platform) &&
+                      isImagePreview(file))
+                    IconButton(
+                      icon: const Icon(
+                        Icons.picture_in_picture_alt,
+                        color: Colors.white,
+                      ),
+                      tooltip: 'Pop out to a new window',
+                      onPressed: _popOut,
+                    ),
+                  _overflowButton(context),
                   IconButton(
                     icon: const Icon(
-                      Icons.picture_in_picture_alt,
+                      Icons.drive_file_rename_outline,
                       color: Colors.white,
                     ),
-                    tooltip: 'Pop out to a new window',
-                    onPressed: _popOut,
+                    tooltip: 'Rename',
+                    onPressed: _renameCurrent,
                   ),
-                _overflowButton(context),
-                IconButton(
-                  icon: const Icon(
-                    Icons.drive_file_rename_outline,
-                    color: Colors.white,
+                  // Issue #4: delete without leaving the preview. Placed BEFORE
+                  // Close and separated from it, because the two sit next to
+                  // each other and only one of them is undoable.
+                  IconButton(
+                    icon: const Icon(Icons.delete_outline, color: Colors.white),
+                    tooltip: 'Delete',
+                    onPressed: _deleteCurrent,
                   ),
-                  tooltip: 'Rename',
-                  onPressed: _renameCurrent,
-                ),
-                // Issue #4: delete without leaving the preview. Placed BEFORE
-                // Close and separated from it, because the two sit next to
-                // each other and only one of them is undoable.
-                IconButton(
-                  icon: const Icon(Icons.delete_outline, color: Colors.white),
-                  tooltip: 'Delete',
-                  onPressed: _deleteCurrent,
-                ),
-                const SizedBox(width: Space.x2),
-                IconButton(
-                  icon: const Icon(Icons.close, color: Colors.white),
-                  tooltip: 'Close',
-                  onPressed: () => Navigator.of(context).pop(),
-                ),
-              ],
-            ),
-            const SizedBox(height: Space.x3),
-            Expanded(
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  color: c.surface,
-                  borderRadius: BorderRadius.circular(Radii.lg),
-                ),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(Radii.lg),
-                  child: Stack(
-                    children: [
-                      Positioned.fill(child: _pagerView()),
-                      if (many) ...[
-                        Positioned(
-                          left: Space.x3,
-                          top: 0,
-                          bottom: 0,
-                          child: Center(
-                            child: _NavButton(
-                              icon: Icons.chevron_left,
-                              onPressed: _i > 0 ? () => _go(-1) : null,
+                  const SizedBox(width: Space.x2),
+                  IconButton(
+                    icon: const Icon(Icons.close, color: Colors.white),
+                    tooltip: 'Close',
+                    onPressed: () => Navigator.of(context).pop(),
+                  ),
+                ],
+              ),
+              const SizedBox(height: Space.x3),
+              Expanded(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: c.surface,
+                    borderRadius: BorderRadius.circular(Radii.lg),
+                  ),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(Radii.lg),
+                    child: Stack(
+                      children: [
+                        Positioned.fill(child: _pagerView()),
+                        if (many) ...[
+                          Positioned(
+                            left: Space.x3,
+                            top: 0,
+                            bottom: 0,
+                            child: Center(
+                              child: _NavButton(
+                                icon: Icons.chevron_left,
+                                onPressed: _i > 0 ? () => _go(-1) : null,
+                              ),
                             ),
                           ),
-                        ),
-                        Positioned(
-                          right: Space.x3,
-                          top: 0,
-                          bottom: 0,
-                          child: Center(
-                            child: _NavButton(
-                              icon: Icons.chevron_right,
-                              onPressed: _i < _files.length - 1
-                                  ? () => _go(1)
-                                  : null,
+                          Positioned(
+                            right: Space.x3,
+                            top: 0,
+                            bottom: 0,
+                            child: Center(
+                              child: _NavButton(
+                                icon: Icons.chevron_right,
+                                onPressed: _i < _files.length - 1
+                                    ? () => _go(1)
+                                    : null,
+                              ),
                             ),
                           ),
-                        ),
+                        ],
                       ],
-                    ],
+                    ),
                   ),
                 ),
               ),
-            ),
-            const Padding(
-              padding: EdgeInsets.only(top: Space.x2),
-              child: Text(
-                '< / >  ·  Space or Esc to close',
-                textAlign: TextAlign.center,
-                style: TextStyle(color: Colors.white54, fontSize: 11),
+              const Padding(
+                padding: EdgeInsets.only(top: Space.x2),
+                child: Text(
+                  '< / >  ·  Space or Esc to close',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: Colors.white54, fontSize: 11),
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

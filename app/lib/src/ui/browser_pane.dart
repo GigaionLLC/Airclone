@@ -83,7 +83,7 @@ ThumbRequest? buildThumbRequest(
   // API; a no-op on other platforms — see cloud_placeholder.dart.)
   // ...unless the user asked for this one by name. See thumbnailOptInProvider:
   // the refusal is a default, not a rule.
-  if (wouldHydrateOnRead(remote, within) &&
+  if (wouldHydrateOnRead(remote, within, entry: f) &&
       !hydrationAllowed.contains(ThumbnailOptIn.keyFor(remote.fs, within))) {
     return null;
   }
@@ -214,6 +214,16 @@ class BrowserPane extends ConsumerWidget {
                           context,
                           ref,
                           paths,
+                          state.remote!,
+                          state.path,
+                        ),
+                        // A browser drop carries bytes and never a path, so
+                        // onOsFiles above finds nothing and the drop used to
+                        // vanish after showing a copy badge.
+                        onOsFileData: (file) => uploadDroppedBytes(
+                          context,
+                          ref,
+                          file,
                           state.remote!,
                           state.path,
                         ),
@@ -474,6 +484,7 @@ class BrowserPane extends ConsumerWidget {
                     wouldHydrateOnRead(
                       state.remote!,
                       state.path.isEmpty ? f.name : '${state.path}/${f.name}',
+                      entry: f,
                     ),
                 // Dragging a selected row carries the whole selection.
                 dragData: PaneDragData(
@@ -688,7 +699,7 @@ class BrowserPane extends ConsumerWidget {
       onlineOnly:
           !file.isDir &&
           isThumbnailable(file) &&
-          wouldHydrateOnRead(state.remote!, loc.path),
+          wouldHydrateOnRead(state.remote!, loc.path, entry: file),
       canSelect: isTouchPrimary,
       advanced: ref.read(advancedModeProvider),
       syncSourceLabel: ref.read(syncSourceProvider).isSet
@@ -2038,6 +2049,35 @@ class _PaneToolbar extends ConsumerWidget {
                           danger: true,
                           onTap: () => _delete(context, ref),
                         ),
+                        // WEB ONLY, and next to the commands rather than in
+                        // the Tools menu. "Upload file..." already existed
+                        // three clicks deep, and a user who cannot drag and
+                        // drop had no way to find it; download had no button
+                        // at all outside the details panel. Everywhere else
+                        // these words mean a copy between two remotes the host
+                        // can already see, which is what Copy and Paste are.
+                        if (HostPlatform.isWeb) ...[
+                          _sep(c),
+                          _cmd(
+                            c,
+                            Icons.upload_file_outlined,
+                            'Upload',
+                            enabled: hasRemote,
+                            onTap: () => uploadFromBrowser(
+                              context,
+                              ref,
+                              state.remote!,
+                              state.path,
+                            ),
+                          ),
+                          _cmd(
+                            c,
+                            Icons.download_outlined,
+                            'Download',
+                            enabled: hasSel,
+                            onTap: () => _downloadSelected(context, ref, state),
+                          ),
+                        ],
                         _sep(c),
                         _sortMenu(context, ref, c),
                         // OS skins get the segmented List·Icons·Gallery switcher; the
@@ -2699,6 +2739,26 @@ class _PaneToolbar extends ConsumerWidget {
 
   Future<void> _delete(BuildContext context, WidgetRef ref) =>
       _deleteSelection(context, ref, index);
+
+  /// Web only: hand the selected files to the browser to save.
+  ///
+  /// Not the Inspector's `_downloadSelection`, which copies to a folder on the
+  /// HOST - the right meaning on a desktop and the wrong one in a browser,
+  /// where the host is somebody else's machine and "download" means "into this
+  /// tab's downloads".
+  Future<void> _downloadSelected(
+    BuildContext context,
+    WidgetRef ref,
+    BrowserState state,
+  ) async {
+    if (state.remote == null) return;
+    await downloadToBrowser(
+      context,
+      ref,
+      state.remote!,
+      _selectionGroups(state),
+    );
+  }
 
   Future<void> _transferToOther(
     BuildContext context,

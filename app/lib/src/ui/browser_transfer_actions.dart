@@ -15,6 +15,7 @@ import '../rclone/models/remote.dart';
 import '../rclone/rclone_client.dart';
 import '../rclone/web_rclone_client.dart';
 import '../state/engine_controller.dart';
+import 'native_drag.dart';
 
 /// Hands each selected file to the browser to save.
 ///
@@ -94,5 +95,46 @@ Future<void> uploadFromBrowser(
     messenger.showSnackBar(SnackBar(content: Text('Uploaded $name.')));
   } catch (e) {
     messenger.showSnackBar(SnackBar(content: Text('Upload failed: $e')));
+  }
+}
+
+/// Writes a file the user DROPPED onto the page to [remote] under [folderPath].
+///
+/// The Web UI's other upload path picks a file; this one receives one already
+/// chosen by a drag from the desktop. Both end at [ObjectUploader], so the
+/// remote sees no difference.
+///
+/// [file] carries a stream that may be read once and only during this call, so
+/// this must be awaited by the drop handler rather than started and forgotten.
+Future<void> uploadDroppedBytes(
+  BuildContext context,
+  WidgetRef ref,
+  DroppedBytes file,
+  Remote remote,
+  String folderPath,
+) async {
+  final client = ref.read(engineControllerProvider).client;
+  if (client is! ObjectUploader) {
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('This engine cannot accept uploads.')),
+    );
+    return;
+  }
+  final dest = folderPath.isEmpty ? file.name : '$folderPath/${file.name}';
+  final messenger = ScaffoldMessenger.of(context);
+  messenger.showSnackBar(SnackBar(content: Text('Uploading ${file.name}...')));
+  try {
+    await (client as ObjectUploader).putObject(
+      remote.fs,
+      dest,
+      file.bytes,
+      length: file.size,
+    );
+    messenger.showSnackBar(SnackBar(content: Text('Uploaded ${file.name}.')));
+  } catch (e) {
+    messenger.showSnackBar(
+      SnackBar(content: Text('Upload failed: ${file.name}: $e')),
+    );
   }
 }
