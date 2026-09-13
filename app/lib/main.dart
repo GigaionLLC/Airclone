@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:media_kit/media_kit.dart';
 
+import 'src/headless/cli_info.dart';
 import 'src/headless/headless_runner.dart';
 import 'src/state/android_native.dart';
 import 'src/state/host_platform.dart';
@@ -21,6 +22,13 @@ Future<void> main(List<String> args) async {
   // and, on mobile, hangs before the first frame (see cc9d330 +
   // window_backdrop.dart). runHeadless owns its own binding init and exits the
   // process, so this never returns.
+  // `--version` / `--help`: answered FIRST, before anything can fail. A user
+  // asking what version they are running must not need a display, an engine, a
+  // config, or a working install - and on Linux, asking used to abort on a
+  // missing libGLESv2 because the window came first. Never returns.
+  if (!HostPlatform.isWeb && isCliInfoInvocation(args)) {
+    await runCliInfo(args);
+  }
   if (isHeadlessInvocation(args)) {
     return runHeadless(args);
   }

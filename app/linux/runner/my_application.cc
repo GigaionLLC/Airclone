@@ -14,6 +14,36 @@ struct _MyApplication {
   char** dart_entrypoint_arguments;
 };
 
+// True when the forwarded CLI args ask for a run that must NOT open a window.
+//
+// THE BUG THIS FIXES: `./Airclone-x86_64.AppImage --webui` aborted with
+//
+//   Couldn't open libGLESv2.so.2: cannot open shared object file
+//
+// and so did `--version`. Neither flag wants a window, and main.dart branches
+// on both BEFORE it calls runApp - but Dart never got the chance, because this
+// file builds a GtkWindow and an FlView first, and realizing an FlView creates
+// a GL context. On a headless box, a container, or WSL without a GPU stack,
+// that is fatal before a single line of Dart runs.
+//
+// Mirrors isHeadlessInvocation + isWebUiInvocation on the Dart side and
+// ContainsHeadlessFlag in the Windows runner. Three copies of one list is not
+// ideal; a drift here costs a stray window (or a crash), never silence, which
+// is why it is acceptable and why the Dart side stays the source of truth.
+static bool IsWindowlessInvocation(char** args) {
+  if (args == nullptr) return false;
+  for (char** a = args; *a != nullptr; a++) {
+    if (g_strcmp0(*a, "--webui") == 0) return true;
+    if (g_strcmp0(*a, "--run-due") == 0) return true;
+    if (g_strcmp0(*a, "--run-task") == 0) return true;
+    if (g_str_has_prefix(*a, "--run-task=")) return true;
+    if (g_strcmp0(*a, "--version") == 0) return true;
+    if (g_strcmp0(*a, "--help") == 0) return true;
+    if (g_strcmp0(*a, "-h") == 0) return true;
+  }
+  return false;
+}
+
 G_DEFINE_TYPE(MyApplication, my_application, GTK_TYPE_APPLICATION)
 
 // Called when first Flutter frame received.
@@ -69,6 +99,37 @@ static void apply_window_chrome(GtkWindow* window) {
 // Implements GApplication::activate.
 static void my_application_activate(GApplication* application) {
   MyApplication* self = MY_APPLICATION(application);
+
+  // NO WINDOW, NO GL. fl_engine_new_headless runs the same Dart entrypoint with
+  // no view attached, so nothing touches EGL and the binary works on a machine
+  // with no display stack at all - which is the whole point of --webui.
+  //
+  // Plugins are still registered: FlEngine implements FlPluginRegistry, and the
+  // Web UI host needs path_provider and friends to answer. A plugin that truly
+  // requires a window would fail when CALLED rather than at startup, and none
+  // on this path do.
+  //
+  // g_application_hold keeps the GApplication alive with no window to hold it
+  // open; the Dart entrypoint owns the exit (runWebUi and runHeadless both end
+  // the process themselves).
+  if (IsWindowlessInvocation(self->dart_entrypoint_arguments)) {
+    g_autoptr(FlDartProject) headless_project = fl_dart_project_new();
+    fl_dart_project_set_dart_entrypoint_arguments(
+        headless_project, self->dart_entrypoint_arguments);
+
+    FlEngine* engine = fl_engine_new_headless(headless_project);
+    g_autoptr(GError) engine_error = nullptr;
+    if (!fl_engine_start(engine, &engine_error)) {
+      g_printerr("Failed to start Airclone without a window: %s\n",
+                 engine_error->message);
+      g_application_quit(application);
+      return;
+    }
+    fl_register_plugins(FL_PLUGIN_REGISTRY(engine));
+    g_application_hold(application);
+    return;
+  }
+
   GtkWindow* window =
       GTK_WINDOW(gtk_application_window_new(GTK_APPLICATION(application)));
 

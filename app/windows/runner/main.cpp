@@ -13,8 +13,13 @@
 // `--run-task=<id>` joined form.
 static bool ContainsHeadlessFlag(const std::vector<std::string> &args) {
   return std::any_of(args.begin(), args.end(), [](const std::string &a) {
+    // --webui and --version join the list for the same reason the Linux
+    // runner grew one: main.dart branches on them before runApp, so showing a
+    // window would flash an empty frame and leave it on screen for the life of
+    // a Web UI host that has no UI at all.
     return a == "--run-task" || a == "--run-due" ||
-           a.rfind("--run-task=", 0) == 0;
+           a.rfind("--run-task=", 0) == 0 || a == "--webui" ||
+           a == "--version" || a == "--help" || a == "-h";
   });
 }
 
