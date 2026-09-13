@@ -275,7 +275,7 @@ list uses.
 
 Quick Look carries the rest of the file's operations behind its `⋯` menu, so you rarely need to
 close it and go and find the file again. The menu is the same everywhere: a bottom sheet on a phone,
-a drop-down from the toolbar on a desktop.
+a drop-down from the toolbar on a desktop, and the same set of operations in the Web UI.
 
 | | |
 | :--- | :--- |
