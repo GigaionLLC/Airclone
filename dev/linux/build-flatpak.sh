@@ -15,13 +15,17 @@
 # WHY IT BUILDS FROM THE PREBUILT BUNDLE. The GNOME SDK has no Flutter
 # toolchain, and teaching the manifest to fetch one so it can rebuild what CI
 # just built serves nobody for a direct download. FLATHUB WOULD DIFFER: it
-# requires a source build or `extra-data` with checksums, and it would also
-# question the app ID — `com.gigaionllc.airclone` implies the airclone.app domain,
-# and Flathub wants an ID you demonstrably control (otherwise
-# `io.github.gigaionllc.Airclone`). Changing it is not free: APPLICATION_ID in
-# linux/CMakeLists.txt is what the running window reports, so the ID, the
-# .desktop filename and that constant have to move together or the app loses its
-# icon in the dock.
+# requires an offline build from source, among other things — see
+# dev/plans/flathub-plan.md for the full list.
+#
+# THE APP ID IS `com.gigaionllc.airclone`, AND IT IS THE ONE FLATHUB WILL GET.
+# Its domain is gigaionllc.com, which Gigaion controls, and it is already the
+# Android, iOS and macOS identifier. Flathub cannot rename an ID after
+# acceptance without a resubmission, so it does not move. It is written in
+# several files that must agree — APPLICATION_ID in linux/CMakeLists.txt (what
+# the running window reports), the manifest, and the .desktop, .metainfo.xml and
+# icon file names — or the app loses its icon in the dock;
+# app/test/linux_app_id_test.dart holds them together.
 set -euo pipefail
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"

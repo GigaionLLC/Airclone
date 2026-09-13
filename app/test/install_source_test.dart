@@ -65,7 +65,7 @@ void main() {
   group('linuxInstallSource', () {
     test('Flatpak and Snap own their own updates', () {
       expect(
-        linuxInstallSource({'FLATPAK_ID': 'com.gigaion.Airclone'}).channel,
+        linuxInstallSource({'FLATPAK_ID': 'com.gigaionllc.airclone'}).channel,
         InstallChannel.flathub,
       );
       expect(

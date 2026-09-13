@@ -12,7 +12,10 @@ import 'package:flutter_test/flutter_test.dart';
 void main() {
   group('detecting a Flatpak sandbox', () {
     test('FLATPAK_ID present means yes', () {
-      expect(runningInFlatpak({'FLATPAK_ID': 'app.airclone.airclone'}), isTrue);
+      expect(
+        runningInFlatpak({'FLATPAK_ID': 'com.gigaionllc.airclone'}),
+        isTrue,
+      );
     });
 
     test('an ordinary desktop environment means no', () {

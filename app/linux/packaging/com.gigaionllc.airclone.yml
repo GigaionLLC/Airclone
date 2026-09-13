@@ -3,8 +3,8 @@
 # Built from the ALREADY-BUILT Flutter bundle rather than from source: the
 # Flutter SDK is not in the GNOME SDK, and vendoring a toolchain into a manifest
 # to rebuild what CI has already produced buys nothing for a direct download.
-# (Flathub wants source builds or checksummed extra-data — see
-# dev/linux/build-flatpak.sh for what changes if we go there.)
+# (Flathub requires an offline source build, so this manifest cannot be what we
+# submit — see dev/plans/flathub-plan.md.)
 #
 # The bundle is staged into a build context by that script; `type: dir` below
 # reads it.

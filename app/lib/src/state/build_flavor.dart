@@ -49,7 +49,7 @@ bool runningInFlatpak(Map<String, String> environment) =>
 /// that fails:
 ///  - the **Mac App Store** build, where the App Sandbox forbids FUSE outright,
 ///  - a **Flatpak**, whose manifest
-///    (`app/linux/packaging/app.airclone.airclone.yml`) deliberately does not
+///    (`app/linux/packaging/com.gigaionllc.airclone.yml`) deliberately does not
 ///    request `--device=all`. Asking for blanket device access to mount a drive
 ///    is a far bigger permission than the feature is worth, so the feature goes
 ///    rather than the sandbox.
