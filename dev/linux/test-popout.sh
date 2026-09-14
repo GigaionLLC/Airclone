@@ -45,7 +45,20 @@ export DISPLAY="$DISPLAY_NUM"
 for _ in $(seq 1 30); do xdpyinfo >/dev/null 2>&1 && break; sleep 1; done
 xdpyinfo >/dev/null 2>&1 || { echo "Xvfb never came up" >&2; exit 2; }
 
-# $1 = label, $2 = "yes" to add flutter_acrylic and register it per window.
+# Copies the plugin out of the pub cache and applies dev/linux/patch-dmw.py -
+# the smallest change that could fix it. Whether it does is what decides
+# between waiting for upstream and shipping a patched copy.
+patched_plugin() {
+  local out="$WORK/dmw"
+  local src
+  src="$(ls -d "$HOME"/.pub-cache/hosted/pub.dev/desktop_multi_window-* 2>/dev/null | tail -1)"
+  [ -n "$src" ] || return 1
+  rm -rf "$out"
+  cp -r "$src" "$out"
+  python3 "$REPO/dev/linux/patch-dmw.py" "$out"
+}
+
+# $1 = label, $2 = "yes" for flutter_acrylic, $3 = "yes" for the patched plugin.
 build_and_run() {
   # Separate lines on purpose: bash expands every word of a `local`
   # statement BEFORE any of its assignments take effect, so a later
@@ -53,12 +66,24 @@ build_and_run() {
   # `set -u` ends the script before it measures anything, as it did.
   local label="$1"
   local with_acrylic="$2"
+  local with_patch="${3:-no}"
   local dir="$WORK/$label"
   flutter create --platforms=linux --project-name popout_$label "$dir" >/dev/null 2>&1 \
     || { echo "  [$label] could not create the project" >&2; return 2; }
   cp "$REPO/dev/linux/popout_control_main.dart" "$dir/lib/main.dart"
   (cd "$dir" && flutter pub add desktop_multi_window >/dev/null 2>&1) \
     || { echo "  [$label] could not add desktop_multi_window" >&2; return 2; }
+
+  if [ "$with_patch" = yes ]; then
+    patched_plugin || { echo "  [$label] could not patch the plugin" >&2; return 2; }
+    {
+      echo ""
+      echo "dependency_overrides:"
+      echo "  desktop_multi_window:"
+      echo "    path: $WORK/dmw"
+    } >> "$dir/pubspec.yaml"
+    (cd "$dir" && flutter pub get >/dev/null 2>&1)       || { echo "  [$label] the patched plugin would not resolve" >&2; return 2; }
+  fi
 
   if [ "$with_acrylic" = yes ]; then
     (cd "$dir" && flutter pub add flutter_acrylic >/dev/null 2>&1) \
@@ -141,12 +166,23 @@ plain=0
 build_and_run plain no || plain=$?
 acrylic=0
 build_and_run acrylic yes || acrylic=$?
+patched=0
+build_and_run patched no yes || patched=$?
 
-if [ "$plain" -eq 2 ] || [ "$acrylic" -eq 2 ]; then
+if [ "$plain" -eq 2 ] || [ "$acrylic" -eq 2 ] || [ "$patched" -eq 2 ]; then
   echo "could not run the test itself" >&2
   exit 2
 fi
+
+# What the comparison is for: whether a patched plugin would let pop-out back
+# onto Linux, or whether removing that one call is not enough.
+if [ "$patched" -eq 0 ]; then
+  echo "VERDICT: the patched plugin survives - a fixed desktop_multi_window restores pop-out"
+else
+  echo "VERDICT: even the patched plugin dies - removing that one call is not enough"
+fi
+
 if [ "$plain" -ne 0 ] || [ "$acrylic" -ne 0 ]; then
   exit 1
 fi
-echo "closing a second window is survivable in both cases"
+echo "closing a second window is survivable in every case"
