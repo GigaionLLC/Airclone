@@ -60,9 +60,10 @@ With no options, Airclone opens its window.
 
 Options:
   --webui                 Serve the interface to browsers instead of opening a
-                          window. Needs no display, so it works over SSH and in
-                          a container. Prints its URL and the generated password
-                          on first run.
+                          window. Prints its URL and the generated password on
+                          first run. (On Linux no window is shown either, but
+                          the engine still needs a display server: run it under
+                          xvfb-run on a machine with none.)
   --webui-bind ADDRESS    Address for --webui to listen on. Default 127.0.0.1
                           (loopback only). Use 0.0.0.0 to accept connections
                           from the network, which is a deliberate choice.
@@ -71,6 +72,10 @@ Options:
   --run-due               Run every scheduled task that is due, then exit. This
                           is what the OS scheduler invokes; it opens no window.
   --run-task ID           Run one saved task by id, then exit.
+
+  --log-input             Print one line per key event, and whether a text
+                          field had focus to receive it. For working out why a
+                          machine will not type. Changes nothing else.
 
   --version               Print the version and exit.
   --help, -h              Print this and exit.

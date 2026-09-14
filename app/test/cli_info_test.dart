@@ -79,6 +79,7 @@ void main() {
         '--webui-port',
         '--run-due',
         '--run-task',
+        '--log-input',
         '--version',
         '--help',
       ]) {

@@ -213,7 +213,7 @@ jobs:
         working-directory: .
         run: |
           set -euo pipefail
-          sudo apt-get install -y -qq xvfb xdotool x11-utils imagemagick xcompmgr
+          sudo apt-get install -y -qq xvfb xdotool x11-utils xcompmgr
           bash dev/linux/test-keyboard.sh app/build/linux/x64/release/bundle/airclone
 
       # Windowless still needs a display, because the engine starts only against

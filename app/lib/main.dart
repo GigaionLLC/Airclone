@@ -11,6 +11,7 @@ import 'src/state/window_backdrop.dart';
 import 'src/ui/app.dart';
 import 'src/ui/error_surface.dart';
 import 'src/ui/popout_image_app.dart';
+import 'src/ui/input_log.dart';
 import 'src/webui/webui_options.dart';
 import 'src/webui/webui_runner.dart';
 
@@ -79,5 +80,8 @@ Future<void> main(List<String> args) async {
     await initWindowBackdrop();
     await applyWindowBackdrop(await loadSavedBackdrop());
   }
+  // --log-input: report every key event and where focus is, for working out
+  // why a machine cannot type. Watches only; never consumes an event.
+  if (inputLoggingRequested(args)) startInputLogging();
   runApp(const ProviderScope(child: AircloneApp()));
 }
