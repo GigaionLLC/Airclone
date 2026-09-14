@@ -33,10 +33,22 @@ BUNDLE="${1:-$REPO/app/build/linux/x64/release/bundle}"
 OUTPUT="${2:-$REPO/airclone.flatpak}"
 PKG="$REPO/app/linux/packaging"
 APP_ID="com.gigaionllc.airclone"
-RUNTIME_VERSION="${FLATPAK_RUNTIME_VERSION:-48}"
+# The MANIFEST is the source of truth for which runtime this builds against.
+# FLATPAK_RUNTIME_VERSION overrides it AND rewrites the staged copy, so the two
+# can never disagree - which is how you try a bump without committing one.
+MANIFEST_RUNTIME=""
+RUNTIME_VERSION="${FLATPAK_RUNTIME_VERSION:-}"
 WORK="${FLATPAK_WORK:-$(mktemp -d)}"
 
 say() { printf '\n== %s\n' "$*"; }
+
+MANIFEST_RUNTIME="$(sed -n "s/^runtime-version: *'\{0,1\}\([0-9][0-9]*\)'\{0,1\} *$/\1/p" \
+  "$PKG/$APP_ID.yml" | head -1)"
+[ -n "$MANIFEST_RUNTIME" ] || {
+  echo "Could not read runtime-version from the manifest." >&2
+  exit 1
+}
+RUNTIME_VERSION="${RUNTIME_VERSION:-$MANIFEST_RUNTIME}"
 
 [ -x "$BUNDLE/airclone" ] || {
   echo "No Flutter bundle at $BUNDLE — run 'flutter build linux --release' first." >&2
@@ -77,6 +89,11 @@ cp -a "$BUNDLE"/. "$CTX/bundle/"
 cp "$PKG/$APP_ID.desktop" "$PKG/$APP_ID.metainfo.xml" "$CTX/"
 cp "$PKG"/icons/*.png "$CTX/icons/"
 cp "$PKG/$APP_ID.yml" "$CTX/"
+if [ "$RUNTIME_VERSION" != "$MANIFEST_RUNTIME" ]; then
+  echo "  building against runtime $RUNTIME_VERSION, not the manifest's $MANIFEST_RUNTIME"
+  sed -i "s/^runtime-version: .*/runtime-version: '$RUNTIME_VERSION'/" \
+    "$CTX/$APP_ID.yml"
+fi
 # The host-side fusermount the manifest installs, for mounting. See the manifest.
 cp "$PKG/fusermount-wrapper.sh" "$CTX/"
 
