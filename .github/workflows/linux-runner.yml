@@ -209,8 +209,13 @@ jobs:
         run: |
           set -uo pipefail
           bin="build/linux/x64/release/bundle/airclone"
+          # A refusal is the expected outcome here, and the step runs under
+          # bash -e: capture it with errexit off or the assignment ends the step
+          # before the exit code can be read.
+          set +e
           out="$(env -u DISPLAY -u WAYLAND_DISPLAY "$bin" --webui 2>&1)"
           code=$?
+          set -e
           echo "$out"
           [ "$code" -eq 1 ] || { echo "::error::expected exit 1, got $code"; exit 1; }
           grep -qi "no display" <<<"$out" || { echo "::error::message does not say there is no display"; exit 1; }
