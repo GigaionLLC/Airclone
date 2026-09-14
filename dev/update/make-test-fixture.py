@@ -41,11 +41,19 @@ KEY_ID = bytes.fromhex("4149524331303031")  # "AIRC1001", so it is obvious in he
 # (hash, two spaces, name). The names are the real ones from release.yml, so a
 # test can ask for the asset a given package would want and get a realistic miss
 # or hit.
+# One entry is a REAL hash of a real (tiny) payload, written alongside as
+# asset.bin, so a test can serve it and take the happy path all the way to a
+# verified file. The rest are placeholders: what they prove is that a lookup by
+# name finds the right line among several.
+ASSET_NAME = "Airclone-x86_64.AppImage"
+ASSET_BYTES = b"an Airclone build, pretend"
+ASSET_SHA256 = hashlib.sha256(ASSET_BYTES).hexdigest()
+
 MANIFEST_LINES = [
     ("1" * 64, "airclone-setup-x64.exe"),
     ("2" * 64, "airclone-windows-x64.zip"),
     ("3" * 64, "airclone-macos.dmg"),
-    ("4" * 64, "Airclone-x86_64.AppImage"),
+    (ASSET_SHA256, ASSET_NAME),
     ("5" * 64, "airclone-linux-x64.tar.gz"),
     ("6" * 64, "airclone.flatpak"),
 ]
@@ -94,8 +102,15 @@ def main() -> None:
     # appears on line 2 of the .pub file.
     write(OUT / "public_key.txt", b64(b"Ed" + KEY_ID + pub) + "\n")
 
+    # The payload the real hash above belongs to.
+    io.open(OUT / "asset.bin", "wb").write(ASSET_BYTES)
+    print("  wrote", (OUT / "asset.bin").relative_to(ROOT))
+
     # A tampered manifest, byte-identical in shape, for the negative tests.
-    write(OUT / "SHA256SUMS.tampered", manifest.replace("4" * 64, "4" * 63 + "5"))
+    write(
+        OUT / "SHA256SUMS.tampered",
+        manifest.replace(ASSET_SHA256, "0" * 63 + "1"),
+    )
     print("done")
 
 

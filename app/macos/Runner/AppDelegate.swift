@@ -92,7 +92,7 @@ class AppDelegate: FlutterAppDelegate {
       project: project,
       allowHeadlessExecution: true
     )
-    engine.run()
+    engine.run(withEntrypoint: nil)
     RegisterGeneratedPlugins(registry: engine)
     // Hand-written, so it is not in GeneratedPluginRegistrant. A headless run
     // still resolves saved locations, which is what the bookmarks are.
