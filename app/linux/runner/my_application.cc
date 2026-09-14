@@ -254,7 +254,16 @@ static void my_application_activate(GApplication* application) {
   desktop_multi_window_plugin_set_window_created_callback(
       [](FlPluginRegistry* registry) { fl_register_plugins(registry); });
 
-  if (!windowless) {
+  // fl_register_plugins SHOWS THE WINDOW. flutter_acrylic's Linux registrar
+  // ends with gtk_widget_show() on the toplevel - see its
+  // flutter_acrylic_plugin_register_with_registrar - so registering plugins
+  // maps a window whatever this runner intended. Not connecting "first-frame"
+  // is therefore not enough on its own; CI caught exactly that
+  // ("--webui mapped a window"). Hide it again in the same turn of the loop,
+  // before the main loop runs and X flushes.
+  if (windowless) {
+    gtk_widget_hide(GTK_WIDGET(window));
+  } else {
     gtk_widget_grab_focus(GTK_WIDGET(view));
   }
 }
