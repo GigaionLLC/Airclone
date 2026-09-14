@@ -61,6 +61,31 @@ jobs:
       - run: flutter build macos --release
         working-directory: app
 
+      # The Web UI needs an engine, and a CI build has none: the release bundles
+      # librclone.dylib (built by a separate job) rather than a binary, and this
+      # job builds neither. The app falls back to a bundled binary beside its own
+      # executable, so put a verified one there - the same shape the Linux runner
+      # uses, and the reason that job's --webui check works at all.
+      - name: Bundle a verified rclone, so the Web UI has an engine
+        working-directory: app
+        run: |
+          set -euo pipefail
+          ver="$(grep -oE 'RCLONE_VERSION: v[0-9.]+' ../.github/workflows/release.yml | head -1 | awk '{print $2}')"
+          [ -n "$ver" ] || { echo "::error::could not read the rclone pin"; exit 1; }
+          zip="rclone-${ver}-osx-arm64.zip"
+          base="https://downloads.rclone.org/${ver}"
+          curl -fsSL --retry 3 -o "$zip" "$base/$zip"
+          curl -fsSL --retry 3 -o SHA256SUMS.txt "$base/SHA256SUMS"
+          expected="$(awk -v f="$zip" '{ n=$NF; sub(/^[*.\/]+/, "", n); if (n == f) { print $1; exit } }' SHA256SUMS.txt)"
+          [ -n "$expected" ] || { echo "::error::no checksum for $zip"; exit 1; }
+          actual="$(shasum -a 256 "$zip" | awk '{print $1}')"
+          [ "$actual" = "$expected" ] || { echo "::error::rclone checksum mismatch"; exit 1; }
+          unzip -q "$zip" -d rclone-extract
+          app="build/macos/Build/Products/Release/Airclone.app"
+          cp "rclone-extract/rclone-${ver}-osx-arm64/rclone" "$app/Contents/MacOS/rclone"
+          chmod +x "$app/Contents/MacOS/rclone"
+          echo "bundled rclone $ver"
+
       - name: --version answers, and quietly
         working-directory: app
         run: |
