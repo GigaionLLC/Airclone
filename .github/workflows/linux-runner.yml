@@ -168,6 +168,14 @@ jobs:
             kill "$app" 2>/dev/null; exit 1
           fi
           windows="$(xdotool search --onlyvisible --name airclone 2>/dev/null)"
+          if [ -n "$windows" ]; then
+            echo "what is on screen while --webui runs:"
+            for w in $windows; do
+              xwininfo -id "$w" -stats | sed -n '2,14p'
+              xprop -id "$w" WM_CLASS WM_NAME _NET_WM_NAME 2>/dev/null
+            done
+            xwininfo -root -tree | sed -n '1,30p'
+          fi
           kill "$app" 2>/dev/null; wait "$app" 2>/dev/null
           if [ -n "$windows" ]; then
             echo "::error::--webui mapped a window: $windows"; exit 1
