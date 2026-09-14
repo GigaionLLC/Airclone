@@ -1106,6 +1106,13 @@ jobs:
   # would have nothing to verify against. That is the safe half of the failure.
   checksums:
     needs: [windows, linux, macos, android]
+    # This job checks nothing out, so the workflow-wide `working-directory: app`
+    # would point at a directory that does not exist - which is exactly how its
+    # first run failed, before it hashed anything.
+    defaults:
+      run:
+        working-directory: .
+
     # `always()` so a release that lost one platform still gets a manifest for
     # the platforms it did produce; the step below hashes whatever is attached.
     if: always() && startsWith(github.ref, 'refs/tags/')

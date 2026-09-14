@@ -155,6 +155,27 @@ void main() {
     });
   });
 
+  group('which packages can install themselves', () {
+    /// The list is short on purpose. The Windows portable zip and the macOS app
+    /// both mean replacing a locked directory tree from inside it, which needs
+    /// a helper process - and a half-finished swap of either costs somebody
+    /// their install.
+    test('the AppImage and the Windows installer, and nothing else yet', () {
+      expect(installableTargets, {
+        SelfUpdateTarget.linuxAppImage,
+        SelfUpdateTarget.windowsInstaller,
+      });
+      for (final t in SelfUpdateTarget.values) {
+        if (installableTargets.contains(t)) continue;
+        expect(
+          UpdateReady(File('x'), target: t).canInstall,
+          isFalse,
+          reason: '$t must not offer an Install button',
+        );
+      }
+    });
+  });
+
   group('what may be offered at all', () {
     /// Two conditions, and both must hold: a key to verify with, and a package
     /// that can replace itself. A build with no key offers nothing, which is

@@ -22,6 +22,7 @@ import 'package:path_provider/path_provider.dart';
 import '../state/diagnostics.dart';
 import '../state/host_platform.dart';
 import 'install_appimage.dart';
+import 'install_windows.dart';
 import 'self_update_target.dart';
 import 'update_fetch.dart';
 import 'update_trust.dart';
@@ -51,13 +52,35 @@ class UpdateDownloading extends UpdateJob {
 
 /// Downloaded, verified, and waiting to be installed.
 class UpdateReady extends UpdateJob {
-  const UpdateReady(this.file, {required this.canInstall});
+  const UpdateReady(this.file, {required this.target});
 
   final File file;
+  final SelfUpdateTarget target;
 
-  /// False when the package cannot replace itself - the file is still verified
-  /// and the user is shown where it is.
-  final bool canInstall;
+  /// False when the package cannot replace itself yet - the file is still
+  /// verified, and the user is told where it is rather than offered a button
+  /// that would do nothing.
+  bool get canInstall => installableTargets.contains(target);
+}
+
+/// The packages that can install over themselves today. The rest download and
+/// verify, and say so.
+///
+/// The Windows portable zip and the macOS app are deliberately absent: both mean
+/// replacing a locked directory tree from inside it, which needs a helper
+/// process, and a half-finished swap of those costs somebody their install.
+const Set<SelfUpdateTarget> installableTargets = {
+  SelfUpdateTarget.linuxAppImage,
+  SelfUpdateTarget.windowsInstaller,
+};
+
+/// The Windows installer is running and needs Airclone closed to finish.
+///
+/// Airclone does not close itself: an app that vanishes mid-sentence because it
+/// was updating is one nobody trusts twice. The installer's own
+/// `/CLOSEAPPLICATIONS` will handle a user who ignores this.
+class UpdateAwaitingExit extends UpdateJob {
+  const UpdateAwaitingExit();
 }
 
 /// Installed. The app has to be restarted, and [relaunchPath] is what to start.
@@ -142,18 +165,30 @@ class UpdateJobController extends Notifier<UpdateJob> {
     ref
         .read(diagnosticsProvider.notifier)
         .info('update', 'verified $tag (${outcome.update!.sha256})');
-    state = UpdateReady(
-      outcome.update!.file,
-      canInstall: target == SelfUpdateTarget.linuxAppImage,
-    );
+    state = UpdateReady(outcome.update!.file, target: target);
   }
 
-  /// Put a verified download in place. Only the AppImage is supported so far;
-  /// every other package reports [UpdateReady] with `canInstall: false` and the
-  /// user is shown the file.
+  /// Put a verified download in place, the way this package requires.
   Future<void> install({Map<String, String>? environment}) async {
     final ready = state;
     if (ready is! UpdateReady || !ready.canInstall) return;
+
+    if (ready.target == SelfUpdateTarget.windowsInstaller) {
+      final run = await runWindowsInstaller(verified: ready.file);
+      if (!run.ok) {
+        ref
+            .read(diagnosticsProvider.notifier)
+            .error(
+              'update',
+              'could not start the installer',
+              detail: '${run.outcome}: ${run.detail ?? ""}',
+            );
+        state = UpdateFailed(UpdateRefusal.cannotWrite, detail: run.detail);
+        return;
+      }
+      state = const UpdateAwaitingExit();
+      return;
+    }
 
     final result = await installAppImage(
       verified: ready.file,

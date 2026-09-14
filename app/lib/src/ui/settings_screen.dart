@@ -2753,6 +2753,15 @@ class _InstallUpdateButton extends ConsumerWidget {
         'Installed. Restart Airclone to use it.',
         style: TextStyle(color: c.success, fontSize: 13),
       ),
+      // Windows: the installer cannot replace a running program, so it waits
+      // for Airclone to close. Airclone does not close itself - an app that
+      // vanishes mid-sentence is one nobody trusts twice.
+      UpdateAwaitingExit() => Flexible(
+        child: Text(
+          'Close Airclone to finish updating. It will start again by itself.',
+          style: TextStyle(color: c.success, fontSize: 13),
+        ),
+      ),
       UpdateFailed(:final message) => Flexible(
         child: Text(message, style: TextStyle(color: c.error, fontSize: 13)),
       ),
