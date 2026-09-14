@@ -156,6 +156,9 @@ jobs:
         working-directory: .
         run: |
           set -euo pipefail
+          # The harness needs these, and this step runs before the one that
+          # installs them for Airclone's own run.
+          sudo apt-get install -y -qq xvfb xdotool x11-utils xcompmgr
           rm -rf /tmp/keycontrol
           flutter create --platforms=linux --project-name keycontrol /tmp/keycontrol >/dev/null
           cp dev/linux/keycontrol_main.dart /tmp/keycontrol/lib/main.dart
