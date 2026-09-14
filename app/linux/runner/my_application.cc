@@ -130,6 +130,22 @@ static void first_frame_cb(MyApplication* self, FlView* view) {
   gtk_widget_show(gtk_widget_get_toplevel(GTK_WIDGET(view)));
 }
 
+// Keyboard focus, every time the view appears - not only once at startup.
+//
+// THE BUG THIS FIXES: Airclone could be clicked but not typed into, anywhere,
+// on every Linux build since the desktop revamp. flutter_acrylic's Linux
+// SetEffect hides the window AND the view and shows them again, and a widget
+// that is hidden stops being the toplevel's focus widget. Nothing gave it back,
+// so key events arrived at a window with no focus widget and the engine never
+// saw them - while clicks, which go by position, kept working perfectly.
+//
+// Airclone no longer calls that plugin on Linux (state/window_backdrop.dart),
+// which is the real fix. This is the one that means a future hide/show - by any
+// plugin, in any order - cannot quietly cost the user their keyboard again.
+static void view_mapped_cb(GtkWidget* widget, gpointer user_data) {
+  gtk_widget_grab_focus(widget);
+}
+
 
 // The window's own chrome, rather than whatever GTK theme happened to resolve.
 //
@@ -268,6 +284,7 @@ static void my_application_activate(GApplication* application) {
   if (windowless) {
     gtk_widget_hide(GTK_WIDGET(window));
   } else {
+    g_signal_connect(view, "map", G_CALLBACK(view_mapped_cb), nullptr);
     gtk_widget_grab_focus(GTK_WIDGET(view));
   }
 }

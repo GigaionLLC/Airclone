@@ -112,6 +112,38 @@ Future<void> initWindowBackdrop() async {
   }
 }
 
+/// Which effect a backdrop asks the plugin for, or NULL for "do not call it".
+///
+/// THE BUG THIS FIXES: on Linux, `Window.setEffect` COST US TYPING. Its Linux
+/// implementation hides the window AND the FlView and shows them again
+/// (flutter_acrylic's flutter_acrylic_plugin.cc), and a hidden widget loses the
+/// toplevel's focus - which nothing gives back. Airclone called it at every
+/// startup, so every Linux build since the desktop revamp could be clicked but
+/// not typed into, anywhere: not the filter, not the address bar, not a dialog.
+/// Reported on WSL, reproduced on plain X11 in CI, where a stock Flutter app
+/// logged 8 key events under the same harness and Airclone logged none.
+///
+/// Nothing is lost by not calling it there. Mica and acrylic are Windows 11
+/// effects; on Linux every backdrop resolves to `disabled`, which is the state
+/// the window is already in. The call was doing nothing but breaking the
+/// keyboard.
+///
+/// The runner grabs focus again whenever the view is mapped, so a future
+/// hide/show cannot do this quietly again (linux/runner/my_application.cc).
+/// This keeps the call from happening at all.
+WindowEffect? backdropEffectFor(
+  WindowBackdrop backdrop, {
+  required bool linux,
+}) {
+  if (linux) return null;
+  return switch (backdrop) {
+    WindowBackdrop.systemDefault ||
+    WindowBackdrop.solid => WindowEffect.disabled,
+    WindowBackdrop.mica => WindowEffect.mica,
+    WindowBackdrop.acrylic => WindowEffect.acrylic,
+  };
+}
+
 /// Applies [backdrop] to the live window. [systemDefault] and [solid] map to
 /// the disabled (standard) effect; [mica] and [acrylic] map to their Windows 11
 /// counterparts. Any failure is a silent no-op.
@@ -120,19 +152,8 @@ Future<void> applyWindowBackdrop(
   bool dark = true,
 }) async {
   if (!_isDesktop) return;
-  WindowEffect effect;
-  switch (backdrop) {
-    case WindowBackdrop.systemDefault:
-    case WindowBackdrop.solid:
-      effect = WindowEffect.disabled;
-      break;
-    case WindowBackdrop.mica:
-      effect = WindowEffect.mica;
-      break;
-    case WindowBackdrop.acrylic:
-      effect = WindowEffect.acrylic;
-      break;
-  }
+  final effect = backdropEffectFor(backdrop, linux: HostPlatform.isLinux);
+  if (effect == null) return;
   try {
     await Window.setEffect(effect: effect, dark: dark);
   } catch (_) {
