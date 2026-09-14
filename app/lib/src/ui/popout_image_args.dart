@@ -147,7 +147,24 @@ class PopoutImageArgs {
 /// Pure so the gate is unit-testable without a platform channel: the UI passes
 /// `Theme.of(context).platform`, while main()'s pre-`runApp` dispatch uses
 /// `dart:io` Platform (there is no BuildContext yet).
+///
+/// LINUX IS OFF, and not because of anything Airclone does. Closing a pop-out
+/// there killed the WHOLE APP — reported from a desktop, and reproduced in CI
+/// by `dev/linux/test-popout.sh` against a bare `flutter create` app whose only
+/// dependency is desktop_multi_window:
+///
+///     'FlutterEngineRemoveView' returned 'kInvalidArguments'.
+///       Remove view info was invalid. The implicit view cannot be removed.
+///     Segmentation fault
+///
+/// Each window the plugin makes has its own engine, so that window's view is
+/// that engine's IMPLICIT view — which Flutter's embedder refuses to remove.
+/// The plugin's close handler removes it anyway, and the process dies with the
+/// main window and every transfer in it. desktop_multi_window 0.3.1 is the
+/// newest release there is, so there is nothing to upgrade to.
+///
+/// Losing a convenience beats losing the app: on Linux the image stays in the
+/// in-app viewer, which is the same picture with the same controls. Turn this
+/// back on when the plugin (or a patched fork) survives the test above.
 bool isPopoutSupportedOn(TargetPlatform platform) =>
-    platform == TargetPlatform.windows ||
-    platform == TargetPlatform.macOS ||
-    platform == TargetPlatform.linux;
+    platform == TargetPlatform.windows || platform == TargetPlatform.macOS;

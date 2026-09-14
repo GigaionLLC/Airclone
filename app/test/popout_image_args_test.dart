@@ -115,10 +115,20 @@ void main() {
   });
 
   group('isPopoutSupportedOn (desktop-only gate)', () {
-    test('true on desktop platforms', () {
+    test('true on Windows and macOS', () {
       expect(isPopoutSupportedOn(TargetPlatform.windows), isTrue);
       expect(isPopoutSupportedOn(TargetPlatform.macOS), isTrue);
-      expect(isPopoutSupportedOn(TargetPlatform.linux), isTrue);
+    });
+
+    /// NOT an oversight. Closing a pop-out on Linux killed the whole app, and
+    /// dev/linux/test-popout.sh reproduces it against a bare flutter-create app
+    /// whose only dependency is desktop_multi_window: the window the plugin
+    /// makes is its engine's IMPLICIT view, which the embedder refuses to
+    /// remove, and the process dies taking the main window with it. Turning
+    /// this back on without that test passing would trade someone's running
+    /// transfers for a convenience.
+    test('false on Linux, where closing one killed the app', () {
+      expect(isPopoutSupportedOn(TargetPlatform.linux), isFalse);
     });
 
     test('false on mobile / other platforms', () {
