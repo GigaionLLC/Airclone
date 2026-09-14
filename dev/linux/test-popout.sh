@@ -47,7 +47,13 @@ xdpyinfo >/dev/null 2>&1 || { echo "Xvfb never came up" >&2; exit 2; }
 
 # $1 = label, $2 = "yes" to add flutter_acrylic and register it per window.
 build_and_run() {
-  local label="$1" with_acrylic="$2" dir="$WORK/$label"
+  # Separate lines on purpose: bash expands every word of a `local`
+  # statement BEFORE any of its assignments take effect, so a later
+  # variable referring to an earlier one reads as unset - which under
+  # `set -u` ends the script before it measures anything, as it did.
+  local label="$1"
+  local with_acrylic="$2"
+  local dir="$WORK/$label"
   flutter create --platforms=linux --project-name popout_$label "$dir" >/dev/null 2>&1 \
     || { echo "  [$label] could not create the project" >&2; return 2; }
   cp "$REPO/dev/linux/popout_control_main.dart" "$dir/lib/main.dart"
