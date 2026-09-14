@@ -120,6 +120,16 @@ void main() {
       expect(message, isNot(contains('sha')));
     });
 
+    /// "The download didn't finish" is a lie when the download finished and
+    /// the install is what went wrong - and it sends the user to check their
+    /// connection instead of their disk.
+    test('a failed install does not blame the download', () {
+      final message = const UpdateFailed(UpdateRefusal.installFailed).message;
+      expect(message, contains('could not be installed'));
+      expect(message, contains('untouched'));
+      expect(message, isNot(contains('connection')));
+    });
+
     /// Every failure has to say something a person can act on; an enum value
     /// reaching a dialog is a bug.
     test('every refusal has a message', () {

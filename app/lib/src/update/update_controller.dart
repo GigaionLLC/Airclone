@@ -108,6 +108,10 @@ class UpdateFailed extends UpdateJob {
       "The download didn't finish. Check your connection and try again.",
     UpdateRefusal.cannotWrite =>
       'There was nowhere to save the download. Check you have free space.',
+    UpdateRefusal.installFailed =>
+      'The update downloaded and checked out, but could not be installed. '
+          'Your current version is untouched. Install it by hand from the '
+          'release page instead.',
     UpdateRefusal.tooLarge ||
     UpdateRefusal.badSignature ||
     UpdateRefusal.wrongRelease ||
@@ -138,7 +142,15 @@ class UpdateJobController extends Notifier<UpdateJob> {
     }
     state = const UpdateDownloading(received: 0);
 
-    final use = fetcher ?? await _defaultFetcher();
+    final UpdateFetcher use;
+    try {
+      use = fetcher ?? await _defaultFetcher();
+    } catch (e) {
+      // No application-support directory, or no permission to make one: a
+      // refusal with a reason, not an exception escaping into a button press.
+      state = UpdateFailed(UpdateRefusal.cannotWrite, detail: '$e');
+      return;
+    }
     final outcome = await use.fetchAndVerify(
       tag: tag,
       assetName: asset,
@@ -183,7 +195,7 @@ class UpdateJobController extends Notifier<UpdateJob> {
               'could not start the installer',
               detail: '${run.outcome}: ${run.detail ?? ""}',
             );
-        state = UpdateFailed(UpdateRefusal.cannotWrite, detail: run.detail);
+        state = UpdateFailed(UpdateRefusal.installFailed, detail: run.detail);
         return;
       }
       state = const UpdateAwaitingExit();
@@ -205,7 +217,7 @@ class UpdateJobController extends Notifier<UpdateJob> {
       state = UpdateFailed(
         result.outcome == AppImageInstall.notWritable
             ? UpdateRefusal.cannotWrite
-            : UpdateRefusal.network,
+            : UpdateRefusal.installFailed,
         detail: result.detail,
       );
       return;

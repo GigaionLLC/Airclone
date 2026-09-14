@@ -59,6 +59,11 @@ enum UpdateRefusal {
 
   /// Nowhere to put it.
   cannotWrite,
+
+  /// The download was good; putting it in place was not. A separate reason
+  /// because "the download didn't finish" is a lie when the download finished
+  /// and the install is what went wrong.
+  installFailed,
 }
 
 /// A download that proved itself: the file, and what it proved.
