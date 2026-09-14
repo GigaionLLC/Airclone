@@ -34,7 +34,7 @@ MULTIPLE=4
 FLOOR=2000                 # and at least this many pixels, for a quiet screen
 
 need() { command -v "$1" >/dev/null || { echo "missing tool: $1" >&2; exit 1; }; }
-need Xvfb; need xdotool; need import; need compare; need xdpyinfo
+need Xvfb; need xdotool; need import; need compare; need xdpyinfo; need identify; need xwininfo
 
 work="$(mktemp -d)"
 xvfb_pid=""
@@ -54,7 +54,13 @@ export DISPLAY="$DISPLAY_NUM"
 for _ in $(seq 1 30); do xdpyinfo >/dev/null 2>&1 && break; sleep 1; done
 xdpyinfo >/dev/null 2>&1 || { echo "Xvfb never came up" >&2; exit 1; }
 
-shot() { import -window root "$1" >/dev/null 2>&1; }
+# Capture the APP's window, not the root: a root grab on a bare X server can be
+# uniformly black whether or not the app drew anything.
+shot() { import -window "$2" "$1" >/dev/null 2>&1; }
+# How many distinct colours a capture holds. One means a flat rectangle - the
+# app has not drawn, or software GL never presented - and no typing test run
+# against that proves anything at all.
+colours() { identify -format '%k' "$1" 2>/dev/null || echo 0; }
 # compare writes the count to stderr and exits 1 when images differ, which is
 # the normal case here.
 pixels() { compare -metric AE "$1" "$2" null: 2>&1 | tr -d '\n' | cut -d. -f1; }
@@ -94,18 +100,40 @@ run_case() {
   depth="$(xwininfo -id "$win" 2>/dev/null | sed -n 's/.*Depth: *//p' | head -1)"
   echo "  [$label] window $win, depth ${depth:-?}"
 
-  sleep 6                       # let the first frame settle
-  xdotool windowfocus "$win" 2>/dev/null || true
-  sleep 1
+  # Wait for the app to actually DRAW. Without this the test happily compares
+  # two identical black rectangles and reports that typing did nothing.
+  local drew=""
+  for _ in $(seq 1 40); do
+    shot "$dir/first.png" "$win"
+    if [ "$(colours "$dir/first.png")" -gt 1 ] 2>/dev/null; then drew=yes; break; fi
+    sleep 2
+  done
+  if [ -z "$drew" ]; then
+    echo "  [$label] the window never drew anything - cannot test typing here"
+    sed -n '1,20p' "$dir/app.log"
+    kill "$app_pid" 2>/dev/null; [ -n "$cm_pid" ] && kill "$cm_pid" 2>/dev/null
+    return 2
+  fi
+  sleep 3                       # let the first frame settle
 
-  shot "$dir/idle1.png"; sleep 2; shot "$dir/idle2.png"
+  # Focus the way a user does: pointer into the window, then a click. XTEST
+  # events (no --window) are real input; XSendEvent ones are what toolkits
+  # routinely ignore, and a test that sent those would fail for its own reasons.
+  local wx wy
+  wx="$(xwininfo -id "$win" | sed -n 's/.*Width: *//p' | head -1)"
+  wy="$(xwininfo -id "$win" | sed -n 's/.*Height: *//p' | head -1)"
+  xdotool windowfocus "$win" 2>/dev/null || true
+  xdotool mousemove --window "$win" $(( ${wx:-800} / 2 )) $(( ${wy:-600} / 2 ))     click 1 2>/dev/null || true
+  sleep 2
+
+  shot "$dir/idle1.png" "$win"; sleep 2; shot "$dir/idle2.png" "$win"
   base="$(pixels "$dir/idle1.png" "$dir/idle2.png")"
 
-  xdotool key --clearmodifiers --window "$win" ctrl+f 2>/dev/null || true
+  xdotool key --clearmodifiers ctrl+f 2>/dev/null || true
   sleep 1
   xdotool type --clearmodifiers --delay 60 "$TYPED" 2>/dev/null || true
   sleep 3
-  shot "$dir/typed.png"
+  shot "$dir/typed.png" "$win"
   after="$(pixels "$dir/idle2.png" "$dir/typed.png")"
 
   kill "$app_pid" 2>/dev/null; wait "$app_pid" 2>/dev/null
