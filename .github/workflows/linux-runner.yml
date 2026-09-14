@@ -236,6 +236,22 @@ jobs:
           fi
           echo "  a plain launch does map one, so the check can see windows"
 
+      # The release-signature fixture the Dart tests verify is written by a
+      # THIRD implementation (dev/update/make-test-fixture.py, in Python). Real
+      # minisign has to agree with both of them, or what the tests check is our
+      # understanding of the format rather than the format.
+      - name: Real minisign agrees with the signature fixture
+        working-directory: .
+        run: |
+          set -euo pipefail
+          sudo apt-get install -y -qq minisign
+          cd app/test/fixtures/update
+          minisign -V -p minisign.pub -m SHA256SUMS
+          if minisign -V -p minisign.pub -m SHA256SUMS.tampered                -x SHA256SUMS.minisig >/dev/null 2>&1; then
+            echo "::error::real minisign accepted a tampered manifest"; exit 1
+          fi
+          echo "  minisign verified the fixture and refused the tampered copy"
+
       # Can a keystroke reach the app at all? A tester on WSL could click but not
       # type, in the AppImage and the Flatpak both, while xterm typed fine - so
       # the suspect is what the runner does to its own window rather than
