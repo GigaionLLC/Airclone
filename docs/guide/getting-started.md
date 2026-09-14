@@ -253,6 +253,33 @@ Both show the same content in the same order, so a path like "Settings → Autom
 folder" is valid on either. Groups that make no sense on a platform are simply absent — there is no
 download-folder setting on a phone, and no engine-path setting off the desktop.
 
+## Keeping Airclone up to date
+
+**Airclone never checks by itself.** Nothing happens until you open Settings, scroll to **Updates**
+and press `Check for updates` — the same as the button that updates the rclone engine. There is no
+background check, no "a new version is available" popup, and nothing is downloaded because a release
+happened.
+
+What the button does depends on where this copy came from, and it knows:
+
+| Where you installed it from | What happens |
+|---|---|
+| The Microsoft Store, Google Play, the App Store, the Mac App Store, Flathub, Snap | It names that store and offers to open it. **No request is made to GitHub at all** — those stores deliver their own updates, and their rules say an app must not go around them. |
+| A download from the releases page | It asks GitHub what the newest release is and tells you whether you are behind. |
+
+For downloaded copies, a future version will also offer to **download and install** the update
+itself. That is off until Airclone releases are signed with a release key, because Airclone will not
+install a file it cannot prove came from this project. When it is on, it will:
+
+1. download the release's checksum list and the signature over it;
+2. check the signature against a key built into Airclone, **before** trusting anything in the list;
+3. check the signature is for the release being installed, so an old one cannot be replayed;
+4. download the file for your exact package and check it against the list;
+5. refuse, and delete what it downloaded, if any of that does not line up.
+
+Until then, and for any package that cannot replace itself, the answer stays what it is today: a
+link to the release page.
+
 ## Finding your way around
 
 On the desktop, two keys are worth learning now:
