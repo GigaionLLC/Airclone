@@ -203,18 +203,31 @@ void main() {
       }
     });
 
-    /// Flags that need Dart must not show a window on macOS either: the window
-    /// comes from the nib, so the runner has to refuse to order it front.
-    test('the macOS runner keeps windowless runs off the screen', () {
-      final f = File('macos/Runner/MainFlutterWindow.swift');
-      if (!f.existsSync()) return;
-      final src = f.readAsStringSync();
-      expect(src, contains('wantsNoWindow'));
-      expect(src, contains('makeKeyAndOrderFront'));
-      expect(src, contains('setActivationPolicy(.accessory)'));
-      // The engine lives in the window's content view, which AppKit loads
-      // lazily - a hidden window that never loads it is an app that never runs.
-      expect(src, contains('flutterViewController.view'));
+    /// Flags that need Dart must not show a window on macOS either. Hiding one
+    /// is not enough: the engine lives in the window's content view, and AppKit
+    /// loads that lazily when the window is about to appear, so a hidden window
+    /// is an app that never runs - CI watched --webui sit for 90 seconds
+    /// having printed nothing. A windowless run builds no window at all and
+    /// starts a headless engine instead.
+    test('the macOS runner runs windowless flags without a window', () {
+      final delegate = File('macos/Runner/AppDelegate.swift');
+      final window = File('macos/Runner/MainFlutterWindow.swift');
+      if (!delegate.existsSync() || !window.existsSync()) return;
+      final d = delegate.readAsStringSync();
+      expect(d, contains('allowHeadlessExecution: true'));
+      expect(d, contains('setActivationPolicy(.accessory)'));
+      expect(
+        d,
+        contains('dartEntrypointArguments'),
+        reason: 'without argv, --webui would start the ordinary app',
+      );
+
+      final w = window.readAsStringSync();
+      expect(w, contains('wantsNoWindow'));
+      // Every route to the screen, because the nib is visible-at-launch and
+      // AppKit orders the window front after awakeFromNib has run.
+      expect(w, contains('makeKeyAndOrderFront'));
+      expect(w, contains('orderFront'));
     });
 
     test('the Windows runner', () {

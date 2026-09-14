@@ -15,7 +15,7 @@ import desktop_multi_window
 ///
 /// Kept in step with `WantsWindowlessDart` in the Linux runner and
 /// `isHeadlessInvocation`/`isWebUiInvocation` in Dart.
-private func wantsNoWindow(_ args: [String]) -> Bool {
+func wantsNoWindow(_ args: [String]) -> Bool {
   for a in args {
     switch a {
     case "--webui", "--run-due", "--run-task":
@@ -29,24 +29,18 @@ private func wantsNoWindow(_ args: [String]) -> Bool {
 
 class MainFlutterWindow: NSWindow {
   override func awakeFromNib() {
+    // A windowless run builds NO view controller: AppDelegate has already
+    // started a headless engine, and a second one here would run main() twice.
+    // The nib still creates this window; nothing ever shows it.
+    if wantsNoWindow(CommandLine.arguments) {
+      super.awakeFromNib()
+      return
+    }
+
     let flutterViewController = FlutterViewController()
     let windowFrame = self.frame
     self.contentViewController = flutterViewController
     self.setFrame(windowFrame, display: true)
-
-    // A windowless run still builds the window - the engine lives in its view
-    // controller - but must never put it on screen, and must not claim a Dock
-    // icon or the menu bar either: .accessory is what a background process
-    // looks like to the rest of the system.
-    if wantsNoWindow(CommandLine.arguments) {
-      NSApplication.shared.setActivationPolicy(.accessory)
-      // Load the view even though nothing will display it. AppKit loads a
-      // window's content view lazily, when it is about to appear - and the
-      // engine, and therefore Dart, lives inside that view. A window that never
-      // appears would otherwise mean an app that never runs.
-      _ = flutterViewController.view
-      self.orderOut(nil)
-    }
 
     RegisterGeneratedPlugins(registry: flutterViewController)
     // Hand-written, so it is NOT in GeneratedPluginRegistrant and has to be

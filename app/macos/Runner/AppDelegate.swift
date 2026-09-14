@@ -62,11 +62,52 @@ class AppDelegate: FlutterAppDelegate {
       print(macOSUsageText)
       exit(0)
     }
+    if wantsNoWindow(args) {
+      startHeadlessEngine(args)
+    }
     super.applicationWillFinishLaunching(notification)
   }
 
+  /// Runs Dart with NO window, for `--webui` and the scheduled-task flags.
+  ///
+  /// Hiding the window is not enough on macOS, and the reason is worth writing
+  /// down: the engine lives inside the window's content view, and AppKit loads
+  /// a content view lazily, when the window is about to appear. A window that
+  /// never appears is an app that never runs - CI watched `--webui` sit for 90
+  /// seconds without serving, having printed nothing at all.
+  ///
+  /// So a windowless run does not build a window (MainFlutterWindow returns
+  /// early) and starts an engine directly instead. `allowHeadlessExecution` is
+  /// exactly what that is for. The activation policy keeps it out of the Dock
+  /// and off the menu bar, which is what a process serving a web interface
+  /// should look like.
+  private func startHeadlessEngine(_ args: [String]) {
+    NSApplication.shared.setActivationPolicy(.accessory)
+    let project = FlutterDartProject()
+    // Dart reads these as main(List<String> args); without them --webui would
+    // start the ordinary app, headless, with no way to say so.
+    project.dartEntrypointArguments = Array(args.dropFirst())
+    let engine = FlutterEngine(
+      name: "airclone-headless",
+      project: project,
+      allowHeadlessExecution: true
+    )
+    engine.run()
+    RegisterGeneratedPlugins(registry: engine)
+    // Hand-written, so it is not in GeneratedPluginRegistrant. A headless run
+    // still resolves saved locations, which is what the bookmarks are.
+    SecurityScopedBookmarks.register(with: engine.binaryMessenger)
+    headlessEngine = engine
+  }
+
+  /// Held so ARC does not collect the engine the moment launching finishes.
+  private var headlessEngine: FlutterEngine?
+
+  /// Closing the last window quits - unless there was never meant to be one.
+  /// A server that stopped because a window it never showed was closed would be
+  /// a baffling way to lose a Web UI.
   override func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
-    return true
+    return !wantsNoWindow(CommandLine.arguments)
   }
 
   override func applicationSupportsSecureRestorableState(_ app: NSApplication) -> Bool {
