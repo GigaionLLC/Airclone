@@ -34,8 +34,19 @@ buttons:
 | `Clear` | all | Empties the record |
 
 What the report contains: a short header (app version, platform and OS build,
-how the app was installed, engine version and engine mode), then the recorded
-events oldest first.
+how the app was installed, which package it is, engine version and engine mode),
+then the recorded events oldest first.
+
+The package line matters more than it looks. One platform ships several, and they
+fail in different ways: on Linux the AppImage, the tar.gz, the Flatpak from a
+release and the Flatpak from Flathub all download from the same page, and only
+the Flatpaks need a permission to mount. So the header names the package —
+`AppImage`, `Flatpak (Flathub)`, `Flatpak (release bundle)`, `Snap`, `tar.gz`,
+`MSIX package`, `installer`, `portable zip`, `app bundle` — with the processor
+architecture. On a phone, tablet or TV it names that instead, with the window
+size, and says when a tablet is narrow enough to be showing the phone layout. No
+device name, model or serial: knowing it is a tablet is useful, knowing whose is
+not.
 
 What it does not contain: secrets. Passwords, tokens, `Authorization` headers,
 credentials embedded in a URL, email addresses and your home-directory name are

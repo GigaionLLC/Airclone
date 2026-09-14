@@ -25,14 +25,26 @@ username and the password.
 
 ### From a command line
 
-For a machine with no screen:
+For a machine you would rather not sit in front of:
 
 ```bash
 airclone --webui
 ```
 
 It prints the address and, the very first time, the generated password. Then it stays running until
-you stop it.
+you stop it. No window opens.
+
+**On Linux it still needs a display, even though it shows nothing on it.** Airclone's engine can
+only be started against a display server, so a truly headless Linux box needs a virtual one:
+
+```bash
+sudo apt install xvfb
+xvfb-run -a airclone --webui
+```
+
+Run it without either and it says so and names that command, rather than failing with a display
+error. Windows and macOS have no such requirement. (Before v0.13.7 the Linux build went further and
+left an empty window on screen for as long as the server ran.)
 
 | Flag | What it does | Default |
 |---|---|---|
