@@ -202,6 +202,20 @@ jobs:
           fi
           echo "  a plain launch does map one, so the check can see windows"
 
+      # Can a keystroke reach the app at all? A tester on WSL could click but not
+      # type, in the AppImage and the Flatpak both, while xterm typed fine - so
+      # the suspect is what the runner does to its own window rather than
+      # anything either package bundles. dev/linux/test-keyboard.sh runs the real
+      # binary on a virtual display with and without a compositing manager (which
+      # is what makes the app ask for the ARGB visual), types, and checks the
+      # screen moved more than it does when idle.
+      - name: A keystroke reaches the app
+        working-directory: .
+        run: |
+          set -euo pipefail
+          sudo apt-get install -y -qq xvfb xdotool x11-utils imagemagick xcompmgr
+          bash dev/linux/test-keyboard.sh app/build/linux/x64/release/bundle/airclone
+
       # Windowless still needs a display, because the engine starts only against
       # one. The message has to say that and name the way out, or the user meets
       # GTK's "cannot open display" with nothing to act on.
