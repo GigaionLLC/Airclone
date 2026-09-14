@@ -1,0 +1,81 @@
+name: macOS runner (window behaviour)
+
+# Builds the direct-download macOS app on a real Mac and checks that the flags
+# meant for an unattended machine put NOTHING on screen.
+#
+# WHY THIS EXISTS. `--webui` serves the interface to browsers instead of opening
+# a window - that is the whole point of it. On macOS the window comes from the
+# nib and AppKit shows it whatever the Dart entrypoint decides, so the app sat
+# there with an empty window and a Dock icon for as long as the server ran.
+# Linux had the same bug from a different cause, and the only reason it was
+# caught is that CI looked (linux-runner.yml).
+#
+# Nobody on this project owns a Mac, so "it probably works" is not available;
+# a macos-latest runner is a real Mac and can answer this.
+#
+# Scoped to paths, because it is a full macOS build. Nothing is signed, uploaded
+# or submitted here: distribution lives in release.yml.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'app/macos/**'
+      - 'app/lib/main.dart'
+      - 'app/lib/src/headless/**'
+      - 'app/lib/src/webui/**'
+      - 'dev/macos/**'
+      - '.github/workflows/macos-runner.yml'
+  pull_request:
+    paths:
+      - 'app/macos/**'
+      - 'app/lib/main.dart'
+      - 'app/lib/src/headless/**'
+      - 'app/lib/src/webui/**'
+      - 'dev/macos/**'
+      - '.github/workflows/macos-runner.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: macos-runner-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  window-behaviour:
+    runs-on: macos-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+      # Pinned to the release pin. A floating channel would test a different
+      # embedder than the one that ships.
+      - uses: subosito/flutter-action@v2
+        with: { channel: stable, flutter-version: 3.47.0, cache: true }
+      # super_native_extensions (drag-out) builds a Rust crate via cargokit.
+      - uses: dtolnay/rust-toolchain@stable
+      - run: flutter config --enable-macos-desktop
+      - run: flutter pub get
+        working-directory: app
+      - run: flutter build macos --release
+        working-directory: app
+
+      - name: --version answers, and quietly
+        working-directory: app
+        run: |
+          set -uo pipefail
+          app="build/macos/Build/Products/Release/Airclone.app"
+          out="$("$app/Contents/MacOS/Airclone" --version 2>&1)"
+          code=$?
+          echo "got: $out"
+          [ "$code" -eq 0 ] || { echo "::error::--version exited $code"; exit 1; }
+          case "$out" in
+            *[0-9].[0-9]*) ;;
+            *) echo "::error::--version did not print a version"; exit 1 ;;
+          esac
+
+      # The real check: serving must not mean showing. See the script for how it
+      # counts windows and why a plain launch has to show one.
+      - name: --webui serves without a window
+        run: bash dev/macos/test-webui-window.sh app/build/macos/Build/Products/Release/Airclone.app
