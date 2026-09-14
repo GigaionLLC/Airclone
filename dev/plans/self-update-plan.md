@@ -1,6 +1,21 @@
 # Airclone in-app self-update — design
 
-> Status: proposed. Owner: Airclone maintainers. Target: v0.14.x.
+> Status: **part built** (2026-09-14). Owner: Airclone maintainers. Target: v0.14.x.
+>
+> | Stage | State |
+> |---|---|
+> | CI publishes a manifest | **done** - `release.yml` job `checksums`; signs it when `MINISIGN_SECRET_KEY` exists |
+> | The signing key itself | **NOT done, and a person's job** - [`../update/signing-key-setup.md`](../update/signing-key-setup.md) |
+> | Trust primitives | **done** - `update/minisign.dart`, `sums.dart`, `version_compare.dart`, `update_trust.dart` |
+> | Gates | **done** - `update/self_update_target.dart` (store channel + package) |
+> | Download and verify | **done** - `update/update_fetch.dart`, tested against a server that lies eight ways |
+> | Install: AppImage | **done** - `update/install_appimage.dart`, tested on Linux CI |
+> | Install: Windows installer | **done** - `update/install_windows.dart`; the silent flags are tested, a real install is not |
+> | Install: tar.gz, portable zip, macOS app | **not built** - each needs a helper process to swap a tree the running app is inside; they download, verify, and say where the file is |
+> | UI | **done** - Settings -> Updates, and only when a key AND a replaceable package are both present |
+>
+> Nothing is user-visible until the key exists: with no key `kCanVerifyUpdates` is false and every
+> build behaves exactly as it does today.
 > Supersedes nothing; extends the existing update check in `app/lib/src/state/app_info.dart`.
 > Related: `dev/backlog/hardening-audit-2026-07-15.md` H-10, `dev/plans/flathub-plan.md`, `dev/plans/apple-appstore-plan.md`.
 
