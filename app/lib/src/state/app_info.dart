@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 import 'package:package_info_plus/package_info_plus.dart';
 
 import 'install_source.dart';
+import '../update/version_compare.dart';
 
 /// The running app version (e.g. `0.1.0-alpha.2`), read from the bundle.
 final appVersionProvider = FutureProvider<String>(
@@ -89,8 +90,11 @@ final updateCheckProvider = FutureProvider<UpdateStatus>((ref) async {
   final json = jsonDecode(res.body) as Map<String, dynamic>;
   final tag = (json['tag_name'] as String?) ?? '';
   final url = (json['html_url'] as String?) ?? '';
-  // A release counts as an update when its tag doesn't contain our version.
-  final hasUpdate = tag.isNotEmpty && !tag.contains(current);
+  // A release counts as an update when it is STRICTLY NEWER. This used to ask
+  // whether the tag contained our version, which told every 0.9.1 user they
+  // were up to date for the whole of 0.9.10's life - "v0.9.10" contains
+  // "0.9.1". See update/version_compare.dart.
+  final hasUpdate = isNewerAppVersion(candidate: tag, current: current);
   return ReleaseUpdateInfo(
     currentVersion: current,
     source: source,
