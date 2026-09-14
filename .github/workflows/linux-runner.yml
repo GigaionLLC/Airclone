@@ -165,7 +165,7 @@ jobs:
           done
           if [ -z "$served" ]; then
             echo "::error::--webui never started serving"; sed -n '1,60p' webui.log
-            kill "$app" 2>/dev/null; exit 1
+            kill "$app" 2>/dev/null || true; exit 1
           fi
           # xdotool exits 1 when it finds nothing, and the step runs under bash -e,
           # so an unguarded assignment ends the step silently ON SUCCESS - which is
@@ -179,7 +179,9 @@ jobs:
             done
             xwininfo -root -tree | sed -n '1,30p'
           fi
-          kill "$app" 2>/dev/null; wait "$app" 2>/dev/null
+          # Under bash -e, wait returns 143 for a process we just SIGTERMed and
+          # that ends the step - after the check has already passed.
+          kill "$app" 2>/dev/null || true; wait "$app" 2>/dev/null || true
           if [ -n "$windows" ]; then
             echo "::error::--webui mapped a window: $windows"; exit 1
           fi
@@ -193,7 +195,7 @@ jobs:
             kill -0 "$gui" 2>/dev/null || break
             sleep 1
           done
-          kill "$gui" 2>/dev/null; wait "$gui" 2>/dev/null
+          kill "$gui" 2>/dev/null || true; wait "$gui" 2>/dev/null || true
           if [ -z "$seen" ]; then
             echo "::error::a plain launch mapped no window either - the check above proves nothing"
             sed -n '1,60p' window.log; exit 1
