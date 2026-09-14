@@ -73,6 +73,14 @@ Options:
                           is what the OS scheduler invokes; it opens no window.
   --run-task ID           Run one saved task by id, then exit.
 
+  --update                Download, check and install a newer release, then
+                          exit. Refuses on builds installed from a store, which
+                          update through the store instead.
+      --check             Say what would be installed, and install nothing.
+      --output PATH       Save the verified download here instead of
+                          installing it.
+      --version-tag TAG   Install this release instead of the newest.
+
   --log-input             Print one line per key event, and whether a text
                           field had focus to receive it. For working out why a
                           machine will not type. Changes nothing else.

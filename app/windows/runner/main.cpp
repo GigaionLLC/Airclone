@@ -19,7 +19,7 @@ static bool ContainsHeadlessFlag(const std::vector<std::string> &args) {
     // a Web UI host that has no UI at all.
     return a == "--run-task" || a == "--run-due" ||
            a.rfind("--run-task=", 0) == 0 || a == "--webui" ||
-           a == "--version" || a == "--help" || a == "-h";
+           a == "--update" || a == "--version" || a == "--help" || a == "-h";
   });
 }
 

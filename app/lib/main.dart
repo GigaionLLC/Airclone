@@ -11,6 +11,7 @@ import 'src/state/window_backdrop.dart';
 import 'src/ui/app.dart';
 import 'src/ui/error_surface.dart';
 import 'src/ui/popout_image_app.dart';
+import 'src/headless/update_cli.dart';
 import 'src/ui/input_log.dart';
 import 'src/webui/webui_options.dart';
 import 'src/webui/webui_runner.dart';
@@ -29,6 +30,12 @@ Future<void> main(List<String> args) async {
   // missing libGLESv2 because the window came first. Never returns.
   if (!HostPlatform.isWeb && isCliInfoInvocation(args)) {
     await runCliInfo(args);
+  }
+  // `--update`: fetch, verify and install a newer release, then exit. Before the
+  // headless runner and the Web UI for the same reason --version is before
+  // everything: it is a whole invocation, not a mode of the app.
+  if (!HostPlatform.isWeb && isUpdateInvocation(args)) {
+    await runUpdateCliAndExit(args);
   }
   if (isHeadlessInvocation(args)) {
     return runHeadless(args);

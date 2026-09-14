@@ -21,7 +21,8 @@ import desktop_multi_window
 func wantsNoWindow(_ args: [String]) -> Bool {
   for a in args {
     switch a {
-    case "--webui", "--run-due", "--run-task", "--version", "--help", "-h":
+    case "--webui", "--run-due", "--run-task", "--update",
+      "--version", "--help", "-h":
       return true
     default:
       if a.hasPrefix("--run-task=") { return true }

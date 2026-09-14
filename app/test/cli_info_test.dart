@@ -79,6 +79,7 @@ void main() {
         '--webui-port',
         '--run-due',
         '--run-task',
+        '--update',
         '--log-input',
         '--version',
         '--help',
@@ -168,7 +169,14 @@ void main() {
       final f = File('linux/runner/my_application.cc');
       if (!f.existsSync()) return;
       final src = f.readAsStringSync();
-      final help = src.substring(src.indexOf('static void PrintHelp()'));
+      // The FUNCTION, not everything after it. Reading to the end of the file
+      // meant a flag named anywhere below - in the windowless-flag scan, say -
+      // counted as documented, and one of them did.
+      final start = src.indexOf('static void PrintHelp()');
+      final end = src.indexOf('\n}', start);
+      expect(start, greaterThan(0));
+      expect(end, greaterThan(start));
+      final help = src.substring(start, end);
       for (final flag in [...flags, '--webui-bind', '--webui-port']) {
         expect(help, contains(flag), reason: 'Linux --help omits $flag');
         expect(

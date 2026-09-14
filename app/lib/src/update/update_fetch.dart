@@ -351,3 +351,28 @@ class _DigestSink implements Sink<Digest> {
   @override
   void close() {}
 }
+
+/// The newest release tag for the configured repository, or null when GitHub
+/// could not be asked.
+///
+/// Deliberately separate from the app's own update check (`app_info.dart`),
+/// which is a Riverpod provider: the CLI has no providers, and a store build
+/// must never reach either - the caller checks that first.
+Future<String?> newestReleaseTag({http.Client? client}) async {
+  final http.Client c = client ?? http.Client();
+  try {
+    final response = await c.get(
+      latestReleaseApiUrl(),
+      headers: const {'User-Agent': 'airclone'},
+    );
+    if (response.statusCode != 200) return null;
+    final tag = jsonDecode(response.body);
+    if (tag is! Map) return null;
+    final value = tag['tag_name'];
+    return (value is String && value.isNotEmpty) ? value : null;
+  } catch (_) {
+    return null;
+  } finally {
+    if (client == null) c.close();
+  }
+}

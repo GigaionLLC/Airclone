@@ -80,6 +80,12 @@ static void PrintHelp() {
       "  --run-due               Run every scheduled task that is due, then exit.\n"
       "  --run-task ID           Run one saved task by id, then exit.\n"
       "\n"
+      "  --update                Download, check and install a newer release,\n"
+      "                          then exit. Refuses on a build installed from\n"
+      "                          a store. --check says what would happen,\n"
+      "                          --output PATH saves the file instead, and\n"
+      "                          --version-tag TAG picks a release.\n"
+      "\n"
       "  --log-input             Print one line per key event, and whether a\n"
       "                          text field had focus to receive it. For\n"
       "                          working out why a machine will not type.\n"
@@ -105,6 +111,7 @@ static bool WantsWindowlessDart(char** args) {
     if (g_strcmp0(*a, "--webui") == 0) return true;
     if (g_strcmp0(*a, "--run-due") == 0) return true;
     if (g_strcmp0(*a, "--run-task") == 0) return true;
+    if (g_strcmp0(*a, "--update") == 0) return true;
     if (g_str_has_prefix(*a, "--run-task=")) return true;
   }
   return false;
