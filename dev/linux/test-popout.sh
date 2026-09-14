@@ -25,7 +25,7 @@
 set -uo pipefail
 
 need() { command -v "$1" >/dev/null || { echo "missing tool: $1" >&2; exit 2; }; }
-need flutter; need Xvfb; need xdpyinfo
+need flutter; need Xvfb; need xdpyinfo; need xdotool
 
 WORK="$(mktemp -d)"
 DISPLAY_NUM=":98"
@@ -94,7 +94,36 @@ PY
   }
 
   local bin="$dir/build/linux/x64/release/bundle/popout_$label"
-  timeout 120 "$bin" >"$WORK/$label.log" 2>&1
+  "$bin" >"$WORK/$label.log" 2>&1 &
+  local app_pid=$!
+
+  # Wait for the second window to be up, then close it FROM OUTSIDE - the crash
+  # being chased is the window-manager destroy path (the plugin has no close()
+  # in 0.3.1), which is what a person clicking the X does.
+  local opened=""
+  for _ in $(seq 1 90); do
+    grep -q 'popout: opened' "$WORK/$label.log" && { opened=1; break; }
+    kill -0 "$app_pid" 2>/dev/null || break
+    sleep 1
+  done
+  if [ -z "$opened" ]; then
+    echo "  [$label] never opened a second window"
+    sed -n '1,20p' "$WORK/$label.log"
+    kill "$app_pid" 2>/dev/null || true
+    return 2
+  fi
+
+  # The newest window is the pop-out: the main one was there first.
+  local child
+  child="$(xdotool search --onlyvisible --class "popout" 2>/dev/null | tail -1 || true)"
+  if [ -z "$child" ]; then
+    echo "  [$label] could not find the second window to close"
+    kill "$app_pid" 2>/dev/null || true
+    return 2
+  fi
+  xdotool windowclose "$child" 2>/dev/null || true
+
+  wait "$app_pid" 2>/dev/null
   local code=$?
   if grep -q 'the app survived closing the second window' "$WORK/$label.log"; then
     echo "  [$label] survived"

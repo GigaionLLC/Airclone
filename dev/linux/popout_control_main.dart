@@ -50,13 +50,12 @@ Future<void> main(List<String> args) async {
   );
   await controller.show();
   await Future<void>.delayed(const Duration(seconds: 3));
+  // The harness closes it from outside, the way a person does: the plugin has
+  // no close() in 0.3.1, and the crash being chased is the window-manager
+  // destroy path, not an API call.
+  stderr.writeln('popout: opened');
 
-  stderr.writeln('popout: closing it');
-  await controller.close();
-
-  // The point of the whole exercise: still here, five seconds after the second
-  // window went away.
-  await Future<void>.delayed(const Duration(seconds: 5));
+  await Future<void>.delayed(const Duration(seconds: 15));
   stderr.writeln('popout: the app survived closing the second window');
   exit(0);
 }

@@ -287,7 +287,7 @@ jobs:
         working-directory: .
         run: |
           set -euo pipefail
-          sudo apt-get install -y -qq xvfb x11-utils
+          sudo apt-get install -y -qq xvfb x11-utils xdotool
           bash dev/linux/test-popout.sh
 
       # Can a keystroke reach the app at all? A tester on WSL could click but not
