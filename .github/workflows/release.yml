@@ -1085,3 +1085,102 @@ jobs:
             build/app/outputs/flutter-apk/airclone-android-*.apk \
             airclone-playstore.aab \
             --clobber --repo "$GITHUB_REPOSITORY"
+
+  # A checksum manifest for the release, and a signature over it.
+  #
+  # WHY. Someone who downloads a build has no way to tell it is the build this
+  # project made. Windows and macOS carry their own answer - Authenticode,
+  # Developer ID - but an AppImage, a tar.gz and a plain zip carry none, and the
+  # Windows signing above is conditional on a repository variable. One signed
+  # manifest covers every asset equally, and it is what the in-app updater
+  # verifies before it installs anything (dev/plans/self-update-plan.md).
+  #
+  # IT RE-DOWNLOADS THE ASSETS FROM THE RELEASE rather than hashing what the
+  # build jobs produced. A green check is not evidence: v0.5.0 through v0.5.2
+  # shipped a broken rclone bundle behind one. The only bytes worth hashing are
+  # the bytes a user would get.
+  #
+  # THE SIGNATURE IS OPTIONAL, and deliberately so. Without MINISIGN_SECRET_KEY
+  # the manifest is still published - useful to anyone checking a download by
+  # hand - and the app simply will not offer to install an update, because it
+  # would have nothing to verify against. That is the safe half of the failure.
+  checksums:
+    needs: [windows, linux, macos, android]
+    # `always()` so a release that lost one platform still gets a manifest for
+    # the platforms it did produce; the step below hashes whatever is attached.
+    if: always() && startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Hash every asset on the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          mkdir -p assets && cd assets
+          # Everything except the manifest itself, and its signature, from a
+          # previous run of this job.
+          mapfile -t names < <(gh release view "$GITHUB_REF_NAME" \
+            --repo "$GITHUB_REPOSITORY" --json assets \
+            --jq '.assets[].name | select(. != "SHA256SUMS" and . != "SHA256SUMS.minisig")')
+          if [ "${#names[@]}" -eq 0 ]; then
+            echo "::error::the release has no assets to hash"; exit 1
+          fi
+          for name in "${names[@]}"; do
+            gh release download "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" \
+              --pattern "$name" --dir .
+          done
+          # Sorted, so two runs of this job produce byte-identical manifests.
+          sha256sum $(printf '%s\n' "${names[@]}" | sort) > ../SHA256SUMS
+          cd ..
+          echo "manifest for $GITHUB_REF_NAME:"
+          cat SHA256SUMS
+
+      - name: Sign the manifest, if there is a key
+        env:
+          MINISIGN_SECRET_KEY: ${{ secrets.MINISIGN_SECRET_KEY }}
+          MINISIGN_PASSWORD: ${{ secrets.MINISIGN_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [ -z "${MINISIGN_SECRET_KEY:-}" ]; then
+            echo "::warning::No MINISIGN_SECRET_KEY — publishing the manifest unsigned."
+            echo "In-app updating stays off until a key exists; see dev/plans/self-update-plan.md."
+            exit 0
+          fi
+          sudo apt-get update && sudo apt-get install -y -qq minisign
+          printf '%s' "$MINISIGN_SECRET_KEY" > key.sec
+          chmod 600 key.sec
+          # The TAG goes in the trusted comment, which the global signature
+          # covers. That is what lets the app refuse a genuine but older
+          # manifest replayed at it by a stale mirror.
+          minisign -S -s key.sec -m SHA256SUMS \
+            -t "airclone $GITHUB_REF_NAME $(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            <<<"${MINISIGN_PASSWORD:-}"
+          shred -u key.sec
+          echo "signed:"
+          cat SHA256SUMS.minisig
+
+      - name: Attach to the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          files=(SHA256SUMS)
+          [ -f SHA256SUMS.minisig ] && files+=(SHA256SUMS.minisig)
+          gh release upload "$GITHUB_REF_NAME" "${files[@]}" \
+            --clobber --repo "$GITHUB_REPOSITORY"
+
+      # Verify what was attached, not what was built a step ago: download the
+      # manifest back off the release and check one asset against it.
+      - name: The published manifest matches the published assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          rm -rf check && mkdir check && cd check
+          gh release download "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" \
+            --pattern SHA256SUMS --dir .
+          first="$(head -1 SHA256SUMS | awk '{print $2}')"
+          gh release download "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" \
+            --pattern "$first" --dir .
+          grep -F "  $first" SHA256SUMS | sha256sum -c -
+          echo "  the published $first matches the published manifest"
