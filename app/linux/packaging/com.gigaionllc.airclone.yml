@@ -10,7 +10,7 @@
 # reads it.
 app-id: com.gigaionllc.airclone
 runtime: org.gnome.Platform
-runtime-version: '48'
+runtime-version: '50'
 sdk: org.gnome.Sdk
 command: airclone
 
@@ -50,7 +50,9 @@ finish-args:
 # has to be built here.
 #
 # The build asks the runtime what it has rather than assuming (see
-# dev/linux/build-flatpak.sh). On org.gnome.Platform 48 the answer is:
+# dev/linux/build-flatpak.sh). On org.gnome.Platform 50 the answer is the same
+# as it was on 48, which this moved off because 48 reached end of life in
+# March 2026 and told every installing user so:
 #
 #   libsecret-1.so.0   PRESENT   -> nothing to do
 #   libavcodec.so.61   PRESENT   -> ffmpeg is there, which is the expensive one

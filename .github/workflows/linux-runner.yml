@@ -391,6 +391,27 @@ jobs:
         working-directory: app
       - run: flutter build linux --release
         working-directory: app
+      # The release bundles rclone INTO the Flutter bundle before packaging, so a
+      # Flatpak built without it is a different artifact - 14 MB against 68 - and
+      # would not prove what this job exists to prove.
+      - name: Bundle rclone, as the release does (verified)
+        working-directory: app
+        run: |
+          set -euo pipefail
+          ver="$(grep -oP 'RCLONE_VERSION: \Kv[0-9.]+' ../.github/workflows/release.yml | head -1)"
+          [ -n "$ver" ] || { echo "::error::could not read the rclone pin from release.yml"; exit 1; }
+          zip="rclone-${ver}-linux-amd64.zip"
+          base="https://downloads.rclone.org/${ver}"
+          curl -fsSL --retry 3 -o "$zip" "$base/$zip"
+          curl -fsSL --retry 3 -o SHA256SUMS.txt "$base/SHA256SUMS"
+          expected="$(awk -v f="$zip" '{ n=$NF; sub(/^[*.\/]+/, "", n); if (n == f) { print $1; exit } }' SHA256SUMS.txt)"
+          [ -n "$expected" ] || { echo "no checksum for $zip in SHA256SUMS"; exit 1; }
+          actual="$(sha256sum "$zip" | awk '{print $1}')"
+          [ "$actual" = "$expected" ] || { echo "rclone checksum mismatch"; exit 1; }
+          unzip -q "$zip" -d rclone-extract
+          install -Dm755 "rclone-extract/rclone-${ver}-linux-amd64/rclone" build/linux/x64/release/bundle/rclone
+          echo "bundled rclone $ver"
+
       # The manifest is the source of truth for the runtime; the input overrides
       # it for this run only (build-flatpak.sh rewrites the staged copy to match).
       - name: Build the Flatpak
