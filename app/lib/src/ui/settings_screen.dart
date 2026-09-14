@@ -31,6 +31,7 @@ import '../state/install_source.dart';
 import '../state/jobs_controller.dart';
 import '../state/local_locations.dart';
 import '../state/open_external.dart';
+import '../state/native_actions_policy.dart';
 import '../state/os_integration.dart';
 import '../state/recent_locations.dart';
 import '../rclone/models/mount_options.dart';
@@ -2739,15 +2740,29 @@ class _InstallUpdateButton extends ConsumerWidget {
           ),
         ],
       ),
-      UpdateReady(:final canInstall) =>
+      UpdateReady(:final canInstall, :final file) =>
         canInstall
             ? FilledButton(
                 onPressed: () => ref.read(updateJobProvider.notifier).install(),
                 child: const Text('Install'),
               )
-            : Text(
-                'Downloaded and checked.',
-                style: TextStyle(color: c.textMuted, fontSize: 13),
+            // This package cannot replace itself yet, so the useful thing is
+            // the file: verified, and somewhere the user can get at it.
+            : Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    'Downloaded and checked.',
+                    style: TextStyle(color: c.textMuted, fontSize: 13),
+                  ),
+                  if (ref.watch(revealEnabledProvider))
+                    TextButton(
+                      onPressed: () => ref
+                          .read(osIntegrationProvider)
+                          .revealInFileManager(file.path),
+                      child: const Text('Show the file'),
+                    ),
+                ],
               ),
       UpdateInstalled() => Text(
         'Installed. Restart Airclone to use it.',
