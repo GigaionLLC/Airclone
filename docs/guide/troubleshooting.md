@@ -442,6 +442,25 @@ Detail in [mount-and-share](mount-and-share.md).
 
 ---
 
+## Alarming-looking messages in a Linux terminal at startup
+
+Starting Airclone from a terminal on a machine with no sound card — a server, a
+WSL install, a container — prints several ALSA lines and then:
+
+```
+** (com.gigaionllc.airclone:1234): CRITICAL **: Failed to create AudioController:
+Failed to attach mixer to card: default
+```
+
+Nothing is wrong. That comes from the media plugin's volume control looking for a
+mixer and finding no sound card. The plugin catches it, carries on without volume
+control, and every other part of the app — transfers, mounting, the Web UI — is
+unaffected. On a machine with working sound you will not see it.
+
+`libEGL warning: DRI3 error` on WSL is the same kind of thing: it means graphics
+are being drawn in software rather than by a GPU, which is slower and otherwise
+fine.
+
 ## Nothing here matches
 
 Two things worth trying before filing anything:
