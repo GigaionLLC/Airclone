@@ -309,6 +309,18 @@ apply to any production tool you trust with your files.
 > [rclone](https://rclone.org/) —* and as **air + clone**, *cloning your files through the "air" across
 > the clouds rclone reaches.*
 
+## ⭐ Star history
+
+If Airclone is useful to you, a star helps other people find it — and tells us which parts are worth
+the effort.
+
+<a href="https://star-history.com/#GigaionLLC/Airclone&Date">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=GigaionLLC/Airclone&type=Date&theme=dark">
+    <img alt="Airclone star history" src="https://api.star-history.com/svg?repos=GigaionLLC/Airclone&type=Date" width="620">
+  </picture>
+</a>
+
 ## License
 
 Airclone is licensed under the **GNU Affero General Public License v3.0** (AGPLv3) — see
