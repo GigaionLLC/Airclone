@@ -13,6 +13,56 @@ happened": nothing was logged between 2026-07-02 and 2026-07-15, or between 2026
      it is: it used to say ABOVE, which pushed it further down the file with every entry until
      it sat hundreds of lines under the newest one and pointed writers at the wrong place. -->
 
+## [2026-09-14] - v0.13.7: nobody could type on Linux, and how that was proved
+
+**Agent:** Claude Opus 5 - `main`
+**Files Modified:** `state/window_backdrop.dart`, `linux/runner/my_application.cc`,
+`macos/Runner/AppDelegate.swift`, `macos/Runner/MainFlutterWindow.swift`, new `ui/input_log.dart`,
+new `state/build_kind.dart`, new `update/` (minisign, sums, version_compare, self_update_target,
+update_trust, update_fetch), new `dev/linux/test-keyboard.sh` + `keycontrol_main.dart` +
+`keycontrol_acrylic_main.dart`, new `dev/macos/test-webui-window.sh`, new
+`.github/workflows/macos-runner.yml`, `linux-runner.yml`, `release.yml`, the Flatpak manifest.
+**Database/API Changes:** Flatpak runtime 48 -> 50. release.yml now publishes `SHA256SUMS`
+(+ `.minisig` when `secrets.MINISIGN_SECRET_KEY` exists - it does not yet).
+
+**Five things worth not rediscovering**
+
+1. **flutter_acrylic cost every Linux user their keyboard.** Its Linux `SetEffect` does
+   `gtk_widget_hide` on the WINDOW AND THE VIEW and then shows them again; a hidden widget stops
+   being the toplevel's focus widget, and nothing gives that back. Airclone called it at startup,
+   so from v0.10.0 the app could be clicked but not typed into - anywhere. Clicks kept working
+   because a click goes by position, not focus, which is exactly why it looked like a WSL problem.
+   On Linux the plugin could never do anything useful anyway: mica and acrylic are Windows 11
+   effects and everything else resolves to `disabled`.
+2. **The proof came from a control, not from reasoning.** `dev/linux/test-keyboard.sh` runs the
+   real binary on Xvfb, types with XTEST and reads the app's own `--log-input` lines. The number
+   that mattered was the comparison: stock Flutter app 8 key events, stock app + flutter_acrylic 0,
+   Airclone 0, Airclone after the fix 8. An earlier version of that harness compared SCREENSHOTS
+   and reported "typing did not reach the app" while measuring zero pixels of change on an IDLE
+   app - it could not capture the GL surface at all. **A measurement that cannot see the working
+   case cannot report on the broken one.**
+3. **`--webui` opened a window on both desktops, for two different reasons.** On Linux
+   `fl_register_plugins` shows it (flutter_acrylic's registrar ends in `gtk_widget_show`), so not
+   connecting "first-frame" was never enough. On macOS the window comes from the nib - and HIDING
+   it there is wrong too, because AppKit loads the content view lazily and the engine lives in
+   that view: a hidden window is an app that never runs. macOS now starts a headless engine
+   (`allowHeadlessExecution`) and builds no window at all. `--version` on macOS never answered
+   before this, for the same reason; Swift answers it now, as C++ does on Linux.
+4. **Four CI scripts failed for their own reasons before they measured anything.** Under
+   `bash -e`: `xdotool` exiting 1 when it finds no window ended the step ON SUCCESS; `wait` on a
+   process the script had just killed returned 143; capturing the output of a command that is
+   SUPPOSED to exit 1 ended the step before the exit code could be read; and a control step ran
+   before the step that installed its tools. Read a CI failure before believing what it says
+   failed.
+5. **The update check was never a version comparison.** It asked whether the latest tag CONTAINED
+   the running version, so `v0.9.10` "contained" `0.9.1` and every 0.9.1 user was told they were up
+   to date. `update/version_compare.dart` replaces it, and the updater is built on it.
+
+**Not verified on real hardware:** the WSL machine typing again (fixed and proven under Xvfb, not
+on the reporter's box), mounting from a Flatpak with the host permission granted, and anything
+about mounting on macOS.
+
+
 ## [2026-09-13] - v0.13.6: mounting never worked on Linux, and the Flatpak can mount after all
 
 **Agent:** Claude Opus 5 - `main`
