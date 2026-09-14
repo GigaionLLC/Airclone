@@ -179,6 +179,44 @@ void main() {
       }
     });
 
+    /// macOS answers --version and --help in Swift, before the engine exists.
+    /// THE BUG THIS PINS: it used to reach Dart, which meant starting an engine
+    /// inside a view inside a window - and a process launched to ask one
+    /// question simply sat there. A CI run waited 25 minutes for a version
+    /// string before it was killed.
+    test('the macOS runner answers --version without an engine', () {
+      final f = File('macos/Runner/AppDelegate.swift');
+      if (!f.existsSync()) return;
+      final src = f.readAsStringSync();
+      expect(src, contains('applicationWillFinishLaunching'));
+      expect(src, contains('"--version"'));
+      expect(src, contains('"--help"'));
+      expect(src, contains('exit(0)'));
+    });
+
+    test('the macOS --help lists every startup flag Dart does', () {
+      final f = File('macos/Runner/AppDelegate.swift');
+      if (!f.existsSync()) return;
+      final src = f.readAsStringSync();
+      for (final flag in [...flags, '--webui-bind', '--webui-port']) {
+        expect(src, contains(flag), reason: 'macOS --help omits $flag');
+      }
+    });
+
+    /// Flags that need Dart must not show a window on macOS either: the window
+    /// comes from the nib, so the runner has to refuse to order it front.
+    test('the macOS runner keeps windowless runs off the screen', () {
+      final f = File('macos/Runner/MainFlutterWindow.swift');
+      if (!f.existsSync()) return;
+      final src = f.readAsStringSync();
+      expect(src, contains('wantsNoWindow'));
+      expect(src, contains('makeKeyAndOrderFront'));
+      expect(src, contains('setActivationPolicy(.accessory)'));
+      // The engine lives in the window's content view, which AppKit loads
+      // lazily - a hidden window that never loads it is an app that never runs.
+      expect(src, contains('flutterViewController.view'));
+    });
+
     test('the Windows runner', () {
       final f = File('windows/runner/main.cpp');
       if (!f.existsSync()) return;

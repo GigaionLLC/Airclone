@@ -166,6 +166,27 @@ jobs:
           bash dev/linux/test-keyboard.sh \
             /tmp/keycontrol/build/linux/x64/release/bundle/keycontrol keycontrol
 
+      # THE BISECT. The plain control types; Airclone does not. This is the same
+      # control plus the first suspect - flutter_acrylic, whose Linux registrar
+      # reaches into the toplevel window (app-paintable, an RGBA visual, its own
+      # "draw" handler, and gtk_widget_show) before anything has drawn.
+      #
+      # Types here too? The suspect is cleared and the next one is the runner's
+      # own window chrome. Stops typing? Found it.
+      - name: The same control plus flutter_acrylic
+        continue-on-error: true
+        working-directory: .
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/keyacrylic
+          flutter create --platforms=linux --project-name keyacrylic /tmp/keyacrylic >/dev/null
+          cp dev/linux/keycontrol_acrylic_main.dart /tmp/keyacrylic/lib/main.dart
+          cd /tmp/keyacrylic
+          flutter pub add flutter_acrylic >/dev/null
+          flutter build linux --release >/dev/null
+          cd "$GITHUB_WORKSPACE"
+          bash dev/linux/test-keyboard.sh /tmp/keyacrylic/build/linux/x64/release/bundle/keyacrylic keyacrylic
+
       # --webui must SERVE without putting a window on screen. The runner still
       # builds one (realizing an FlView is the only public way to start an engine
       # on Linux), so "no window" is a claim about what gets MAPPED, and only a

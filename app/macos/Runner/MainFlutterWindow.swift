@@ -10,12 +10,15 @@ import desktop_multi_window
 /// and left them there for as long as the server ran. Linux had the same bug,
 /// from a different cause (linux/runner/my_application.cc).
 ///
+/// `--version` and `--help` are NOT here: they never reach Dart at all, because
+/// AppDelegate answers them before the engine exists.
+///
 /// Kept in step with `WantsWindowlessDart` in the Linux runner and
-/// `isHeadlessInvocation`/`isWebUiInvocation`/`isCliInfoInvocation` in Dart.
+/// `isHeadlessInvocation`/`isWebUiInvocation` in Dart.
 private func wantsNoWindow(_ args: [String]) -> Bool {
   for a in args {
     switch a {
-    case "--webui", "--run-due", "--run-task", "--version", "--help", "-h":
+    case "--webui", "--run-due", "--run-task":
       return true
     default:
       if a.hasPrefix("--run-task=") { return true }
@@ -37,6 +40,11 @@ class MainFlutterWindow: NSWindow {
     // looks like to the rest of the system.
     if wantsNoWindow(CommandLine.arguments) {
       NSApplication.shared.setActivationPolicy(.accessory)
+      // Load the view even though nothing will display it. AppKit loads a
+      // window's content view lazily, when it is about to appear - and the
+      // engine, and therefore Dart, lives inside that view. A window that never
+      // appears would otherwise mean an app that never runs.
+      _ = flutterViewController.view
       self.orderOut(nil)
     }
 
