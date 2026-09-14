@@ -18,6 +18,8 @@ import '../state/cache_crypto.dart';
 import '../state/config_password_vault.dart';
 import '../state/config_transfer_controller.dart';
 import '../state/diagnostics.dart';
+import '../update/self_update_target.dart';
+import '../update/update_controller.dart';
 import '../state/download_settings.dart';
 import '../state/build_flavor.dart';
 import '../state/engine_controller.dart';
@@ -2612,11 +2614,12 @@ class _UpdateResult extends ConsumerWidget {
       data: (status) => switch (status) {
         StoreManagedUpdates(:final source) => _storeManagedRow(c, source),
         ReleaseUpdateInfo(hasUpdate: false) => _upToDateRow(c),
-        ReleaseUpdateInfo(:final latestTag, :final url) => _releaseRow(
-          c,
-          latestTag,
-          url,
-        ),
+        ReleaseUpdateInfo(
+          :final latestTag,
+          :final url,
+          :final currentVersion,
+        ) =>
+          _releaseRow(c, latestTag, url, currentVersion),
       },
     );
   }
@@ -2655,43 +2658,112 @@ class _UpdateResult extends ConsumerWidget {
     ],
   );
 
-  Widget _releaseRow(AircloneColors c, String latestTag, String url) =>
-      Container(
-        padding: const EdgeInsets.symmetric(
-          horizontal: Space.x3,
-          vertical: Space.x2,
-        ),
-        decoration: BoxDecoration(
-          // The palette has no dedicated `infoBg`; derive a soft tint.
-          color: c.info.withValues(alpha: 0.12),
-          borderRadius: BorderRadius.circular(Radii.md),
-          border: Border.all(color: c.border),
-        ),
-        child: Row(
-          children: [
-            Icon(Icons.upgrade, size: 16, color: c.info),
-            const SizedBox(width: Space.x2),
-            Expanded(
-              child: Text(
-                '$latestTag available',
-                style: TextStyle(
-                  color: c.text,
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
+  Widget _releaseRow(
+    AircloneColors c,
+    String latestTag,
+    String url,
+    String currentVersion,
+  ) => Container(
+    padding: const EdgeInsets.symmetric(
+      horizontal: Space.x3,
+      vertical: Space.x2,
+    ),
+    decoration: BoxDecoration(
+      // The palette has no dedicated `infoBg`; derive a soft tint.
+      color: c.info.withValues(alpha: 0.12),
+      borderRadius: BorderRadius.circular(Radii.md),
+      border: Border.all(color: c.border),
+    ),
+    child: Row(
+      children: [
+        Icon(Icons.upgrade, size: 16, color: c.info),
+        const SizedBox(width: Space.x2),
+        Expanded(
+          child: Text(
+            '$latestTag available',
+            style: TextStyle(
+              color: c.text,
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
             ),
-            if (url.isNotEmpty)
-              FilledButton(
-                onPressed: () => launchUrl(
-                  Uri.parse(url),
-                  mode: LaunchMode.externalApplication,
-                ),
-                child: const Text('Open release'),
-              ),
-          ],
+          ),
         ),
-      );
+        if (url.isNotEmpty)
+          TextButton(
+            onPressed: () =>
+                launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication),
+            child: const Text('Open release'),
+          ),
+        // Offered only where BOTH are true: this build has a key to verify
+        // a download with, and this package can replace itself. Otherwise
+        // the release link above is the whole answer, which is what every
+        // build does today.
+        _InstallUpdateButton(tag: latestTag, currentVersion: currentVersion),
+      ],
+    ),
+  );
+}
+
+/// Download, verify, install - for the packages that can, and only when this
+/// build can check that what it downloaded is genuine.
+class _InstallUpdateButton extends ConsumerWidget {
+  const _InstallUpdateButton({required this.tag, required this.currentVersion});
+
+  final String tag;
+  final String currentVersion;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final c = AircloneTheme.of(context);
+    final source = ref.watch(installSourceProvider).valueOrNull;
+    if (source == null) return const SizedBox.shrink();
+    final target = currentSelfUpdateTarget(source);
+    if (!canOfferSelfUpdate(target)) return const SizedBox.shrink();
+
+    final job = ref.watch(updateJobProvider);
+    return switch (job) {
+      UpdateDownloading(:final fraction) => Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          SizedBox(
+            height: 14,
+            width: 14,
+            child: CircularProgressIndicator(strokeWidth: 2, value: fraction),
+          ),
+          const SizedBox(width: Space.x2),
+          Text(
+            fraction == null
+                ? 'Downloading…'
+                : 'Downloading ${(fraction * 100).round()}%',
+            style: TextStyle(color: c.textMuted, fontSize: 13),
+          ),
+        ],
+      ),
+      UpdateReady(:final canInstall) =>
+        canInstall
+            ? FilledButton(
+                onPressed: () => ref.read(updateJobProvider.notifier).install(),
+                child: const Text('Install'),
+              )
+            : Text(
+                'Downloaded and checked.',
+                style: TextStyle(color: c.textMuted, fontSize: 13),
+              ),
+      UpdateInstalled() => Text(
+        'Installed. Restart Airclone to use it.',
+        style: TextStyle(color: c.success, fontSize: 13),
+      ),
+      UpdateFailed(:final message) => Flexible(
+        child: Text(message, style: TextStyle(color: c.error, fontSize: 13)),
+      ),
+      UpdateIdle() => FilledButton(
+        onPressed: () => ref
+            .read(updateJobProvider.notifier)
+            .download(tag: tag, target: target, currentVersion: currentVersion),
+        child: const Text('Download update'),
+      ),
+    };
+  }
 }
 
 /// Settings → Mounts in a Flatpak: why the group has no controls.
