@@ -10,15 +10,18 @@ import desktop_multi_window
 /// and left them there for as long as the server ran. Linux had the same bug,
 /// from a different cause (linux/runner/my_application.cc).
 ///
-/// `--version` and `--help` are NOT here: they never reach Dart at all, because
-/// AppDelegate answers them before the engine exists.
+/// `--version` and `--help` are here too, though they never reach Dart at all:
+/// AppDelegate answers them and exits. The nib is loaded BEFORE that happens, so
+/// without this the view controller would start an engine that is torn down
+/// milliseconds later - which printed "'FlutterEngineSendPlatformMessage'
+/// returned 'kInvalidArguments'" above the version string, on every ask.
 ///
 /// Kept in step with `WantsWindowlessDart` in the Linux runner and
 /// `isHeadlessInvocation`/`isWebUiInvocation` in Dart.
 func wantsNoWindow(_ args: [String]) -> Bool {
   for a in args {
     switch a {
-    case "--webui", "--run-due", "--run-task":
+    case "--webui", "--run-due", "--run-task", "--version", "--help", "-h":
       return true
     default:
       if a.hasPrefix("--run-task=") { return true }
