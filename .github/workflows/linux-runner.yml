@@ -167,7 +167,10 @@ jobs:
             echo "::error::--webui never started serving"; sed -n '1,60p' webui.log
             kill "$app" 2>/dev/null; exit 1
           fi
-          windows="$(xdotool search --onlyvisible --name airclone 2>/dev/null)"
+          # xdotool exits 1 when it finds nothing, and the step runs under bash -e,
+          # so an unguarded assignment ends the step silently ON SUCCESS - which is
+          # exactly what happened the first time this check passed.
+          windows="$(xdotool search --onlyvisible --name airclone 2>/dev/null || true)"
           if [ -n "$windows" ]; then
             echo "what is on screen while --webui runs:"
             for w in $windows; do
