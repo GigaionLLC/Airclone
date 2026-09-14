@@ -83,9 +83,12 @@ static void PrintHelp() {
       "  --version               Print the version and exit.\n"
       "  --help, -h              Print this and exit.\n"
       "\n"
-      "On Linux, --webui still needs OpenGL ES libraries to start, even with\n"
-      "no display in use. If it reports libGLESv2 missing, install your\n"
-      "distribution's Mesa GLES package (for example: sudo apt install libgles2).\n");
+      "On Linux these open no window, but the app's engine still starts\n"
+      "against a display and OpenGL ES. On a machine with neither, install\n"
+      "Mesa GLES (sudo apt install libgles2) and run against a virtual\n"
+      "display:\n"
+      "\n"
+      "  xvfb-run -a airclone --webui\n");
 }
 
 // Flags that run Dart without wanting a window. Dart branches on these before
@@ -172,6 +175,19 @@ static void apply_window_chrome(GtkWindow* window) {
 static void my_application_activate(GApplication* application) {
   MyApplication* self = MY_APPLICATION(application);
 
+  // A windowless run (--webui, --run-due, --run-task) still BUILDS a window,
+  // because realizing an FlView is the only public way to start the engine on
+  // Linux - but it must never SHOW one.
+  //
+  // THE BUG THIS FIXES: `airclone --webui` opened an empty window titled
+  // "airclone" and left it there for as long as the server ran. Dart never
+  // calls runApp on that path, but binding init still schedules a warm-up
+  // frame, so "first-frame" fired and first_frame_cb showed the toplevel. Our
+  // own --help said "no window is shown", and someone serving the Web UI from a
+  // spare machine had a dead window sitting in their session.
+  const gboolean windowless =
+      WantsWindowlessDart(self->dart_entrypoint_arguments);
+
   GtkWindow* window =
       GTK_WINDOW(gtk_application_window_new(GTK_APPLICATION(application)));
 
@@ -182,7 +198,7 @@ static void my_application_activate(GApplication* application) {
   // in case the window manager does more exotic layout, e.g. tiling.
   // If running on Wayland assume the header bar will work (may need changing
   // if future cases occur).
-  gboolean use_header_bar = TRUE;
+  gboolean use_header_bar = !windowless;
 #ifdef GDK_WINDOWING_X11
   GdkScreen* screen = gtk_window_get_screen(window);
   if (GDK_IS_X11_SCREEN(screen)) {
@@ -221,10 +237,14 @@ static void my_application_activate(GApplication* application) {
   gtk_widget_show(GTK_WIDGET(view));
   gtk_container_add(GTK_CONTAINER(window), GTK_WIDGET(view));
 
-  // Show the window when Flutter renders.
-  // Requires the view to be realized so we can start rendering.
-  g_signal_connect_swapped(view, "first-frame", G_CALLBACK(first_frame_cb),
-                           self);
+  // Show the window when Flutter renders - unless this run wants none, in which
+  // case nothing ever maps the toplevel and it stays invisible. Realizing still
+  // happens either way: that is what creates the GL context the engine starts
+  // on.
+  if (!windowless) {
+    g_signal_connect_swapped(view, "first-frame", G_CALLBACK(first_frame_cb),
+                             self);
+  }
   gtk_widget_realize(GTK_WIDGET(view));
 
   fl_register_plugins(FL_PLUGIN_REGISTRY(view));
@@ -234,7 +254,9 @@ static void my_application_activate(GApplication* application) {
   desktop_multi_window_plugin_set_window_created_callback(
       [](FlPluginRegistry* registry) { fl_register_plugins(registry); });
 
-  gtk_widget_grab_focus(GTK_WIDGET(view));
+  if (!windowless) {
+    gtk_widget_grab_focus(GTK_WIDGET(view));
+  }
 }
 
 // Implements GApplication::local_command_line.
@@ -272,6 +294,29 @@ static gboolean my_application_local_command_line(GApplication* application,
         "  sudo dnf install mesa-libGLES  (Fedora)\n"
         "\n"
         "then run the same command again.\n");
+    *exit_status = 1;
+    return TRUE;
+  }
+
+  // Windowless does not mean display-free, however much it should. The public
+  // flutter_linux API starts an engine only by realizing an FlView, and that
+  // needs a GdkWindow, so GTK must be able to open a display even though
+  // nothing is ever shown on it. Say so plainly: without this the user meets
+  // GTK's own "cannot open display" and has no idea what to do about it.
+  if (WantsWindowlessDart(self->dart_entrypoint_arguments) &&
+      g_getenv("DISPLAY") == nullptr &&
+      g_getenv("WAYLAND_DISPLAY") == nullptr) {
+    g_printerr(
+        "Airclone could not start: no display.\n"
+        "\n"
+        "This command shows no window, but the app's engine can only be\n"
+        "started against a display server. On a machine that has none, run it\n"
+        "against a virtual one:\n"
+        "\n"
+        "  sudo apt install xvfb          (Debian, Ubuntu, WSL)\n"
+        "  xvfb-run -a airclone --webui\n"
+        "\n"
+        "Over SSH, `ssh -X` also works.\n");
     *exit_status = 1;
     return TRUE;
   }

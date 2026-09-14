@@ -87,6 +87,80 @@ jobs:
             grep -q -- "$flag" <<<"$out" || { echo "::error::--help does not mention $flag"; exit 1; }
           done
 
+      # --webui must SERVE without putting a window on screen. The runner still
+      # builds one (realizing an FlView is the only public way to start an engine
+      # on Linux), so "no window" is a claim about what gets MAPPED, and only a
+      # real display can check it.
+      #
+      # THE BUG THIS PINS: through v0.13.6, `--webui` left an empty window titled
+      # "airclone" on screen for as long as the server ran. Dart never calls
+      # runApp on that path, but binding init still drew a warm-up frame, so
+      # "first-frame" fired and the runner showed the toplevel - while --help
+      # said "no window is shown".
+      #
+      # The plain launch below is not decoration: it proves the window check can
+      # SEE a window. Without it, a build that failed to open one at all would
+      # make the --webui half pass for the wrong reason.
+      - name: --webui serves without showing a window
+        run: |
+          set -uo pipefail
+          sudo apt-get install -y -qq xvfb xdotool x11-utils
+          bin="$PWD/build/linux/x64/release/bundle/airclone"
+          Xvfb :99 -screen 0 1280x720x24 >/dev/null 2>&1 &
+          xvfb=$!
+          export DISPLAY=:99
+          for i in $(seq 1 30); do xdpyinfo >/dev/null 2>&1 && break; sleep 1; done
+          cleanup() { kill "$xvfb" 2>/dev/null; }
+          trap cleanup EXIT
+
+          "$bin" --webui --webui-port 5799 >webui.log 2>&1 &
+          app=$!
+          served=
+          for i in $(seq 1 90); do
+            grep -q "Web UI listening" webui.log && { served=1; break; }
+            kill -0 "$app" 2>/dev/null || break
+            sleep 1
+          done
+          if [ -z "$served" ]; then
+            echo "::error::--webui never started serving"; sed -n '1,60p' webui.log
+            kill "$app" 2>/dev/null; exit 1
+          fi
+          windows="$(xdotool search --onlyvisible --name airclone 2>/dev/null)"
+          kill "$app" 2>/dev/null; wait "$app" 2>/dev/null
+          if [ -n "$windows" ]; then
+            echo "::error::--webui mapped a window: $windows"; exit 1
+          fi
+          echo "  --webui served with no window mapped"
+
+          "$bin" >window.log 2>&1 &
+          gui=$!
+          seen=
+          for i in $(seq 1 90); do
+            [ -n "$(xdotool search --onlyvisible --name airclone 2>/dev/null)" ] && { seen=1; break; }
+            kill -0 "$gui" 2>/dev/null || break
+            sleep 1
+          done
+          kill "$gui" 2>/dev/null; wait "$gui" 2>/dev/null
+          if [ -z "$seen" ]; then
+            echo "::error::a plain launch mapped no window either - the check above proves nothing"
+            sed -n '1,60p' window.log; exit 1
+          fi
+          echo "  a plain launch does map one, so the check can see windows"
+
+      # Windowless still needs a display, because the engine starts only against
+      # one. The message has to say that and name the way out, or the user meets
+      # GTK's "cannot open display" with nothing to act on.
+      - name: --webui without a display explains itself
+        run: |
+          set -uo pipefail
+          bin="build/linux/x64/release/bundle/airclone"
+          out="$(env -u DISPLAY -u WAYLAND_DISPLAY "$bin" --webui 2>&1)"
+          code=$?
+          echo "$out"
+          [ "$code" -eq 1 ] || { echo "::error::expected exit 1, got $code"; exit 1; }
+          grep -qi "no display" <<<"$out" || { echo "::error::message does not say there is no display"; exit 1; }
+          grep -q "xvfb-run" <<<"$out" || { echo "::error::message does not name a way to run it"; exit 1; }
+
       # The launcher's library decisions, against simulated hosts. Runs on real
       # Linux, where /sbin/ldconfig exists - the script redirects the extracted
       # copy away from it, or every case would test this runner's own libraries.

@@ -265,6 +265,7 @@ class DiagnosticsEnvironment {
     required this.platform,
     required this.osVersion,
     required this.installChannel,
+    required this.buildKind,
     this.engineVersion,
     this.engineMode,
   });
@@ -276,6 +277,11 @@ class DiagnosticsEnvironment {
   /// How the app was installed (see install_source.dart) — the single most
   /// useful field for reproducing a packaging-specific bug.
   final String installChannel;
+
+  /// WHICH package this is (see build_kind.dart). The channel cannot say: the
+  /// AppImage, the tar.gz and the release `.flatpak` are one channel and three
+  /// packages, and they fail in different ways.
+  final String buildKind;
   final String? engineVersion;
   final String? engineMode;
 }
@@ -285,6 +291,7 @@ class DiagnosticsEnvironment {
 DiagnosticsEnvironment describeEnvironment({
   required String appVersion,
   required String installChannel,
+  required String buildKind,
   String? engineVersion,
   String? engineMode,
 }) => DiagnosticsEnvironment(
@@ -292,6 +299,7 @@ DiagnosticsEnvironment describeEnvironment({
   platform: HostPlatform.operatingSystem,
   osVersion: Platform.operatingSystemVersion,
   installChannel: installChannel,
+  buildKind: buildKind,
   engineVersion: engineVersion,
   engineMode: engineMode,
 );
@@ -308,7 +316,8 @@ String buildDiagnosticsReport(
     ..writeln('---------------------------')
     ..writeln('App:      ${env.appVersion}')
     ..writeln('Platform: ${env.platform} ${env.osVersion}')
-    ..writeln('Install:  ${env.installChannel}');
+    ..writeln('Install:  ${env.installChannel}')
+    ..writeln('Build:    ${env.buildKind}');
   if (env.engineVersion != null) b.writeln('Engine:   ${env.engineVersion}');
   if (env.engineMode != null) b.writeln('Mode:     ${env.engineMode}');
   b

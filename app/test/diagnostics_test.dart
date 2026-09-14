@@ -108,6 +108,7 @@ pass = zX9_obscured_value
       platform: 'android',
       osVersion: '15',
       installChannel: 'playStore',
+      buildKind: 'tablet 1280x800 (android_arm64)',
       engineVersion: 'v1.74.0',
       engineMode: 'binary',
     );
@@ -116,6 +117,10 @@ pass = zX9_obscured_value
       final out = buildDiagnosticsReport(env, const []);
       expect(out, contains('App:      0.6.1'));
       expect(out, contains('Install:  playStore'));
+      // The channel says where updates come from; the build says WHICH package
+      // and what the user is holding - one channel covers three Linux packages,
+      // and a tablet runs the same APK as a phone.
+      expect(out, contains('Build:    tablet 1280x800 (android_arm64)'));
       expect(out, contains('Engine:   v1.74.0'));
       expect(out, contains('(nothing recorded this session)'));
     });

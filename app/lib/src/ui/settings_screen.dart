@@ -13,6 +13,7 @@ import '../state/advanced_mode.dart';
 import '../state/android_native.dart';
 import '../state/app_info.dart';
 import '../state/biometric_unlock.dart';
+import '../state/build_kind.dart';
 import '../state/cache_crypto.dart';
 import '../state/config_password_vault.dart';
 import '../state/config_transfer_controller.dart';
@@ -2350,6 +2351,9 @@ class _DiagnosticsSectionState extends ConsumerState<_DiagnosticsSection> {
   static const int _visibleLimit = 40;
 
   Future<String> _report() async {
+    // Read before the first await: the widget may be disposed by the time the
+    // version providers answer, and a disposed State has no MediaQuery.
+    final size = mounted ? MediaQuery.sizeOf(context) : null;
     final version = await ref.read(appVersionProvider.future);
     final source = await ref.read(installSourceProvider.future);
     final engine = ref.read(engineControllerProvider);
@@ -2357,6 +2361,7 @@ class _DiagnosticsSectionState extends ConsumerState<_DiagnosticsSection> {
       describeEnvironment(
         appVersion: version,
         installChannel: source.channel.name,
+        buildKind: currentBuildKind(width: size?.width, height: size?.height),
         engineVersion: engine.version,
         engineMode: ref.read(settingsControllerProvider).engineMode.name,
       ),
