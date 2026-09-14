@@ -110,17 +110,26 @@ String currentBuildKind({double? width, double? height}) {
   return '$kind (${native.nativeAbiName()})';
 }
 
+/// The desktop answer, worked out once.
+///
+/// Two of these branches touch the filesystem - the Windows uninstaller, the
+/// macOS receipt - and the answer cannot change while the process runs. A widget
+/// that asks on every rebuild would stat a file on every frame it is painted on.
+String? _cachedDesktopPackage;
+
 String _packageKind({double? width, double? height}) {
   if (HostPlatform.isWeb) return 'browser';
-  if (HostPlatform.isLinux) return linuxBuildKind(HostPlatform.environment);
+  if (HostPlatform.isLinux) {
+    return _cachedDesktopPackage ??= linuxBuildKind(HostPlatform.environment);
+  }
   if (HostPlatform.isWindows) {
-    return windowsBuildKind(
+    return _cachedDesktopPackage ??= windowsBuildKind(
       packaged: native.isWindowsPackagedApp(),
       uninstaller: windowsInstallerPresent(),
     );
   }
   if (HostPlatform.isMacOS) {
-    return macBuildKind(
+    return _cachedDesktopPackage ??= macBuildKind(
       masBuild: kMacAppStoreBuild,
       receipt: macAppStoreReceiptPresent(
         Platform.resolvedExecutable,
