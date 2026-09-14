@@ -129,6 +129,31 @@ jobs:
           install -Dm755 "rclone-extract/rclone-${ver}-linux-amd64/rclone" build/linux/x64/release/bundle/rclone
           echo "bundled rclone $ver"
 
+
+      # THE CONTROL. The step above reported zero key events reaching Airclone,
+      # with X input focus confirmed on its window, on both a 32-bit ARGB window
+      # and a plain one. That is either a fault in this app or a fact about
+      # Flutter on Linux under a bare X server - and the two want opposite fixes.
+      #
+      # So the same harness runs against a stock `flutter create` app whose only
+      # job is to print the lines the harness reads. If the stock app logs keys
+      # and Airclone does not, the fault is ours. If neither does, the harness is
+      # typing into a Flutter window that cannot receive XTEST input here, and
+      # the Airclone result above proves nothing about Airclone.
+      - name: A stock Flutter app types, as a control
+        # Diagnostic, not a gate: its job is to be COMPARED with the step below,
+        # so a red control must not hide Airclone's own result.
+        continue-on-error: true
+        working-directory: .
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/keycontrol
+          flutter create --platforms=linux --project-name keycontrol /tmp/keycontrol >/dev/null
+          cp dev/linux/keycontrol_main.dart /tmp/keycontrol/lib/main.dart
+          (cd /tmp/keycontrol && flutter build linux --release >/dev/null)
+          bash dev/linux/test-keyboard.sh \
+            /tmp/keycontrol/build/linux/x64/release/bundle/keycontrol keycontrol
+
       # --webui must SERVE without putting a window on screen. The runner still
       # builds one (realizing an FlView is the only public way to start an engine
       # on Linux), so "no window" is a claim about what gets MAPPED, and only a

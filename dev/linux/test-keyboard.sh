@@ -22,8 +22,12 @@
 # ARGB path (the window then reports depth 32), and without.
 set -uo pipefail
 
-BIN="${1:?usage: test-keyboard.sh /path/to/airclone}"
+BIN="${1:?usage: test-keyboard.sh /path/to/binary [window-name]}"
 [ -x "$BIN" ] || { echo "not executable: $BIN" >&2; exit 1; }
+# The window to type into, by name. Parameterised so the same harness can run
+# against a STOCK Flutter app as a control: if a bare flutter-create app logs no
+# keys either, the fault is not Airclone's.
+WINDOW_NAME="${2:-airclone}"
 
 DISPLAY_NUM=":99"
 TYPED="zzzz"
@@ -68,7 +72,7 @@ run_case() {
   app_pid=$!
 
   for _ in $(seq 1 90); do
-    win="$(xdotool search --onlyvisible --name airclone 2>/dev/null | head -1 || true)"
+    win="$(xdotool search --onlyvisible --name "$WINDOW_NAME" 2>/dev/null | head -1 || true)"
     [ -n "$win" ] && break
     kill -0 "$app_pid" 2>/dev/null || break
     sleep 1
