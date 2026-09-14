@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:airclone/src/update/sums.dart';
+import 'package:crypto/crypto.dart';
 import 'package:airclone/src/update/update_trust.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -56,7 +57,14 @@ void main() {
     final manifest = File('test/fixtures/update/SHA256SUMS').readAsStringSync();
 
     test('finds the asset it was asked for', () {
-      expect(hashForAsset(manifest, 'Airclone-x86_64.AppImage'), '4' * 64);
+      // The AppImage entry is the REAL hash of test/fixtures/update/asset.bin,
+      // so the fetch tests can verify a download end to end; the others are
+      // placeholders, there to be looked past.
+      final asset = File('test/fixtures/update/asset.bin').readAsBytesSync();
+      expect(
+        hashForAsset(manifest, 'Airclone-x86_64.AppImage'),
+        sha256.convert(asset).toString(),
+      );
       expect(hashForAsset(manifest, 'airclone-setup-x64.exe'), '1' * 64);
     });
 
