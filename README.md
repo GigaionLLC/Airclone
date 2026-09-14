@@ -26,6 +26,34 @@
 
 ---
 
+## 🚧 Airclone is new, and still in beta
+
+It is young software. Everything described below is built and in use, but "built" and "proven on
+every machine" are not the same thing, and Airclone runs on five platforms in a dozen different
+packages — an AppImage, a Flatpak, an MSIX, an App Store build. Each of those can fail in its own
+way, and some of them have: typing was impossible in every Linux build from v0.10.0 until v0.13.7,
+and mounting a drive never worked on Linux at all until v0.13.6. Both were found because somebody
+said something.
+
+**So please file issues.** They are welcome, they are the fastest way this gets solid, and the small
+irritating ones are often the most useful — a button that does nothing, a message that reads badly,
+a package that behaves differently from the others.
+
+- 🐛 [**Report a bug or ask for a feature**](https://github.com/GigaionLLC/Airclone/issues) — no
+  template to wrestle with.
+- 📋 **Attach a problem report** if you can: **Settings → Diagnostics → Problem report → Copy
+  report**. It names your version, platform and exact package, and secrets are stripped as it is
+  recorded, not when you send it. [What it contains](docs/guide/troubleshooting.md).
+- 🔒 For a **security** problem, please don't open a public issue — use **Report a vulnerability**
+  under the repository's [Security tab](https://github.com/GigaionLLC/Airclone/security), which
+  reaches us privately.
+
+Your files are the point of all this, so treat a beta like a beta: keep a copy of anything
+irreplaceable, and try a new workflow on something you can afford to lose first. Every destructive
+action has a confirmation and a dry-run, and we would still rather you had a backup.
+
+---
+
 ## What is Airclone?
 
 [rclone](https://rclone.org/) is an extraordinarily capable tool for moving files across 70+ cloud
