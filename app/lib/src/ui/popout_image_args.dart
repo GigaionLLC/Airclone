@@ -163,8 +163,12 @@ class PopoutImageArgs {
 /// main window and every transfer in it. desktop_multi_window 0.3.1 is the
 /// newest release there is, so there is nothing to upgrade to.
 ///
+/// A patched copy was tried too, with the offending call removed: it stops
+/// crashing and HANGS instead, which is not an improvement worth shipping. So
+/// this waits for an upstream fix rather than a fork.
+///
 /// Losing a convenience beats losing the app: on Linux the image stays in the
 /// in-app viewer, which is the same picture with the same controls. Turn this
-/// back on when the plugin (or a patched fork) survives the test above.
+/// back on when the plugin survives the test above.
 bool isPopoutSupportedOn(TargetPlatform platform) =>
     platform == TargetPlatform.windows || platform == TargetPlatform.macOS;

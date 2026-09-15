@@ -159,7 +159,14 @@ PY
     echo "  [$label] survived"
     return 0
   fi
-  echo "  [$label] DIED (exit $code)"
+  # 124 is `timeout` giving up: the app neither survived nor crashed, it hung.
+  # Worth distinguishing, because a hang and a segfault point at different
+  # things - and the patched build did exactly this.
+  if [ "$code" -eq 124 ]; then
+    echo "  [$label] HUNG (no crash, but it never came back)"
+  else
+    echo "  [$label] DIED (exit $code)"
+  fi
   # 139 = segmentation fault through a shell.
   grep -E 'Segmentation|FlutterEngineRemoveView|without an engine|eglMakeCurrent' \
     "$WORK/$label.log" | head -5 | sed 's/^/    /'
@@ -184,7 +191,8 @@ fi
 if [ "$patched" -eq 0 ]; then
   echo "VERDICT: the patched plugin survives - a fixed desktop_multi_window restores pop-out"
 else
-  echo "VERDICT: even the patched plugin dies - removing that one call is not enough"
+  echo "VERDICT: the patched plugin does not survive either - removing that one"
+  echo "         call trades a crash for a hang, so pop-out stays off on Linux"
 fi
 
 if [ "$plain" -ne 0 ] || [ "$acrylic" -ne 0 ]; then
