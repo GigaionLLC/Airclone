@@ -276,20 +276,6 @@ jobs:
           fi
           echo "  minisign verified the fixture and refused the tampered copy"
 
-      # Closing a pop-out window took the whole app down on Linux, with a
-      # segfault after "the implicit view cannot be removed". This builds the
-      # same two-window app twice - plugin alone, and plugin plus the per-window
-      # plugin registration Airclone's runner does - so the log says which of
-      # them cannot survive a window closing. Diagnostic: it is compared with
-      # the other case, so a red one must not hide the rest of the job.
-      - name: Closing a second window does not take the app with it
-        continue-on-error: true
-        working-directory: .
-        run: |
-          set -euo pipefail
-          sudo apt-get install -y -qq xvfb x11-utils xdotool
-          bash dev/linux/test-popout.sh
-
       # Can a keystroke reach the app at all? A tester on WSL could click but not
       # type, in the AppImage and the Flatpak both, while xterm typed fine - so
       # the suspect is what the runner does to its own window rather than
@@ -488,3 +474,26 @@ jobs:
             echo "::error::the built bundle requests host command access"; exit 1
           fi
           echo "  the bundle does not request host command access"
+
+  # Closing a pop-out window took the whole app down on Linux - a segfault after
+  # "the implicit view cannot be removed". Its own job because it builds THREE
+  # Flutter apps (plugin alone, plugin plus Airclone's per-window plugin
+  # registration, and a patched plugin) and the first version of it ate the
+  # compile job's entire 40-minute budget without reaching a verdict.
+  #
+  # Not a gate: the plain case dying IS the known bug, recorded here so the day
+  # it stops dying is visible. What the run answers is whether a patched plugin
+  # survives - which is what decides if pop-out can come back to Linux.
+  popout:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v5
+      - uses: subosito/flutter-action@v2
+        with: { channel: stable, flutter-version: 3.47.0, cache: true }
+      - name: Install build deps
+        run: sudo apt-get update && sudo apt-get install -y ninja-build libgtk-3-dev xvfb x11-utils xdotool
+      - run: flutter config --enable-linux-desktop
+      - name: Closing a second window, three ways
+        run: bash dev/linux/test-popout.sh

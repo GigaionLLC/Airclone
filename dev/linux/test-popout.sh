@@ -68,6 +68,7 @@ build_and_run() {
   local with_acrylic="$2"
   local with_patch="${3:-no}"
   local dir="$WORK/$label"
+  echo "  [$label] building..."
   flutter create --platforms=linux --project-name popout_$label "$dir" >/dev/null 2>&1 \
     || { echo "  [$label] could not create the project" >&2; return 2; }
   cp "$REPO/dev/linux/popout_control_main.dart" "$dir/lib/main.dart"
@@ -119,7 +120,11 @@ PY
   }
 
   local bin="$dir/build/linux/x64/release/bundle/popout_$label"
-  "$bin" >"$WORK/$label.log" 2>&1 &
+  echo "  [$label] running..."
+  # `timeout` even though this is backgrounded: an app that neither
+  # survives nor dies would hang the whole job, and one did - 36 minutes
+  # of nothing until the runner gave up.
+  timeout 90 "$bin" >"$WORK/$label.log" 2>&1 &
   local app_pid=$!
 
   # Wait for the second window to be up, then close it FROM OUTSIDE - the crash
