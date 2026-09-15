@@ -13,6 +13,45 @@ happened": nothing was logged between 2026-07-02 and 2026-07-15, or between 2026
      it is: it used to say ABOVE, which pushed it further down the file with every entry until
      it sat hundreds of lines under the newest one and pointed writers at the wrong place. -->
 
+## [2026-09-15] - v0.13.8: a self-updater, and a crash that was never ours
+
+**Agent:** Claude Opus 5 - `main`
+**Files Modified:** new `update/` (minisign, sums, version_compare, self_update_target,
+update_trust, update_fetch, update_controller, install_appimage, install_windows), new
+`headless/update_cli.dart`, `ui/settings_screen.dart`, `ui/popout_image_args.dart`, all three native
+runners, `release.yml` (a `checksums` job), new `dev/linux/test-popout.sh` + `patch-dmw.py` +
+`popout_control_main.dart`, new `dev/update/signing-key-setup.md`, `dev/plans/self-update-plan.md`.
+**Database/API Changes:** releases now carry `SHA256SUMS` (signed once `MINISIGN_SECRET_KEY` exists
+- it does not yet, so the updater is inert by design). iOS and macOS 0.13.3 released to the App
+Stores; issue #5 closed.
+
+**Four things worth keeping**
+
+1. **A user report is not a diagnosis, and a control app is.** "Closing a pop-out window closes the
+   whole app" looked like ours. `dev/linux/test-popout.sh` builds a bare `flutter create` app whose
+   ONLY dependency is desktop_multi_window and kills it the same way - so the fix was to stop
+   offering pop-out on Linux, not to hunt through our code. The same harness tried a PATCHED plugin:
+   it hangs instead of crashing (exit 124, not a signal), which is why there is no fork. Read the
+   exit code before calling something dead.
+2. **The updater's order is the design.** Signature over the manifest FIRST, then the release tag
+   inside the signed comment (so an old but genuine manifest cannot be replayed), then the hash for
+   THIS asset looked up BY NAME (so one platform's build cannot install as another's), then a
+   streamed download hashed as it arrives. Every refusal deletes what it wrote.
+   `update_fetch_test.dart` drives a server that lies in eight ways.
+3. **Test fixtures must not come from the code under test.** The minisign fixture is generated in
+   Python (`dev/update/make-test-fixture.py`), verified by the Dart implementation, and checked by
+   the real `minisign` binary in CI. Three implementations agree or the test means nothing.
+4. **CI harnesses fail for their own reasons.** This batch alone: `xdotool` exiting 1 when it finds
+   nothing ended a step ON SUCCESS under `bash -e`; `wait` on a killed process returned 143;
+   capturing the output of a command that is SUPPOSED to exit 1 ended a step before its code could
+   be read; a control step ran before the step installing its tools; and a rewrite dropped a
+   `timeout`, so one hung app ate a 40-minute job budget and the verdict with it. Bound every run,
+   and read the failure before believing what it says failed.
+
+**Still a person's job:** the release signing key (`dev/update/signing-key-setup.md`). Until it
+exists the updater refuses to install anything, which is the safe half of not having one.
+
+
 ## [2026-09-14] - v0.13.7: nobody could type on Linux, and how that was proved
 
 **Agent:** Claude Opus 5 - `main`
