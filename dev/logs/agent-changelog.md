@@ -13,6 +13,25 @@ happened": nothing was logged between 2026-07-02 and 2026-07-15, or between 2026
      it is: it used to say ABOVE, which pushed it further down the file with every entry until
      it sat hundreds of lines under the newest one and pointed writers at the wrong place. -->
 
+## [2026-09-19] - v0.13.9: a remembered drive letter never survived a restart
+
+**Agent:** Claude Opus 5 - `main`
+**Files Modified:** `state/mount_letters.dart`, `ui/mount_panel.dart`, `test/mount_letters_test.dart`,
+`test/mount_point_dialog_test.dart`.
+**Database/API Changes:** none - the `mount_letters_v1` preference is unchanged.
+
+**One thing worth keeping**
+
+1. **An async-loaded `Notifier` reads as EMPTY until it loads, and empty is not the same as "none".**
+   `MountLetters.build()` returned `{}` and filled in from SharedPreferences later. Nothing warmed it,
+   so after a restart the first reader was the mount dialog, on the remote pick that needed a pin. It
+   saw no pin, unticked the box, and the Mount that followed called `forget` and erased the stored pin.
+   The unit tests never restarted anything (one container, write then read), so they could not see
+   it. The fix is the `TasksController.ready` pattern: writes wait for the load, and the one reader
+   that acts on the answer re-checks once it lands. Check other build()-returns-empty stores with the
+   same shape before trusting what they say in their first microtasks.
+
+
 ## [2026-09-15] - v0.13.8: a self-updater, and a crash that was never ours
 
 **Agent:** Claude Opus 5 - `main`
