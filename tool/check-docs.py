@@ -34,7 +34,8 @@ from urllib.parse import unquote
 
 # Roots scanned for docs, plus individual root-level files.
 DOC_ROOTS = ("wiki", "dev", "docs")
-ROOT_FILES = ("AGENT.md", "README.md", "DESIGN.md", "HOW-TO.md", "PRIVACY.md")
+ROOT_FILES = ("AGENT.md", "README.md", "DESIGN.md", "HOW-TO.md", "PRIVACY.md",
+              "CONTRIBUTING.md", "CLA.md", "CLA-CORPORATE.md")
 
 # Excluded from the ORPHAN check only: these are addressed by tag or by directory,
 # not linked individually, so "nothing links to it" is expected and fine.

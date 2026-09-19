@@ -1,0 +1,64 @@
+name: CLA
+
+# Holds every pull request to the Contributor Agreement (CLA.md): each
+# GitHub account that authored a commit in it, and the one that opened it, must
+# have signed before it merges. tool/cla_check.py is the whole mechanism and its
+# docstring explains the design; this file only wires it to the two events.
+#
+# SAFETY - read before editing. pull_request_target runs with a WRITE token even
+# for a pull request from a fork. That is why it is used here - a fork's plain
+# pull_request run cannot post a status or a comment - and the price is that
+# nothing from the pull request may ever run. The checkout below takes the
+# default ref, which for pull_request_target is the BASE branch and for
+# issue_comment is the default branch - never the pull request's head. Do not
+# point `ref:` at the head, do not build or install anything, and do not
+# interpolate a comment body or a title into a `run:` block. The script only
+# reads the event JSON, compares a comment to a fixed phrase, and calls the API.
+#
+# The check is binding only once a branch ruleset on main requires the
+# `Airclone CLA` status; until then it is advisory - visible, but mergeable.
+# Pull requests opened with a workflow's own GITHUB_TOKEN (rclone-bump.yml's)
+# trigger no workflows at all, so they never get the status; a maintainer
+# merges those through the ruleset's bypass.
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened]
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: write       # the signature ledger - the script writes only the cla-signatures branch
+  pull-requests: write  # the one CLA comment on the pull request
+  statuses: write       # the `Airclone CLA` commit status
+
+jobs:
+  cla:
+    # issue_comment fires for every comment on every issue and pull request.
+    # Only a pull request comment that could be the signing phrase or `recheck`
+    # is worth a runner (contains() ignores case); the script makes the exact
+    # comparison.
+    if: >-
+      github.event_name == 'pull_request_target' ||
+      (github.event.issue.pull_request &&
+       (contains(github.event.comment.body, 'hereby sign') ||
+        contains(github.event.comment.body, 'recheck')))
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          # The trusted copy of tool/ - see SAFETY above. No `ref:`, deliberately.
+          sparse-checkout: tool
+          persist-credentials: false
+      - name: Check signatures
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          # Bump to ask everyone to sign again - only when CLA.md changes in
+          # substance, and together with the version printed in CLA.md.
+          CLA_VERSION: '1.0'
+          # Never asked to sign: the maintainers, whose work Gigaion owns already.
+          # Numeric account ids, not logins - a vacated login can be re-registered
+          # by anyone. Look one up with `gh api users/<login> --jq .id`.
+          CLA_EXEMPT: '210177983'  # TheJakeBraun
+        run: python3 tool/cla_check.py

@@ -101,6 +101,9 @@ records the next free number.
 | [DESIGN.md](../../DESIGN.md) | Visual/brand reference that accompanies [06-design-system.md](06-design-system.md). |
 | [HOW-TO.md](../../HOW-TO.md) | End-user guide. |
 | [PRIVACY.md](../../PRIVACY.md) | Published privacy policy — the URL every store listing points at. |
+| [CONTRIBUTING.md](../../CONTRIBUTING.md) | How to report a bug, contribute code, and sign the CLA. |
+| [CLA.md](../../CLA.md) | Contributor Agreement: every outside commit author assigns their copyright to Gigaion, LLC by signing it in a PR comment; `.github/workflows/cla.yml` + `tool/cla_check.py` enforce it as the `Airclone CLA` status. |
+| [CLA-CORPORATE.md](../../CLA-CORPORATE.md) | Corporate Contributor Agreement, for contributions made as part of someone's job. Signed out of band, never in the repo. |
 
 ## Related
 

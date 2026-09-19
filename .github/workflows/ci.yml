@@ -81,6 +81,13 @@ jobs:
       - name: Byte-compile the store scripts
         working-directory: .
         run: python -m compileall -q tool/
+      - name: Test the CLA check
+        working-directory: .
+        # tool/cla_check.py decides whether an outside pull request may merge,
+        # from a pull_request_target run with a write token. Its worst failure
+        # is silent - an unsigned author goes green - so it has tests, and they
+        # run here rather than on the live check.
+        run: python tool/test_cla_check.py
       - name: Check the workflow files
         working-directory: .
         # GitHub's parser is the only authority on a workflow file and it has no

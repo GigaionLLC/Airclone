@@ -309,6 +309,15 @@ apply to any production tool you trust with your files.
 > [rclone](https://rclone.org/) —* and as **air + clone**, *cloning your files through the "air" across
 > the clouds rclone reaches.*
 
+## 🤝 Contributing
+
+Bug reports are the most useful thing right now, so [open an
+issue](https://github.com/GigaionLLC/Airclone/issues). Pull requests are welcome too; read
+[CONTRIBUTING.md](CONTRIBUTING.md) first. Everyone who contributes code signs the
+[Contributor Agreement](CLA.md) once, by posting a comment on their first pull request. It
+transfers the copyright in the contribution to Gigaion, LLC, and gives the contributor a license
+back to use their own work however they like.
+
 ## ⭐ Star history
 
 If Airclone is useful to you, a star helps other people find it — and tells us which parts are worth
@@ -324,4 +333,5 @@ the effort.
 ## License
 
 Airclone is licensed under the **GNU Affero General Public License v3.0** (AGPLv3) — see
-[`LICENSE`](LICENSE). Copyright © 2026 Gigaion, LLC. Built on rclone.
+[`LICENSE`](LICENSE). Copyright © 2026 Gigaion, LLC. Built on rclone. Contributions are accepted
+under the [Contributor Agreement](CLA.md), which assigns their copyright to Gigaion, LLC.
