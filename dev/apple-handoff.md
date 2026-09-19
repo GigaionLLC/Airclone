@@ -9,17 +9,27 @@ by design** — real IDs, key paths and account state live in the encrypted vaul
 (`python tool/vault.py unlock`, then
 `dev/vault/notes/apple-appstore-setup-record.md`).
 
-## State: last written 2026-09-13 — 0.9.0 IS LIVE; 0.12.0 IS IN REVIEW
+## State: last written 2026-09-19 — 0.13.3 IS LIVE; 0.13.8 IS IN REVIEW
 
 Read back from App Store Connect by the workflows that changed it, so these rows are observed.
 
 | | macOS | iOS |
 | :--- | :--- | :--- |
-| 0.6.8 / 0.7.5 / 0.7.6 | READY_FOR_SALE | READY_FOR_SALE |
-| **0.9.0** | **READY_FOR_SALE**, released 2026-09-13, build 131 | **READY_FOR_SALE**, released 2026-09-13, build 130 |
+| 0.6.8 / 0.7.5 / 0.7.6 / 0.9.0 | READY_FOR_SALE | READY_FOR_SALE |
 | 0.10.0 / 0.11.0 | ❌ no record — superseded while 0.9.0 held the lane | ❌ no record |
-| **0.12.0** | **WAITING_FOR_REVIEW**, build 134 | **WAITING_FOR_REVIEW**, build 134 |
-| 0.12.0 `releaseType` | MANUAL | MANUAL |
+| 0.12.0 | not in the version list any more (2026-09-19) | not in the version list any more |
+| 0.13.2 | READY_FOR_SALE | DEVELOPER_REJECTED, then renamed to 0.13.3 with `set_version` |
+| **0.13.3** | **READY_FOR_SALE**, build 138 | **READY_FOR_SALE**, build 138 |
+| 0.13.4 – 0.13.7 | ❌ no record — never submitted | ❌ no record |
+| **0.13.8** | **WAITING_FOR_REVIEW**, build 143, submitted 2026-09-19 | **WAITING_FOR_REVIEW**, build 143, submitted 2026-09-19 |
+| 0.13.8 `releaseType` | MANUAL | MANUAL |
+
+**0.13.8's first attempt (2026-09-16) failed with *"no IOS version 0.13.8"*.** It went straight to
+`asc-submit-review.yml`, but that workflow only submits a version that already exists. Nothing creates
+the record implicitly, so step 0 of the runbook (`asc-version.yml -f mode=create`) has to run first,
+then the build upload, then attach. The 2026-09-19 run followed the full
+[runbook](apple-appstore-and-macos.md#the-order-that-works) from step 0 and went through clean. Build
+143 read VALID about three minutes after `UPLOAD SUCCEEDED`.
 
 **The trap that cost most of a day, and will again.** 0.9.0 sat in `PENDING_DEVELOPER_RELEASE` —
 Apple had APPROVED it and was waiting on us — while every status check reported it as blocking.
@@ -39,7 +49,7 @@ in-flight submission when one is genuinely superseded; it costs the queue positi
 
 **0.10.0 and 0.11.0 never got version records**, and that is not an error to repair. Apple reviews
 one version at a time; both were superseded while 0.9.0 held the lane. The App Store therefore goes
-0.7.6 → 0.9.0 → 0.12.0.
+0.7.6 → 0.9.0 → 0.13.2 (macOS only) → 0.13.3 → 0.13.8.
 
 
 0.7.7, 0.8.0 and 0.8.1 never got Apple records at all. That is not an error to repair — a version

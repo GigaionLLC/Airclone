@@ -13,6 +13,27 @@ happened": nothing was logged between 2026-07-02 and 2026-07-15, or between 2026
      it is: it used to say ABOVE, which pushed it further down the file with every entry until
      it sat hundreds of lines under the newest one and pointed writers at the wrong place. -->
 
+## [2026-09-19] - v0.13.8 sent to all three app stores
+
+**Agent:** Claude Opus 5 - `main`
+**Files Modified:** `dev/apple-handoff.md` (state table), `dev/releases/v0.13.8.md` (store line).
+**Database/API Changes:** none. Store-side only, all from the existing workflows:
+- **Apple:** 0.13.8 created, build 143 attached, and submitted on both platforms. Now
+  WAITING_FOR_REVIEW with releaseType MANUAL.
+- **Google Play:** code 143 went to open testing, then production at 100%.
+- **Microsoft Store:** Microsoft Store submission `1152921505701934161` is STAGED and waits for a
+  human to press Submit in Partner Center.
+
+**One thing worth keeping**
+
+1. **A tag ships to no store, and each lane has a step that nothing does implicitly.** The
+   2026-09-16 attempt failed on two of them. Apple had no version record, because
+   `asc-submit-review.yml` only submits what `asc-version.yml -f mode=create` made. Microsoft ran
+   `mode=submit`, which `store_submit.py` rightly refuses for the advanced-pricing product. Dry-run
+   every store first (`asc-release` / `submit-msstore` / `publish-play` / `promote-play`). They read
+   real state and write nothing.
+
+
 ## [2026-09-19] - v0.13.9: a remembered drive letter never survived a restart
 
 **Agent:** Claude Opus 5 - `main`
