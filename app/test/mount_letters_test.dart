@@ -1,11 +1,16 @@
+import 'dart:convert';
+
 import 'package:airclone/src/state/mount_letters.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 /// rclone's `*` takes the next free letter, which is right for a one-off and
 /// wrong for a drive you have shortcuts and muscle memory pointed at: mount two
 /// remotes in a different order and yesterday's K: is today's L:.
 void main() {
+  setUp(() => SharedPreferences.setMockInitialValues({}));
+
   ProviderContainer container() {
     final c = ProviderContainer();
     addTearDown(c.dispose);
@@ -67,5 +72,32 @@ void main() {
     await letters.remember('gdrive:', 'M:');
     expect(letters.forFs('gdrive:'), 'M:');
     expect(c.read(mountLettersProvider), {'gdrive:': 'M:'});
+  });
+
+  /// A fresh container is a fresh launch: the pins are only on disk.
+  test('a pin survives a restart', () async {
+    SharedPreferences.setMockInitialValues({
+      'mount_letters_v1': jsonEncode({'gdrive:': 'K:'}),
+    });
+    final letters = container().read(mountLettersProvider.notifier);
+    await letters.ready;
+    expect(letters.forFs('gdrive:'), 'K:');
+  });
+
+  /// The stored pins arrive asynchronously. A pin written before they did used
+  /// to be overwritten by the load, and the save that followed wrote the
+  /// load's map back - so one of the two was always lost.
+  test('a pin made before the stored ones load keeps both', () async {
+    SharedPreferences.setMockInitialValues({
+      'mount_letters_v1': jsonEncode({'gdrive:': 'K:'}),
+    });
+    final letters = container().read(mountLettersProvider.notifier);
+    await letters.remember('s3:', 'S:');
+    expect(letters.forFs('gdrive:'), 'K:');
+    expect(letters.forFs('s3:'), 'S:');
+    final stored = (await SharedPreferences.getInstance()).getString(
+      'mount_letters_v1',
+    );
+    expect(jsonDecode(stored!), {'gdrive:': 'K:', 's3:': 'S:'});
   });
 }

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -194,6 +196,16 @@ class _MountDialogState extends ConsumerState<_MountDialog> {
     // has to re-check for a pin, not just picking the remote.
     _subdir.addListener(_applyPinnedDrive);
     _subdir.addListener(_refreshDefaultFolder);
+    // After a restart the pins are still loading from disk when this opens, so
+    // a remote picked before they arrive finds none - and the Mount that
+    // follows, box unticked, erases the stored pin. Check again once they are
+    // in. Once only: re-applying on every change would also react to the pin a
+    // Mount writes, and move the Drive dropdown off Auto under the user.
+    unawaited(
+      ref.read(mountLettersProvider.notifier).ready.then((_) {
+        if (mounted) _applyPinnedDrive();
+      }),
+    );
   }
 
   /// Keeps the suggested folder in step with the remote and subfolder, until

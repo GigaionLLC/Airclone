@@ -1,9 +1,12 @@
+import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:airclone/src/rclone/models/mount_info.dart';
 import 'package:airclone/src/rclone/models/mount_options.dart';
 import 'package:airclone/src/rclone/models/remote.dart';
 import 'package:airclone/src/state/mount_controller.dart';
+import 'package:airclone/src/state/mount_letters.dart';
 import 'package:airclone/src/state/mount_point.dart';
 import 'package:airclone/src/state/mount_policy.dart';
 import 'package:airclone/src/state/remotes_provider.dart';
@@ -43,15 +46,36 @@ class _RecordingMounts extends MountController {
   }
 }
 
+/// Pins that finish loading only when the test says so, to hold the dialog in
+/// the window a slow disk read opens.
+class _SlowLetters extends MountLetters {
+  final _loaded = Completer<void>();
+
+  @override
+  Map<String, String> build() => const {};
+
+  @override
+  Future<void> get ready => _loaded.future;
+
+  void finishLoading(Map<String, String> pins) {
+    state = pins;
+    _loaded.complete();
+  }
+}
+
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
 
   late _RecordingMounts mounts;
 
-  Future<void> pumpDialog(WidgetTester tester) async {
+  Future<void> pumpDialog(
+    WidgetTester tester, {
+    List<Override> extra = const [],
+  }) async {
     mounts = _RecordingMounts();
     final container = ProviderContainer(
       overrides: [
+        ...extra,
         mountEnabledProvider.overrideWithValue(true),
         mountControllerProvider.overrideWith(() => mounts),
         mountTypesProvider.overrideWith((ref) async => const ['mount']),
@@ -98,6 +122,82 @@ void main() {
         reason: 'a drive letter is exactly what failed on Linux',
       );
     }
+  });
+
+  /// The pins load from disk the first time something asks for them, and after
+  /// a restart that was this dialog, on the very pick that needed one. It read
+  /// the still-empty map, found no pin and unticked the box - and the Mount
+  /// that followed then ERASED the stored pin. So a remembered drive letter
+  /// never survived closing the app.
+  testWidgets('a remembered mount point comes back after a restart', (
+    tester,
+  ) async {
+    final letters = mountsOntoDriveLetters(windows: Platform.isWindows);
+    final pinned = letters ? 'K:' : '/home/you/Airclone/pinned';
+    SharedPreferences.setMockInitialValues({
+      'mount_letters_v1': jsonEncode({'drive:': pinned}),
+    });
+    await pumpDialog(tester);
+
+    await tester.tap(find.byType(DropdownButtonFormField<String>).first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('drive').last);
+    await tester.pumpAndSettle();
+
+    expect(
+      tester.widget<Checkbox>(find.byType(Checkbox)).value,
+      isTrue,
+      reason: 'the stored pin was not applied',
+    );
+    if (!letters) {
+      expect(find.widgetWithText(TextField, pinned), findsOneWidget);
+      return;
+    }
+
+    // Straight to Mount, without touching the Drive dropdown: the letter it
+    // mounts on has to be the remembered one, and it has to stay remembered.
+    await tester.tap(find.text('Mount'));
+    await tester.pumpAndSettle();
+    expect(mounts.mountPoints, [pinned]);
+    final stored = (await SharedPreferences.getInstance()).getString(
+      'mount_letters_v1',
+    );
+    expect(jsonDecode(stored!), {'drive:': pinned});
+  });
+
+  /// The same race from the other side: a remote picked while the pins are
+  /// still loading gets its pin as soon as they arrive.
+  testWidgets('a pin that loads after the remote is picked is still applied', (
+    tester,
+  ) async {
+    final letters = mountsOntoDriveLetters(windows: Platform.isWindows);
+    final pinned = letters ? 'K:' : '/home/you/Airclone/pinned';
+    final slow = _SlowLetters();
+    await pumpDialog(
+      tester,
+      extra: [mountLettersProvider.overrideWith(() => slow)],
+    );
+
+    await tester.tap(find.byType(DropdownButtonFormField<String>).first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('drive').last);
+    await tester.pumpAndSettle();
+    expect(tester.widget<Checkbox>(find.byType(Checkbox)).value, isFalse);
+
+    slow.finishLoading({'drive:': pinned});
+    await tester.pumpAndSettle();
+
+    expect(
+      tester.widget<Checkbox>(find.byType(Checkbox)).value,
+      isTrue,
+      reason: 'the pin arrived after the pick and was never applied',
+    );
+    expect(
+      letters
+          ? find.text('Always mount this on $pinned')
+          : find.widgetWithText(TextField, pinned),
+      findsOneWidget,
+    );
   });
 
   /// The regression itself: pressing Mount off Windows sends a FOLDER, never

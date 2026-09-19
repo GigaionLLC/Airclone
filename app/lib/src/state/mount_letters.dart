@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -20,6 +21,17 @@ import 'package:shared_preferences/shared_preferences.dart';
 class MountLetters extends Notifier<Map<String, String>> {
   static const _key = 'mount_letters_v1';
 
+  final _hydrated = Completer<void>();
+
+  /// Completes once the stored pins are in [state].
+  ///
+  /// [build] returns an empty map and fills it in asynchronously, and after a
+  /// restart the first thing to ask is the mount dialog - on the very pick that
+  /// needs a pin. Reading [state] before this completes finds "nothing is
+  /// pinned", which is not the same thing, and a dialog that acts on it unticks
+  /// the box and then erases the stored pin on Mount.
+  Future<void> get ready => _hydrated.future;
+
   @override
   Map<String, String> build() {
     _load();
@@ -40,6 +52,8 @@ class MountLetters extends Notifier<Map<String, String>> {
       }
     } catch (_) {
       // Unreadable preferences just mean no pins; mounting still works.
+    } finally {
+      if (!_hydrated.isCompleted) _hydrated.complete();
     }
   }
 
@@ -49,7 +63,12 @@ class MountLetters extends Notifier<Map<String, String>> {
   /// Pin [fs] to [mountPoint]. A `*` is not a pin — it is the absence of one —
   /// so it forgets instead, which is what makes the checkbox's two states
   /// symmetric.
+  ///
+  /// Waits for the stored pins first. A write that raced the load was
+  /// overwritten by it, and the save that followed wrote the loaded map back,
+  /// so one side was always lost.
   Future<void> remember(String fs, String mountPoint) async {
+    await ready;
     if (mountPoint.isEmpty || mountPoint == '*') return forget(fs);
     if (state[fs] == mountPoint) return;
     state = {...state, fs: mountPoint};
@@ -57,6 +76,7 @@ class MountLetters extends Notifier<Map<String, String>> {
   }
 
   Future<void> forget(String fs) async {
+    await ready;
     if (!state.containsKey(fs)) return;
     state = {...state}..remove(fs);
     await _persist();
