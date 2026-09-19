@@ -38,6 +38,10 @@ package, and secrets are stripped as it is recorded. For a security problem, ple
 vulnerability** under the [Security tab](https://github.com/GigaionLLC/Airclone/security) instead of
 a public issue.
 
+**Questions, ideas and how-tos** go in
+[Discussions](https://github.com/GigaionLLC/Airclone/discussions) — ask how to set up a remote,
+suggest a feature, or show what you built with it. Issues stay for things that are broken.
+
 ---
 
 ## What is Airclone?

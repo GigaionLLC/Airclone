@@ -1,0 +1,10 @@
+# Shown on the "New issue" page. There are no issue templates yet, so blank issues
+# must stay enabled or nobody could file one.
+blank_issues_enabled: true
+contact_links:
+  - name: Questions, ideas and how-tos
+    url: https://github.com/GigaionLLC/Airclone/discussions
+    about: Ask how to set something up, suggest a feature, or share what you built. Issues are for things that are broken.
+  - name: Report a security vulnerability
+    url: https://github.com/GigaionLLC/Airclone/security/advisories/new
+    about: Report it privately. Please don't open a public issue for a security problem.
