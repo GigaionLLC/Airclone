@@ -1476,12 +1476,18 @@ Future<bool> _transferGroups(
   } else {
     final client = ref.read(engineControllerProvider).client;
     if (client == null) return false;
+    Set<String>? read;
     try {
+      // listOrNull, not list: an answer with NO listing in it is not an empty
+      // folder, and this set is what decides whether a file gets overwritten.
       final entries = await RcApi(
         client,
-      ).operations.list(destRemote.listFs, destPath, opt: Remote.listOpt);
-      known = {for (final f in entries) f.name};
+      ).operations.listOrNull(destRemote.listFs, destPath, opt: Remote.listOpt);
+      if (entries != null) read = {for (final f in entries) f.name};
     } catch (_) {
+      // Fall through to the same fail-closed path as an empty answer.
+    }
+    if (read == null) {
       if (!context.mounted) return false;
       ScaffoldMessenger.maybeOf(context)?.showSnackBar(
         const SnackBar(
@@ -1493,6 +1499,7 @@ Future<bool> _transferGroups(
       );
       return false;
     }
+    known = read;
   }
   var ran = false;
   for (final g in groups) {

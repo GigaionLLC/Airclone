@@ -103,13 +103,21 @@ Future<bool> transferNamesIntoFolder(
     } else {
       final client = ref.read(engineControllerProvider).client;
       if (client == null) return false;
+      Set<String>? read;
       try {
-        final entries = await RcApi(
-          client,
-        ).operations.list(destRemote.listFs, destPath, opt: Remote.listOpt);
+        // listOrNull, not list: an answer with NO listing in it must reach the
+        // fail-closed path below rather than arriving here as "empty folder".
+        final entries = await RcApi(client).operations.listOrNull(
+          destRemote.listFs,
+          destPath,
+          opt: Remote.listOpt,
+        );
         if (!context.mounted) return false;
-        destNames = {for (final f in entries) f.name};
+        if (entries != null) read = {for (final f in entries) f.name};
       } catch (_) {
+        // Fall through.
+      }
+      if (read == null) {
         // FAIL CLOSED. An unreadable destination used to become an empty name
         // set, which reads as "no collisions" and dispatches a plain overwrite
         // — the one path in this function that could destroy a file without
@@ -125,6 +133,7 @@ Future<bool> transferNamesIntoFolder(
         );
         return false;
       }
+      destNames = read;
     }
 
     final collisions = [
