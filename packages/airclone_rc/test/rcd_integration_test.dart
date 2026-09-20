@@ -283,13 +283,16 @@ void main() {
             'the authenticated-user line did not appear, so this test is '
             'not exercising what it claims',
       );
-      expect(all, contains('rc_pass="<redacted>"'));
+      // NOT the `Setting rc_pass="..."` line: rclone prints that on Windows
+      // and not on Linux, so asserting it made this a platform check. The
+      // environment variable's own value appears on both.
+      expect(all, contains('RCLONE_RC_PASS="<redacted>"'));
       // And the token itself is nowhere: _randomToken is 24 random bytes as
       // base64url, so anything that long in a password position is the real
       // one having walked straight through.
       expect(
         RegExp(
-          r'(rc_pass="|--pass |--rc-pass )[A-Za-z0-9_-]{12,}',
+          r'(rc_pass="|--pass |--rc-pass |RCLONE_RC_PASS=")[A-Za-z0-9_-]{12,}',
         ).hasMatch(all),
         isFalse,
         reason: 'an un-redacted rc password reached the output',
