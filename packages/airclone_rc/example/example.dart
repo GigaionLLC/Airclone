@@ -16,7 +16,9 @@ Future<void> main(List<String> args) async {
   final target = args.isEmpty ? '.' : args.last;
 
   if (rclone == null && librclone == null) {
-    stderr.writeln('Pass --rclone <path to rclone> or --librclone <path to lib>.');
+    stderr.writeln(
+      'Pass --rclone <path to rclone> or --librclone <path to lib>.',
+    );
     stderr.writeln('This package ships neither: you bring your own.');
     exitCode = 64;
     return;
