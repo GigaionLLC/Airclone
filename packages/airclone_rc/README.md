@@ -59,8 +59,20 @@ never lose access to a parameter it does not name, and `RcOptions` carries rclon
 underscore parameters (`_async`, `_group`, `_config`, `_filter`). `sync/*` defaults to
 asynchronous and hands back a job id, because a sync of any size outlives an HTTP request.
 
+The namespaces are `core`, `config`, `operations`, `job`, `sync`, `mount`, `serve` and
+`vfs`, and they return the parsed models (`RcloneFile`, `RcloneProvider`, `MountInfo`,
+`ServeServer`) where rclone answers with a list.
+
 Raw `rpc` stays regardless — it is how you reach anything the typed layer does not cover, and
-anything rclone adds later.
+anything rclone adds later. `core/command` is one of those on purpose: it runs an arbitrary
+rclone command line, its result shape depends on `returnType`, and a caller who needs it
+needs the streaming form too (`HttpRcloneClient.commandStream`).
+
+One pair is worth knowing about before you rely on either. `operations.list` reports an
+answer with no listing in it as empty; **`operations.listOrNull` returns null** for that
+case. If your code is about to delete or overwrite because a directory looked empty, use the
+second one: an empty listing is also what a crypt remote with the wrong `password2` returns,
+because rclone skips every name it cannot decrypt and still exits 0.
 
 ### `instanceTag` is required for a reason
 

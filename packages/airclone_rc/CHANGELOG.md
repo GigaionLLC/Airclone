@@ -20,3 +20,9 @@ consumes it from the same repository by path.
   method so no call can lose a parameter the facade does not name.
 - Host seams that replaced reaching into Airclone: `RcloneLogSink`, `onUndecryptableName`,
   `echoEngineLines` and the required `instanceTag`.
+- `RcApi`, a typed facade over `rpc`: `core`, `config`, `operations`, `job`, `sync`, `mount`,
+  `serve`, `vfs`. Every method takes an `extra` parameter map, and `RcOptions` carries
+  `_async`, `_group`, `_config` and `_filter`. `RcloneClient` gains no members, so a fake
+  that answers `rpc` answers the typed calls too.
+- `operations.listOrNull`, which returns null when the engine's answer carried no listing at
+  all — a distinction `list` cannot make, and one that any caller about to write needs.
