@@ -1,6 +1,7 @@
 @TestOn('vm')
 library;
 
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -231,6 +232,67 @@ void main() {
         lines.join('\n'),
         contains('rclone v'),
         reason: 'core/command STREAM must reach us as lines',
+      );
+    });
+
+    test('at -vv the rc password never reaches the output', () async {
+      // The leak this guards against is not hypothetical, and it is more
+      // direct than the Authorization header everyone expects: at -vv rclone
+      // echoes the password it read out of RCLONE_RC_PASS, in three separate
+      // lines, before it has served a single request. Without redaction this
+      // test prints the real token - it was written by watching it happen.
+      // echoEngineLines is the loudest path there is, so if anything is
+      // redacted, it is redacted here.
+      final printed = <String>[];
+      final loud = HttpRcloneClient(
+        instanceTag: tag,
+        rclonePath: rclonePath ?? 'rclone',
+        configPath: sep(home.path, 'loud.conf'),
+        extraArgs: const ['-vv', '--dump', 'headers'],
+        echoEngineLines: true,
+      );
+      await runZoned(
+        () async {
+          await loud.start();
+          await loud.rpc('rc/noop', {'ping': 'pong'});
+          await loud.rpc('core/version');
+          // The child writes on its own schedule; give it a moment to drain.
+          await Future<void>.delayed(const Duration(milliseconds: 600));
+          await loud.quit();
+        },
+        zoneSpecification: ZoneSpecification(
+          print: (self, parent, zone, line) => printed.add(line),
+        ),
+      );
+
+      final all = printed.join('\n');
+      expect(
+        printed,
+        isNotEmpty,
+        reason: '-vv produced no output at all - the test proves nothing',
+      );
+      // What rclone actually echoes is not the Authorization header (rcd
+      // dumps its OUTBOUND backend traffic, not the rc calls made to it) but
+      // something more direct: the password it reads out of the environment,
+      // three times, at DEBUG and INFO. Those lines are the leak, and their
+      // redacted form is what must appear.
+      expect(
+        all,
+        contains('--pass <redacted>'),
+        reason:
+            'the authenticated-user line did not appear, so this test is '
+            'not exercising what it claims',
+      );
+      expect(all, contains('rc_pass="<redacted>"'));
+      // And the token itself is nowhere: _randomToken is 24 random bytes as
+      // base64url, so anything that long in a password position is the real
+      // one having walked straight through.
+      expect(
+        RegExp(
+          r'(rc_pass="|--pass |--rc-pass )[A-Za-z0-9_-]{12,}',
+        ).hasMatch(all),
+        isFalse,
+        reason: 'an un-redacted rc password reached the output',
       );
     });
 

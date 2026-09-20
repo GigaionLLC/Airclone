@@ -8,6 +8,7 @@ import 'package:meta/meta.dart' show visibleForTesting;
 
 import 'platform.dart';
 import 'rclone_client.dart';
+import 'log_redaction.dart';
 import 'rclone_log.dart';
 import 'windows_child_job.dart';
 
@@ -235,6 +236,11 @@ class HttpRcloneClient implements RcloneClient, ObjectUploader {
   Process? _process;
   int? _port;
   String? _authHeader;
+
+  /// This session's rc password, kept so engine output can be checked for it
+  /// before anyone sees the line. It is already in memory inside [_authHeader];
+  /// holding it separately is what makes redaction possible.
+  String? _rcPass;
   String? _version;
   bool _quitting = false;
   final _client = http.Client();
@@ -244,6 +250,15 @@ class HttpRcloneClient implements RcloneClient, ObjectUploader {
   void Function()? onDied;
 
   Uri _uri(String method) => Uri.parse('http://127.0.0.1:$_port/$method');
+
+  /// The literal strings that must never reach a sink: this session's rc
+  /// password, the base64 `user:pass` blob it travels in (what `--dump headers`
+  /// actually prints), and the config password if one was supplied.
+  List<String> get _sessionSecrets => [
+    ?_rcPass,
+    ?_authHeader?.replaceFirst('Basic ', ''),
+    if (configPassword != null && configPassword!.isNotEmpty) configPassword!,
+  ];
 
   /// Marker recording the PID of the `rcd` child WE spawned, so a fresh launch
   /// can reap a leftover from a force-killed prior run.
@@ -398,6 +413,7 @@ class HttpRcloneClient implements RcloneClient, ObjectUploader {
     final port = await _freeLoopbackPort();
     final user = instanceTag;
     final pass = _randomToken();
+    _rcPass = pass;
     _port = port;
     _authHeader = 'Basic ${base64Encode(utf8.encode('$user:$pass'))}';
 
@@ -548,8 +564,14 @@ class HttpRcloneClient implements RcloneClient, ObjectUploader {
       }
     }
     if (echoEngineLines) {
+      // Unfiltered means no failure-line filter, no de-duplication and no cap.
+      // It does NOT mean the rc password gets printed: this is the mode a
+      // developer turns on WITH `-vv`, which is exactly when rclone echoes the
+      // Authorization header of every call this package makes.
       // ignore: avoid_print
-      print('[rclone] $line');
+      print(
+        '[rclone] ${redactEngineLine(line, sessionSecrets: _sessionSecrets)}',
+      );
       return;
     }
     if (_loggedLines >= _maxLoggedLines) return;
@@ -557,7 +579,11 @@ class HttpRcloneClient implements RcloneClient, ObjectUploader {
     if (line == _lastLoggedLine) return;
     _lastLoggedLine = line;
     _loggedLines++;
-    logSink(RcloneLogLevel.error, 'engine', line);
+    logSink(
+      RcloneLogLevel.error,
+      'engine',
+      redactEngineLine(line, sessionSecrets: _sessionSecrets),
+    );
   }
 
   String? _resolvedConfigPath;
@@ -696,7 +722,7 @@ class HttpRcloneClient implements RcloneClient, ObjectUploader {
       recovered
           ? 'engine dropped a connection on $method; the retry succeeded'
           : 'no answer from the engine for $method',
-      detail: '$error',
+      detail: redactEngineLine('$error', sessionSecrets: _sessionSecrets),
     );
   }
 
@@ -759,6 +785,7 @@ class HttpRcloneClient implements RcloneClient, ObjectUploader {
     _process = null;
     _port = null;
     _authHeader = null;
+    _rcPass = null;
     _version = null;
     // Clean shutdown: drop the reap marker so no future launch targets this PID.
     try {

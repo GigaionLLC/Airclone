@@ -83,10 +83,19 @@ the other's live engine.** So pick your own, and never `'airclone'`.
 
 ### Engine logs never appear by default
 
-At high verbosity (`-vv`, `--dump`) rclone echoes request headers containing the rc
-credentials. This package therefore keeps only its own failure lines — de-duplicated and
-capped — and hands those to an `RcloneLogSink` you pass in. Pass nothing and you get silence.
-`echoEngineLines` prints everything unfiltered and is for development only.
+At high verbosity rclone echoes the rc password it read from the environment, before it has
+served a single request, and `--dump` adds request headers on top. So this package keeps only
+its own failure lines — de-duplicated and capped — and hands those to an `RcloneLogSink` you
+pass in. Pass nothing and you get silence.
+
+**Whatever does reach your sink is redacted first.** This session's rc password, the base64
+blob it travels in and your config password are removed, along with the credential shapes
+rclone emits regardless of whose they are: `Authorization:` headers, secret-ish `--flags`,
+and `scheme://user:pass@host` URLs. `redactEngineLine` is exported if you want to run it over
+text of your own. It is not a general-purpose secret scrubber and does not replace one.
+
+`echoEngineLines` prints everything and is for development only — "everything" still means
+redacted, because that mode is the one you turn on together with `-vv`.
 
 ## Asking about it
 

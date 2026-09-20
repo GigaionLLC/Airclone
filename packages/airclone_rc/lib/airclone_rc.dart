@@ -32,6 +32,7 @@ export 'src/playlist_exts.dart';
 export 'src/rc_api.dart';
 export 'src/rc_options.dart';
 export 'src/rclone_client.dart';
+export 'src/log_redaction.dart';
 export 'src/rclone_log.dart';
 export 'src/windows_child_job.dart';
 
