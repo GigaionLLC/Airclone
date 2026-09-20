@@ -3,9 +3,8 @@ library;
 
 import 'dart:io';
 
-import 'package:airclone/src/rclone/ffi_rclone_client.dart';
-import 'package:airclone/src/rclone/rclone_client.dart';
-import 'package:flutter_test/flutter_test.dart';
+import 'package:airclone_rc/airclone_rc.dart';
+import 'package:test/test.dart';
 
 /// Live integration against a real, locally-built librclone. OPT-IN: set
 /// `AIRCLONE_LIBRCLONE` to the absolute path of a built

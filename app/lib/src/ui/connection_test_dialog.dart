@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'dialog_body.dart';
 import '../rclone/models/remote.dart';
-import '../rclone/rclone_client.dart';
+import 'package:airclone_rc/airclone_rc.dart';
 import 'format.dart';
 import 'theme/tokens.dart';
 

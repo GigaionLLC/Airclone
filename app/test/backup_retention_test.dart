@@ -1,4 +1,4 @@
-import 'package:airclone/src/rclone/models/rclone_file.dart';
+import 'package:airclone_rc/airclone_rc.dart';
 import 'package:airclone/src/state/backup_retention.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';

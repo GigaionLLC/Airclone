@@ -51,7 +51,7 @@
   - `app/lib/src/state/mount_controller.dart:66-70` -> the whole surface today:
     `rpc('mount/mount', {fs, mountPoint, vfsOpt: {CacheMode: …}})`. Gains a
     `MountOptions` parameter.
-  - `app/lib/src/rclone/models/mount_info.dart:5-6` -> `mountCacheModes` +
+  - `packages/airclone_rc/lib/src/models/mount_info.dart:5-6` -> `mountCacheModes` +
     `cacheModeValue`. Natural home for `MountOptions`.
   - `app/lib/src/ui/mount_panel.dart:22-28,195-212` -> `_cacheMode` field and
     the front-door "Cache mode" dropdown, which moves into the disclosure.

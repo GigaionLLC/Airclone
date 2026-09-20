@@ -1,6 +1,6 @@
 import 'package:flutter/foundation.dart';
 
-import 'transfer_item.dart';
+import 'package:airclone_rc/airclone_rc.dart';
 
 /// What kind of transfer a [Job] represents. Drives the row label in the UI.
 enum JobType { copy, move, sync, delete, upload, download, command, archive }

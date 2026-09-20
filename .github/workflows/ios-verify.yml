@@ -39,7 +39,8 @@ on:
         type: string
   push:
     paths:
-      - 'app/lib/src/rclone/librclone_ffi.dart'
+      - 'packages/airclone_rc/lib/src/librclone_ffi.dart'
+      - 'packages/airclone_rc/lib/src/librclone_ffi_io.dart'
       - 'app/ios/**'
       - 'dev/ios/**'
       - '.github/workflows/ios-verify.yml'

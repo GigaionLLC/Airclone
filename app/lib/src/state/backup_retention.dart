@@ -1,7 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import '../rclone/models/rclone_file.dart';
+import 'package:airclone_rc/airclone_rc.dart';
 import 'task_kind.dart';
 
 /// How long a replaced version is kept before a prune may remove it.

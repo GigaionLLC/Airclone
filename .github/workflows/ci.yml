@@ -52,6 +52,43 @@ jobs:
           path: app/coverage/lcov.info
           if-no-files-found: ignore
 
+  # The airclone_rc package is NOT covered by the job above: `defaults.run`
+  # points at app/, so its format, lint and test gates would simply never run
+  # on the package's code. Nothing would fail; the code would just be
+  # ungoverned.
+  package-airclone-rc:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: packages/airclone_rc
+    steps:
+      - uses: actions/checkout@v5
+      - uses: subosito/flutter-action@v2
+        with:
+          # Pure Dart package, but the pinned Flutter SDK carries the Dart SDK
+          # the app is built with, so both sides are analyzed by one toolchain.
+          channel: stable
+          flutter-version: 3.47.0
+          cache: true
+      - name: Install dependencies
+        run: dart pub get
+      - name: Verify formatting
+        run: dart format --output=none --set-exit-if-changed .
+      - name: Analyze
+        # --fatal-infos matches `flutter analyze`, which fails on any info-level
+        # lint; without it the two sides are held to different standards.
+        run: dart analyze --fatal-infos
+      - name: Unit tests
+        run: dart test
+      - name: The package never imports the app
+        # The whole point of the split. The trailing slash is load-bearing:
+        # without it this also matches the package's own package:airclone_rc
+        # imports and fails every time.
+        run: |
+          if grep -rn "package:airclone/" lib; then
+            echo "::error::airclone_rc must not import the app"; exit 1
+          fi
+
   docs:
     # Two cheap guards that had no CI at all, on a runner with no Flutter.
     #

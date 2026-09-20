@@ -53,7 +53,7 @@
     Presentational only today; **no route, check or policy consults it.**
   - `app/lib/src/webui/webui_server.dart:99` -> `HttpServer.bind(...)`, `autoCompress = true`, no
     `idleTimeout`, no request timeout, no max connections.
-  - `app/lib/src/rclone/librclone_object_server.dart` -> the in-process engine has no HTTP server;
+  - `packages/airclone_rc/lib/src/librclone_object_server.dart` -> the in-process engine has no HTTP server;
     it materializes an object to cache via `operations/copyfile` and serves that. Upload mirrors
     this exactly.
 

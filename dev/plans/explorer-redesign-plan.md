@@ -32,7 +32,7 @@
   - `app/lib/src/ui/browser_pane.dart` → the list view to refine + host new view modes.
   - `app/lib/src/state/browser_controller.dart` → per-pane state; extend with view mode + listing cache.
   - `app/lib/src/ui/column_header.dart` → existing sort model reused by all views.
-  - `app/lib/src/rclone/http_rclone_client.dart` → `objectRef` / rcd port reused by the thumbnail service.
+  - `packages/airclone_rc/lib/src/http_rclone_client.dart` → `objectRef` / rcd port reused by the thumbnail service.
   - `app/lib/src/ui/preview_dialog.dart` + `media_preview.dart` → renderers reused by Quick Look.
 
 ## 3️⃣ Phase 3: User Clarification

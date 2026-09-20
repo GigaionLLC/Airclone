@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../rclone/models/mount_info.dart';
+import 'package:airclone_rc/airclone_rc.dart';
 import '../rclone/models/mount_options.dart';
 import '../state/host_platform.dart';
 import 'theme/tokens.dart';

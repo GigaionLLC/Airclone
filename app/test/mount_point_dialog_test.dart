@@ -2,7 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:airclone/src/rclone/models/mount_info.dart';
+import 'package:airclone_rc/airclone_rc.dart';
 import 'package:airclone/src/rclone/models/mount_options.dart';
 import 'package:airclone/src/rclone/models/remote.dart';
 import 'package:airclone/src/state/mount_controller.dart';

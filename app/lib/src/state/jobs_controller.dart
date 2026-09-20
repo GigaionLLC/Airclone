@@ -4,7 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../rclone/models/job.dart';
-import '../rclone/models/transfer_item.dart';
+import 'package:airclone_rc/airclone_rc.dart';
 import 'engine_controller.dart';
 
 /// Owns the list of transfer [Job]s and a SINGLE periodic poller that keeps

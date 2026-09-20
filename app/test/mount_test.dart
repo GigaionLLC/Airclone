@@ -1,6 +1,5 @@
-import 'package:airclone/src/rclone/models/mount_info.dart';
+import 'package:airclone_rc/airclone_rc.dart';
 import 'package:airclone/src/rclone/models/mount_options.dart';
-import 'package:airclone/src/rclone/rclone_client.dart';
 import 'package:airclone/src/state/engine_controller.dart';
 import 'package:airclone/src/state/mount_controller.dart';
 import 'package:airclone/src/state/mount_policy.dart';

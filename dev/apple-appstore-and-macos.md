@@ -394,7 +394,7 @@ Do NOT remove the entitlement to make the warning go away — that silently
 removes every preview and playback feature from the MAS build. Reply with the
 justification, which is kept in the Notes block of
 `docs/store/apple/listing-en-US.md` so it ships with every future submission.
-Source of truth for the claim: `app/lib/src/rclone/librclone_object_server.dart`.
+Source of truth for the claim: `packages/airclone_rc/lib/src/librclone_object_server.dart`.
 
 ### iOS — guideline 2.1, information needed
 

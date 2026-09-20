@@ -464,10 +464,10 @@ Off-screen thumbnail players obey the same reasoning from the other direction �
   holds an open handle on `rclone.exe` **inside the install directory**, so the uninstaller cannot
   delete it. **Microsoft Store certification failed the product for exactly this on 2026-07-29
   (policy 10.2.7, clean removal).**
-- **Enforced in:** [windows_child_job.dart](../../app/lib/src/rclone/windows_child_job.dart) — one
+- **Enforced in:** [windows_child_job.dart](../../packages/airclone_rc/lib/src/windows_child_job.dart) — one
   process-wide unnamed Job Object with `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`, whose handle is held
   open for the process lifetime on purpose. Current call sites:
-  [http_rclone_client.dart:149](../../app/lib/src/rclone/http_rclone_client.dart),
+  [http_rclone_client.dart:149](../../packages/airclone_rc/lib/src/http_rclone_client.dart),
   [archive_service.dart](../../app/lib/src/state/archive_service.dart) (two),
   [config_transfer_controller.dart](../../app/lib/src/state/config_transfer_controller.dart) (two).
 - **Check:** `grep -rn "Process.start" app/lib` — every rclone spawn should have an `adopt` within a
@@ -480,7 +480,7 @@ Off-screen thumbnail players obey the same reasoning from the other direction �
   *next* launch kill a leftover from a force-killed prior run. It records only the one PID we
   spawned — never a broad process-name match, which would kill the user's own rclone processes.
 - **Enforced in:** `_markerFile` / `_reapPreviousRcd` in
-  [http_rclone_client.dart](../../app/lib/src/rclone/http_rclone_client.dart), called at the top of
+  [http_rclone_client.dart](../../packages/airclone_rc/lib/src/http_rclone_client.dart), called at the top of
   `start()`. Skipped on Android, where `systemTemp` is not app-writable and the OS kills the process
   group anyway.
 
@@ -524,7 +524,7 @@ Off-screen thumbnail players obey the same reasoning from the other direction �
   A `if (kDebugMode)`-gated listener is NOT a drain — it leaves release builds, the only builds that
   mount, holding the pipe shut.
 - **Enforced in:** `_drainChildOutput` in
-  [http_rclone_client.dart](../../app/lib/src/rclone/http_rclone_client.dart);
+  [http_rclone_client.dart](../../packages/airclone_rc/lib/src/http_rclone_client.dart);
   `proc.stdout.drain()` in [archive_service.dart](../../app/lib/src/state/archive_service.dart) and
   [config_transfer_controller.dart](../../app/lib/src/state/config_transfer_controller.dart).
 - **Retention is a separate decision from draining.** Release builds keep only rclone's own
@@ -557,9 +557,9 @@ Off-screen thumbnail players obey the same reasoning from the other direction �
 | Supervised run outcome | One `job/status` loop per dispatched task at `kOutcomePollInterval` (1 s, deliberately the same cadence `JobsController` already polls at, so supervision adds no engine traffic of its own), hard-bounded by `kMaxSuperviseDuration` (6 h) to mirror the Scheduled-Task `ExecutionTimeLimit=PT6H` | [scheduler_controller.dart](../../app/lib/src/state/scheduler_controller.dart) |
 | OS background wake | `kDefaultPollMinutes` 15, user-settable from `kPollMinuteChoices` (5–60) and `clampPollMinutes`-clamped on the way in and out, persisted as `scheduler_poll_minutes`. This is the lateness bound for **interval** schedules only — an exact daily/weekly time gets its own OS trigger and is not affected | [registration_policy.dart](../../app/lib/src/state/registration_policy.dart) · [poll_cadence.dart](../../app/lib/src/state/poll_cadence.dart) |
 | Transfer dispatch | `transferConcurrencyProvider` slots; `0` = unlimited (default), persisted | [jobs_controller.dart](../../app/lib/src/state/jobs_controller.dart) |
-| `rcd` readiness | 15 s deadline in `_awaitReady` | [http_rclone_client.dart](../../app/lib/src/rclone/http_rclone_client.dart) |
-| RC call timeout | 30 s per `rpc()` (`core/command` streaming excepted — it has none) | [http_rclone_client.dart](../../app/lib/src/rclone/http_rclone_client.dart) |
-| Transport retry | Exactly one, read-only methods only, never on a timeout — see §7.1 | [http_rclone_client.dart](../../app/lib/src/rclone/http_rclone_client.dart) |
+| `rcd` readiness | 15 s deadline in `_awaitReady` | [http_rclone_client.dart](../../packages/airclone_rc/lib/src/http_rclone_client.dart) |
+| RC call timeout | 30 s per `rpc()` (`core/command` streaming excepted — it has none) | [http_rclone_client.dart](../../packages/airclone_rc/lib/src/http_rclone_client.dart) |
+| Transport retry | Exactly one, read-only methods only, never on a timeout — see §7.1 | [http_rclone_client.dart](../../packages/airclone_rc/lib/src/http_rclone_client.dart) |
 
 **RULE — Wrap every RC call inside a periodic poller in try/catch, and cancel the timer in `ref.onDispose`.**
 
@@ -598,7 +598,7 @@ Off-screen thumbnail players obey the same reasoning from the other direction �
   engine *took* the request and did not answer within 30 s. Sending a second copy piles work onto an
   engine already struggling.
 - **Enforced in:** `sendWithConnectionRetry` and `isRetryableRcMethod` in
-  [http_rclone_client.dart](../../app/lib/src/rclone/http_rclone_client.dart) — a free function over
+  [http_rclone_client.dart](../../packages/airclone_rc/lib/src/http_rclone_client.dart) — a free function over
   the method string, so the policy is unit-testable without an engine.
 - **Leave evidence, rate-limited per severity.** `_noteTransportFailure` writes at most one
   diagnostics entry a minute for a *recovered* blip (`DiagLevel.info`) and one a minute for a real
@@ -616,12 +616,12 @@ Off-screen thumbnail players obey the same reasoning from the other direction �
   simply what crypt-over-S3 says when asked for a quota it has no concept of, working as designed,
   and the first thing the reader had to dismiss. A report exists to make a real problem findable.
 - **Enforced in:** `_capabilityProbeMethods` in
-  [http_rclone_client.dart](../../app/lib/src/rclone/http_rclone_client.dart), filtered out inside
+  [http_rclone_client.dart](../../packages/airclone_rc/lib/src/http_rclone_client.dart), filtered out inside
   `isEngineFailureLine`.
 - **Check:** the match is on the **method name**, not on the message ("doesn't support"), on purpose:
   it survives rclone rewording the sentence, and it cannot swallow that same wording when it
   describes something the *user* asked for and did not get. Both halves are pinned by
-  [engine_log_test.dart](../../app/test/engine_log_test.dart).
+  [engine_log_test.dart](../../packages/airclone_rc/test/engine_log_test.dart).
 
 ---
 

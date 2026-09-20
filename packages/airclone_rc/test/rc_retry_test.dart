@@ -1,7 +1,7 @@
 import 'dart:async';
 
-import 'package:airclone/src/rclone/http_rclone_client.dart';
-import 'package:flutter_test/flutter_test.dart';
+import 'package:airclone_rc/airclone_rc.dart';
+import 'package:test/test.dart';
 
 /// A retry is the kind of fix that can be worse than the bug it removes, so the
 /// policy is pinned here rather than trusted.

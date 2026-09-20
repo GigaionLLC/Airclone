@@ -1,0 +1,4 @@
+# A library does not commit its lockfile — consumers resolve their own
+# versions, and Airclone's own lock (app/pubspec.lock) is the one that decides
+# what this package is built against here.
+pubspec.lock

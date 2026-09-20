@@ -13,7 +13,7 @@ library;
 
 import 'package:flutter/foundation.dart';
 
-import '../rclone/models/rclone_file.dart';
+import 'package:airclone_rc/airclone_rc.dart';
 import '../ui/pane_drag.dart' show joinPath;
 
 /// Per-tab tree state, kept beside the flat listing in `BrowserState`.

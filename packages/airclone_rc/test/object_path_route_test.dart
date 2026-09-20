@@ -1,5 +1,5 @@
-import 'package:airclone/src/rclone/librclone_object_server.dart';
-import 'package:flutter_test/flutter_test.dart';
+import 'package:airclone_rc/airclone_rc.dart';
+import 'package:test/test.dart';
 
 /// A streaming manifest lists its segments by RELATIVE name, resolved against
 /// the URL the manifest itself came from. The in-process engine's object URL is

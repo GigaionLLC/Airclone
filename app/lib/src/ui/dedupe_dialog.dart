@@ -1,8 +1,7 @@
-import '../rclone/models/rclone_file.dart';
+import 'package:airclone_rc/airclone_rc.dart';
 import 'package:flutter/material.dart';
 
 import '../rclone/models/remote.dart';
-import '../rclone/rclone_client.dart';
 import '../state/cloud_placeholder.dart';
 import '../state/dedupe.dart';
 import 'dialog_body.dart';

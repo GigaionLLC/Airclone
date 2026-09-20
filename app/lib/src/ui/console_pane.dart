@@ -3,7 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-import '../rclone/http_rclone_client.dart';
+import 'package:airclone_rc/airclone_rc.dart';
 import '../rclone/models/job.dart';
 import '../state/console/console_autocomplete.dart';
 import '../state/console/console_command.dart';

@@ -19,7 +19,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../webui/webui_protocol.dart';
 import '../state/cloud_placeholder.dart';
-import 'rclone_client.dart';
+import 'package:airclone_rc/airclone_rc.dart';
 
 /// Thrown when the server says the session is gone. Surfaced distinctly from a
 /// normal [RcloneException] so the app can send the operator back to sign in

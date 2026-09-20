@@ -7,9 +7,8 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
 
-import '../rclone/rclone_client.dart';
+import 'package:airclone_rc/airclone_rc.dart';
 import '../rclone/rclone_engine.dart';
-import '../rclone/windows_child_job.dart';
 import 'cache_crypto.dart';
 import 'config_backups.dart';
 import 'config_encryption.dart';

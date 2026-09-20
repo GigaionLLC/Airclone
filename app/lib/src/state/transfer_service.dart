@@ -2,7 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../rclone/models/job.dart';
 import '../rclone/models/remote.dart';
-import '../rclone/rclone_client.dart';
+import 'package:airclone_rc/airclone_rc.dart';
 import 'engine_controller.dart';
 import 'jobs_controller.dart';
 import 'transfer_options.dart';

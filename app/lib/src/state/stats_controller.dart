@@ -3,10 +3,10 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../rclone/models/transfer_item.dart';
+import 'package:airclone_rc/airclone_rc.dart';
 import '../state/engine_controller.dart';
 
-export '../rclone/models/transfer_item.dart' show TransferItem;
+export 'package:airclone_rc/airclone_rc.dart' show TransferItem;
 
 /// Aggregate engine transfer statistics (a snapshot of `core/stats`).
 @immutable

@@ -1,5 +1,4 @@
-import 'package:airclone/src/rclone/models/rclone_file.dart';
-import 'package:airclone/src/rclone/rclone_client.dart';
+import 'package:airclone_rc/airclone_rc.dart';
 import 'package:airclone/src/ui/search_dialog.dart';
 import 'package:airclone/src/ui/theme/app_theme.dart';
 import 'package:flutter/material.dart';

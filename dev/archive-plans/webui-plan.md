@@ -61,7 +61,7 @@
     phone-home. A self-hosted Web UI is squarely on that line.
 
 * **Relevant Code:**
-  - `app/lib/src/rclone/rclone_client.dart` → the seam. Already web-shaped:
+  - `packages/airclone_rc/lib/src/rclone_client.dart` → the seam. Already web-shaped:
     `rpc()` runs on `package:http`, `objectRef()` returns a URL + header pair.
   - `app/lib/src/state/engine_controller.dart` → owns engine lifecycle and
     publishes `EngineUi.client`. Needs a web branch that adopts a

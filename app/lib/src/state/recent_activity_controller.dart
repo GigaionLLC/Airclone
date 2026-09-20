@@ -1,6 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../rclone/models/transferred_item.dart';
+import 'package:airclone_rc/airclone_rc.dart';
 import 'engine_controller.dart';
 
 /// Recently completed transfers (rclone keeps the last ~100, including

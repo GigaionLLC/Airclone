@@ -1,4 +1,4 @@
-import '../rclone/rclone_log.dart';
+import 'package:airclone_rc/airclone_rc.dart';
 import 'diagnostics.dart';
 
 /// Airclone's [RcloneLogSink]: engine events land in the diagnostics ring.

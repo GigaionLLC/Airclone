@@ -1,4 +1,4 @@
-import 'package:airclone/src/rclone/rclone_log.dart';
+import 'package:airclone_rc/airclone_rc.dart';
 import 'package:airclone/src/state/diagnostics.dart';
 import 'package:airclone/src/state/engine_log_bridge.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -51,6 +51,18 @@ void main() {
         DiagLevel.warning,
         DiagLevel.error,
       ]);
+    });
+
+    // Moved here when the engine filter became part of airclone_rc: the filter
+    // is not the privacy boundary, ingest-time redaction is, and that half of
+    // the pair belongs to the app.
+    test('a kept line still loses its credentials on the way in', () {
+      // A -vv run echoes the rc credentials on an error line.
+      final redacted = redactSensitive(
+        'ERROR : rc: request failed: Authorization: Basic YWlyY2xvbmU6c2VjcmV0',
+      );
+      expect(redacted, contains('ERROR'));
+      expect(redacted, isNot(contains('YWlyY2xvbmU6c2VjcmV0')));
     });
 
     test('the default sink says nothing at all', () {

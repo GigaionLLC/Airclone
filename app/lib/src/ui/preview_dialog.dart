@@ -12,9 +12,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:http/http.dart' as http;
 import 'package:pdfrx/pdfrx.dart';
 
-import '../rclone/models/rclone_file.dart';
+import 'package:airclone_rc/airclone_rc.dart';
 import '../rclone/models/remote.dart';
-import '../rclone/rclone_client.dart';
 import '../state/engine_controller.dart';
 import '../state/open_external.dart';
 import 'format.dart';

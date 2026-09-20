@@ -1,7 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../native/native_probes.dart';
-import '../rclone/models/rclone_file.dart';
+import 'package:airclone_rc/airclone_rc.dart';
 import '../rclone/models/remote.dart';
 
 /// Guards against silently HYDRATING cloud "Files On-Demand" placeholders.

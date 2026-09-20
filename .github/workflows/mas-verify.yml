@@ -35,7 +35,7 @@ on:
       # these decide what that means. A change here that broke the sandboxed
       # build would otherwise only show up on a real Mac.
       - 'app/lib/src/rclone/rclone_engine.dart'
-      - 'app/lib/src/rclone/librclone_ffi.dart'
+      - 'packages/airclone_rc/lib/src/librclone_ffi.dart'
       # Any native macOS change: Swift cannot be compiled off a Mac, so this
       # workflow IS the compiler for it. A Swift file missing from
       # project.pbxproj also fails here rather than silently never building.

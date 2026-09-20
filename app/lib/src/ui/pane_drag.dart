@@ -1,4 +1,4 @@
-import '../rclone/models/rclone_file.dart';
+import 'package:airclone_rc/airclone_rc.dart';
 import '../rclone/models/remote.dart';
 
 /// Joins a parent path and a leaf name with a single forward slash.

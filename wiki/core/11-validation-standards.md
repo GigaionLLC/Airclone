@@ -25,7 +25,7 @@ Validation is layered. Each gate has a different job and a different failure sha
 | 1 | **Widget-local** | a dialog / field's own `State` | an inline error string next to the input | [`_NameDialog._submit`](../../app/lib/src/ui/file_op_dialogs.dart#L139) |
 | 2 | **Pure classifier** | a top-level function in `state/` | a typed tier / refusal / `ArgumentError` | [`classifyTier`](../../app/lib/src/state/console/rclone_commands.dart#L148), [`translateToRc`](../../app/lib/src/state/console/console_rc_translate.dart#L166), [`buildArchiveCommand`](../../app/lib/src/state/archive_command.dart#L116) |
 | 3 | **Controller pre-flight** | a Riverpod `Notifier`, before it calls `rpc` | setting `state.error` and returning | [`AddRemoteController.submit`](../../app/lib/src/state/add_remote_controller.dart#L98) |
-| 4 | **Engine seam** | `RcloneClient.rpc` (both transports) | throwing [`RcloneException`](../../app/lib/src/rclone/rclone_client.dart#L57) | [`HttpRcloneClient.rpc`](../../app/lib/src/rclone/http_rclone_client.dart#L453), [`mapRpcResult`](../../app/lib/src/rclone/ffi_rclone_client.dart#L141) |
+| 4 | **Engine seam** | `RcloneClient.rpc` (both transports) | throwing [`RcloneException`](../../packages/airclone_rc/lib/src/rclone_client.dart#L57) | [`HttpRcloneClient.rpc`](../../packages/airclone_rc/lib/src/http_rclone_client.dart#L453), [`mapRpcResult`](../../packages/airclone_rc/lib/src/ffi_rclone_client.dart#L141) |
 | 5 | **rclone itself** | the backend | an `error` field in the RC body, or `job/status.error` | [`JobsController`](../../app/lib/src/state/jobs_controller.dart#L263) |
 
 **Rule — validate downward, never only upward.** A UI gate is a convenience; the authoritative refusal
@@ -232,7 +232,7 @@ State these as rules, in order. They are the contract for every new failure path
 
 **R1 — Every engine failure becomes an `RcloneException` at the seam.** Both transports normalise to
 `RcloneException(method, message, statusCode?)`: HTTP maps a non-2xx body's `error` field, FFI's
-[`mapRpcResult`](../../app/lib/src/rclone/ffi_rclone_client.dart#L141) does the same for librclone's
+[`mapRpcResult`](../../packages/airclone_rc/lib/src/ffi_rclone_client.dart#L141) does the same for librclone's
 `(status, json)` pair. Nothing above the seam inspects HTTP status codes directly.
 
 **R2 — A 2xx is not automatically success.** rclone's interactive config flow returns HTTP 200 with an

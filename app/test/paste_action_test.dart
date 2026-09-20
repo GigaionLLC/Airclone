@@ -1,7 +1,6 @@
 import 'package:airclone/src/rclone/models/job.dart';
-import 'package:airclone/src/rclone/models/rclone_file.dart';
+import 'package:airclone_rc/airclone_rc.dart';
 import 'package:airclone/src/rclone/models/remote.dart';
-import 'package:airclone/src/rclone/rclone_client.dart';
 import 'package:airclone/src/state/clipboard_controller.dart';
 import 'package:airclone/src/state/engine_controller.dart';
 import 'package:airclone/src/ui/paste_action.dart';

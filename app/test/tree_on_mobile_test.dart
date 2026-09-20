@@ -11,7 +11,7 @@
 /// that used to block it.
 library;
 
-import 'package:airclone/src/rclone/models/rclone_file.dart';
+import 'package:airclone_rc/airclone_rc.dart';
 import 'package:airclone/src/rclone/models/remote.dart';
 import 'package:airclone/src/ui/file_row.dart';
 import 'package:airclone/src/ui/pane_drag.dart';
