@@ -42,9 +42,25 @@ final listing = await client.rpc('operations/list', {
 await client.quit();
 ```
 
-A typed API (`rc.operations.list(...)` rather than method strings) is planned; see
-[the plan](../../dev/plans/airclone-rc-package-plan.md). Raw `rpc` is staying regardless — it
-is how you reach anything the typed layer does not cover.
+### Or skip the method strings
+
+```dart
+final api = RcApi(client);
+
+final remotes = await api.config.listRemotes();
+final files = await api.operations.list('gdrive:', 'papers');
+final job = await api.sync.copy(srcFs: 'gdrive:papers', dstFs: '/backup');
+final status = await api.job.status(job.id);
+```
+
+`RcApi` is a facade over `rpc` — it adds no members to `RcloneClient`, so your own fakes and
+implementations keep working. Every method takes `extra`, merged into the parameters, so you
+never lose access to a parameter it does not name, and `RcOptions` carries rclone's
+underscore parameters (`_async`, `_group`, `_config`, `_filter`). `sync/*` defaults to
+asynchronous and hands back a job id, because a sync of any size outlives an HTTP request.
+
+Raw `rpc` stays regardless — it is how you reach anything the typed layer does not cover, and
+anything rclone adds later.
 
 ### `instanceTag` is required for a reason
 

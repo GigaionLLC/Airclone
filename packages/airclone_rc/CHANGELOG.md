@@ -15,5 +15,8 @@ consumes it from the same repository by path.
   the host cannot leave an orphan behind.
 - Models for RC responses: `RcloneFile`, `RcloneProvider`, `MountInfo`, `ServeServer`,
   `TransferItem`, `TransferredItem`.
+- `RcApi`: a typed facade over `rpc` — `core`, `config`, `operations`, `job` and `sync`
+  namespaces, with `RcOptions` for rclone's underscore parameters and an `extra` map on every
+  method so no call can lose a parameter the facade does not name.
 - Host seams that replaced reaching into Airclone: `RcloneLogSink`, `onUndecryptableName`,
   `echoEngineLines` and the required `instanceTag`.
