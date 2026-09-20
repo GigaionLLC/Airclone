@@ -1,0 +1,34 @@
+name: airclone_rc
+description: >-
+  Drive rclone from Dart: start and talk to the rclone remote-control (rc) API,
+  either by spawning `rclone rcd` over loopback HTTP or by calling librclone
+  in-process through dart:ffi. Bring your own rclone.
+version: 0.1.0
+# Published only when the typed API lands — see
+# dev/plans/airclone-rc-package-plan.md, Milestone C.
+publish_to: none
+repository: https://github.com/GigaionLLC/Airclone
+issue_tracker: https://github.com/GigaionLLC/Airclone/issues
+
+# PURE DART on purpose: no `flutter:` SDK entry, so an accidental
+# `package:flutter` import fails at `dart pub get` rather than at review time.
+# Anything Flutter-only (finding or downloading the rclone binary, app dirs)
+# belongs to the host — in Airclone's case `app/lib/src/rclone/rclone_engine.dart`.
+environment:
+  sdk: ^3.12.0
+
+dependencies:
+  # The rcd transport: loopback HTTP with per-session Basic auth.
+  http: ^1.2.0
+  # librclone's C ABI, for the in-process engine.
+  ffi: ^2.1.0
+  # Cache keys for the preview byte bridge.
+  crypto: ^3.0.5
+  # @immutable / @visibleForTesting, without dragging in Flutter.
+  meta: ^1.19.0
+
+dev_dependencies:
+  test: ^1.25.0
+  # The same rule set the app is held to, so a lint that fails CI there fails
+  # here too. flutter_lints is itself a pure Dart package.
+  flutter_lints: ^6.0.0

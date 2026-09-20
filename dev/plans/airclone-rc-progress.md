@@ -24,19 +24,21 @@ stops mid-way can be replaced by one that reads only this file.
 
 ## Status
 
-**Current step: A1 — decouple in place.**
+**Current step: A2 — create the package and move.** A1 is done: nothing under
+`app/lib/src/rclone/` imports `../state`, `../ui` or Flutter any more, apart from the two
+files that stay behind (`rclone_engine.dart`, `web_rclone_client.dart`).
 
 | Step | State | Notes |
 | :--- | :--- | :--- |
 | A0 baseline | **DONE** | see below |
-| A1.1 log sink | `TODO` | |
-| A1.2 `echoEngineLines` | `TODO` | |
-| A1.3 `onUndecryptableName` | `TODO` | |
-| A1.4 `instanceTag` | `TODO` | |
-| A1.5 package-private platform | `TODO` | |
-| A1.6 playlist helper | `TODO` | |
-| A1.7 `package:meta` | `TODO` | |
-| A1.8 redaction test | `TODO` | |
+| A1.1 log sink | **DONE** `c70497f` | `RcloneLogSink` + `logEngineEvent` bridge; filter stays in the package |
+| A1.2 `echoEngineLines` | **DONE** `04558df` | default OFF; app passes `kDebugMode` |
+| A1.3 `onUndecryptableName` | **DONE** `04558df` | |
+| A1.4 `instanceTag` | **DONE** `07c271d` | required, no default; app passes `'airclone'`; new test that another app's markers are untouched |
+| A1.5 package-private platform | **DONE** `d512e03` | `EnginePlatform`, web guard = Flutter's own `kIsWeb` constant |
+| A1.6 playlist helper | **DONE** `d512e03` | `rclone/playlist_exts.dart`; `media_formats.dart` imports AND re-exports it (an export alone does not bring names into scope) |
+| A1.7 `package:meta` | **DONE** `04558df`, `51e08bc` | `meta` is now a direct dependency; only the lockfile's dependency KIND changed |
+| A1.8 redaction test | **DONE** `51e08bc` | `test/engine_log_bridge_test.dart` |
 | A2 package + move | `TODO` | |
 | A3 checkpoint | `TODO` | |
 | A4 docs + merge | `TODO` | |
@@ -58,7 +60,7 @@ stops mid-way can be replaced by one that reads only this file.
 
 | Where | Files | Tests passing |
 | :--- | ---: | ---: |
-| `app/test` at `4f346b6` | 181 | _pending_ |
+| `app/test` at `4f346b6` | 181 | **1729 passing, 8 skipped** (exit 0) |
 | `app/test` after the move | | |
 | `packages/airclone_rc/test` after the move | | |
 
@@ -66,7 +68,18 @@ The two after-the-move numbers must add up to the baseline.
 
 ## Decisions taken while implementing
 
-_(append here; each entry dated, so the plan can be corrected at wrap-up)_
+- **2026-09-19 (A1.1):** the sink signature carries `detail`, because
+  `_noteTransportFailure` already passed one to `logDiagnostic` and dropping it would have
+  lost the underlying error from bug reports.
+- **2026-09-19 (A1.4):** `instanceTag` also names the rc username and the multipart
+  boundary, so there is one token rather than three literals; an `assert` keeps it
+  filename- and header-safe (`^[A-Za-z0-9_-]{1,32}$`).
+- **2026-09-19 (A1.6):** `media_formats.dart` both imports and re-exports
+  `playlist_exts.dart`. An `export` alone does not bring the names into the exporting
+  library's own scope, which `isVideoLikeExt` needs.
+- **2026-09-19 (A1):** two test fakes extend `HttpRcloneClient`
+  (`console_controller_test`, `console_pane_focus_test`), so a required constructor
+  argument reaches them too. Grep for `super(` as well as `HttpRcloneClient(`.
 
 ## Known hazards being closed
 
