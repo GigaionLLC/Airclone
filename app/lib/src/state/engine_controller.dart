@@ -599,6 +599,9 @@ class EngineController extends Notifier<EngineUi> {
       );
     } else {
       final http = HttpRcloneClient(
+        // Byte-identical to the temp-file names Airclone has always used, so a
+        // fresh launch still reaps an `rcd` orphaned by an older version.
+        instanceTag: 'airclone',
         rclonePath: _rclonePath!,
         configPath: configPath,
         configPassword: password,

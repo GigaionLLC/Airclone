@@ -45,9 +45,9 @@ void main() {
     }
   });
 
-  File marker(int ownerPid, int rcdPid) {
+  File marker(int ownerPid, int rcdPid, {String tag = 'airclone'}) {
     final f = File(
-      '${tmp.path}${Platform.pathSeparator}airclone_rcd_$ownerPid.pid',
+      '${tmp.path}${Platform.pathSeparator}${tag}_rcd_$ownerPid.pid',
     );
     f.writeAsStringSync('$rcdPid');
     return f;
@@ -57,7 +57,9 @@ void main() {
   Future<RandomAccessFile?> reap({
     int ownPid = 4242,
     bool siblingRunning = false,
+    String tag = 'airclone',
   }) => reapOrphanedRcd(
+    tag: tag,
     tempDir: tmp,
     lockFile: lockFile,
     ownPid: ownPid,
@@ -162,6 +164,26 @@ void main() {
     final lock = await reap();
     expect(killed, isEmpty);
     expect(m.existsSync(), isFalse);
+    lock!
+      ..unlockSync()
+      ..closeSync();
+  });
+
+  // The reason instanceTag is required and has no default. Once this layer is a
+  // package, a second app using it shares this temp dir; if it also shared the
+  // prefix, its first launch would take the lock, find Airclone's marker, and
+  // SIGKILL the engine behind a window someone is looking at.
+  test("another app's markers are never touched", () async {
+    final mine = marker(1111, 9001);
+    final theirs = marker(2222, 9002, tag: 'otherapp');
+    final lock = await reap();
+    expect(killed, [9001], reason: 'only markers carrying our own tag');
+    expect(mine.existsSync(), isFalse);
+    expect(
+      theirs.existsSync(),
+      isTrue,
+      reason: "another app's marker is not even deleted",
+    );
     lock!
       ..unlockSync()
       ..closeSync();

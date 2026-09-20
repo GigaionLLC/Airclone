@@ -26,7 +26,7 @@ class _FakeSettings extends SettingsController {
 }
 
 class _FakeHttp extends HttpRcloneClient {
-  _FakeHttp() : super(rclonePath: 'rclone');
+  _FakeHttp() : super(instanceTag: 'airclone', rclonePath: 'rclone');
   @override
   Future<Stream<String>> commandStream(
     String command,
