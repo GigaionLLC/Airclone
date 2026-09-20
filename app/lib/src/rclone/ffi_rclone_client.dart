@@ -6,6 +6,7 @@ import '../state/media_formats.dart';
 import 'librclone_ffi.dart';
 import 'librclone_object_server.dart';
 import 'rclone_client.dart';
+import 'rclone_log.dart';
 
 /// In-process [RcloneClient]: drives rclone via `librclone` over `dart:ffi`
 /// instead of spawning `rcd`. The engine runs INSIDE the app process, so there is
@@ -19,7 +20,12 @@ class FfiRcloneClient implements RcloneClient, ObjectUploader {
     this.configPath,
     this.configPassword,
     this.previewCacheDir,
+    this.logSink = discardRcloneLog,
   });
+
+  /// Where engine events go, forwarded to the preview byte bridge. Defaults to
+  /// discarding them.
+  final RcloneLogSink logSink;
 
   /// Absolute path to the bundled librclone shared library
   /// (`librclone.dll`/`.dylib`/`.so`) — resolve with [defaultLibrclonePath].
@@ -67,7 +73,11 @@ class FfiRcloneClient implements RcloneClient, ObjectUploader {
     final cacheDir = previewCacheDir;
     if (cacheDir != null && cacheDir.isNotEmpty) {
       try {
-        final server = LibrcloneObjectServer(rpc: rpc, cacheDir: cacheDir);
+        final server = LibrcloneObjectServer(
+          rpc: rpc,
+          cacheDir: cacheDir,
+          logSink: logSink,
+        );
         await server.start();
         _objectServer = server;
       } catch (_) {

@@ -5,9 +5,9 @@ import 'dart:math';
 
 import 'package:crypto/crypto.dart';
 
-import '../state/diagnostics.dart';
 import '../state/host_platform.dart';
 import 'rclone_client.dart';
+import 'rclone_log.dart';
 
 /// A tiny loopback HTTP file server that gives the in-process ([FfiRcloneClient])
 /// engine the ONE thing librclone lacks: a byte endpoint for object previews.
@@ -23,7 +23,14 @@ import 'rclone_client.dart';
 /// every preview widget (`Image.network`, media_kit, the text/pdf fetchers) works
 /// UNCHANGED. See dev/archive-plans/dual-engine-plan.md §"objectRef under FFI".
 class LibrcloneObjectServer {
-  LibrcloneObjectServer({required this.rpc, required this.cacheDir});
+  LibrcloneObjectServer({
+    required this.rpc,
+    required this.cacheDir,
+    this.logSink = discardRcloneLog,
+  });
+
+  /// Where serving failures go. Defaults to discarding them.
+  final RcloneLogSink logSink;
 
   /// The engine's RC entry point (typically `FfiRcloneClient.rpc`).
   final Future<Map<String, dynamic>> Function(
@@ -88,8 +95,8 @@ class LibrcloneObjectServer {
       // arrived. The Web UI server's equivalent loop logs; this one now does too.
       unawaited(
         _handle(req).catchError(
-          (Object e) => logDiagnostic(
-            DiagLevel.warning,
+          (Object e) => logSink(
+            RcloneLogLevel.warning,
             'preview',
             'The in-process object server could not serve a request.',
             detail: '$e',
