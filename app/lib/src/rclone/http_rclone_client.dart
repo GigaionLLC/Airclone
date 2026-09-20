@@ -3,11 +3,10 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 
-import 'package:flutter/foundation.dart' show kDebugMode, visibleForTesting;
 import 'package:http/http.dart' as http;
+import 'package:meta/meta.dart' show visibleForTesting;
 
 import '../state/host_platform.dart';
-import '../state/undecryptable_names.dart';
 import 'rclone_client.dart';
 import 'rclone_log.dart';
 import 'windows_child_job.dart';
@@ -169,6 +168,8 @@ class HttpRcloneClient implements RcloneClient, ObjectUploader {
     this.extraArgs = const <String>[],
     this.extraEnv = const <String, String>{},
     this.logSink = discardRcloneLog,
+    this.onUndecryptableName,
+    this.echoEngineLines = false,
   });
 
   /// Path to the rclone binary (from [RcloneEngine]).
@@ -195,6 +196,20 @@ class HttpRcloneClient implements RcloneClient, ObjectUploader {
   /// to keep is sent here — never the raw child output, which can carry the rc
   /// credentials at high verbosity.
   final RcloneLogSink logSink;
+
+  /// Called when the engine reports a name it could not decrypt, once per such
+  /// line. A crypt remote with the wrong password lists as an EMPTY folder, and
+  /// this is the only signal that a listing was silently shortened — the host
+  /// decides what to tell the user. See [isUndecryptableNameLine].
+  final void Function()? onUndecryptableName;
+
+  /// Print every drained engine line to stdout. **Development only.**
+  ///
+  /// Off by default, and it must stay that way for anything shipped: at high
+  /// verbosity (`-vv`, `--dump`) rclone echoes request headers carrying this
+  /// session's rc credentials, and this path prints lines unfiltered.
+  /// Airclone passes `kDebugMode`.
+  final bool echoEngineLines;
 
   Process? _process;
   int? _port;
@@ -493,7 +508,7 @@ class HttpRcloneClient implements RcloneClient, ObjectUploader {
     // early-return below and the release ERROR/CRITICAL filter would drop it
     // before a pane ever learned that its listing had been shortened.
     if (isUndecryptableNameLine(line)) {
-      noteUndecryptableName();
+      onUndecryptableName?.call();
       // Recorded once per session, not once per name: a single broken folder
       // emits one notice PER ENTRY, which would otherwise spend the ring's whole
       // budget on repetitions of a fact stated fully by the first one — and push
@@ -509,7 +524,7 @@ class HttpRcloneClient implements RcloneClient, ObjectUploader {
         );
       }
     }
-    if (kDebugMode) {
+    if (echoEngineLines) {
       // ignore: avoid_print
       print('[rclone] $line');
       return;
