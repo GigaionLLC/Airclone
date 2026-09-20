@@ -76,6 +76,20 @@ and the user's approval to merge. Nothing merges without it.
 
 The two after-the-move numbers must add up to the baseline.
 
+## A3 evidence so far (2026-09-19)
+
+- **Live FFI engine, locally:** the package's `librclone_integration_test` run against a real
+  `librclone.dll` (the one built in the sibling worktree) — **7 passing**, not skipped. RC
+  round-trip, `restart()`, an `_async` `sync/copy` through `job/status`, two engines
+  back-to-back in one process, and the object server serving bytes with Range. This is the
+  in-process engine working end-to-end from its new home.
+- **CI on PR #7:** `package-airclone-rc` (the new job) passed in 38s; `docs`, `cla`,
+  `mount-probe` and the Linux `librclone` build-and-verify passed. The last one matters twice
+  over: it proves the repointed `paths:` filter fires AND that the integration test runs from
+  the package with `dart test`.
+- **Still to do:** a spawned-`rcd` smoke test needs an `rclone` binary, and there is none on
+  this machine. Ask the user before downloading one.
+
 ## Decisions taken while implementing
 
 - **2026-09-19 (A1.1):** the sink signature carries `detail`, because
