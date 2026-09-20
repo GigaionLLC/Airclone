@@ -26,7 +26,12 @@ stops mid-way can be replaced by one that reads only this file.
 
 ## Status
 
-**Current step: A3 — the proof-of-concept checkpoint.** A1, A2 and most of A4 are done and
+**Current step: A4.4 — the merge, which waits on the user.** A1, A2, A3 and the rest of A4
+are done and green. Nothing else is outstanding except the spawned-`rcd` smoke test (needs an
+`rclone` binary) and the user's decisions: merge, the #6 update, and whether to open a PR for
+the stacked typed-API branch.
+
+Previous state of this line, kept because it says what A3 was: A1, A2 and most of A4 are done and
 green locally. The branch is pushed and **draft [PR #7](https://github.com/GigaionLLC/Airclone/pull/7)**
 is open, which is what makes `ci.yml` run (it triggers on `main` and pull requests, not on a
 branch push). `librclone.yml` and `mas-verify.yml` were dispatched against the branch;
@@ -54,8 +59,8 @@ and the user's approval to merge. Nothing merges without it.
 | A4.1 web build | **DONE** | `flutter build web --no-web-resources-cdn` built clean in 160s — R6 closed |
 | A4.2 Flathub note | **DONE** `f72f1bb` | no manifest exists yet, so it is a note for whoever generates one |
 | A4.3 boundary docs | **DONE** `2de07e4` | `wiki/core/08` §3.0, AGENT.md, backlog row |
-| A4.4 merge | `TODO` | needs the user's approval; expect an AGENT.md conflict with the CLA session's rule |
-| A5 release | `TODO` | |
+| A4.4 merge | **WAITING ON THE USER** | expect an AGENT.md conflict with the CLA session's rule; `main` was still at `4f346b6` at the last check |
+| A5 notes | **DRAFTED** `1434ed0` | `dev/releases/v0.20.0.md`; the version bump and the release itself wait on the user |
 
 ## A0 baseline (2026-09-19)
 
@@ -79,7 +84,16 @@ and the user's approval to merge. Nothing merges without it.
 
 The two after-the-move numbers must add up to the baseline.
 
-## A3 evidence so far (2026-09-19)
+## A3: PASSED (2026-09-20)
+
+Final run on the pushed head `6fa818e`: `analyze-test` pass, **`package-airclone-rc` pass**,
+`docs` pass, `compile` pass, `mount-probe` pass, `window-behaviour` **pass**, `cla` pass,
+`Airclone CLA` pass, `rclone-pin` pass, `flatpak` skipped. `popout` fails, as it does on
+`main`. The `librclone` (all three platforms), `ios-verify` and `mas-verify` runs passed on
+the identical `lib/src` — the only package change after them was formatting `example.dart`,
+which is outside their path filters.
+
+## A3 evidence (2026-09-19)
 
 - **Live FFI engine, locally:** the package's `librclone_integration_test` run against a real
   `librclone.dll` (the one built in the sibling worktree) — **7 passing**, not skipped. RC
