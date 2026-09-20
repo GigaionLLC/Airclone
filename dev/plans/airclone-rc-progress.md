@@ -22,7 +22,7 @@ stops mid-way can be replaced by one that reads only this file.
 | **Verify (app)** | `cd /d/git/Airclone-rc/app && flutter pub get && dart format --output=none --set-exit-if-changed lib test && flutter analyze && flutter test` |
 | **Verify (package)** | `cd /d/git/Airclone-rc/packages/airclone_rc && dart pub get && dart format --output=none --set-exit-if-changed . && dart analyze --fatal-infos && dart test` |
 | **Format gotcha** | format `lib test`, not `.`, once you have built locally: `build/` holds generated Dart (cargokit) that is not formatted, and `dart format` does not honour the analyzer's `exclude`. CI checks out clean, so it never sees this |
-| **Live engines** | both smoke tests are opt-in env vars: `AIRCLONE_RCLONE="C:\Program Files\Aircloneclone.exe"` (v1.75.1, the pin) and `AIRCLONE_LIBRCLONE=<built librclone.dll>`. Binaries exist on this machine already — do not go looking for a download |
+| **Live engines** | both smoke tests are opt-in env vars: `AIRCLONE_RCLONE="C:/Program Files/Airclone/rclone.exe"` (v1.75.1, the pin) and `AIRCLONE_LIBRCLONE=<built librclone.dll>`. Binaries exist on this machine already — do not go looking for a download |
 | **Issue** | [#6](https://github.com/GigaionLLC/Airclone/issues/6) stays open; reply at each milestone (plan → "Keeping #6 informed"). Draft first, post only after the user approves |
 
 ## Status
@@ -133,8 +133,7 @@ which is outside their path filters.
   workflow still reports success. It is the known Flutter/Linux multi-window experiment:
   "the patched plugin does not survive either". Do not chase it.
 - **Live spawned engine (`rcd`), locally: DONE 2026-09-20.** `test/rcd_integration_test.dart`
-  run against `C:\Program Files\Airclone
-clone.exe` (**v1.75.1 — the pin**): **10 passing**,
+  run against `C:/Program Files/Airclone/rclone.exe` (**v1.75.1 — the pin**): **10 passing**,
   not skipped. It spawns the child, proves it received our `--config` (an empty config, so a
   run cannot see the caller's remotes), round-trips `core/version` and `rc/noop`, maps a bad
   method to `RcloneException`, restarts, drives an `_async sync/copy` to `success` through
@@ -143,10 +142,8 @@ clone.exe` (**v1.75.1 — the pin**): **10 passing**,
   and shows `quit()` leaving neither a reap marker nor a live PID. `example.dart --rclone …`
   also printed `rclone v1.75.1` and a real listing. **Both engines are now proven standalone.**
 - **Correction to an earlier note here:** it said there was no `rclone` binary on this machine.
-  There are several — `C:\Program Files\Airclone
-clone.exe` (v1.75.1),
-  `%APPDATA%pp.aircloneirclone\engine
-clone.exe` (v1.74.3) and two WinGet copies. Only
+  There are several — `C:/Program Files/Airclone/rclone.exe` (v1.75.1),
+  `%APPDATA%/app.airclone/airclone/engine/rclone.exe` (v1.74.3) and two WinGet copies. Only
   `PATH` and the Go module cache had been checked. No download was needed, and the failed
   offline `go build` was never necessary.
 
