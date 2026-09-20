@@ -22,7 +22,7 @@ Future<ConnectionResult> testRemoteConnection(
   Remote r,
 ) async {
   try {
-    final res = await client.rpc('operations/about', {'fs': r.fs});
+    final res = await RcApi(client).operations.about(r.fs);
     final free = res['free'];
     final total = res['total'];
     if (free is num && total is num) {

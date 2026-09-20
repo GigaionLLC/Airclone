@@ -1,3 +1,4 @@
+import 'package:airclone_rc/airclone_rc.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -22,7 +23,7 @@ final remoteAboutProvider = FutureProvider.family<RemoteAbout?, String>((
   final client = ref.read(engineControllerProvider).client;
   if (client == null) return null;
   try {
-    final res = await client.rpc('operations/about', {'fs': fs});
+    final res = await RcApi(client).operations.about(fs);
     int? n(String k) => res[k] is num ? (res[k] as num).toInt() : null;
     return RemoteAbout(total: n('total'), used: n('used'), free: n('free'));
   } catch (_) {

@@ -54,12 +54,8 @@ class TransferService {
       // Learn whether the source is a directory.
       var isDir = false;
       try {
-        final stat = await client.rpc('operations/stat', {
-          'fs': srcRemote.fs,
-          'remote': srcPath,
-        });
-        final item = stat['item'];
-        if (item is Map && item['IsDir'] == true) isDir = true;
+        final item = await RcApi(client).operations.stat(srcRemote.fs, srcPath);
+        if (item?.isDir ?? false) isDir = true;
       } catch (_) {
         // If stat fails, fall back to the directory-safe sync path.
         isDir = true;

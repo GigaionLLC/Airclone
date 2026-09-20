@@ -1,3 +1,4 @@
+import 'package:airclone_rc/airclone_rc.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'engine_controller.dart';
@@ -10,7 +11,7 @@ final remoteFeaturesProvider = FutureProvider.family<Map<String, bool>, String>(
     final client = ref.watch(engineControllerProvider).client;
     if (client == null) return const {};
     try {
-      final res = await client.rpc('operations/fsinfo', {'fs': fs});
+      final res = await RcApi(client).operations.fsInfo(fs);
       final feats =
           (res['Features'] as Map?)?.cast<String, dynamic>() ?? const {};
       return {for (final e in feats.entries) e.key: e.value == true};

@@ -113,10 +113,7 @@ class FileOps {
   Future<void> newFolder(Remote r, String parentPath, String name) async {
     final client = _client;
     if (client == null) return;
-    await client.rpc('operations/mkdir', {
-      'fs': r.fs,
-      'remote': join(parentPath, name),
-    });
+    await RcApi(client).operations.mkdir(r.fs, join(parentPath, name));
   }
 
   /// Renames the entry at [path] within [r] to [newName], keeping it in place.
@@ -125,12 +122,12 @@ class FileOps {
   Future<void> rename(Remote r, String path, String newName) async {
     final client = _client;
     if (client == null) return;
-    await client.rpc('operations/movefile', {
-      'srcFs': r.fs,
-      'srcRemote': path,
-      'dstFs': r.fs,
-      'dstRemote': join(_parentOf(path), newName),
-    });
+    await RcApi(client).operations.moveFile(
+      srcFs: r.fs,
+      srcRemote: path,
+      dstFs: r.fs,
+      dstRemote: join(_parentOf(path), newName),
+    );
   }
 
   /// Deletes [f] (located under [parentPath]) within [r].
@@ -142,9 +139,9 @@ class FileOps {
     if (client == null) return;
     final remote = join(parentPath, f.name);
     if (f.isDir) {
-      await client.rpc('operations/purge', {'fs': r.fs, 'remote': remote});
+      await RcApi(client).operations.purge(r.fs, remote);
     } else {
-      await client.rpc('operations/deletefile', {'fs': r.fs, 'remote': remote});
+      await RcApi(client).operations.deleteFile(r.fs, remote);
     }
   }
 
@@ -174,20 +171,17 @@ class FileOps {
   }) async {
     final client = _client;
     if (client == null) return null;
-    final params = <String, dynamic>{
-      'srcFs': srcFs,
-      'dstFs': dstFs,
-      'download': download,
-      'match': true,
-      'missingOnSrc': true,
-      'missingOnDst': true,
-      'differ': true,
-      'error': true,
-      if (config != null && config.isNotEmpty) '_config': config,
-      if (filter != null && filter.isNotEmpty) '_filter': filter,
-      '_async': true,
-    };
-    final started = await client.rpc('operations/check', params);
+    final started = await RcApi(client).operations.check(
+      srcFs: srcFs,
+      dstFs: dstFs,
+      download: download,
+      // The four bucket flags default on, which is what this asked for.
+      options: RcOptions(
+        async: true,
+        config: (config != null && config.isNotEmpty) ? config : null,
+        filter: (filter != null && filter.isNotEmpty) ? filter : null,
+      ),
+    );
     final jobid = (started['jobid'] as num?)?.toInt();
     // An engine that answered inline rather than with a jobid is still a valid
     // answer - take it rather than insisting on the async shape.
@@ -250,7 +244,7 @@ class FileOps {
   Future<(int count, int bytes)> folderSize(String fs) async {
     final client = _client;
     if (client == null) return (0, 0);
-    final res = await client.rpc('operations/size', {'fs': fs});
+    final res = await RcApi(client).operations.size(fs);
     int n(Object? v) => v is num ? v.toInt() : 0;
     return (n(res['count']), n(res['bytes']));
   }
@@ -260,12 +254,12 @@ class FileOps {
   Future<void> copyUrl(Remote r, String folderPath, String url) async {
     final client = _client;
     if (client == null) return;
-    await client.rpc('operations/copyurl', {
-      'fs': r.fs,
-      'remote': folderPath,
-      'url': url,
-      'autoFilename': true,
-    });
+    await RcApi(client).operations.copyUrl(
+      fs: r.fs,
+      remote: folderPath,
+      url: url,
+      autoFilename: true,
+    );
   }
 
   /// Empties the backend trash / aborts incomplete uploads (`operations/cleanup`).
@@ -273,7 +267,7 @@ class FileOps {
   Future<void> cleanup(Remote r) async {
     final client = _client;
     if (client == null) return;
-    await client.rpc('operations/cleanup', {'fs': r.fs});
+    await RcApi(client).operations.cleanup(r.fs);
   }
 }
 

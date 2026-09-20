@@ -168,7 +168,7 @@ class EncryptRemoteController extends Notifier<EncryptRemoteState> {
     var created = false;
     try {
       // 1. Create the probe THROUGH the crypt remote.
-      await client.rpc('operations/mkdir', {'fs': cryptFs, 'remote': probe});
+      await RcApi(client).operations.mkdir(cryptFs, probe);
       created = true;
       // 2. Read the crypt root back — the probe under its plaintext name proves
       //    rclone decrypted the name it just wrote.
@@ -227,10 +227,7 @@ class EncryptRemoteController extends Notifier<EncryptRemoteState> {
       // dir is inert if this fails, so we swallow any error.
       if (created) {
         try {
-          await client.rpc('operations/rmdir', {
-            'fs': cryptFs,
-            'remote': probe,
-          });
+          await RcApi(client).operations.rmdir(cryptFs, probe);
         } catch (_) {
           /* ignore — leftover empty probe dir is harmless */
         }

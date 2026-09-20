@@ -58,11 +58,12 @@ class _PublicLinkDialogState extends State<_PublicLinkDialog> {
       _status = null;
     });
     try {
-      final res = await widget.client.rpc('operations/publiclink', {
-        'fs': widget.fs,
-        'remote': widget.remote,
-        if (_expire != 'off') 'expire': _expire,
-      });
+      final res = await RcApi(widget.client).operations.publicLink(
+        widget.fs,
+        widget.remote,
+        // `expire` is a backend-specific extra, not part of every publiclink.
+        extra: _expire == 'off' ? null : {'expire': _expire},
+      );
       if (!mounted) return;
       final url = (res['url'] ?? '').toString();
       setState(() {
@@ -88,11 +89,11 @@ class _PublicLinkDialogState extends State<_PublicLinkDialog> {
       _error = null;
     });
     try {
-      await widget.client.rpc('operations/publiclink', {
-        'fs': widget.fs,
-        'remote': widget.remote,
-        'unlink': true,
-      });
+      await RcApi(widget.client).operations.publicLink(
+        widget.fs,
+        widget.remote,
+        extra: const {'unlink': true},
+      );
       if (!mounted) return;
       setState(() {
         _busy = false;
