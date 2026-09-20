@@ -80,6 +80,33 @@ jobs:
         run: dart analyze --fatal-infos
       - name: Unit tests
         run: dart test
+      - name: Spawned engine, against a real rclone
+        # `dart test` above SKIPS rcd_integration_test.dart unless
+        # AIRCLONE_RCLONE points at a binary, which would leave the HTTP engine
+        # — the half Airclone runs on every desktop — proven only against
+        # fakes. librclone.yml covers the FFI half the same way, with a lib it
+        # builds. The pin is read out of release.yml because rclone-bump.yml
+        # rewrites it there, so a second copy here would drift on the first
+        # bump; and the variable is `ver`, never RCLONE_VERSION, which rclone
+        # maps to its own --version flag and dies parsing it.
+        run: |
+          set -euo pipefail
+          ver="$(grep -oP 'RCLONE_VERSION: \Kv[0-9.]+' ../../.github/workflows/release.yml | head -1)"
+          [ -n "$ver" ] || { echo "::error::could not read the rclone pin from release.yml"; exit 1; }
+          work="$(mktemp -d)"
+          zip="rclone-${ver}-linux-amd64.zip"
+          base="https://downloads.rclone.org/${ver}"
+          curl -fsSL --retry 3 -o "$work/$zip" "$base/$zip"
+          curl -fsSL --retry 3 -o "$work/SHA256SUMS.txt" "$base/SHA256SUMS"
+          expected="$(awk -v f="$zip" '{ n=$NF; sub(/^[*.\/]+/, "", n); if (n == f) { print $1; exit } }' "$work/SHA256SUMS.txt")"
+          [ -n "$expected" ] || { echo "::error::no checksum for $zip in SHA256SUMS"; exit 1; }
+          actual="$(sha256sum "$work/$zip" | awk '{print $1}')"
+          [ "$actual" = "$expected" ] || { echo "::error::rclone checksum mismatch (expected $expected, got $actual)"; exit 1; }
+          unzip -q "$work/$zip" -d "$work/extract"
+          bin="$work/extract/rclone-${ver}-linux-amd64/rclone"
+          chmod +x "$bin"
+          echo "testing against $("$bin" version | head -1)"
+          AIRCLONE_RCLONE="$bin" dart test test/rcd_integration_test.dart
       - name: The package never imports the app
         # The whole point of the split. The trailing slash is load-bearing:
         # without it this also matches the package's own package:airclone_rc
