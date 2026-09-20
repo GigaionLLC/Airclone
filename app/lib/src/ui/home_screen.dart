@@ -1538,7 +1538,7 @@ Future<void> _confirmDeleteRemote(
   final client = ref.read(engineControllerProvider).client;
   if (client == null) return;
   try {
-    await client.rpc('config/delete', {'name': remote.name});
+    await RcApi(client).config.delete(remote.name);
   } catch (_) {
     /* surfaced via the (unchanged) list if it fails */
   }
@@ -1556,18 +1556,22 @@ Future<void> duplicateRemoteRpc(
   required String source,
   required String newName,
 }) async {
-  final cfg = await client.rpc('config/get', {'name': source});
+  final cfg = await RcApi(client).config.get(source);
   final type = (cfg['type'] as String?) ?? '';
   final params = <String, dynamic>{
     for (final e in cfg.entries)
       if (e.key != 'type') e.key: e.value,
   };
-  await client.rpc('config/create', {
-    'name': newName,
-    'type': type,
-    'parameters': params,
-    'opt': {'nonInteractive': true, 'all': true, 'noObscure': true},
-  });
+  await RcApi(client).config.create(
+    name: newName,
+    type: type,
+    parameters: params,
+    // noObscure: the values came out of config/get already obscured, so
+    // obscuring them again would produce a remote that cannot authenticate.
+    extra: const {
+      'opt': {'nonInteractive': true, 'all': true, 'noObscure': true},
+    },
+  );
 }
 
 /// Prompts for a new name, then duplicates [source] (cloud config copy).

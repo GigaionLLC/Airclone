@@ -566,7 +566,7 @@ class EngineController extends Notifier<EngineUi> {
     final probe = FfiRcloneClient(libraryPath: defaultLibrclonePath());
     try {
       await probe.start();
-      final res = await probe.rpc('config/paths');
+      final res = await RcApi(probe).config.paths();
       final path = res['config'];
       return (path is String && path.isNotEmpty) ? path : null;
     } catch (_) {

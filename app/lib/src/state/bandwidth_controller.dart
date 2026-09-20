@@ -1,3 +1,4 @@
+import 'package:airclone_rc/airclone_rc.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -29,7 +30,7 @@ class BandwidthController extends Notifier<BandwidthState> {
     final client = ref.read(engineControllerProvider).client;
     if (client == null) return;
     try {
-      final res = await client.rpc('core/bwlimit');
+      final res = await RcApi(client).core.bwlimit();
       final rate = (res['rate'] ?? 'off').toString();
       state = state.copyWith(rate: rate.isEmpty ? 'off' : rate);
     } catch (_) {
@@ -42,7 +43,7 @@ class BandwidthController extends Notifier<BandwidthState> {
     if (client == null) return;
     state = state.copyWith(loading: true);
     try {
-      await client.rpc('core/bwlimit', {'rate': rate});
+      await RcApi(client).core.bwlimit(rate: rate);
       state = BandwidthState(rate: rate);
     } catch (_) {
       state = state.copyWith(loading: false);

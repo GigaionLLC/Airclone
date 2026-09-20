@@ -8,12 +8,8 @@ import 'engine_controller.dart';
 final providersProvider = FutureProvider<List<RcloneProvider>>((ref) async {
   final client = ref.watch(engineControllerProvider).client;
   if (client == null) return const [];
-  final res = await client.rpc('config/providers');
-  final list =
-      (res['providers'] as List? ?? const [])
-          .cast<Map<String, dynamic>>()
-          .map(RcloneProvider.fromJson)
-          .toList()
-        ..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+  // Copied before sorting: the typed call returns a fixed-length list.
+  final list = [...await RcApi(client).config.providers()]
+    ..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
   return list;
 });

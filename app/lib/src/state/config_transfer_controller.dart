@@ -214,7 +214,7 @@ deleteAllRemotes({
   final failed = <({String name, String error})>[];
   for (final name in names) {
     try {
-      await client.rpc('config/delete', {'name': name});
+      await RcApi(client).config.delete(name);
       deleted.add(name);
     } on RcloneException catch (e) {
       failed.add((name: name, error: e.message));
@@ -290,7 +290,7 @@ Future<MergeReport> replaceViaRcd({
   for (final name in existingNames) {
     if (incomingNames.contains(name)) continue;
     try {
-      await client.rpc('config/delete', {'name': name});
+      await RcApi(client).config.delete(name);
     } on RcloneException catch (e) {
       failed.add((name: name, error: 'delete failed: ${e.message}'));
     } catch (e) {
@@ -493,7 +493,7 @@ class ConfigTransferController {
     if (client == null) {
       throw const ConfigTransferError('The engine is not ready.');
     }
-    final dump = await client.rpc('config/dump');
+    final dump = await RcApi(client).config.dump();
     final model = <String, Map<String, String>>{};
     dump.forEach((name, cfg) {
       final section = <String, String>{};

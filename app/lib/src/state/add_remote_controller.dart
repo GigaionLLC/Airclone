@@ -173,7 +173,7 @@ class AddRemoteController extends Notifier<AddRemoteState> {
         );
         return;
       }
-      final cfg = await client.rpc('config/get', {'name': remote.name});
+      final cfg = await RcApi(client).config.get(remote.name);
       final pwKeys = {
         for (final o in p.options)
           if (o.isPassword) o.name,

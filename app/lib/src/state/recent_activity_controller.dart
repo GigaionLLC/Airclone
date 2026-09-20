@@ -11,6 +11,6 @@ final recentTransfersProvider =
     FutureProvider.autoDispose<List<TransferredItem>>((ref) async {
       final client = ref.read(engineControllerProvider).client;
       if (client == null) return const [];
-      final res = await client.rpc('core/transferred');
+      final res = await RcApi(client).core.transferred();
       return TransferredItem.listFromResponse(res);
     });

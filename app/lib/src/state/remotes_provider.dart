@@ -18,7 +18,7 @@ import 'host_platform.dart';
 /// nothing in the app had warned them.
 Future<Set<String>?> existingRemoteNames(RcloneClient client) async {
   try {
-    final dump = await client.rpc('config/dump');
+    final dump = await RcApi(client).config.dump();
     return dump.keys.toSet();
   } catch (_) {
     return null; // unreadable -> callers must refuse, not assume "free"
@@ -32,7 +32,7 @@ final remotesProvider = FutureProvider<List<Remote>>((ref) async {
   final client = engine.client;
   if (client == null) return const [];
 
-  final dump = await client.rpc('config/dump');
+  final dump = await RcApi(client).config.dump();
   final remotes = <Remote>[];
   dump.forEach((name, cfg) {
     final type = (cfg is Map && cfg['type'] is String)
