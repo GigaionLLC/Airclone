@@ -27,10 +27,16 @@ stops mid-way can be replaced by one that reads only this file.
 
 ## Status
 
-**Current step: B5 `operations`, on the typed-API branch. B1-B4 are done, and B5 has
-migrated `job`, `mount`, `serve`, `vfs`, `core` and `config` - every namespace except
-`operations`.** Each migration ran the whole app suite: 1685 passing / 1 skipped before and
-after every one of them, which is what the golden tests exist to guarantee.
+**Milestone B is done. The typed API exists, the app is on it, and every migration kept the
+suite at 1685 passing / 1 skipped** - which is what the golden tests exist to guarantee.
+What remains is the maintainer's: the merge (A4.4), the #6 updates, the v0.20.0 release, and
+Milestone C (pub.dev).
+
+The one API addition that came OUT of migrating rather than being planned:
+`operations.listOrNull`. Three call sites needed to tell "no listing in the answer" from "an
+empty directory" - two of them delete or overwrite based on it, and an empty listing is
+exactly what a crypt remote with a wrong `password2` returns. The package grew a method
+instead of the call sites losing the distinction.
 
 Previous state of this line: The merge (A4.4) is deliberately NOT happening
 — the maintainer said so on 2026-09-20: keep working, do not merge.** A1, A2, A3 and the rest
@@ -75,7 +81,8 @@ and the user's approval to merge. Nothing merges without it.
 | B5 job | **DONE** | 7 call sites |
 | B5 mount/serve/vfs | **DONE** | the controllers lost their response parsing; serve/start's hand-kept whitelist is now a signature |
 | B5 core/config | **DONE** | 12 call sites, 11 files |
-| B5 operations | NEXT | `operations/list` LAST: 9 call sites and the browser's hot path |
+| B5 operations | **DONE** | everything but `list` first, then `list`'s 14 call sites |
+| B5 complete | **ALL NAMESPACES MIGRATED** | what stays raw, and why, is written at each site: hashed listings (`RcloneFile` has no Hashes), the console translator, the webui allowlist |
 
 ## A0 baseline (2026-09-19)
 
