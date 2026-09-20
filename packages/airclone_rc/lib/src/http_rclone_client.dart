@@ -177,6 +177,7 @@ class HttpRcloneClient implements RcloneClient, ObjectUploader {
     this.logSink = discardRcloneLog,
     this.onUndecryptableName,
     this.echoEngineLines = false,
+    this.requestTimeout = const Duration(seconds: 30),
   }) : assert(
          _tagShape.hasMatch(instanceTag),
          'instanceTag must be a short filename-safe token: $instanceTag',
@@ -198,6 +199,17 @@ class HttpRcloneClient implements RcloneClient, ObjectUploader {
   /// Path to the rclone binary. Finding, downloading and updating one is the
   /// host's job — this package ships none and looks for none.
   final String rclonePath;
+
+  /// How long a single rc call may take before it is abandoned.
+  ///
+  /// This is a TRANSPORT timeout, not a patience setting: rclone answers most
+  /// rc calls immediately because anything long-running belongs in a job. If
+  /// you are raising this to wait out a copy or a `check` over a big tree, the
+  /// call wants `_async` and `job/status` instead ([RcOptions.async]) — raise
+  /// it for a backend that is genuinely slow to answer, not to hold a socket
+  /// open across work. `core/command` streaming has no timeout at all, by
+  /// design; see [commandStream].
+  final Duration requestTimeout;
 
   /// Optional explicit `--config` path; null uses rclone's default.
   final String? configPath;
@@ -245,7 +257,14 @@ class HttpRcloneClient implements RcloneClient, ObjectUploader {
   String? _rcPass;
   String? _version;
   bool _quitting = false;
-  final _client = http.Client();
+  // Created on demand and CLOSED when the engine stops, rather than living as
+  // long as the object. One client per process is fine for an app that starts
+  // one engine and keeps it; a host that creates and quits clients — a test
+  // suite, a CLI doing a few operations, a server handling a request — leaked
+  // a connection pool every time, because nothing ever closed this.
+  http.Client? _http;
+
+  http.Client get _client => _http ??= http.Client();
 
   /// Fires if the rcd child exits without [quit] being called (crash, OOM
   /// kill). The owner surfaces it and offers a restart.
@@ -500,7 +519,47 @@ class HttpRcloneClient implements RcloneClient, ObjectUploader {
     _lastLoggedLine = null;
     _drainChildOutput(watched);
 
-    await _awaitReady();
+    try {
+      await _awaitReady();
+    } catch (_) {
+      // A start that did not finish must leave nothing running and must leave
+      // this object startable again. Without this, `_process` stays set, so the
+      // next start() returns immediately and hands back a client that can
+      // never work — while the child it spawned keeps running for the life of
+      // the host. Airclone never saw it: one engine, started once, and a user
+      // who restarts the app. A library gets tried again in a loop.
+      await _teardown();
+      rethrow;
+    }
+  }
+
+  /// Stops the child if there is one and returns this object to its
+  /// before-start state: no process, no port, no credentials, no HTTP client,
+  /// no reap marker, no reap lock. Idempotent, and safe when nothing started.
+  Future<void> _teardown() async {
+    _quitting = true;
+    final proc = _process;
+    if (proc != null) {
+      proc.kill();
+      await proc.exitCode.timeout(
+        const Duration(seconds: 5),
+        onTimeout: () => -1,
+      );
+    }
+    _process = null;
+    _port = null;
+    _authHeader = null;
+    _rcPass = null;
+    _version = null;
+    _http?.close();
+    _http = null;
+    // Clean shutdown: drop the reap marker so no future launch targets this PID.
+    try {
+      await _markerFile.delete();
+    } catch (_) {
+      /* already gone; ignore */
+    }
+    _releaseReapLock();
   }
 
   /// Reads the `rcd` child's stdout AND stderr to end, always, on every build.
@@ -658,7 +717,7 @@ class HttpRcloneClient implements RcloneClient, ObjectUploader {
               },
               body: jsonEncode(params ?? const {}),
             )
-            .timeout(const Duration(seconds: 30)),
+            .timeout(requestTimeout),
         onTransportFailure: (e, {required recovered}) =>
             _noteTransportFailure(method, e, recovered: recovered),
       );
@@ -771,31 +830,18 @@ class HttpRcloneClient implements RcloneClient, ObjectUploader {
 
   @override
   Future<void> quit() async {
-    final proc = _process;
-    if (proc == null) return;
-    _quitting = true;
-    try {
-      await rpc('core/quit').timeout(const Duration(seconds: 3));
-    } catch (_) {
-      /* fall through to kill */
+    // NOT `if (_process == null) return`: the child may have died on its own,
+    // and the marker, the lock and the HTTP client would then outlive it.
+    // Asking rclone to exit is the only part that needs a live process.
+    if (_process != null) {
+      _quitting = true;
+      try {
+        await rpc('core/quit').timeout(const Duration(seconds: 3));
+      } catch (_) {
+        /* fall through to kill */
+      }
     }
-    proc.kill();
-    await proc.exitCode.timeout(
-      const Duration(seconds: 5),
-      onTimeout: () => -1,
-    );
-    _process = null;
-    _port = null;
-    _authHeader = null;
-    _rcPass = null;
-    _version = null;
-    // Clean shutdown: drop the reap marker so no future launch targets this PID.
-    try {
-      await _markerFile.delete();
-    } catch (_) {
-      /* already gone; ignore */
-    }
-    _releaseReapLock();
+    await _teardown();
   }
 
   @override
