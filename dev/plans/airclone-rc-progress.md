@@ -84,6 +84,36 @@ and the user's approval to merge. Nothing merges without it.
 | B5 operations | **DONE** | everything but `list` first, then `list`'s 14 call sites |
 | B5 complete | **ALL NAMESPACES MIGRATED** | what stays raw, and why, is written at each site: hashed listings (`RcloneFile` has no Hashes), the console translator, the webui allowlist |
 
+## Verified in the real app (2026-09-20)
+
+Unit tests answer `rpc` with fakes, so none of them can show that the app, the package and a
+real rclone still fit together. These do.
+
+- **`app/integration_test/typed_engine_smoke_test.dart`** — boots the REAL app on the
+  Windows desktop device with the REAL engine and asserts the whole chain: engine start
+  (`v1.75.1`), typed `core.version` / `core.stats` / `job.list`, `config.listRemotes` (16
+  remotes on this machine, counted and never named), the namespaces added for the typed API
+  answered by a live rclone (`mount.types` 1, `serve.types` 7, `mount.listMounts`,
+  `serve.list`, `vfs.list`), a typed `operations.list` of a seeded temp directory matching
+  exactly `{alpha.txt, beta.txt, gamma}` with the right sizes and `isDir`, `stat`, `fsInfo`,
+  `size` (2, because a directory is not an object), `listOrNull` — and then **the GUI: the
+  browser pane rendered those three entries** (`find.text` on each) and navigating into the
+  subdirectory listed it as empty. Run it with
+  `flutter test integration_test/typed_engine_smoke_test.dart -d windows`. It is not in
+  `flutter test`'s path, so CI is unaffected.
+- **The built release binary, launched and inspected from outside** (Win32 + the process
+  table, since screen capture is impossible from a Claude Code session): a visible window
+  (`class FLUTTER_RUNNER_WIN32_WINDOW`, 1280x720), an `rclone rcd` CHILD process whose
+  command line is the one `HttpRcloneClient.start()` builds — `--rc-addr 127.0.0.1:<port>
+  --rc-user airclone --rc-serve --rc-job-expire-duration 24h --config <path>` — with **no
+  `--rc-pass` on it** (the password still travels in the environment), a reap marker named
+  `airclone_rcd_<host pid>.pid` pointing at that engine pid (the R2 fix, in the shipped
+  app), and after a normal window close: exit 0, no orphaned rclone, no marker left behind.
+- **`airclone.exe --version`** prints `Airclone 0.13.9` and exits 0.
+
+`--run-due` was deliberately NOT used to prove engine boot: it runs whatever tasks are due,
+which on a real machine means moving someone's data. The GUI launch boots the same engine.
+
 ## CI on the typed branch (2026-09-20)
 
 `ci.yml` has a `workflow_dispatch` trigger, so the typed branch gets the full CI without a
