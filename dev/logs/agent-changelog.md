@@ -13,6 +13,41 @@ happened": nothing was logged between 2026-07-02 and 2026-07-15, or between 2026
      it is: it used to say ABOVE, which pushed it further down the file with every entry until
      it sat hundreds of lines under the newest one and pointed writers at the wrong place. -->
 
+## [2026-09-20] - The actions are pinned, and the run badges were lying
+
+**Agent:** Claude Opus 5 - `main`
+**Files Modified:** all 13 workflows calling a third-party action, `.github/dependabot.yml` (new),
+`AGENT.md` (Core Development Rule 19 + the workflow row), `dev/README.md` (pinning policy, six
+missing workflow rows, `ci.yml`'s job count).
+**Database/API Changes:** none. Repository: Dependabot enabled for `github-actions`; its first
+grouped pull request (#10, six first-party majors) reviewed and merged; a throwaway pull request
+(#11) opened and closed to exercise the CLA gate.
+**Summary:** Third-party actions are pinned by commit SHA, Dependabot keeps them fresh, and checking
+CI job-by-job rather than by run badge found a job that had been failing for five days.
+
+**Three things worth keeping**
+
+1. **A run badge is not a job result.** `285dfe2` reported six green runs and one red. At job level
+   there were two failures: the red was a macOS runner flake (it passed on a rerun and on a
+   contemporaneous pull request carrying the same code), and the second was `popout` in
+   `linux-runner.yml`, which carries `continue-on-error: true` and had therefore failed on **every
+   push to main since 2026-09-15** while every badge stayed green. Rule 9 already distrusted a green
+   step; it applies to the badge above it too. `gh run view <id> --json jobs` is the honest view.
+2. **`pull_request_target` runs the BASE branch's workflow file, so a change to `cla.yml` cannot be
+   proven before it is merged.** Bumping `actions/checkout` v5 -> v7 inside it mattered, because v7
+   now refuses to check out fork pull request code under exactly that trigger. Our call site is
+   immune (it has no `ref:` - it takes the trusted base), but the bump's own pull request was
+   checked by the OLD file and proved nothing. The way to close that is a throwaway pull request
+   built entirely through the git API - an empty commit against main's own tree, then a ref, then
+   `gh pr create` - which never touches the shared working tree other agents are using.
+3. **Pinning a SHA can drop meaning as well as risk.** `dtolnay/rust-toolchain` chooses the toolchain
+   by which BRANCH you reference, each branch's `action.yml` defaulting the input to its own name.
+   Pinning the `stable` head keeps `default: stable`, so nothing broke - but the ref no longer tells
+   a reader what gets installed, and `master` and the lone `v1` tag declare that input required with
+   no default. Every call site now passes `with: { toolchain: stable }`, and Dependabot is told to
+   leave that one alone, since it would resolve the pin backwards onto the tag.
+
+
 ## [2026-09-19] - Contributions become Gigaion's, and the actions beside our keys stop floating
 
 **Agent:** Claude Opus 5 - `main`
