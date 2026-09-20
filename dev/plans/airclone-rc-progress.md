@@ -84,6 +84,20 @@ and the user's approval to merge. Nothing merges without it.
 | B5 operations | **DONE** | everything but `list` first, then `list`'s 14 call sites |
 | B5 complete | **ALL NAMESPACES MIGRATED** | what stays raw, and why, is written at each site: hashed listings (`RcloneFile` has no Hashes), the console translator, the webui allowlist |
 
+## CI on the typed branch (2026-09-20)
+
+`ci.yml` has a `workflow_dispatch` trigger, so the typed branch gets the full CI without a
+pull request: `gh workflow run ci.yml --ref feat/airclone-rc-typed-api`. Same for
+`linux-runner.yml` (the `compile` job). That is how to verify a branch nobody wants merged
+yet.
+
+Green on `04ff995`: `analyze-test`, `package-airclone-rc`, `docs`, `rclone-pin`. Dispatched
+again on `22859d6` (the example commit) plus the Linux build.
+
+`package-airclone-rc` now downloads the pinned rclone, verifies its checksum and runs
+`rcd_integration_test.dart`, so the spawned engine is exercised live on every run - the FFI
+half already was, in `librclone.yml`.
+
 ## A0 baseline (2026-09-19)
 
 - **Base commit:** `4f346b6` (`origin/main`). Everything below is measured there, and the A2
