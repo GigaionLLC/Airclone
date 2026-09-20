@@ -57,7 +57,7 @@ jobs:
     # integration_test/store_screenshots_test.dart.
     timeout-minutes: 120
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: What simulators does this runner have
         run: |
@@ -69,7 +69,7 @@ jobs:
 
       - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2  # v2.23.0
         with: { channel: stable, flutter-version: 3.47.0, cache: true }
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@v7
         with: { go-version: 'stable', cache: false }
 
       - name: Build librclone for iOS
@@ -366,7 +366,7 @@ jobs:
             echo "$f -> $(sips -g pixelWidth -g pixelHeight "$f" | tail -2 | tr -d ' \n')"
           done
 
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: ios-screenshots

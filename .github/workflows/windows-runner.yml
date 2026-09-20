@@ -47,7 +47,7 @@ jobs:
       run:
         working-directory: app
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       # Pinned to the release pin. A floating channel would run a different
       # embedder than the one that ships.
       - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2  # v2.23.0

@@ -42,7 +42,7 @@ jobs:
     # anywhere.
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: Refuse without credentials
         shell: bash
@@ -119,7 +119,7 @@ jobs:
       # gets far enough to CREATE a submission before saying so, so the CLI also
       # leaves a pending draft behind on every failed attempt. The REST API it
       # sits on has no such restriction. See dev/msstore-ci-setup.md.
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@v7
         with:
           python-version: '3.12'
 

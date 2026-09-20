@@ -39,7 +39,7 @@ jobs:
     runs-on: macos-latest
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: What can this runner's display actually do?
         # Everything downstream depends on the answer, and it costs 30 seconds
@@ -64,7 +64,7 @@ jobs:
       - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2  # v2.23.0
         if: ${{ inputs.mode == 'capture' }}
         with: { channel: stable, flutter-version: 3.47.0, cache: true }
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@v7
         if: ${{ inputs.mode == 'capture' }}
         with: { go-version: 'stable', cache: false }
 
@@ -320,7 +320,7 @@ jobs:
             head -60 "$f"
           done
 
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@v7
         if: ${{ always() && inputs.mode == 'capture' }}
         with:
           name: mas-screenshots

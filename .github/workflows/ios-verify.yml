@@ -53,10 +53,10 @@ jobs:
     runs-on: macos-latest
     timeout-minutes: 90
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2  # v2.23.0
         with: { channel: stable, flutter-version: 3.47.0, cache: true }
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@v7
         # cache:false - the build script synthesizes its pinning module under
         # $HOME, so there is no committed go.sum for the default lookup to key on.
         with: { go-version: 'stable', cache: false }
@@ -250,7 +250,7 @@ jobs:
             exit 1
           fi
 
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: ios-simulator-verify

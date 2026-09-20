@@ -29,7 +29,7 @@ jobs:
   analyze-test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2  # v2.23.0
         with:
           # PINNED, not floating "stable" — see the note in release.yml.
@@ -46,7 +46,7 @@ jobs:
         run: flutter test --coverage
       - name: Upload coverage
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: coverage
           path: app/coverage/lcov.info
@@ -62,7 +62,7 @@ jobs:
       run:
         working-directory: packages/airclone_rc
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2  # v2.23.0
         with:
           # Pure Dart package, but the pinned Flutter SDK carries the Dart SDK
@@ -136,8 +136,8 @@ jobs:
     # fails in exactly that shape, and this catches it before the release does.
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-python@v6
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with: { python-version: '3.12' }
       - name: Check the doc library
         working-directory: .
@@ -171,7 +171,7 @@ jobs:
     # CVEs), so a stale pin should be loud.
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - name: Check rclone pin freshness
         working-directory: .
         run: |
