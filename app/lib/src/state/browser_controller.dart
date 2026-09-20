@@ -759,19 +759,14 @@ class BrowserController extends Notifier<BrowserState> {
     bool superseded() =>
         ses.state.remote != remote || ses.treeGen[folder] != gen;
     try {
-      final res = await client.rpc(
-        'operations/list',
-        remote.listParams(folder),
-      );
+      final entries = await RcApi(
+        client,
+      ).operations.list(remote.listFs, folder, opt: Remote.listOpt);
       if (superseded()) return;
       final sortKey = ses.state.sortKey;
       final asc = ses.state.ascending;
-      final list =
-          (res['list'] as List? ?? const [])
-              .cast<Map<String, dynamic>>()
-              .map(RcloneFile.fromJson)
-              .toList()
-            ..sort((a, b) => compareRcloneFiles(a, b, sortKey, asc));
+      final list = [...entries]
+        ..sort((a, b) => compareRcloneFiles(a, b, sortKey, asc));
       _setTree(
         ses,
         (t) => t.copyWith(
@@ -812,17 +807,14 @@ class BrowserController extends Notifier<BrowserState> {
     // only way to know the list came back short.
     final skipsBefore = undecryptableNameCount;
     try {
-      final res = await client.rpc('operations/list', remote.listParams(path));
+      final entries = await RcApi(
+        client,
+      ).operations.list(remote.listFs, path, opt: Remote.listOpt);
       if (superseded()) return;
-      final list =
-          (res['list'] as List? ?? const [])
-              .cast<Map<String, dynamic>>()
-              .map(RcloneFile.fromJson)
-              .toList()
-            ..sort(
-              (a, b) =>
-                  compareRcloneFiles(a, b, state.sortKey, state.ascending),
-            );
+      final list = [...entries]
+        ..sort(
+          (a, b) => compareRcloneFiles(a, b, state.sortKey, state.ascending),
+        );
       _set(
         state.copyWith(
           entries: list,

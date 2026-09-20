@@ -122,6 +122,23 @@ void main() {
         throwsA(isA<RcloneException>()),
       );
     });
+    test(
+      'an empty listing and an unreadable one are different answers',
+      () async {
+        // Both come back from the same method string; only the answer differs.
+        client.answer = {'list': []};
+        expect(await api.operations.listOrNull('a:', ''), isEmpty);
+        expectCall('operations/list', {'fs': 'a:', 'remote': ''});
+
+        // No `list` key at all: the engine did not answer with a listing.
+        client.answer = const {};
+        expect(await api.operations.listOrNull('a:', ''), isNull);
+        // `list` flattens that to empty, which is why the choice has to be the
+        // caller's - a crypt remote with the wrong password2 lists as empty.
+        expect(await api.operations.list('a:', ''), isEmpty);
+      },
+    );
+
     test('mount', () async {
       await api.mount.mount(
         fs: 'gdrive:',

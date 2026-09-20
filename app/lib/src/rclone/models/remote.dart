@@ -27,14 +27,26 @@ class Remote {
   /// True for synthetic local-disk peers (not in `rclone.conf`).
   final bool isLocal;
 
+  /// The `fs` to LIST this remote with, which is not always [fs] — see
+  /// [listFsFor] for why a local listing needs a different one.
+  String get listFs => listFsFor(fs: fs, type: type, isLocal: isLocal);
+
+  /// The listing options a browse uses: modtimes yes (the browser shows them),
+  /// hashes no (they cost a round trip per file on most backends).
+  static const Map<String, Object?> listOpt = {
+    'noModTime': false,
+    'showHash': false,
+  };
+
   /// Builds an `operations/list` parameter map for [path] within this remote.
   ///
-  /// The `fs` here is [listFs], not [fs] — see that function for why a local
-  /// listing needs a different one.
+  /// Kept for callers that send the map themselves; typed callers pass
+  /// [listFs] and [listOpt] to `RcApi.operations.list`. Both produce the same
+  /// request, which is what the tests on this method check.
   Map<String, dynamic> listParams(String path) => {
-    'fs': listFsFor(fs: fs, type: type, isLocal: isLocal),
+    'fs': listFs,
     'remote': path,
-    'opt': {'noModTime': false, 'showHash': false},
+    'opt': listOpt,
   };
 
   @override

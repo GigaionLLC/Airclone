@@ -227,13 +227,15 @@ class FileOps {
     final client = _client;
     if (client == null) return null;
     try {
-      final res = await client.rpc('operations/list', {
-        'fs': fs,
-        'remote': '',
-        'opt': {'noModTime': true, 'showHash': false},
-      });
-      final list = res['list'];
-      return list is List ? list.isEmpty : null;
+      // listOrNull, not list: an answer with no listing in it must stay
+      // distinguishable from an empty directory, because the caller is about
+      // to decide whether writing here is safe.
+      final entries = await RcApi(client).operations.listOrNull(
+        fs,
+        '',
+        opt: const {'noModTime': true, 'showHash': false},
+      );
+      return entries?.isEmpty;
     } catch (_) {
       return null; // unreadable - the caller refuses rather than guesses
     }

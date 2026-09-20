@@ -100,20 +100,20 @@ class _DedupeDialogState extends State<_DedupeDialog> {
         // checks are unreliable here - a crypt remote's paths are the DECRYPTED
         // names, which do not exist on disk under those names - so ask once for
         // the whole scan rather than pretend to enumerate.
-        final probe = await widget.client.rpc('operations/list', {
-          'fs': widget.fs,
-          'remote': widget.basePath,
-          'opt': {'recurse': true, 'showHash': false, 'noModTime': true},
-        });
+        final probe = await RcApi(widget.client).operations.list(
+          widget.fs,
+          widget.basePath,
+          opt: const {'recurse': true, 'showHash': false, 'noModTime': true},
+        );
         if (g != _gen || !mounted) return;
         var count = 0;
         var bytes = 0;
-        for (final item in (probe['list'] as List? ?? const [])) {
-          final m = (item as Map).cast<String, dynamic>();
-          if ((m['IsDir'] ?? false) as bool) continue;
+        for (final f in probe) {
+          if (f.isDir) continue;
           count++;
-          final sz = m['Size'];
-          if (sz is num && sz > 0) bytes += sz.toInt();
+          // f.size is an int on the model, so the old "is num" guard went
+          // with the Map it was guarding.
+          if (f.size > 0) bytes += f.size;
         }
         if (g != _gen || !mounted) return;
         if (count > 0) {

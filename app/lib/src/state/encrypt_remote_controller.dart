@@ -238,16 +238,12 @@ class EncryptRemoteController extends Notifier<EncryptRemoteState> {
   /// Names of the entries at the root of [fs] via `operations/list` (light
   /// options — we only compare names). Returned as a set for O(1) probe lookup.
   Future<Set<String>> _dirNames(RcloneClient client, String fs) async {
-    final res = await client.rpc('operations/list', {
-      'fs': fs,
-      'remote': '',
-      'opt': {'noModTime': true, 'showHash': false},
-    });
-    final list = (res['list'] as List?) ?? const [];
-    return {
-      for (final e in list.cast<Map<String, dynamic>>())
-        (e['Name'] ?? '') as String,
-    };
+    final entries = await RcApi(client).operations.list(
+      fs,
+      '',
+      opt: const {'noModTime': true, 'showHash': false},
+    );
+    return {for (final f in entries) f.name};
   }
 }
 
