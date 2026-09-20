@@ -44,14 +44,15 @@ Future<void> main(List<String> args) async {
     final version = await client.rpc('core/version');
     stdout.writeln('rclone ${version['version']}');
 
-    // A local directory is just another rclone filesystem, so this works with
-    // no config at all. Point `fs` at 'gdrive:' and it is the same call.
-    final listing = await client.rpc('operations/list', {
-      'fs': Directory(target).absolute.path,
-      'remote': '',
-    });
-    for (final item in (listing['list'] as List)) {
-      final file = RcloneFile.fromJson(item as Map<String, dynamic>);
+    // The same call, typed, over the same client. A local directory is just
+    // another rclone filesystem, so this works with no config at all - point
+    // `fs` at 'gdrive:' and nothing else changes.
+    final api = RcApi(client);
+    final listing = await api.operations.list(
+      Directory(target).absolute.path,
+      '',
+    );
+    for (final file in listing) {
       stdout.writeln('${file.isDir ? 'd' : '-'} ${file.size}\t${file.name}');
     }
   } finally {
