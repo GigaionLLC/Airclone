@@ -27,7 +27,12 @@ stops mid-way can be replaced by one that reads only this file.
 
 ## Status
 
-**Current step: B2/B3 on the typed-API branch. The merge (A4.4) is deliberately NOT happening
+**Current step: B5 `operations`, on the typed-API branch. B1-B4 are done, and B5 has
+migrated `job`, `mount`, `serve`, `vfs`, `core` and `config` - every namespace except
+`operations`.** Each migration ran the whole app suite: 1685 passing / 1 skipped before and
+after every one of them, which is what the golden tests exist to guarantee.
+
+Previous state of this line: The merge (A4.4) is deliberately NOT happening
 — the maintainer said so on 2026-09-20: keep working, do not merge.** A1, A2, A3 and the rest
 of A4 are done and green, and the spawned-`rcd` smoke test is now done too (see A3 evidence),
 so nothing in Milestone A is outstanding except the merge itself and the #6 updates, which
@@ -64,8 +69,13 @@ and the user's approval to merge. Nothing merges without it.
 | A4.4 merge | **WAITING ON THE USER** | expect an AGENT.md conflict with the CLA session's rule; `main` was still at `4f346b6` at the last check |
 | A5 notes | **DRAFTED** `1434ed0` | `dev/releases/v0.20.0.md`; the version bump and the release itself wait on the user |
 | A4.5 rcd smoke test | **DONE** `52bd8ab` | live `HttpRcloneClient` against the pinned rclone v1.75.1, 10 passing; the same test now runs in CI's `package-airclone-rc` job against a checksum-verified download |
-| B2 golden params | in progress | `feat/airclone-rc-typed-api` |
-| B3 namespaces | in progress | order: `operations` → `core` → `job` → `config` → `sync` → `mount`/`serve`/`vfs` |
+| B2 golden params | **DONE** | every typed method pins its method string and params map in `test/rc_api_test.dart` (15 tests) |
+| B3 namespaces | **DONE** | `core`, `config`, `operations`, `job`, `sync`, `mount`, `serve`, `vfs`. Chosen from what the app calls, not from what rclone offers |
+| B4 gotchas encoded | **DONE** | `config/create`'s `parameters`, serve's snake_case `read_only`/`vfs_cache_mode`, mount's Go field names, `vfs/refresh`'s string `'true'`, bisync's `path1`/`path2`, check's five bucket flags |
+| B5 job | **DONE** | 7 call sites |
+| B5 mount/serve/vfs | **DONE** | the controllers lost their response parsing; serve/start's hand-kept whitelist is now a signature |
+| B5 core/config | **DONE** | 12 call sites, 11 files |
+| B5 operations | NEXT | `operations/list` LAST: 9 call sites and the browser's hot path |
 
 ## A0 baseline (2026-09-19)
 
@@ -187,6 +197,23 @@ carries the v0.13.2 `copy_links` fix, so that migration wants its own careful pa
 - **2026-09-19 (A1):** two test fakes extend `HttpRcloneClient`
   (`console_controller_test`, `console_pane_focus_test`), so a required constructor
   argument reaches them too. Grep for `super(` as well as `HttpRcloneClient(`.
+
+## Hazards found while migrating (B5)
+
+- **`return someFuture()` inside a `try` is not caught.** `mountTypesProvider` became
+  `return RcApi(client).mount.types();`, which returns the future OUT of the try block, so
+  the empty-list fallback for "WinFsp is not installed" would have stopped running and the
+  provider would have thrown instead. `flutter analyze` caught it
+  (`unawaited_return_in_try_block`) - it is `return await` now. Expect this on every
+  single-expression `try { return await client.rpc(...) }` that gets migrated.
+- **Writing Windows paths into a doc through a script's string escapes** turned `\a` and
+  `\r` into real BEL and CR bytes in this very file, and `tool/check-docs.py` failed the
+  `docs` job for it. Use forward slashes in docs, or write the file with a tool that does
+  not process escapes.
+- **Two `config/create` callers carry an `opt` that decides whether rclone obscures
+  passwords** (`obscure` when they come from a dialog, `noObscure` when they came out of
+  `config/get` already obscured). Neither is part of the typed signature, so both go through
+  `extra` - the reason `extra` exists.
 
 ## Known hazards being closed
 
