@@ -17,6 +17,7 @@ import 'engine_log_bridge.dart';
 import 'engine_mode.dart';
 import 'host_platform.dart';
 import 'settings_controller.dart';
+import 'undecryptable_names.dart';
 
 /// Resolves the `--config` path the engine should spawn with (null = "let rclone
 /// use its own default location"). Pure and platform-parameterised so the
@@ -609,6 +610,12 @@ class EngineController extends Notifier<EngineUi> {
         ),
         extraEnv: extraEnv,
         logSink: logEngineEvent,
+        // The pane counts hidden entries; the ring only records that the
+        // condition happened. See undecryptable_names.dart.
+        onUndecryptableName: noteUndecryptableName,
+        // Debug builds echo every engine line; release builds must not — those
+        // lines can carry this session's rc credentials.
+        echoEngineLines: kDebugMode,
       );
       // If rcd dies out from under us (crash, Android LMK), don't keep showing
       // a "ready" engine wired to a corpse — surface it with a restart path.
