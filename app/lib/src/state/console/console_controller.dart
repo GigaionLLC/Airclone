@@ -345,7 +345,7 @@ class ConsoleController extends FamilyNotifier<ConsoleState, String> {
     if (jobid == null) return;
     final client = ref.read(engineControllerProvider).client;
     try {
-      await client?.rpc('job/stop', {'jobid': jobid});
+      if (client != null) await RcApi(client).job.stop(jobid);
     } catch (_) {
       // best-effort — the job may have already finished
     }
@@ -372,7 +372,7 @@ class ConsoleController extends FamilyNotifier<ConsoleState, String> {
     final jobid = settled.jobid;
     if (client != null && jobid != null) {
       try {
-        final s = await client.rpc('job/status', {'jobid': jobid});
+        final s = await RcApi(client).job.status(jobid);
         final output = s['output'];
         if (output is Map<String, dynamic>) {
           for (final line in formatRcResult('', output)) {

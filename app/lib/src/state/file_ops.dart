@@ -41,7 +41,7 @@ class CompareJob {
     final j = _jobid;
     if (c == null || j == null) return;
     try {
-      await c.rpc('job/stop', {'jobid': j});
+      await RcApi(c).job.stop(j);
     } catch (_) {
       // Best effort: the job may already have finished. The caller has stopped
       // waiting either way, and a failed stop must not surface as an error.
@@ -200,7 +200,7 @@ class FileOps {
     while (true) {
       await Future<void>.delayed(pollEvery);
       if (job?.cancelled ?? false) return null;
-      final st = await client.rpc('job/status', {'jobid': jobid});
+      final st = await RcApi(client).job.status(jobid);
       if (st['finished'] != true) continue;
       if (st['success'] != true) {
         final err = (st['error'] ?? '').toString();
