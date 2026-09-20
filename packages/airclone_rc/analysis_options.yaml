@@ -1,0 +1,3 @@
+# The same rules the app is held to. CI runs `dart analyze --fatal-infos` here,
+# matching `flutter analyze`'s behaviour of failing on any info-level lint.
+include: package:flutter_lints/flutter.yaml
