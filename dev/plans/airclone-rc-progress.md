@@ -48,7 +48,7 @@ and the user's approval to merge. Nothing merges without it.
 | A2 package + move | **DONE** `94c3915` | scaffold `a1f0e17`-style commit first, then one rename-only move commit |
 | A2 gates | **DONE** | lock diff = one path entry; 1685 app + 48 package = 1733; docs gate clean |
 | A3 checkpoint | **IN PROGRESS** | PR #7 draft; CI + librclone + mas-verify + ios-verify running |
-| A4.1 web build | **IN PROGRESS** | `flutter build web --no-web-resources-cdn` running locally |
+| A4.1 web build | **DONE** | `flutter build web --no-web-resources-cdn` built clean in 160s — R6 closed |
 | A4.2 Flathub note | **DONE** `f72f1bb` | no manifest exists yet, so it is a note for whoever generates one |
 | A4.3 boundary docs | **DONE** `2de07e4` | `wiki/core/08` §3.0, AGENT.md, backlog row |
 | A4.4 merge | `TODO` | needs the user's approval; expect an AGENT.md conflict with the CLA session's rule |
@@ -87,6 +87,8 @@ The two after-the-move numbers must add up to the baseline.
   `mount-probe` and the Linux `librclone` build-and-verify passed. The last one matters twice
   over: it proves the repointed `paths:` filter fires AND that the integration test runs from
   the package with `dart test`.
+- **Web build:** `flutter build web --no-web-resources-cdn` succeeded, so the conditional
+  `dart.library.js_interop` exports still keep `dart:ffi` out of the web build.
 - **Still to do:** a spawned-`rcd` smoke test needs an `rclone` binary, and there is none on
   this machine. Ask the user before downloading one.
 
