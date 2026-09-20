@@ -17,8 +17,7 @@ final serveTypesProvider = FutureProvider<List<String>>((ref) async {
   final client = ref.read(engineControllerProvider).client;
   if (client == null) return const [];
   try {
-    final res = await client.rpc('serve/types');
-    final types = (res['types'] as List?)?.whereType<String>().toSet() ?? {};
+    final types = (await RcApi(client).serve.types()).toSet();
     return [
       for (final t in _curatedServeTypes)
         if (types.contains(t)) t,
@@ -114,17 +113,18 @@ class ServeController extends Notifier<List<ServeServer>> {
     if (client == null) {
       throw RcloneException('serve/start', 'Engine not ready.');
     }
-    // Whitelisted params only — never the rc creds, _config, or config password.
-    final params = <String, dynamic>{
-      'type': type,
-      'fs': fs,
-      'addr': addr,
-      if (authCapable && user.isNotEmpty) 'user': user,
-      if (authCapable && pass.isNotEmpty) 'pass': pass,
-      if (readOnly) 'read_only': true,
-      if (vfsCacheMode != 'off') 'vfs_cache_mode': vfsCacheMode,
-    };
-    final res = await client.rpc('serve/start', params);
+    // Whitelisted params only — never the rc creds, _config, or config
+    // password. The typed call IS that whitelist now: there is no map here to
+    // add a key to, and `extra` is deliberately not passed.
+    final res = await RcApi(client).serve.start(
+      type: type,
+      fs: fs,
+      addr: addr,
+      user: authCapable && user.isNotEmpty ? user : null,
+      pass: authCapable && pass.isNotEmpty ? pass : null,
+      readOnly: readOnly,
+      vfsCacheMode: vfsCacheMode == 'off' ? null : vfsCacheMode,
+    );
     final id = (res['id'] as String?) ?? '';
     final boundAddr = (res['addr'] as String?) ?? addr;
     await _poll();
@@ -135,7 +135,7 @@ class ServeController extends Notifier<List<ServeServer>> {
     final client = ref.read(engineControllerProvider).client;
     if (client == null) return;
     try {
-      await client.rpc('serve/stop', {'id': id});
+      await RcApi(client).serve.stop(id);
     } catch (_) {
       // Server may already be gone — refresh below either way.
     }
@@ -147,7 +147,7 @@ class ServeController extends Notifier<List<ServeServer>> {
     final client = ref.read(engineControllerProvider).client;
     if (client == null) return;
     try {
-      await client.rpc('serve/stopall');
+      await RcApi(client).serve.stopAll();
     } catch (_) {}
     await _poll();
   }
