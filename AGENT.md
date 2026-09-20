@@ -34,6 +34,14 @@ the Mac App Store build — neither of which may spawn a subprocess — link `li
 `app/lib/src/state/engine_controller.dart` supplies what is actually available and calls it;
 the doc above owns the explanation. Read it before touching anything that talks to rclone.
 
+**That interface and both engines are a PACKAGE**, `packages/airclone_rc/` (pure Dart, AGPLv3,
+path dependency), not part of `app/lib` — see §3.0 of the doc above for what moved and the four
+rules that keep the boundary real. In short: it may import neither the app nor Flutter,
+`RcloneClient` never grows a member (capabilities are separate interfaces), engine log lines
+reach a host only through a filtered sink, and `instanceTag` is required because it decides
+whose `rcd` the orphan reaper may kill. `rclone_engine.dart` (binary provisioning, Store rules)
+and `web_rclone_client.dart` stay in the app.
+
 ### 5. 💾 Application state: [`wiki/core/07-state-context.md`](wiki/core/07-state-context.md)
 Store shapes, contexts, and data models.
 
