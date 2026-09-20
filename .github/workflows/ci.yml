@@ -116,6 +116,72 @@ jobs:
             echo "::error::airclone_rc must not import the app"; exit 1
           fi
 
+  # TEMPORARY, removed in the commit right after this one. A new workflow
+  # cannot be dispatched until it is on the default branch, and a publishing
+  # workflow nobody has ever run is the worst possible thing to discover is
+  # broken. This copy proves its steps on a runner; its publish step is
+  # hard-disabled rather than merely ref-guarded.
+  publish-dry-run-TEMP:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: packages/airclone_rc
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dart-lang/setup-dart@6afc89df92d6eb3834022f73cd65adc8cdfcb92d  # v1.8.1
+
+      - name: Install dependencies
+        run: dart pub get
+
+      # The gates the package is held to on every PR, repeated here because a
+      # publish is the one action that cannot be taken back by fixing it.
+      - name: Verify formatting
+        run: dart format --output=none --set-exit-if-changed .
+      - name: Analyze
+        run: dart analyze --fatal-infos
+      - name: Unit tests
+        run: dart test
+      - name: Documentation builds without a warning
+        # A dangling reference is invisible in review and permanent on pub.dev.
+        run: |
+          set -euo pipefail
+          out="$(dart doc --output "$(mktemp -d)" 2>&1)"
+          echo "$out"
+          echo "$out" | grep -q "Found 0 warnings" || {
+            echo "::error::dartdoc reported warnings; they would ship to pub.dev"; exit 1; }
+
+      - name: The tag and the pubspec must agree
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF#refs/tags/airclone_rc-v}"
+          have="$(grep -oP '^version:\s*\K\S+' pubspec.yaml)"
+          [ "$tag" = "$have" ] || {
+            echo "::error::tag says $tag, pubspec says $have"; exit 1; }
+          echo "publishing airclone_rc $have"
+
+      - name: Say plainly if the package is still marked unpublishable
+        # Tag runs only. A manual dispatch is a validation run, and refusing to
+        # validate because the guard is still in place would make the workflow
+        # unprovable until the moment it matters most.
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          set -euo pipefail
+          if grep -q '^publish_to:\s*none' pubspec.yaml; then
+            echo "::error::pubspec.yaml still carries \`publish_to: none\`, which is the guard that keeps this package off pub.dev. Remove it in the same commit that bumps the version you intend to publish - and do the pub.dev side first (admin page → automated publishing → GigaionLLC/Airclone, tag pattern airclone_rc-v{{version}})."
+            exit 1
+          fi
+
+      - name: Dry run
+        run: dart pub publish --dry-run
+
+      # LAST, and only for a tag. A manual dispatch validates and stops, so
+      # this workflow can be exercised without consequence.
+      - name: Publish
+        if: false  # TEMP copy: never, whatever the ref says
+        run: dart pub publish --force
+
   docs:
     # Two cheap guards that had no CI at all, on a runner with no Flutter.
     #
