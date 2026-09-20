@@ -49,6 +49,7 @@ and the user's approval to merge. Nothing merges without it.
 | A1.8 redaction test | **DONE** `51e08bc` | `test/engine_log_bridge_test.dart` |
 | A2 package + move | **DONE** `94c3915` | scaffold `a1f0e17`-style commit first, then one rename-only move commit |
 | A2 gates | **DONE** | lock diff = one path entry; 1685 app + 48 package = 1733; docs gate clean |
+| B1 typed API | **DONE** `bb2f6f4` (branch `feat/airclone-rc-typed-api`) | `RcApi` over `rpc`, golden param tests; kept OFF PR #7 |
 | A3 checkpoint | **IN PROGRESS** | PR #7 draft; CI + librclone + mas-verify + ios-verify running |
 | A4.1 web build | **DONE** | `flutter build web --no-web-resources-cdn` built clean in 160s — R6 closed |
 | A4.2 Flathub note | **DONE** `f72f1bb` | no manifest exists yet, so it is a note for whoever generates one |
@@ -91,11 +92,15 @@ The two after-the-move numbers must add up to the baseline.
   matter twice over: they prove the repointed `paths:` filter fires AND that the integration
   test now runs from the package with `dart test`. `ios-verify` and the Linux/macOS runners
   fired on their own, which is more evidence the filters are right.
-- **`window-behaviour` (macOS) failed** and its last success on `main` is 2026-09-14, so the
-  comparison is stale. The script's own verdict is "this runner cannot see windows, so the
-  --webui result above proves nothing" after a segfault on a plain launch, mentioning
-  `mixin.one/desktop_multi_window` — nothing to do with rclone. Dispatched `macos-runner.yml`
-  against `main` to settle whether it is ours.
+- **`window-behaviour` (macOS) failed, and it is NOT yet cleared.** `macos-runner.yml`
+  dispatched against `main` at the same hour **passed** (`plain launch: 1 window(s)`), while
+  the branch run **segfaulted** on the plain launch (`plain launch: 0 window(s)`), after which
+  the script's own "this runner cannot see windows, so the --webui result above proves
+  nothing" branch exits 2. So the stale-comparison excuse is gone. The job has been re-run on
+  the branch. If it fails again it must be bisected — dispatch `macos-runner.yml` on a branch
+  carrying only the A1 commits, then only A2 — because a segfault at launch is a real symptom
+  even though every change here is Dart-level. The crash line names
+  `mixin.one/desktop_multi_window`, the same plugin behind the known Linux `popout` failure.
 - **The example runs standalone:** `dart run example/example.dart --librclone …` printed
   `rclone v1.74.4` and a real listing, with no Airclone involved.
 - **Local Windows build + run:** `flutter build windows --release` succeeded (387s) and the
