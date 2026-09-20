@@ -13,6 +13,58 @@ happened": nothing was logged between 2026-07-02 and 2026-07-15, or between 2026
      it is: it used to say ABOVE, which pushed it further down the file with every entry until
      it sat hundreds of lines under the newest one and pointed writers at the wrong place. -->
 
+## [2026-09-20] - v0.20.0: the engine layer became a package, and told on itself
+
+**Agent:** Claude Opus 5 - `refactor/airclone-rc-package`, `feat/airclone-rc-typed-api`,
+`fix/package-redacts-its-own-credentials`, `chore/pub-publish-prep`, `release/v0.20.0`
+(PRs #7, #8, #9, #12, #13, #14)
+**Files Modified:** new `packages/airclone_rc/` (the whole rclone transport layer, moved with
+`git mv`: `RcloneClient`, `HttpRcloneClient`, `FfiRcloneClient`, `LibrcloneObjectServer`,
+`WindowsChildJob`, the wire models, plus new `rc_api.dart`, `rc_options.dart`,
+`log_redaction.dart`, `rclone_log.dart`, `platform.dart`); ~56 app files re-pointed at it;
+new `app/lib/src/state/engine_log_bridge.dart`; new `app/integration_test/typed_engine_smoke_test.dart`;
+new `.github/workflows/windows-runner.yml` and `publish-airclone-rc.yml`; `ci.yml` (a
+`package-airclone-rc` job); `librclone.yml`, `ios-verify.yml`, `mas-verify.yml` (`paths:`);
+`tool/check-workflows.py`; `wiki/core/04`, `wiki/core/08`, `AGENT.md`, `dev/README.md`,
+`dev/plans/airclone-rc-*`, `dev/releases/v0.20.0.md`; `app/pubspec.yaml` (0.20.0+145).
+**Database/API Changes:** none in the app. New public API in the package (`RcApi` and its eight
+namespaces, `RcOptions`, `redactEngineLine`); `HttpRcloneClient` gained a REQUIRED `instanceTag`.
+
+**Four things worth keeping**
+
+1. **Making code reusable is how you find out what it assumed.** The orphan-`rcd` reaper killed
+   PIDs from temp files named `airclone_rcd_*`. Correct while Airclone was the only program
+   doing it; the moment a second app used the package, each would have killed the other's live
+   engine mid-copy. `instanceTag` is required with no default, so a host cannot inherit the
+   hazard by forgetting. Two more of the same shape: the package handed RAW engine lines to a
+   host's sink (rclone announces the rc password from the environment at `-vv`, three lines
+   before it serves a request), and `operations/list` reported "the answer had no listing" as
+   "the folder is empty" - which is what let a copy overwrite a file without asking, and is
+   also what a crypt remote with the wrong `password2` returns.
+
+2. **A green run badge is not a green job, and a fake is not an engine.** Every app test answers
+   `rpc` with a fake - 1686 of them in a minute, and none can tell you whether app, package and
+   a real rclone still fit together. `windows-runner.yml` now boots the REAL app on a
+   windows-latest runner and asserts engine start, typed rc calls, app state and rendered
+   widgets; `package-airclone-rc` downloads the pinned rclone, checksum-verified, and drives
+   the spawned engine live. Both were proven on real runners before being called wired - see
+   point 4.
+
+3. **`yaml.safe_load` accepts what GitHub rejects.** An edit script run twice left two `with:`
+   blocks on one step. Every local gate passed, because PyYAML silently keeps the last
+   duplicate key; GitHub rejected the whole file and reported it the way `check-workflows.py`'s
+   docstring already described - a `push`-triggered run named after the file PATH, no logs.
+   The script now parses with a loader that treats a duplicate key as the error YAML says it
+   is, and it earned its keep within the hour, on someone else's seven inserted `with:` blocks.
+
+4. **`workflow_dispatch` cannot reach a workflow that is not on the default branch yet.** So a
+   new workflow cannot be run on the branch that introduces it, and "it will work when you need
+   it" is not a claim to make about a publishing workflow. Both new workflows were proven by
+   temporarily pasting the job into `ci.yml` (which IS dispatchable), dispatching once, and
+   deleting it in the next commit. For the publish copy the publish step was `if: false`, not
+   merely ref-guarded.
+
+
 ## [2026-09-20] - The actions are pinned, and the run badges were lying
 
 **Agent:** Claude Opus 5 - `main`
