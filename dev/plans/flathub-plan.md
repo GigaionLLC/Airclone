@@ -106,6 +106,11 @@ disclosure included) and answers every reviewer. An agent does not draft that te
 1. **A source build — the largest piece.** Flathub rejects both `type: dir` and network access during
    the build. Flutter apps on Flathub use [flatpak-flutter](https://github.com/TheAppgineer/flatpak-flutter),
    which turns a git Flutter SDK source (our pin is 3.47.0) plus `pubspec.lock` into offline sources.
+   **Since v0.20.0 that lockfile contains a `source: path` entry** for `airclone_rc`, the in-repo
+   engine package (see [airclone-rc-package-plan.md](airclone-rc-package-plan.md)). It needs no
+   download — the package is inside the git source flatpak-flutter is already given — but the
+   generator must be seen to SKIP it rather than try to fetch it. Check this the first time the
+   manifest is generated; it is the one new thing the split puts in this path.
    Every pub dependency is `source: hosted` — no git or path dependencies — which keeps this
    tractable. The closest reference is [nl.jknaapen.fladder](https://github.com/flathub/nl.jknaapen.fladder),
    a Flutter + media_kit app that also builds mpv, libass and libplacebo.
