@@ -127,6 +127,21 @@ real rclone still fit together. These do.
 `--run-due` was deliberately NOT used to prove engine boot: it runs whatever tasks are due,
 which on a real machine means moving someone's data. The GUI launch boots the same engine.
 
+## The integration test is wired into CI (2026-09-20)
+
+`.github/workflows/windows-runner.yml` runs `typed_engine_smoke_test.dart` on a windows-latest
+runner, on pushes to `main` and on PRs touching `app/lib/`, `app/integration_test/` or the package.
+The pinned rclone goes on `PATH` (checksum-verified, pin read from release.yml), because PATH is
+the last place `RcloneEngine.findExisting` looks and the only one a fresh runner can have; a
+separate step proves rclone answers BEFORE the app asks, so "no engine" cannot arrive disguised as
+a widget assertion.
+
+**Proving it needed a detour worth remembering:** `workflow_dispatch` only reaches a workflow that
+already exists on the DEFAULT branch, so a new workflow cannot be run on the branch that introduces
+it. A copy of the job went into `ci.yml` (which is dispatchable), was dispatched once on this
+branch, and was removed in the following commit. A CI job that has never run on a real runner is
+not wired, it is hoped for.
+
 ## CI on the typed branch (2026-09-20)
 
 `ci.yml` has a `workflow_dispatch` trigger, so the typed branch gets the full CI without a
