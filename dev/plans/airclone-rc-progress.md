@@ -89,6 +89,10 @@ The two after-the-move numbers must add up to the baseline.
   the package with `dart test`.
 - **Web build:** `flutter build web --no-web-resources-cdn` succeeded, so the conditional
   `dart.library.js_interop` exports still keep `dart:ffi` out of the web build.
+- **`popout` fails, and it is NOT ours.** The Linux runner's pop-out probe fails on `main`
+  too (three runs running back to 2026-09-15) and is `continue-on-error: true`, so the
+  workflow still reports success. It is the known Flutter/Linux multi-window experiment:
+  "the patched plugin does not survive either". Do not chase it.
 - **Still to do:** a spawned-`rcd` smoke test needs an `rclone` binary, and there is none on
   this machine. Ask the user before downloading one.
 
