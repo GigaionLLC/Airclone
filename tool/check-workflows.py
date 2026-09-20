@@ -8,7 +8,7 @@ than its `name:`, with no logs and no annotations reachable by API. Meanwhile
 `yaml.safe_load` says the file is fine - it is valid YAML, just not a valid
 workflow. So a local YAML parse proves nothing, and the feedback loop is a push.
 
-Two checks, both for defects this repo has actually shipped:
+Three checks, all for defects this repo has actually shipped:
 
 1. EMPTY EXPRESSION - `${{ }}` with nothing in it. GitHub template-expands a
    `run:` block BEFORE any shell sees it, so the sequence is parsed wherever it
@@ -22,6 +22,13 @@ Two checks, both for defects this repo has actually shipped:
    `boolean` inputs cannot carry a payload and are allowed; `string` inputs must
    travel through `env:` and be quoted.
 
+3. DUPLICATE KEY in a mapping - two `with:` blocks on one step, say. YAML says
+   this is an error; PyYAML's SafeLoader disagrees and silently keeps the last
+   one, so `yaml.safe_load` returns a document that looks right and the file
+   is rejected. That is precisely the combination this script exists for: it
+   happened on 2026-09-20 when an edit was applied twice, and the only symptom
+   was a `push`-triggered run named after the file path.
+
 Exit 1 on any finding. Dependency-free apart from PyYAML, which CI already has.
 """
 from __future__ import annotations
@@ -33,6 +40,29 @@ import re
 import sys
 
 import yaml
+
+class StrictLoader(yaml.SafeLoader):
+    """SafeLoader that treats a duplicate mapping key as the error YAML says it is."""
+
+
+def _no_duplicate_keys(loader, node, deep=False):
+    mapping = {}
+    for key_node, value_node in node.value:
+        key = loader.construct_object(key_node, deep=deep)
+        if key in mapping:
+            raise yaml.constructor.ConstructorError(
+                None, None,
+                f"duplicate key {key!r} - GitHub rejects the file, "
+                "and yaml.safe_load quietly keeps the last one",
+                key_node.start_mark,
+            )
+        mapping[key] = loader.construct_object(value_node, deep=deep)
+    return mapping
+
+
+StrictLoader.add_constructor(
+    yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG, _no_duplicate_keys
+)
 
 WF = os.path.join(".github", "workflows", "*.yml")
 EXPR = re.compile(r"\$\{\{(.*?)\}\}", re.S)
@@ -77,7 +107,7 @@ def main() -> int:
                 findings.append((f, text[:m.start()].count("\n") + 1,
                                  "empty ${{ }} expression - invalidates the whole file"))
         try:
-            doc = yaml.safe_load(text)
+            doc = yaml.load(text, Loader=StrictLoader)  # noqa: S506 - StrictLoader is SafeLoader
         except yaml.YAMLError as exc:
             findings.append((f, 0, f"not valid YAML: {exc}"))
             continue
