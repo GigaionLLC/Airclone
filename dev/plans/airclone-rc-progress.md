@@ -22,14 +22,16 @@ stops mid-way can be replaced by one that reads only this file.
 | **Verify (app)** | `cd /d/git/Airclone-rc/app && flutter pub get && dart format --output=none --set-exit-if-changed lib test && flutter analyze && flutter test` |
 | **Verify (package)** | `cd /d/git/Airclone-rc/packages/airclone_rc && dart pub get && dart format --output=none --set-exit-if-changed . && dart analyze --fatal-infos && dart test` |
 | **Format gotcha** | format `lib test`, not `.`, once you have built locally: `build/` holds generated Dart (cargokit) that is not formatted, and `dart format` does not honour the analyzer's `exclude`. CI checks out clean, so it never sees this |
+| **Live engines** | both smoke tests are opt-in env vars: `AIRCLONE_RCLONE="C:\Program Files\Aircloneclone.exe"` (v1.75.1, the pin) and `AIRCLONE_LIBRCLONE=<built librclone.dll>`. Binaries exist on this machine already — do not go looking for a download |
 | **Issue** | [#6](https://github.com/GigaionLLC/Airclone/issues/6) stays open; reply at each milestone (plan → "Keeping #6 informed"). Draft first, post only after the user approves |
 
 ## Status
 
-**Current step: A4.4 — the merge, which waits on the user.** A1, A2, A3 and the rest of A4
-are done and green. Nothing else is outstanding except the spawned-`rcd` smoke test (needs an
-`rclone` binary) and the user's decisions: merge, the #6 update, and whether to open a PR for
-the stacked typed-API branch.
+**Current step: B2/B3 on the typed-API branch. The merge (A4.4) is deliberately NOT happening
+— the maintainer said so on 2026-09-20: keep working, do not merge.** A1, A2, A3 and the rest
+of A4 are done and green, and the spawned-`rcd` smoke test is now done too (see A3 evidence),
+so nothing in Milestone A is outstanding except the merge itself and the #6 updates, which
+wait on the maintainer's wording approval.
 
 Previous state of this line, kept because it says what A3 was: A1, A2 and most of A4 are done and
 green locally. The branch is pushed and **draft [PR #7](https://github.com/GigaionLLC/Airclone/pull/7)**
@@ -61,6 +63,9 @@ and the user's approval to merge. Nothing merges without it.
 | A4.3 boundary docs | **DONE** `2de07e4` | `wiki/core/08` §3.0, AGENT.md, backlog row |
 | A4.4 merge | **WAITING ON THE USER** | expect an AGENT.md conflict with the CLA session's rule; `main` was still at `4f346b6` at the last check |
 | A5 notes | **DRAFTED** `1434ed0` | `dev/releases/v0.20.0.md`; the version bump and the release itself wait on the user |
+| A4.5 rcd smoke test | **DONE** `52bd8ab` | live `HttpRcloneClient` against the pinned rclone v1.75.1, 10 passing; the same test now runs in CI's `package-airclone-rc` job against a checksum-verified download |
+| B2 golden params | in progress | `feat/airclone-rc-typed-api` |
+| B3 namespaces | in progress | order: `operations` → `core` → `job` → `config` → `sync` → `mount`/`serve`/`vfs` |
 
 ## A0 baseline (2026-09-19)
 
@@ -82,7 +87,11 @@ and the user's approval to merge. Nothing merges without it.
 | `app/test` after the move | 176 | **1685 passing, 1 skipped** |
 | `packages/airclone_rc/test` after the move | 6 | **48 passing, 7 skipped** |
 
-The two after-the-move numbers must add up to the baseline.
+The two after-the-move numbers must add up to the baseline. **They no longer do, on purpose:**
+`415cefc` added 2 package tests (`instance_tag_test.dart`) and `52bd8ab` added 10 more
+(`rcd_integration_test.dart`, skipped unless `AIRCLONE_RCLONE` is set), so the package now
+reports **50 passing, 17 skipped**. The identity 1685 + 48 = 1733 holds at the move commit
+`94c3915`, which is where the gate applies.
 
 ## A3: PASSED (2026-09-20)
 
@@ -123,10 +132,23 @@ which is outside their path filters.
   too (three runs running back to 2026-09-15) and is `continue-on-error: true`, so the
   workflow still reports success. It is the known Flutter/Linux multi-window experiment:
   "the patched plugin does not survive either". Do not chase it.
-- **Still to do: the spawned-`rcd` smoke test.** There is no `rclone` binary on this machine.
-  Building one offline from the Go module cache FAILED (the full CLI needs `scsu`, which
-  librclone's build never pulled), so getting one means a download — ask the user first. The
-  FFI half of the engine is covered by the live run above; this is the other half.
+- **Live spawned engine (`rcd`), locally: DONE 2026-09-20.** `test/rcd_integration_test.dart`
+  run against `C:\Program Files\Airclone
+clone.exe` (**v1.75.1 — the pin**): **10 passing**,
+  not skipped. It spawns the child, proves it received our `--config` (an empty config, so a
+  run cannot see the caller's remotes), round-trips `core/version` and `rc/noop`, maps a bad
+  method to `RcloneException`, restarts, drives an `_async sync/copy` to `success` through
+  `job/status`, serves object bytes over loopback with Range **and 401s without the session
+  credentials**, uploads through the hand-built multipart body, reads `core/command` as lines,
+  and shows `quit()` leaving neither a reap marker nor a live PID. `example.dart --rclone …`
+  also printed `rclone v1.75.1` and a real listing. **Both engines are now proven standalone.**
+- **Correction to an earlier note here:** it said there was no `rclone` binary on this machine.
+  There are several — `C:\Program Files\Airclone
+clone.exe` (v1.75.1),
+  `%APPDATA%pp.aircloneirclone\engine
+clone.exe` (v1.74.3) and two WinGet copies. Only
+  `PATH` and the Go module cache had been checked. No download was needed, and the failed
+  offline `go build` was never necessary.
 
 ## Decisions taken while implementing
 
