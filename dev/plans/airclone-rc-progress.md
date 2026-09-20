@@ -83,18 +83,30 @@ The two after-the-move numbers must add up to the baseline.
   round-trip, `restart()`, an `_async` `sync/copy` through `job/status`, two engines
   back-to-back in one process, and the object server serving bytes with Range. This is the
   in-process engine working end-to-end from its new home.
-- **CI on PR #7:** `package-airclone-rc` (the new job) passed in 38s; `docs`, `cla`,
-  `mount-probe` and the Linux `librclone` build-and-verify passed. The last one matters twice
-  over: it proves the repointed `paths:` filter fires AND that the integration test runs from
-  the package with `dart test`.
+- **CI on PR #7:** passing — `package-airclone-rc` (the new job, 38s), `analyze-test`,
+  `docs`, `cla`, `mount-probe`, Linux `compile`, **all three `librclone` build-and-verify
+  matrix legs** (Linux, macOS, Windows) and the MAS `sandbox-verify`. The librclone legs
+  matter twice over: they prove the repointed `paths:` filter fires AND that the integration
+  test now runs from the package with `dart test`. `ios-verify` and the Linux/macOS runners
+  fired on their own, which is more evidence the filters are right.
+- **`window-behaviour` (macOS) failed** and its last success on `main` is 2026-09-14, so the
+  comparison is stale. The script's own verdict is "this runner cannot see windows, so the
+  --webui result above proves nothing" after a segfault on a plain launch, mentioning
+  `mixin.one/desktop_multi_window` — nothing to do with rclone. Dispatched `macos-runner.yml`
+  against `main` to settle whether it is ours.
+- **The example runs standalone:** `dart run example/example.dart --librclone …` printed
+  `rclone v1.74.4` and a real listing, with no Airclone involved.
+- **Local Windows build:** `flutter build windows --release` against the package.
 - **Web build:** `flutter build web --no-web-resources-cdn` succeeded, so the conditional
   `dart.library.js_interop` exports still keep `dart:ffi` out of the web build.
 - **`popout` fails, and it is NOT ours.** The Linux runner's pop-out probe fails on `main`
   too (three runs running back to 2026-09-15) and is `continue-on-error: true`, so the
   workflow still reports success. It is the known Flutter/Linux multi-window experiment:
   "the patched plugin does not survive either". Do not chase it.
-- **Still to do:** a spawned-`rcd` smoke test needs an `rclone` binary, and there is none on
-  this machine. Ask the user before downloading one.
+- **Still to do: the spawned-`rcd` smoke test.** There is no `rclone` binary on this machine.
+  Building one offline from the Go module cache FAILED (the full CLI needs `scsu`, which
+  librclone's build never pulled), so getting one means a download — ask the user first. The
+  FFI half of the engine is covered by the live run above; this is the other half.
 
 ## Decisions taken while implementing
 
