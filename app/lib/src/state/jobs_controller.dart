@@ -233,9 +233,7 @@ class JobsController extends Notifier<List<Job>> {
       // an rclone-jobid group would never match and progress would read zero.
       // (`job/status` below correctly takes the rclone jobid.)
       try {
-        final stats = await client.rpc('core/stats', {
-          'group': 'airclone/${job.id}',
-        });
+        final stats = await api.core.stats(group: 'airclone/${job.id}');
         final bytes = _asInt(stats['bytes']);
         final speed = _asDouble(stats['speed']);
         final items = TransferItem.listFrom(stats['transferring']);

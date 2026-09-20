@@ -91,10 +91,10 @@ class EncryptRemoteController extends Notifier<EncryptRemoteState> {
     }
     state = const EncryptRemoteState(phase: EncryptPhase.creating);
     try {
-      final res = await client.rpc('config/create', {
-        'name': cryptName,
-        'type': 'crypt',
-        'parameters': {
+      final res = await RcApi(client).config.create(
+        name: cryptName,
+        type: 'crypt',
+        parameters: {
           'remote': baseFs,
           'filename_encryption': filenameEncryption,
           'directory_name_encryption': '$dirNameEncryption',
@@ -103,8 +103,10 @@ class EncryptRemoteController extends Notifier<EncryptRemoteState> {
         },
         // obscure: rclone obscures the IsPassword fields server-side. Do NOT
         // also pre-obscure (would double-obscure). Never log this body.
-        'opt': {'nonInteractive': true, 'obscure': true},
-      });
+        extra: const {
+          'opt': {'nonInteractive': true, 'obscure': true},
+        },
+      );
       final err = (res['Error'] as String?) ?? '';
       if (err.isNotEmpty) {
         state = EncryptRemoteState(phase: EncryptPhase.error, error: err);

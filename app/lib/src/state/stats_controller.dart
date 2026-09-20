@@ -54,7 +54,7 @@ class StatsController extends Notifier<CoreStats> {
     final client = ref.read(engineControllerProvider).client;
     if (client == null) return;
     try {
-      final res = await client.rpc('core/stats');
+      final res = await RcApi(client).core.stats();
       state = _parse(res);
     } catch (_) {
       // Keep the last good snapshot on any error.
