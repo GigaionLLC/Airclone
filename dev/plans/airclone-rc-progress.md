@@ -147,6 +147,23 @@ which is outside their path filters.
   `PATH` and the Go module cache had been checked. No download was needed, and the failed
   offline `go build` was never necessary.
 
+## B5: where to start migrating call sites (not done — one namespace per PR)
+
+`job/*` is the cleanest first namespace: five call sites, each an exact 1:1 with a typed
+method, all already covered by tests.
+
+| Call site | Becomes |
+| :--- | :--- |
+| `state/file_ops.dart:44` `rpc('job/stop', {'jobid': j})` | `api.job.stop(j)` |
+| `state/file_ops.dart:203` `rpc('job/status', …)` | `api.job.status(jobid)` |
+| `state/jobs_controller.dart:203` | `api.job.stop(jobid)` |
+| `state/jobs_controller.dart:259` | `api.job.status(jobid)` |
+| `state/scheduler_controller.dart:377` | `api.job.status(rcJobid)` |
+
+Hold ONE `RcApi` per client rather than building one per call — the jobs poller runs at 1 Hz.
+`operations/list` is deliberately NOT first: its params come from `Remote.listParams`, which
+carries the v0.13.2 `copy_links` fix, so that migration wants its own careful pass.
+
 ## Decisions taken while implementing
 
 - **2026-09-19 (A1.1):** the sink signature carries `detail`, because
