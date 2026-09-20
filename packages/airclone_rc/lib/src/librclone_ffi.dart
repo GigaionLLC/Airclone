@@ -8,10 +8,10 @@
 /// served the page.
 ///
 /// So `librclone_ffi_web.dart` answers "no library here" and throws if anyone
-/// tries to start one. `EngineController` never gets that far on web — it takes
-/// the [WebRcloneClient] branch — so the throw is a backstop, not a path.
-///
-/// See `dev/plans/webui-plan.md` §"Stage A".
+/// tries to start one. A host targeting the web is expected to supply its own
+/// [RcloneClient] that talks to an engine somewhere else — in Airclone's case a
+/// client that POSTs to its Web UI server — so the throw is a backstop rather
+/// than a path anything takes.
 library;
 
 export 'librclone_ffi_io.dart'

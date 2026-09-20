@@ -304,16 +304,48 @@ the wire models. The plan above does none of these.
   argv→RC translator, and the Web UI server's RC allowlist.
 
 ### Milestone C: publish to pub.dev (when chosen)
-- Preconditions: B1 plus the `operations`, `core`, `job` and `config` namespaces done; an
-  `example/`; dartdoc on the public surface; `dart pub publish --dry-run` clean.
+
+**Prepared 2026-09-20. Everything that can be done without an account is done; what is left
+needs a person, and is listed at the end of this section.**
+
+- Preconditions: **all met.** B1 plus the `operations`, `core`, `job` and `config`
+  namespaces done (all eight namespaces, in fact); an `example/` that runs against both
+  engines; dartdoc building with **0 warnings** (three references to app classes survived the
+  move and were dangling — a pub.dev reader would have hit them); `dart pub publish
+  --dry-run` clean apart from the "uncommitted changes" notice a working tree produces.
 - Hardening for outside users: the sink defaults to a no-op; the package redacts **its own
   session's** rc credentials from lines before handing them to any sink (outside sinks won't
   redact); `instanceTag` is required (R2).
 - Automated publishing from GitHub Actions (OIDC) on tags matching
   `airclone_rc-v{{version}}`. That pattern does not match `release.yml`'s `v*`.
+  **Written: [`publish-airclone-rc.yml`](../../.github/workflows/publish-airclone-rc.yml).**
+  It re-runs format, analyze, tests and a zero-warning dartdoc build before it publishes,
+  checks the tag against the pubspec version, and publishes only on a tag — a manual dispatch
+  validates and stops, so the workflow can be exercised without consequence. There is no API
+  key in it or in the repository's secrets: pub.dev verifies a short-lived OIDC token instead,
+  which is what makes step 1 below load-bearing.
 - Package versions are independent of the app, and stay `0.x` until the API settles.
 - **Publishing is effectively permanent** (pub.dev versions can be retracted but not
   deleted). Configuring pub.dev and the first publish are the maintainer's actions.
+
+#### What only the maintainer can do
+
+1. **Claim the package name and enable automated publishing on pub.dev.** On the package's
+   admin page, allow publishing from GitHub Actions for `GigaionLLC/Airclone` with the tag
+   pattern `airclone_rc-v{{version}}`. This is the step that makes the workflow's OIDC token
+   acceptable; nothing in this repository can do it, and nothing in this repository needs a
+   secret once it is done.
+2. **Remove `publish_to: none`** from `packages/airclone_rc/pubspec.yaml`. It is the guard
+   that makes an accidental publish impossible, so it stays until step 1 is done. The
+   workflow checks for it and stops with that explanation rather than failing obscurely.
+3. **Decide the first version.** The package is at `0.1.0` and its version is independent of
+   the app's. It stays `0.x` until the API settles.
+4. **Tag it**: `airclone_rc-v0.1.0` (or whatever step 3 chose). That tag is the point of no
+   return — everything before it is reversible, and the version it publishes can be retracted
+   but never replaced.
+
+A dry run costs nothing and needs none of the above: dispatch the workflow manually and it
+validates the package and stops.
 
 ### Keeping #6 informed
 [#6](https://github.com/GigaionLLC/Airclone/issues/6) stays **open** until the package is on

@@ -62,8 +62,9 @@ bool isEngineFailureLine(String line) {
 ///
 ///     NOTICE: 5etumoc8orqj4ia13cu8c9tu58: Skipping undecryptable file name: …
 ///
-/// It is the ONLY signal that a listing was silently shortened — see
-/// [noteUndecryptableName] for why a UI has to care.
+/// It is the ONLY signal that a listing was silently shortened, which is what
+/// [HttpRcloneClient.onUndecryptableName] exists to hand to a host: a user
+/// looking at a folder that reports itself empty deserves to be told why.
 ///
 /// Matched on rclone's fixed phrase rather than on severity, deliberately: the
 /// line is a NOTICE, so both the debug early-return and the release
@@ -194,7 +195,8 @@ class HttpRcloneClient implements RcloneClient, ObjectUploader {
   /// of which leaves this process's loopback socket.
   final String instanceTag;
 
-  /// Path to the rclone binary (from [RcloneEngine]).
+  /// Path to the rclone binary. Finding, downloading and updating one is the
+  /// host's job — this package ships none and looks for none.
   final String rclonePath;
 
   /// Optional explicit `--config` path; null uses rclone's default.

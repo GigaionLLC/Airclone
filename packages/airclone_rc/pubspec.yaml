@@ -9,6 +9,13 @@ version: 0.1.0
 publish_to: none
 repository: https://github.com/GigaionLLC/Airclone
 issue_tracker: https://github.com/GigaionLLC/Airclone/issues
+# pub.dev facets. Not "airclone": a topic names what the package is for, and
+# nobody searching pub.dev is looking for the app this happened to come from.
+topics:
+  - rclone
+  - cloud-storage
+  - ffi
+  - sync
 
 # PURE DART on purpose: no `flutter:` SDK entry, so an accidental
 # `package:flutter` import fails at `dart pub get` rather than at review time.
