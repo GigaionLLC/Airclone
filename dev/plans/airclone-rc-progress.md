@@ -125,6 +125,9 @@ The two after-the-move numbers must add up to the baseline.
 - **2026-09-19 (A1.6):** `media_formats.dart` both imports and re-exports
   `playlist_exts.dart`. An `export` alone does not bring the names into the exporting
   library's own scope, which `isVideoLikeExt` needs.
+- **2026-09-19 (A3):** `dart format --output=none` REPORTS a file as changed but does not
+  write it. Seeing "1 changed" and moving on is how an unformatted example reached CI. Run
+  `dart format .` (no `--output=none`) to fix, then the checking form to verify.
 - **2026-09-19 (A2):** the package does NOT commit `pubspec.lock` (it is a library; consumers
   resolve their own versions), so `packages/airclone_rc/.gitignore` excludes it.
 - **2026-09-19 (A2):** `engine_log_test` split in two. `isEngineFailureLine` went to the
