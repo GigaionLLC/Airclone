@@ -116,7 +116,19 @@ The warning lives with the service definition in
   (an unparseable store script must not first be discovered half way through a release) and
   `python tool/check-workflows.py` — run all three locally rather than learning from a red check. A
   third job, `rclone-pin`, **warns and never fails** when the rclone version pin drifts between its
-  definition sites or falls behind upstream.
+  definition sites or falls behind upstream. A fourth, `package-airclone-rc`, holds
+  [`packages/airclone_rc`](../../packages/airclone_rc) to the same three gates from inside its own
+  directory (`dart format`, `dart analyze --fatal-infos`, `dart test`), then downloads the pinned
+  rclone, verifies its checksum and runs the package's spawned-engine integration test against it —
+  and fails the build if the package ever imports the app.
+- **`windows-runner.yml`** — on pushes to `main` and PRs that touch `app/lib/`,
+  `app/integration_test/` or the package: builds the app on a windows-latest runner and runs
+  `integration_test/typed_engine_smoke_test.dart`, which starts the **real** engine and asserts the
+  typed rc calls, the app's state and the rendered listing. Every other test of the app answers
+  `rpc` with a fake, which is what makes them fast and what they cannot tell you; the Linux and
+  macOS runners launch the app to see whether a window appears, but this is the one that drives its
+  widgets and its engine together. The pinned rclone goes on `PATH`, because that is the last place
+  the app looks for an engine and the only one a fresh runner can have.
 - **`release.yml`** — on a `v*` tag: builds **Windows** (windows-latest/MSVC), **macOS**
   (macos-latest/Xcode), **Linux**, **Android**, and publishes a **GitHub Release** with the binaries
   attached (marked pre-release when the tag contains `alpha`/`beta`/`rc`).
