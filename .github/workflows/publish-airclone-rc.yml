@@ -78,6 +78,10 @@ jobs:
           echo "publishing airclone_rc $have"
 
       - name: Say plainly if the package is still marked unpublishable
+        # Tag runs only. A manual dispatch is a validation run, and refusing to
+        # validate because the guard is still in place would make the workflow
+        # unprovable until the moment it matters most.
+        if: startsWith(github.ref, 'refs/tags/')
         run: |
           set -euo pipefail
           if grep -q '^publish_to:\s*none' pubspec.yaml; then
