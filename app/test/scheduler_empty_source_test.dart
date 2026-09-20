@@ -1,4 +1,4 @@
-import 'package:airclone/src/rclone/rclone_client.dart';
+import 'package:airclone_rc/airclone_rc.dart';
 // `EnginePhase` also exists in flutter_test's binding, so this one is named.
 import 'package:airclone/src/state/engine_controller.dart' as engine;
 import 'package:airclone/src/state/engine_controller.dart'

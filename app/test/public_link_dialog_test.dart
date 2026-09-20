@@ -1,4 +1,4 @@
-import 'package:airclone/src/rclone/rclone_client.dart';
+import 'package:airclone_rc/airclone_rc.dart';
 import 'package:airclone/src/ui/public_link_dialog.dart';
 import 'package:airclone/src/ui/theme/app_theme.dart';
 import 'package:flutter/material.dart';

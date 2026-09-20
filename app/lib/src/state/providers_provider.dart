@@ -1,6 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../rclone/models/provider.dart';
+import 'package:airclone_rc/airclone_rc.dart';
 import 'engine_controller.dart';
 
 /// Backend types available from rclone (`config/providers`), cached once the engine

@@ -3,7 +3,7 @@ import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../rclone/rclone_client.dart';
+import 'package:airclone_rc/airclone_rc.dart';
 import 'engine_controller.dart';
 import 'remotes_provider.dart';
 

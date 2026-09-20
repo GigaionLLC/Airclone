@@ -13,7 +13,7 @@
 // binding verbatim would silently lose every directory transfer.
 //
 // The ABI is byte-for-byte what rclone/librclone/librclone.go exports, so
-// app/lib/src/rclone/librclone_ffi.dart needs no change to its signatures.
+// packages/airclone_rc/lib/src/librclone_ffi.dart needs no change to its signatures.
 package main
 
 /*

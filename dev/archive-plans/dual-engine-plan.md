@@ -8,14 +8,14 @@ builds have been through App Store review since.
 [`.github/workflows/release.yml`](../../.github/workflows/release.yml) — that is the value that
 actually builds the artifact, and it carries a comment explaining each bump. Do not restate it here;
 a second copy only goes stale, and this one is security-relevant.
-**Owner interface:** [`RcloneClient`](../../app/lib/src/rclone/rclone_client.dart) — the ONE seam.
+**Owner interface:** [`RcloneClient`](../../packages/airclone_rc/lib/src/rclone_client.dart) — the ONE seam.
 
 ## Why
 
 *(Written before the work; the present tense below describes the pre-v0.2.0-beta.1 world.)*
 
 The engine was always a **spawned `rclone rcd`** subprocess driven over loopback
-HTTP ([`HttpRcloneClient`](../../app/lib/src/rclone/http_rclone_client.dart)) — on
+HTTP ([`HttpRcloneClient`](../../packages/airclone_rc/lib/src/http_rclone_client.dart)) — on
 desktop directly, on Android via a bundled `librclone.so` exec'd as a subprocess.
 That is still the desktop default; what follows is why a second engine had to exist
 beside it.
@@ -64,8 +64,8 @@ freed with `RcloneFreeString`. Struct-return-by-value is supported by Dart FFI
 ## Naming
 
 `FfiRcloneClient` (matches the mermaid in the architecture wiki). Lives at
-`app/lib/src/rclone/ffi_rclone_client.dart`. The low-level binding is a separate
-`app/lib/src/rclone/librclone_ffi.dart` (DynamicLibrary + lookups + isolate glue),
+`packages/airclone_rc/lib/src/ffi_rclone_client.dart`. The low-level binding is a separate
+`packages/airclone_rc/lib/src/librclone_ffi.dart` (DynamicLibrary + lookups + isolate glue),
 so the client stays about lifecycle/semantics and the FFI mechanics are isolated
 (and mockable).
 

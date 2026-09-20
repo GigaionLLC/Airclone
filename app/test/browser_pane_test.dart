@@ -1,4 +1,4 @@
-import 'package:airclone/src/rclone/models/rclone_file.dart';
+import 'package:airclone_rc/airclone_rc.dart';
 import 'package:airclone/src/rclone/models/remote.dart';
 import 'package:airclone/src/state/browser_controller.dart';
 import 'package:airclone/src/ui/browser_pane.dart';

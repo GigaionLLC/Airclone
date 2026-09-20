@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../rclone/models/rclone_file.dart';
-import '../rclone/rclone_client.dart';
+import 'package:airclone_rc/airclone_rc.dart';
 import 'dialog_body.dart';
 import 'file_icon.dart';
 import 'format.dart';

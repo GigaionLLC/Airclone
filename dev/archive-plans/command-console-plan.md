@@ -10,7 +10,7 @@ and [`state/console/`](../../app/lib/src/state/console/).
 [`.github/workflows/release.yml`](../../.github/workflows/release.yml) — the value that actually
 builds the artifact, annotated there with why each bump happened. Restating it in a plan header only
 produces a copy that goes stale, and on a security release that matters.
-**Owner interface:** [`RcloneClient`](../../app/lib/src/rclone/rclone_client.dart) — the ONE seam.
+**Owner interface:** [`RcloneClient`](../../packages/airclone_rc/lib/src/rclone_client.dart) — the ONE seam.
 **Reuses:** [`JobsController`](../../app/lib/src/state/jobs_controller.dart) queue · [`PaneSplit`/`PaneTabStrip`](../../app/lib/src/ui) · [`parseEngineFlags`](../../app/lib/src/state/engine_flags.dart) · [`advanced_mode.dart`](../../app/lib/src/state/advanced_mode.dart)
 
 ---
@@ -76,7 +76,7 @@ Future<void> runCommand(ConsoleRequest req) async {
 
 ### 2.3 The `RcloneClient` seam additions
 
-The current seam is a single buffered `rpc()` that awaits the whole HTTP body then `jsonDecode`s it — it **cannot** consume `core/command`'s chunked plaintext. Add exactly two methods to [`rclone_client.dart`](../../app/lib/src/rclone/rclone_client.dart):
+The current seam is a single buffered `rpc()` that awaits the whole HTTP body then `jsonDecode`s it — it **cannot** consume `core/command`'s chunked plaintext. Add exactly two methods to [`rclone_client.dart`](../../packages/airclone_rc/lib/src/rclone_client.dart):
 
 ```dart
 /// A live line stream for an arbitrary rclone subcommand.

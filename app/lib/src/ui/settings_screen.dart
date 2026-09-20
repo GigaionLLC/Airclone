@@ -7,7 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-import '../rclone/librclone_ffi.dart' show librcloneLibraryAvailable;
+import 'package:airclone_rc/airclone_rc.dart' show librcloneLibraryAvailable;
 import '../rclone/rclone_engine.dart';
 import '../state/advanced_mode.dart';
 import '../state/android_native.dart';

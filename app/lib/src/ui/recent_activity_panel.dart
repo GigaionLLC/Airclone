@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../rclone/models/transferred_item.dart';
+import 'package:airclone_rc/airclone_rc.dart';
 import '../state/recent_activity_controller.dart';
 import 'format.dart';
 import 'theme/tokens.dart';

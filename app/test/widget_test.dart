@@ -1,5 +1,4 @@
-import 'package:airclone/src/rclone/models/provider.dart';
-import 'package:airclone/src/rclone/models/rclone_file.dart';
+import 'package:airclone_rc/airclone_rc.dart';
 import 'package:airclone/src/rclone/models/remote.dart';
 import 'package:airclone/src/ui/format.dart';
 import 'package:flutter_test/flutter_test.dart';

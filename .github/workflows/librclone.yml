@@ -18,10 +18,15 @@ on:
     paths:
       - 'dev/desktop/build-librclone.ps1'
       - 'dev/desktop/build-librclone.sh'
-      - 'app/lib/src/rclone/librclone_ffi.dart'
-      - 'app/lib/src/rclone/ffi_rclone_client.dart'
-      - 'app/lib/src/rclone/librclone_object_server.dart'
-      - 'app/test/librclone_integration_test.dart'
+      # The FFI engine lives in the airclone_rc package since v0.20.0. These
+      # paths are the trigger for the only job that builds librclone and runs
+      # the live integration test against it: point them at the old app/lib
+      # location and this workflow simply stops firing, with nothing to see.
+      - 'packages/airclone_rc/lib/src/librclone_ffi.dart'
+      - 'packages/airclone_rc/lib/src/librclone_ffi_io.dart'
+      - 'packages/airclone_rc/lib/src/ffi_rclone_client.dart'
+      - 'packages/airclone_rc/lib/src/librclone_object_server.dart'
+      - 'packages/airclone_rc/test/librclone_integration_test.dart'
       - '.github/workflows/librclone.yml'
 
 permissions:
@@ -102,11 +107,17 @@ jobs:
 
       - run: flutter pub get
 
+      # The test moved with the FFI client into packages/airclone_rc, which is
+      # a pure Dart package: `dart test`, not `flutter test`, and run from the
+      # package rather than from app/ (this workflow's default directory).
       - name: FFI round-trip against the freshly-built lib
+        working-directory: packages/airclone_rc
         env:
           # The integration test opts in only when this points at a real lib.
           AIRCLONE_LIBRCLONE: ${{ github.workspace }}/app/${{ matrix.lib }}
-        run: flutter test test/librclone_integration_test.dart
+        run: |
+          dart pub get
+          dart test test/librclone_integration_test.dart
 
       - uses: actions/upload-artifact@v6
         with:

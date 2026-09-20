@@ -26,7 +26,7 @@ import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-import '../rclone/rclone_client.dart';
+import 'package:airclone_rc/airclone_rc.dart';
 import 'host_platform.dart';
 
 /// Whether the staged file is opened for viewing or offered to a share target.

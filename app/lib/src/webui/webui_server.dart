@@ -27,7 +27,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 
-import '../rclone/rclone_client.dart';
+import 'package:airclone_rc/airclone_rc.dart';
 import '../state/cloud_placeholder.dart';
 import 'webui_assets.dart';
 import 'webui_credentials.dart';

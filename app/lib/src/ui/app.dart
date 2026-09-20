@@ -5,7 +5,7 @@ import 'dart:ui' show AppExitResponse;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../rclone/models/mount_info.dart';
+import 'package:airclone_rc/airclone_rc.dart';
 import '../state/android_native.dart';
 import '../state/diagnostics.dart';
 import '../state/engine_controller.dart';

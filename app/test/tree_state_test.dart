@@ -1,4 +1,4 @@
-import 'package:airclone/src/rclone/models/rclone_file.dart';
+import 'package:airclone_rc/airclone_rc.dart';
 import 'package:airclone/src/state/tree_state.dart';
 import 'package:flutter_test/flutter_test.dart';
 

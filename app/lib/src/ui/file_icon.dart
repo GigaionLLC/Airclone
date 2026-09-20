@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../state/media_formats.dart';
-import '../rclone/models/rclone_file.dart';
+import 'package:airclone_rc/airclone_rc.dart';
 import 'theme/tokens.dart';
 
 /// Coarse visual category for a file, used to pick an icon and tint.

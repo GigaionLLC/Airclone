@@ -6,7 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../rclone/models/job.dart';
 import '../rclone/rclone_engine.dart';
-import '../rclone/windows_child_job.dart';
+import 'package:airclone_rc/airclone_rc.dart';
 import 'archive_command.dart';
 import 'cache_crypto.dart';
 import 'jobs_controller.dart';

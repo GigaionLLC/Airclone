@@ -1,6 +1,6 @@
 import '../state/diagnostics.dart';
 import '../state/media_formats.dart';
-import '../rclone/rclone_client.dart';
+import 'package:airclone_rc/airclone_rc.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';

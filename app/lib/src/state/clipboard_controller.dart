@@ -1,7 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../rclone/models/rclone_file.dart';
+import 'package:airclone_rc/airclone_rc.dart';
 import '../rclone/models/remote.dart';
 
 /// A snapshot of what the user has copied or cut, ready to be pasted into a

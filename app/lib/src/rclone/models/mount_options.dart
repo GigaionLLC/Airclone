@@ -1,6 +1,6 @@
 import 'package:flutter/foundation.dart';
 
-import 'mount_info.dart';
+import 'package:airclone_rc/airclone_rc.dart';
 
 /// Everything Airclone tunes on an `rclone mount`, and the single place that
 /// maps it to the RC wire format.

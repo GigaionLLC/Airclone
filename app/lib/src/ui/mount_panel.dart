@@ -5,7 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../rclone/models/mount_options.dart';
-import '../rclone/rclone_client.dart';
+import 'package:airclone_rc/airclone_rc.dart';
 import '../state/mount_controller.dart';
 import '../state/mount_defaults.dart';
 import '../state/mount_letters.dart';

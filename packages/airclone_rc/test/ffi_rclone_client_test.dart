@@ -1,8 +1,5 @@
-import 'package:airclone/src/rclone/ffi_rclone_client.dart';
-import 'package:airclone/src/rclone/librclone_ffi.dart';
-import 'package:airclone/src/rclone/librclone_object_server.dart';
-import 'package:airclone/src/rclone/rclone_client.dart';
-import 'package:flutter_test/flutter_test.dart';
+import 'package:airclone_rc/airclone_rc.dart';
+import 'package:test/test.dart';
 
 void main() {
   group('mapRpcResult', () {

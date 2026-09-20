@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../rclone/models/rclone_file.dart';
+import 'package:airclone_rc/airclone_rc.dart';
 import 'column_header.dart';
 import 'file_icon.dart';
 import 'format.dart';

@@ -1,7 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:airclone/src/rclone/rclone_client.dart';
+import 'package:airclone_rc/airclone_rc.dart';
 import 'package:airclone/src/state/config_backups.dart';
 import 'package:airclone/src/state/config_io.dart';
 import 'package:airclone/src/state/config_transfer_controller.dart';

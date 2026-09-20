@@ -12,7 +12,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../rclone/models/remote.dart';
-import '../rclone/rclone_client.dart';
+import 'package:airclone_rc/airclone_rc.dart';
 import '../rclone/web_rclone_client.dart';
 import '../state/engine_controller.dart';
 import 'native_drag.dart';

@@ -1,4 +1,4 @@
-import 'package:airclone/src/rclone/rclone_client.dart';
+import 'package:airclone_rc/airclone_rc.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 /// The engine's authorization — the rcd file server's Basic auth, or the

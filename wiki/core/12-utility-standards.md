@@ -129,7 +129,7 @@ Rules:
 - **A lexical sort over formatted names is not a chronological sort.** `ConfigBackups._sortKey`
   exists because the bare `rclone-<stamp>.conf` written first in a second would otherwise rank as the
   newest (`.` > `-`). Build an explicit ordering key when timestamps can collide.
-- **`modTime` may be absent.** [`RcloneFile.fromJson`](../../app/lib/src/rclone/models/rclone_file.dart)
+- **`modTime` may be absent.** [`RcloneFile.fromJson`](../../packages/airclone_rc/lib/src/models/rclone_file.dart)
   uses `DateTime.tryParse` on the lsjson `ModTime` and leaves `null` when it is missing or
   unparseable; `compareRcloneFiles` sorts `null` modTimes **last** regardless of direction.
 

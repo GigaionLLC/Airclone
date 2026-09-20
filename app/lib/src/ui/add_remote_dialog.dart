@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../rclone/models/provider.dart';
+import 'package:airclone_rc/airclone_rc.dart';
 import '../rclone/models/remote.dart';
 import '../state/add_remote_controller.dart';
 import '../state/providers_provider.dart';

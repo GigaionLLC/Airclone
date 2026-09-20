@@ -37,6 +37,12 @@ dependencies:
 
   # State management (server-state cache + client-state stores).
   flutter_riverpod: ^2.6.1
+  # The rclone engine layer: the RcloneClient seam, the spawned-rcd and
+  # in-process librclone engines, and the RC wire models. A path dependency on
+  # a package in THIS repo, so a fix that spans both sides is still one commit.
+  # See dev/plans/airclone-rc-package-plan.md.
+  airclone_rc:
+    path: ../packages/airclone_rc
   # RC HTTP transport (desktop drives `rclone rcd` over loopback HTTP).
   http: ^1.2.0
   # Annotations (@immutable, @visibleForTesting) for the rclone engine layer,

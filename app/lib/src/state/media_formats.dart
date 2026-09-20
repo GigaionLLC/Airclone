@@ -21,9 +21,9 @@ library;
 // to know which extensions need a path-shaped URL, and it cannot ask the app.
 // Re-exported here so this file stays the ONE place media extensions are
 // looked up. See rclone/playlist_exts.dart.
-import '../rclone/playlist_exts.dart';
+import 'package:airclone_rc/airclone_rc.dart';
 
-export '../rclone/playlist_exts.dart' show isPlaylistExt, kPlaylistExts;
+export 'package:airclone_rc/airclone_rc.dart' show isPlaylistExt, kPlaylistExts;
 
 /// Container formats libmpv decodes directly — a real file with real media in it.
 const Set<String> kVideoExts = {

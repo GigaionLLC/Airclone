@@ -1,4 +1,4 @@
-import 'package:airclone/src/rclone/models/transferred_item.dart';
+import 'package:airclone_rc/airclone_rc.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

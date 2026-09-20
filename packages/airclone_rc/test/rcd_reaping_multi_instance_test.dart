@@ -21,8 +21,8 @@ library;
 
 import 'dart:io';
 
-import 'package:airclone/src/rclone/http_rclone_client.dart';
-import 'package:flutter_test/flutter_test.dart';
+import 'package:airclone_rc/airclone_rc.dart';
+import 'package:test/test.dart';
 
 void main() {
   late Directory tmp;

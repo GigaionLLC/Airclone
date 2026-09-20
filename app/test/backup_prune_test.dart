@@ -1,4 +1,4 @@
-import 'package:airclone/src/rclone/rclone_client.dart';
+import 'package:airclone_rc/airclone_rc.dart';
 import 'package:airclone/src/state/backup_prune.dart';
 import 'package:airclone/src/state/engine_controller.dart' as engine;
 import 'package:airclone/src/state/engine_controller.dart'

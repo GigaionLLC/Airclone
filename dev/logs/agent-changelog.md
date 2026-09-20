@@ -615,7 +615,7 @@ mistaken.
 
 **Agent:** Claude Opus 5 - `main`
 **Files Modified:** `.github/workflows/release.yml`, `dev/android/build-rclone.ps1`,
-`dev/desktop/build-librclone.{ps1,sh}`, `app/lib/src/rclone/http_rclone_client.dart`,
+`dev/desktop/build-librclone.{ps1,sh}`, `packages/airclone_rc/lib/src/http_rclone_client.dart`,
 `app/test/{engine_log,rc_retry}_test.dart`, `app/pubspec.yaml`,
 `dev/releases/v0.7.{3,4}.md` (new), `dev/apple-handoff.md`
 **Database/API Changes:** Play open testing serves **121** (v0.7.3) then **122** (v0.7.4), both
@@ -748,7 +748,7 @@ and point at QR import, is queued separately.
 ## [2026-09-03] - Three field reports: a mount freeze, a cramped transfers list, and a TV remote that could not press Unlock
 
 **Agent:** Claude Opus 5 - `main`
-**Files Modified:** `app/lib/src/rclone/http_rclone_client.dart`,
+**Files Modified:** `packages/airclone_rc/lib/src/http_rclone_client.dart`,
 `app/lib/src/state/config_transfer_controller.dart`, `app/lib/src/state/pane_layout.dart`,
 `app/lib/src/ui/{tv,app,mobile_home,home_screen,jobs_dock,jobs_panel,stats_panel,pane_split}.dart`
 (`jobs_dock.dart` is new), `app/test/{tv_dpad,transfers_panel,engine_log}_test.dart` (new),
@@ -887,9 +887,9 @@ Apple credential and exists to prove the DEVICE slice links.
 ## [2026-08-28] - iOS: link librclone into the app and prove it at runtime
 
 **Agent:** Claude Opus 5 - `main`
-**Files Modified:** `app/lib/src/rclone/librclone_ffi.dart`,
+**Files Modified:** `packages/airclone_rc/lib/src/librclone_ffi.dart`,
 `app/lib/src/state/engine_controller.dart`, `app/lib/src/ui/settings_screen.dart`,
-`app/test/ffi_rclone_client_test.dart`, `app/ios/Runner.xcodeproj/project.pbxproj`,
+`packages/airclone_rc/test/ffi_rclone_client_test.dart`, `app/ios/Runner.xcodeproj/project.pbxproj`,
 `app/ios/Runner/Info.plist`, `.github/workflows/ios-verify.yml` (new),
 `.gitignore`, `dev/plans/apple-appstore-plan.md`
 **Database/API Changes:** None

@@ -51,7 +51,7 @@ product-trust work, **P2** = quality and maintainability work that should follow
 number and sends a hard kill without validating process identity or ownership. Concurrent Airclone
 instances can kill one another; PID reuse also makes a stale marker unsafe.
 
-**Evidence:** `app/lib/src/rclone/http_rclone_client.dart:53-83,97-103,143-149,289-294`;
+**Evidence:** `packages/airclone_rc/lib/src/http_rclone_client.dart:53-83,97-103,143-149,289-294`;
 `app/lib/src/headless/headless_runner.dart:31-37`.
 
 **Acceptance notes:** use an ownership-validated per-instance lease/mutex/IPC design (or deliberately
@@ -152,7 +152,7 @@ state after a soft-kill timeout without force-killing and reaping the child.
 
 **Evidence:** `app/lib/src/state/engine_controller.dart:235-321`;
 `app/lib/src/state/jobs_controller.dart:218-273`;
-`app/lib/src/rclone/http_rclone_client.dart:137-173,270-294`;
+`packages/airclone_rc/lib/src/http_rclone_client.dart:137-173,270-294`;
 `app/lib/src/state/transfer_service.dart:27-90,157-215`.
 
 **Acceptance notes:** gate or explicitly reconcile restarts; resolve the live client at dispatch;
@@ -178,7 +178,7 @@ A-to-B-to-A, error ordering, and same-path tab switching.
 file before serving ranges. It ignores the memory-only preference, uses only filesystem + path as its
 cache identity, can reuse stale content, and has no owned size/TTL/LRU cleanup policy.
 
-**Evidence:** `app/lib/src/rclone/librclone_object_server.dart:15-19,51-66,123-198`;
+**Evidence:** `packages/airclone_rc/lib/src/librclone_object_server.dart:15-19,51-66,123-198`;
 `app/lib/src/state/engine_controller.dart:500-509`;
 `app/lib/src/state/cache_crypto.dart:85-168`.
 
@@ -247,10 +247,10 @@ scoped system file/photo pickers before optional all-files access.
 one-second timers can overlap, while the FFI worker is intentionally serialized; preview polling can
 run every 150 ms. Slow calls can build queues and apply stale snapshots.
 
-**Evidence:** `app/lib/src/rclone/librclone_ffi.dart:24-30,118-175,216-240`;
+**Evidence:** `packages/airclone_rc/lib/src/librclone_ffi.dart:24-30,118-175,216-240`;
 `app/lib/src/state/jobs_controller.dart:38-45,218-273`;
 `app/lib/src/state/stats_controller.dart:41-61`;
-`app/lib/src/rclone/librclone_object_server.dart:154-165`.
+`packages/airclone_rc/lib/src/librclone_object_server.dart:154-165`.
 
 **Acceptance notes:** add dedicated isolate error/exit ports, bounded startup/RPC deadlines, and a
 single failure path for pending completers. Replace overlapping timers with non-overlapping,

@@ -10,8 +10,7 @@ library;
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:airclone/src/rclone/models/rclone_file.dart';
-import 'package:airclone/src/rclone/rclone_client.dart';
+import 'package:airclone_rc/airclone_rc.dart';
 import 'package:airclone/src/webui/webui_credentials.dart';
 import 'package:airclone/src/webui/webui_options.dart';
 import 'package:airclone/src/webui/webui_protocol.dart';

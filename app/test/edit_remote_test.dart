@@ -1,6 +1,5 @@
-import 'package:airclone/src/rclone/models/provider.dart';
+import 'package:airclone_rc/airclone_rc.dart';
 import 'package:airclone/src/rclone/models/remote.dart';
-import 'package:airclone/src/rclone/rclone_client.dart';
 import 'package:airclone/src/state/add_remote_controller.dart';
 import 'package:airclone/src/state/engine_controller.dart';
 import 'package:airclone/src/state/providers_provider.dart';

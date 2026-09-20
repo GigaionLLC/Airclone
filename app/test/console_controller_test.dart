@@ -1,4 +1,4 @@
-import 'package:airclone/src/rclone/http_rclone_client.dart';
+import 'package:airclone_rc/airclone_rc.dart';
 import 'package:airclone/src/rclone/models/job.dart';
 import 'package:airclone/src/state/console/console_controller.dart';
 import 'package:airclone/src/state/engine_controller.dart';

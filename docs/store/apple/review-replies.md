@@ -48,7 +48,7 @@ Measure with `wc -c`.
 > be reached by the user. The entitlement exists solely for the internal preview
 > bridge described above.
 >
-> Source reference: app/lib/src/rclone/librclone_object_server.dart in our
+> Source reference: packages/airclone_rc/lib/src/librclone_object_server.dart in our
 > repository, which is public at https://github.com/GigaionLLC/Airclone
 
 ### Why it is worded that way

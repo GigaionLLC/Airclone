@@ -1,5 +1,5 @@
 import 'media_formats.dart';
-import '../rclone/rclone_client.dart';
+import 'package:airclone_rc/airclone_rc.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';

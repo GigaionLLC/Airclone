@@ -32,7 +32,7 @@ today, verified against the source.
 
 ## 1. 🔀 `RcloneClient` — the one engine seam
 
-[`rclone_client.dart`](../../app/lib/src/rclone/rclone_client.dart) declares an
+[`rclone_client.dart`](../../packages/airclone_rc/lib/src/rclone_client.dart) declares an
 `abstract interface class` with **six members**. Everything above it is transport-agnostic Dart.
 
 | Member | Contract |
@@ -62,7 +62,7 @@ There is no third variant. **Android runs the same `HttpRcloneClient` as desktop
 
 | | `HttpRcloneClient` | `FfiRcloneClient` |
 | :--- | :--- | :--- |
-| File | [`http_rclone_client.dart`](../../app/lib/src/rclone/http_rclone_client.dart) | [`ffi_rclone_client.dart`](../../app/lib/src/rclone/ffi_rclone_client.dart) |
+| File | [`http_rclone_client.dart`](../../packages/airclone_rc/lib/src/http_rclone_client.dart) | [`ffi_rclone_client.dart`](../../packages/airclone_rc/lib/src/ffi_rclone_client.dart) |
 | Mechanism | Spawns the `rclone` **executable** as `rcd`; POSTs JSON over loopback HTTP | `dart:ffi` → `librclone`'s C ABI, in-process |
 | Used on | Windows · macOS · Linux (default) · **Android** | Desktop when selected/only option; the only legal path for iOS / Mac App Store |
 | Transport detail | `POST http://127.0.0.1:<free port>/<method>`, Basic auth, 30 s timeout, **one automatic retry on a connection-level failure — read-only methods only** (§6) | `RcloneRPC(method, inputJson) → (Output, Status)` on a worker isolate |
@@ -70,7 +70,7 @@ There is no third variant. **Android runs the same `HttpRcloneClient` as desktop
 | Byte path | rcd's built-in `--rc-serve` file server at `/[<fs>]/<percent-encoded remote>` | `LibrcloneObjectServer` (§1.4) |
 | Extra capability | `commandStream()` — `core/command` with `returnType: STREAM` | none (see [§6](#6--gotchas)) |
 
-**`rcd` spawn argv** ([`http_rclone_client.dart#L259`](../../app/lib/src/rclone/http_rclone_client.dart#L259)):
+**`rcd` spawn argv** ([`http_rclone_client.dart#L259`](../../packages/airclone_rc/lib/src/http_rclone_client.dart#L259)):
 
 ```
 rclone rcd <user extraArgs…> --rc-addr 127.0.0.1:<free port> --rc-user airclone
@@ -98,7 +98,7 @@ rclone rcd <user extraArgs…> --rc-addr 127.0.0.1:<free port> --rc-user airclon
   repeating that would spend the ring's whole budget restating a fact the first line already made.
 
 **librclone C ABI**, confirmed in-tree against rclone v1.75.1's `librclone/librclone.go` (the pin lives in `release.yml` as RCLONE_VERSION - check there, not here)
-([`librclone_ffi.dart#L12`](../../app/lib/src/rclone/librclone_ffi.dart#L12)):
+([`librclone_ffi.dart#L12`](../../packages/airclone_rc/lib/src/librclone_ffi.dart#L12)):
 `RcloneInitialize()`, `RcloneFinalize()`, `RcloneRPC(char*, char*) → {char* Output; int Status;}`,
 `RcloneFreeString(char*)`. **All FFI lives inside one long-lived worker isolate** — `DynamicLibrary`
 and `Pointer` are not sendable, and `RcloneRPC` blocks on network I/O.
@@ -160,7 +160,7 @@ launch.
 
 librclone has no HTTP server and `RcloneRPC` returns JSON only, so `FfiRcloneClient` starts a tiny
 loopback `HttpServer` on port 0 with a per-session Bearer token
-([`librclone_object_server.dart`](../../app/lib/src/rclone/librclone_object_server.dart)).
+([`librclone_object_server.dart`](../../packages/airclone_rc/lib/src/librclone_object_server.dart)).
 
 `GET /obj?fs=…&remote=…` materialises the object into `previewCacheDir` via `operations/copyfile`
 run with `_async: true` (a large download must never block the engine worker isolate), polls
@@ -195,8 +195,8 @@ per-method options.
 | `config/update` | Save an edit; answer an interactive question **during** an edit (never `config/create`, which would recreate) | [`add_remote_controller.dart#L215`](../../app/lib/src/state/add_remote_controller.dart#L215), `#L232` |
 | `config/get` | Prefill the edit form (password fields blanked — an obscured token is never surfaced); read a remote for duplication | [`add_remote_controller.dart#L177`](../../app/lib/src/state/add_remote_controller.dart#L177) · [`home_screen.dart#L1544`](../../app/lib/src/ui/home_screen.dart#L1544) |
 | `config/delete` | Remove a remote; prune remotes absent from an incoming config during a replace; **remove every remote at once** (Settings → Remove all remotes), which backs the config up first and refuses if it cannot | [`home_screen.dart#L1526`](../../app/lib/src/ui/home_screen.dart#L1526) · [`mobile_action_sheets.dart#L583`](../../app/lib/src/ui/mobile_action_sheets.dart#L583) · [`config_transfer_controller.dart#L216`](../../app/lib/src/state/config_transfer_controller.dart#L216) (remove all), `#L292` (replace prune) |
-| `config/paths` | Probe for the config file location — for the in-process engine's encryption gate, and for `engineConfigPath()`, which pins the engine's own config onto every re-exec'd child (§6) | [`engine_controller.dart#L528`](../../app/lib/src/state/engine_controller.dart#L528) · [`http_rclone_client.dart#L427`](../../app/lib/src/rclone/http_rclone_client.dart#L427) |
-| `config/setpath` | Point librclone at an explicit config **after** `RcloneInitialize` | [`librclone_ffi.dart#L324`](../../app/lib/src/rclone/librclone_ffi.dart#L324) |
+| `config/paths` | Probe for the config file location — for the in-process engine's encryption gate, and for `engineConfigPath()`, which pins the engine's own config onto every re-exec'd child (§6) | [`engine_controller.dart#L528`](../../app/lib/src/state/engine_controller.dart#L528) · [`http_rclone_client.dart#L427`](../../packages/airclone_rc/lib/src/http_rclone_client.dart#L427) |
+| `config/setpath` | Point librclone at an explicit config **after** `RcloneInitialize` | [`librclone_ffi.dart#L324`](../../packages/airclone_rc/lib/src/librclone_ffi.dart#L324) |
 | `config/listremotes` 🖥️ | console `listremotes` | [`console_rc_translate.dart#L302`](../../app/lib/src/state/console/console_rc_translate.dart#L302) |
 
 ### `operations/*`
@@ -212,7 +212,7 @@ per-method options.
 | `operations/purge` | Delete a **directory** (recursive); console `purge` | [`file_ops.dart#L113`](../../app/lib/src/state/file_ops.dart#L113) |
 | `operations/deletefile` | Delete a **file**; dedupe delete; console `deletefile` | [`file_ops.dart#L115`](../../app/lib/src/state/file_ops.dart#L115) · [`dedupe_dialog.dart#L290`](../../app/lib/src/ui/dedupe_dialog.dart#L290) |
 | `operations/movefile` | Rename in place (src/dst fs equal); single-**file** move | [`file_ops.dart#L96`](../../app/lib/src/state/file_ops.dart#L96) · [`transfer_service.dart#L79`](../../app/lib/src/state/transfer_service.dart#L79) |
-| `operations/copyfile` | Single-**file** copy; the librclone preview bridge's materialisation | [`transfer_service.dart#L79`](../../app/lib/src/state/transfer_service.dart#L79) · [`librclone_object_server.dart#L132`](../../app/lib/src/rclone/librclone_object_server.dart#L132) |
+| `operations/copyfile` | Single-**file** copy; the librclone preview bridge's materialisation | [`transfer_service.dart#L79`](../../app/lib/src/state/transfer_service.dart#L79) · [`librclone_object_server.dart#L132`](../../packages/airclone_rc/lib/src/librclone_object_server.dart#L132) |
 | `operations/copyurl` | Stream a URL straight into a remote (`autoFilename`) — no local round-trip | [`file_ops.dart#L165`](../../app/lib/src/state/file_ops.dart#L165) |
 | `operations/check` | Compare two paths, returning match / missing-on-src / missing-on-dst / differ / error buckets. **This is what the sync dry-run preview is built on** (`missingOnSrc` is exactly what a one-way Sync would delete) — it runs under the same `_config`/`_filter` the transfer will use, because `--size-only`/`--checksum` change what counts as "differs" | [`file_ops.dart#L135`](../../app/lib/src/state/file_ops.dart#L135) · [`folder_tools.dart#L75`](../../app/lib/src/ui/folder_tools.dart#L75) (the "Compare with other pane" tool) · [`sync_preview.dart`](../../app/lib/src/state/sync_preview.dart) · [`sync_here_action.dart`](../../app/lib/src/ui/sync_here_action.dart) |
 | `operations/size` | Folder file count + total bytes; also the empty-source refusal in front of a marked-source sync | [`file_ops.dart#L155`](../../app/lib/src/state/file_ops.dart#L155) |
@@ -243,11 +243,11 @@ descending into a folder calls `operations/list`, and only that step can report 
 | `job/status` | Transfer completion polling; scheduler supervision; reading a console read-verb's `output` when its async job settles; the preview bridge's copy wait | [`jobs_controller.dart#L259`](../../app/lib/src/state/jobs_controller.dart#L259) · [`scheduler_controller.dart#L377`](../../app/lib/src/state/scheduler_controller.dart#L377) · [`console_controller.dart#L376`](../../app/lib/src/state/console/console_controller.dart#L376) |
 | `job/stop` | Jobs-panel Stop and console Stop (one convergence point) | [`jobs_controller.dart#L203`](../../app/lib/src/state/jobs_controller.dart#L203) · [`console_controller.dart#L349`](../../app/lib/src/state/console/console_controller.dart#L349) |
 | `core/stats` | The 1 Hz global stats poller; per-job progress scoped by `group` | [`stats_controller.dart#L57`](../../app/lib/src/state/stats_controller.dart#L57) · [`jobs_controller.dart#L235`](../../app/lib/src/state/jobs_controller.dart#L235) |
-| `core/version` | Readiness handshake and `status()` on **both** clients; console `version` | [`http_rclone_client.dart#L442`](../../app/lib/src/rclone/http_rclone_client.dart#L442), `#L621` · [`ffi_rclone_client.dart#L59`](../../app/lib/src/rclone/ffi_rclone_client.dart#L59) |
+| `core/version` | Readiness handshake and `status()` on **both** clients; console `version` | [`http_rclone_client.dart#L442`](../../packages/airclone_rc/lib/src/http_rclone_client.dart#L442), `#L621` · [`ffi_rclone_client.dart#L59`](../../packages/airclone_rc/lib/src/ffi_rclone_client.dart#L59) |
 | `core/transferred` | The Recent Activity panel — and **nothing else**: it is a capped ring, not a log (§6) | [`recent_activity_controller.dart#L14`](../../app/lib/src/state/recent_activity_controller.dart#L14) |
 | `core/bwlimit` | Read and set the global bandwidth limit | [`bandwidth_controller.dart#L32`](../../app/lib/src/state/bandwidth_controller.dart#L32), `#L45` |
-| `core/quit` | Orderly rcd shutdown before `kill()` | [`http_rclone_client.dart#L590`](../../app/lib/src/rclone/http_rclone_client.dart#L590) |
-| `core/command` | HTTP-engine-only console streaming (`returnType: STREAM`) | [`http_rclone_client.dart#L560`](../../app/lib/src/rclone/http_rclone_client.dart#L560) |
+| `core/quit` | Orderly rcd shutdown before `kill()` | [`http_rclone_client.dart#L590`](../../packages/airclone_rc/lib/src/http_rclone_client.dart#L590) |
+| `core/command` | HTTP-engine-only console streaming (`returnType: STREAM`) | [`http_rclone_client.dart#L560`](../../packages/airclone_rc/lib/src/http_rclone_client.dart#L560) |
 
 ### `mount/*`, `serve/*`, `vfs/*`
 
@@ -476,7 +476,7 @@ They re-exec the rclone **binary**, so they are unavailable in in-process mode:
 | :--- | :--- | :--- |
 | Archive create / extract / list | `rclone archive` has no RC method | [`archive_service.dart`](../../app/lib/src/state/archive_service.dart) |
 | Config encryption set / remove / change | Interactive password prompts on stdin; run with the engine quiesced so nothing races the atomic rewrite | [`config_transfer_controller.dart`](../../app/lib/src/state/config_transfer_controller.dart) |
-| Console commands (HTTP engine) | `core/command` re-execs a fresh rclone; on the in-process engine the console falls back to the RC translator instead | [`http_rclone_client.dart`](../../app/lib/src/rclone/http_rclone_client.dart) |
+| Console commands (HTTP engine) | `core/command` re-execs a fresh rclone; on the in-process engine the console falls back to the RC translator instead | [`http_rclone_client.dart`](../../packages/airclone_rc/lib/src/http_rclone_client.dart) |
 
 Every one of these adopts its child into `WindowsChildJob` so no rclone process can outlive the app
 and hold `rclone.exe` open in the install directory (a clean-uninstall requirement).
@@ -498,13 +498,13 @@ RC-API traps that have actually cost this project time. Check this table before 
 | **`config/get` hangs on a locked encrypted config**, and `--ask-password=false` crashes rclone | The RC server freezes on stdin before you can ask it anything. | Detect encryption **out-of-band** by reading the config file header for `Encrypted rclone configuration File`, then gate startup on the password. [`rclone_engine.dart#L138`](../../app/lib/src/rclone/rclone_engine.dart#L138) |
 | **No `core/restart`** | Only `core/quit` exists. | `restart()` is a first-class client op: quit + start (subprocess), Finalize + Initialize (in-process). |
 | **`operations/stat` reports "not found" as a 2xx with `item: null`** | A null check that assumes an exception silently treats a deleted file as an error-free empty result. | Test `item is! Map` explicitly. [`checksum_dialog.dart#L29`](../../app/lib/src/ui/checksum_dialog.dart#L29) |
-| **User engine flags can shadow the rc security flags** | pflag lets the *last* occurrence of a repeated flag win. | Put user `extraArgs` **first** in the `rcd` argv so `--rc-addr`/`--rc-user`/`--rc-pass` always override. [`http_rclone_client.dart#L259`](../../app/lib/src/rclone/http_rclone_client.dart#L259) |
+| **User engine flags can shadow the rc security flags** | pflag lets the *last* occurrence of a repeated flag win. | Put user `extraArgs` **first** in the `rcd` argv so `--rc-addr`/`--rc-user`/`--rc-pass` always override. [`http_rclone_client.dart#L259`](../../packages/airclone_rc/lib/src/http_rclone_client.dart#L259) |
 | **Re-exec'd children do not inherit `--config`** | `core/command` and the archive subprocess spawn a *fresh* rclone. It inherits the environment but not the flag, and rclone treats a config it cannot open as an **empty** one — silently — so every remote answers `didn't find section in config file` while the sidebar, served by the parent, still lists them. On Android it resolves an empty `$HOME/.config/rclone/rclone.conf`; on desktop any divergence in default resolution does the same. | Two layers. Android also passes `RCLONE_CONFIG` in the engine's `extraEnv` (precedence is flag > env > default, so the parent is unaffected) [`engine_controller.dart#L224`](../../app/lib/src/state/engine_controller.dart#L224); and every console dispatch pins the engine's own path onto the child argv via `withConfigArg` + `HttpRcloneClient.engineConfigPath()` (the spawn override, else `config/paths`) — a `--config` the **user** typed still wins. [`console_command.dart`](../../app/lib/src/state/console/console_command.dart) |
 | **`core/transferred` is a capped ring, not a log** | ~100 entries per group, in completion order, not configurable. A 300-file dry run returns 104 entries — all `what: "deleting"`, with the transfers evicted. Querying an unknown group also CREATES it, and the group filter is exact-match, not prefix. | Never build a "what changed" list on it. `operations/check` is uncapped and sorted, and its `missingOnSrc` is exactly what a sync would delete; async, `job/status.output` carries the whole result object (a `sync/sync` job's `output` is always `{}`). [`sync_preview.dart`](../../app/lib/src/state/sync_preview.dart) |
 | **A `crypt` remote with the wrong key returns a SHORT listing, not an error** | `operations/list` answers 200 with the entries whose names decrypted and silently omits the rest; six directories arrive as `{"list":[]}` and the pane renders a confident "Empty folder". The only evidence is rclone's `NOTICE: …: Skipping undecryptable file name:` — or `… dir name:`, which is the spelling behind the *wholly* empty pane, since rclone words objects and directories separately — on the engine's own log. | The stdout/stderr drain counts both spellings ([`undecryptable_names.dart`](../../app/lib/src/state/undecryptable_names.dart)) and `BrowserController._load` samples the counter either side of its request, so a short listing says "N items hidden". Two limits: it rides on the log drain, so it is **`HttpRcloneClient` only** — the in-process engine emits no such stream — and only `_load` samples it, not a tree-view expansion (§2). |
-| **A dropped keep-alive socket looks like a failed call** | `ClientException: Connection closed before full header was received` — the socket died before the response started, so the request most likely never ran. On the 1 Hz stats poll it self-heals; on a call the *user* made it surfaces as a failed listing or a failed copy. | `sendWithConnectionRetry` retries exactly once, gated on `isRetryableRcMethod`'s read-only allowlist; a `TimeoutException` is never retried (the engine took that request and is already struggling). **Adding a mutating method to `_readOnlyRcMethods` is a data-loss bug** — a doubled `operations/copyfile` is far worse than an error the caller can see. Both are pure top-level functions, so the rule is unit-testable on its own. [`http_rclone_client.dart#L92`](../../app/lib/src/rclone/http_rclone_client.dart#L92) |
+| **A dropped keep-alive socket looks like a failed call** | `ClientException: Connection closed before full header was received` — the socket died before the response started, so the request most likely never ran. On the 1 Hz stats poll it self-heals; on a call the *user* made it surfaces as a failed listing or a failed copy. | `sendWithConnectionRetry` retries exactly once, gated on `isRetryableRcMethod`'s read-only allowlist; a `TimeoutException` is never retried (the engine took that request and is already struggling). **Adding a mutating method to `_readOnlyRcMethods` is a data-loss bug** — a doubled `operations/copyfile` is far worse than an error the caller can see. Both are pure top-level functions, so the rule is unit-testable on its own. [`http_rclone_client.dart#L92`](../../packages/airclone_rc/lib/src/http_rclone_client.dart#L92) |
 | **`--rc-job-expire-duration 24h`** | An expired job's `job/status` no longer carries its `output`. | Treat a settle-time `job/status` read as best-effort; the terminal summary must not depend on it. |
-| **Windows env vars and Go** | A CRT `_putenv` only touches the calling CRT's snapshot, which Go never reads — so `RCLONE_CONFIG_PASS` silently would not reach librclone. | Set it via kernel32 `SetEnvironmentVariableW` (POSIX: libc `setenv`/`unsetenv`), before `RcloneInitialize`, then clear it. [`librclone_ffi.dart#L354`](../../app/lib/src/rclone/librclone_ffi.dart#L354) |
+| **Windows env vars and Go** | A CRT `_putenv` only touches the calling CRT's snapshot, which Go never reads — so `RCLONE_CONFIG_PASS` silently would not reach librclone. | Set it via kernel32 `SetEnvironmentVariableW` (POSIX: libc `setenv`/`unsetenv`), before `RcloneInitialize`, then clear it. [`librclone_ffi.dart#L354`](../../packages/airclone_rc/lib/src/librclone_ffi.dart#L354) |
 | **`RcloneRPC` blocks** | Called inline it freezes the UI isolate; and `DynamicLibrary`/`Pointer` are not sendable across isolates. | All FFI stays inside the single worker isolate; the main isolate only exchanges plain messages. |
 | **Revoking a public link is not a separate method** | There is no `operations/unlink`. | `operations/publiclink` with `unlink: true`. |
 

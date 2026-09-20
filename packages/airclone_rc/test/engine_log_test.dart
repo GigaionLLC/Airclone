@@ -1,6 +1,5 @@
-import 'package:airclone/src/rclone/http_rclone_client.dart';
-import 'package:airclone/src/state/diagnostics.dart';
-import 'package:flutter_test/flutter_test.dart';
+import 'package:airclone_rc/airclone_rc.dart';
+import 'package:test/test.dart';
 
 /// The `rcd` child's stdout and stderr are drained unconditionally — an unread
 /// pipe blocks its WRITER once the (1 KiB, on Windows) buffer fills, and rclone
@@ -72,15 +71,5 @@ void main() {
         isTrue,
       );
     });
-  });
-
-  test('a kept line still loses its credentials on the way in', () {
-    // Belt and braces: the filter is not the privacy boundary, ingest-time
-    // redaction is. A -vv run echoes the rc credentials on an error line.
-    final redacted = redactSensitive(
-      'ERROR : rc: request failed: Authorization: Basic YWlyY2xvbmU6c2VjcmV0',
-    );
-    expect(redacted, contains('ERROR'));
-    expect(redacted, isNot(contains('YWlyY2xvbmU6c2VjcmV0')));
   });
 }
