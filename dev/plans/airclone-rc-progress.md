@@ -110,6 +110,19 @@ real rclone still fit together. These do.
   `airclone_rcd_<host pid>.pid` pointing at that engine pid (the R2 fix, in the shipped
   app), and after a normal window close: exit 0, no orphaned rclone, no marker left behind.
 - **`airclone.exe --version`** prints `Airclone 0.13.9` and exits 0.
+- **The reaper, on a real orphan.** Killing a running instance (the Web UI mode has no main
+  window, so a close request does nothing and it has to be killed) left
+  `airclone_rcd_<pid>.pid` behind, while the engine itself died with its host - which is
+  `WindowsChildJob`'s kill-on-close job object doing its job. Launching the app again left
+  exactly one marker, the new instance's: **the stale one was reaped**, and closing normally
+  left none. That is R2's path, in the shipped binary, including the case it exists for.
+- **The Web UI surface** was verified at the server only: `/` redirects to `/login`, which
+  serves the login page with `x-frame-options: DENY`, `nosniff` and `referrer-policy:
+  no-referrer`, and an unauthenticated `POST /rc/operations/list` is redirected to login
+  rather than reaching the engine. Signing in was NOT done: the browser pane refuses the
+  self-signed certificate, and the password is the operator's to type. To check that surface,
+  run `airclone.exe --webui` with `AIRCLONE_WEBUI_ROOT` pointing at a `flutter build web`
+  bundle and sign in as `airclone` with the password from `webui.env`.
 
 `--run-due` was deliberately NOT used to prove engine boot: it runs whatever tasks are due,
 which on a real machine means moving someone's data. The GUI launch boots the same engine.
