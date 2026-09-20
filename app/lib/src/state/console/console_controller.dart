@@ -280,12 +280,11 @@ class ConsoleController extends FamilyNotifier<ConsoleState, String> {
     if (rc.needsSourceProbe) {
       var isDir = false;
       try {
-        final stat = await client.rpc('operations/stat', {
-          'fs': params['srcFs'],
-          'remote': params['srcRemote'],
-        });
-        final item = stat['item'];
-        if (item is Map && item['IsDir'] == true) isDir = true;
+        final item = await RcApi(client).operations.stat(
+          params['srcFs'] as String,
+          params['srcRemote'] as String,
+        );
+        if (item?.isDir ?? false) isDir = true;
       } catch (_) {
         isDir = true; // stat failed → the directory-safe path
       }

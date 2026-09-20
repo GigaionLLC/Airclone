@@ -138,7 +138,7 @@ class BackupPruner {
     var freed = 0;
     for (final v in candidates) {
       try {
-        await client.rpc('operations/deletefile', {'fs': fs, 'remote': v.path});
+        await RcApi(client).operations.deleteFile(fs, v.path);
         deleted++;
         freed += v.size < 0 ? 0 : v.size;
       } catch (e) {

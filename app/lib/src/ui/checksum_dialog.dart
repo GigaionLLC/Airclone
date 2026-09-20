@@ -26,6 +26,9 @@ Future<Map<String, String>?> fetchChecksums(
   required String remote,
   List<String>? hashTypes,
 }) async {
+  // Raw on purpose: the typed `operations.stat` returns an RcloneFile, which
+  // has no Hashes field - it is a listing model, and hashes are what this
+  // dialog exists for. A typed stat would have to throw the answer away.
   final res = await client.rpc('operations/stat', {
     'fs': fs,
     'remote': remote,

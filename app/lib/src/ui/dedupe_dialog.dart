@@ -294,10 +294,7 @@ class _DedupeDialogState extends State<_DedupeDialog> {
         final remote = widget.basePath.isEmpty
             ? t.path
             : '${widget.basePath}/${t.path}';
-        await widget.client.rpc('operations/deletefile', {
-          'fs': widget.fs,
-          'remote': remote,
-        });
+        await RcApi(widget.client).operations.deleteFile(widget.fs, remote);
         done++;
       } catch (e) {
         failed++;
