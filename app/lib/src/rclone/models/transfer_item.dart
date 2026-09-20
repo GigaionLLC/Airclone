@@ -1,4 +1,4 @@
-import 'package:flutter/foundation.dart';
+import 'package:meta/meta.dart';
 
 /// One in-flight file within a transfer, as reported by rclone `core/stats`'
 /// `transferring` array (per engine-wide stats or a single job's `_group`).

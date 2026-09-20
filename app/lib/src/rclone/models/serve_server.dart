@@ -1,4 +1,4 @@
-import 'package:flutter/foundation.dart';
+import 'package:meta/meta.dart';
 
 /// Protocols that authenticate with a username/password. DLNA/NFS do not.
 const serveAuthCapable = {'http', 'webdav', 'ftp', 'sftp'};

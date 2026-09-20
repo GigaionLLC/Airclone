@@ -1,4 +1,4 @@
-import 'package:flutter/foundation.dart';
+import 'package:meta/meta.dart';
 
 /// A backend type from rclone's `config/providers` (e.g. `s3`, `drive`, `sftp`).
 /// Named `RcloneProvider` to avoid clashing with Riverpod's `Provider`.
