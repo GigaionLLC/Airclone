@@ -17,6 +17,14 @@
 /// comment exists so the next person does not "fix" it.
 library;
 
+// The playlist set itself lives with the engine layer — the object server has
+// to know which extensions need a path-shaped URL, and it cannot ask the app.
+// Re-exported here so this file stays the ONE place media extensions are
+// looked up. See rclone/playlist_exts.dart.
+import '../rclone/playlist_exts.dart';
+
+export '../rclone/playlist_exts.dart' show isPlaylistExt, kPlaylistExts;
+
 /// Container formats libmpv decodes directly — a real file with real media in it.
 const Set<String> kVideoExts = {
   'mp4',
@@ -68,11 +76,6 @@ const Set<String> kAudioExts = {
 /// TypeScript extension, and in a file manager the second is far more likely.
 /// It stays classified as source code; libmpv still fetches `.ts` segments when
 /// a manifest names them, which is the case that actually matters.
-const Set<String> kPlaylistExts = {'m3u8', 'm3u', 'mpd'};
-
-/// True when [ext] (lower-case, no dot) is a streaming manifest.
-bool isPlaylistExt(String ext) => kPlaylistExts.contains(ext);
-
 /// True when [ext] plays through the VIDEO pipeline: a real container, or a
 /// manifest that resolves to one.
 ///
