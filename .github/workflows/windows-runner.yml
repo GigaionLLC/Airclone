@@ -53,7 +53,17 @@ jobs:
       - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2  # v2.23.0
         with: { channel: stable, flutter-version: 3.47.0, cache: true }
       # super_native_extensions (drag-out) builds a Rust crate via cargokit.
+      # The toolchain is stated rather than left to default: a SHA does not tell
+      # a reader which toolchain it installs, and master and the v1 tag declare
+      # this input required with no default - so the day this pin moves, an
+      # unset input fails at the parse step.
+      # The toolchain is stated rather than left to the action's default: a SHA
+      # does not tell a reader which one it installs, and both master and the v1
+      # tag declare this input required with no default - so the day this pin
+      # moves, an unset input fails at the parse step.
       - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87  # stable branch
+        with: { toolchain: stable }
+        with: { toolchain: stable }
       - run: flutter config --enable-windows-desktop
       - run: flutter pub get
 

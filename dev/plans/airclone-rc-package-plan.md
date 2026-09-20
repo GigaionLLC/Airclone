@@ -323,8 +323,8 @@ posted only after the maintainer approves the wording. Record each one in the ta
 | # | When | Say | Posted |
 | :--- | :--- | :--- | :--- |
 | 0 | Plan agreed | We'll do it: `airclone_rc`, pure Dart, AGPLv3, bring your own rclone; Airclone first, no timeline | 2026-09-19 ([comment](https://github.com/GigaionLLC/Airclone/issues/6#issuecomment-5744557750)) |
-| 1 | Work starts (A0) | The split is under way | `[ ]` |
-| 2 | A4 merged to `main` | The package is in the repo; the git-dependency snippet now works; link to its README | `[ ]` |
+| 1 | Work starts (A0) | The split is under way | superseded — the work finished before a reply was approved, so it folds into update 2 |
+| 2 | A4 merged to `main` | The package is in the repo; the git-dependency snippet now works; link to its README | drafted 2026-09-20, awaiting wording approval |
 | 3 | A5 released | Airclone v0.20.0 ships on the package | `[ ]` |
 | 4 | B1–B2 land | The typed API foundation exists; ask for feedback on its shape | `[ ]` |
 | 5 | C published | On pub.dev with a link; **close #6** | `[ ]` |
@@ -362,18 +362,21 @@ quiet.
 
 ## 7️⃣ Phase 7: Implementation Checklist (Execution)
 - `[x]` #6 update 0: plan agreed (2026-09-19)
-- `[ ]` A0 branch and baseline recorded · #6 update 1
-- `[ ]` A1.1–A1.8 decoupling, one commit each, all green
-- `[ ]` A2 package, move, imports, tests, path filters, CI job, doc links (one commit); lock diff = one path entry
-- `[ ]` A3 proof-of-concept checkpoint → go / no-go
-- `[ ]` A4 web build, Flathub check, boundary docs, merge · #6 update 2
+- `[x]` A0 branch and baseline recorded (2026-09-19) · #6 update 1 folded into update 2
+- `[x]` A1.1–A1.8 decoupling, one commit each, all green
+- `[x]` A2 package, move, imports, tests, path filters, CI job, doc links (one commit); lock diff = one path entry
+- `[x]` A3 proof-of-concept checkpoint → **go** (2026-09-20)
+- `[x]` A4 web build, Flathub check, boundary docs, merge — PR #7, rebase-merged 2026-09-20 · #6 update 2 drafted
 - `[ ]` A5 v0.20.0 release notes, matrix, artifacts verified · #6 update 3
-- `[ ]` B1–B2 typed API foundation and golden tests · #6 update 4
-- `[ ]` B3–B5 namespaces migrated (tracked per PR)
+- `[x]` B1–B2 typed API foundation and golden tests — PR #8 · #6 update 4 folded into update 2
+- `[x]` B3–B5 namespaces migrated — PR #8: job, mount/serve/vfs, core/config, operations, then list
 - `[ ]` C publish decision · #6 update 5, close #6
 
 ## 8️⃣ Phase 8: Verification Dashboard
-* **Verification Status:** `PENDING`
+* **Verification Status:** `PASSED` — A and B merged 2026-09-20. Beyond the commands below,
+  the app itself is now checked against a real engine on every relevant PR:
+  `app/integration_test/typed_engine_smoke_test.dart`, run by
+  `.github/workflows/windows-runner.yml` on a windows-latest runner.
 * **Commands:**
   - `cd app && flutter pub get && dart format --output=none --set-exit-if-changed . && flutter analyze && flutter test`
   - `cd packages/airclone_rc && dart pub get && dart format --output=none --set-exit-if-changed . && dart analyze --fatal-infos && dart test`
