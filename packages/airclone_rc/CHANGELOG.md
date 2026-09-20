@@ -26,3 +26,7 @@ consumes it from the same repository by path.
   that answers `rpc` answers the typed calls too.
 - `operations.listOrNull`, which returns null when the engine's answer carried no listing at
   all — a distinction `list` cannot make, and one that any caller about to write needs.
+- Engine output is redacted before it reaches an `RcloneLogSink` or `echoEngineLines`: this
+  session's rc password (which rclone echoes at `-vv` from the environment, unprompted), the
+  base64 credentials blob, the config password, and the credential shapes rclone emits
+  whoever they belong to. `redactEngineLine` is exported for host text.

@@ -7,6 +7,7 @@ import 'package:crypto/crypto.dart';
 
 import 'platform.dart';
 import 'rclone_client.dart';
+import 'log_redaction.dart';
 import 'rclone_log.dart';
 
 /// A tiny loopback HTTP file server that gives the in-process ([FfiRcloneClient])
@@ -99,7 +100,9 @@ class LibrcloneObjectServer {
             RcloneLogLevel.warning,
             'preview',
             'The in-process object server could not serve a request.',
-            detail: '$e',
+            // The bearer token is this server's whole access control, and an
+            // error can carry the request that quoted it.
+            detail: redactEngineLine('$e', sessionSecrets: [?_token]),
           ),
         ),
       );
