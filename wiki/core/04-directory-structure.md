@@ -21,17 +21,25 @@ checks, cut a `v*` tag, or install a local test build.
 
 ```
 Airclone/
+├─ packages/
+│  └─ airclone_rc/          # the rclone engine layer, a PURE DART package
+│     │                     #   (AGPLv3, path dependency; pub.dev when the
+│     │                     #   typed API lands — see wiki/core/08 §3.0)
+│     ├─ lib/airclone_rc.dart      # the barrel: what a host may import
+│     └─ lib/src/                  # RcloneClient + ObjectUploader,
+│                                  #   HttpRcloneClient (spawns `rclone rcd`),
+│                                  #   FfiRcloneClient (in-process librclone),
+│                                  #   the object server, WindowsChildJob and
+│                                  #   the RC wire models
 ├─ app/                     # The Flutter application (the product)
 │  ├─ lib/
 │  │  ├─ main.dart          # entry: ProviderScope → AircloneApp
 │  │  └─ src/
-│  │     ├─ rclone/         # engine seam (platform-agnostic + both transports)
-│  │     │  ├─ rclone_client.dart        # RcloneClient interface + EngineStatus
-│  │     │  ├─ http_rclone_client.dart   # spawn `rclone rcd` + RC HTTP (desktop + Android)
-│  │     │  ├─ ffi_rclone_client.dart    # in-process librclone (iOS + Mac App Store)
+│  │     ├─ rclone/         # what the APP keeps of the engine layer; the
+│  │     │  │                #   rest is the airclone_rc package above
 │  │     │  ├─ rclone_engine.dart        # locate / download+verify the rclone binary
-│  │     │  └─ models/                   # the domain models: Remote, RcloneFile, Job,
-│  │     │                               #   MountInfo, MountOptions, ServeServer, …
+│  │     │  ├─ web_rclone_client.dart    # the Web UI client, talks to OUR server
+│  │     │  └─ models/                   # the app's own: Remote, Job, MountOptions
 │  │     ├─ state/          # Riverpod controllers (engine, remotes, browser) + pure modules
 │  │     │  └─ console/                   # the command console: argv→RC translation,
 │  │     │                                #   autocomplete, redaction
