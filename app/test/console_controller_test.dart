@@ -18,7 +18,7 @@ class _FakeSettings extends SettingsController {
 /// path (the `is HttpRcloneClient` check passes), with commandStream overridden
 /// to a canned line stream — no real rcd needed.
 class _FakeHttp extends HttpRcloneClient {
-  _FakeHttp() : super(rclonePath: 'rclone');
+  _FakeHttp() : super(instanceTag: 'airclone', rclonePath: 'rclone');
   List<String> lines = ['one', 'two'];
   int commandCalls = 0;
   List<String>? lastArgs;

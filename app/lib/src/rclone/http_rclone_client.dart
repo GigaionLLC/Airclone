@@ -89,6 +89,10 @@ final RegExp _undecryptableName = RegExp(
 /// than an error the caller can see and retry deliberately.
 bool isRetryableRcMethod(String method) => _readOnlyRcMethods.contains(method);
 
+/// A tag that is safe as a file-name prefix and as a Basic-auth username — no
+/// separator, no colon, nothing a path or a header would have to escape.
+final RegExp _tagShape = RegExp(r'^[A-Za-z0-9_-]{1,32}$');
+
 const Set<String> _readOnlyRcMethods = {
   'core/version',
   'core/stats',
@@ -162,6 +166,7 @@ Future<T> sendWithConnectionRetry<T>(
 /// credentials, and drives it over HTTP. See `wiki/core/08-core-architecture.md` §3.
 class HttpRcloneClient implements RcloneClient, ObjectUploader {
   HttpRcloneClient({
+    required this.instanceTag,
     required this.rclonePath,
     this.configPath,
     this.configPassword,
@@ -170,7 +175,23 @@ class HttpRcloneClient implements RcloneClient, ObjectUploader {
     this.logSink = discardRcloneLog,
     this.onUndecryptableName,
     this.echoEngineLines = false,
-  });
+  }) : assert(
+         _tagShape.hasMatch(instanceTag),
+         'instanceTag must be a short filename-safe token: $instanceTag',
+       );
+
+  /// Names this host's `rcd` children apart from every other host's.
+  ///
+  /// **Required, with no default, on purpose.** It is the prefix of the PID
+  /// markers and the lock in the system temp dir, and the reaper kills the PID
+  /// in every marker it matches once it holds that lock. Two different apps
+  /// sharing a tag therefore means one of them SIGKILLs the other's live
+  /// engine. Airclone passes `'airclone'`, which is what its markers have
+  /// always been called, so an orphan left by an older version is still reaped.
+  ///
+  /// Also used for the rc username and the upload multipart boundary, neither
+  /// of which leaves this process's loopback socket.
+  final String instanceTag;
 
   /// Path to the rclone binary (from [RcloneEngine]).
   final String rclonePath;
@@ -234,7 +255,7 @@ class HttpRcloneClient implements RcloneClient, ObjectUploader {
   /// that now pointed at the second one's child. One file per owner means two
   /// instances cannot confuse each other's children.
   File get _markerFile =>
-      File('${Directory.systemTemp.path}/airclone_rcd_$pid.pid');
+      File('${Directory.systemTemp.path}/${instanceTag}_rcd_$pid.pid');
 
   /// Held for this process's lifetime while we are the only Airclone running.
   ///
@@ -245,7 +266,7 @@ class HttpRcloneClient implements RcloneClient, ObjectUploader {
   RandomAccessFile? _reapLock;
 
   File get _reapLockFile =>
-      File('${Directory.systemTemp.path}/airclone_rcd.lock');
+      File('${Directory.systemTemp.path}/${instanceTag}_rcd.lock');
 
   /// Best-effort kill of `rcd` children orphaned by a hard exit.
   ///
@@ -261,6 +282,7 @@ class HttpRcloneClient implements RcloneClient, ObjectUploader {
   Future<void> _reapPreviousRcd() async {
     if (HostPlatform.isAndroid) return;
     _reapLock = await reapOrphanedRcd(
+      tag: instanceTag,
       tempDir: Directory(Directory.systemTemp.path),
       lockFile: _reapLockFile,
       ownPid: pid,
@@ -312,7 +334,8 @@ class HttpRcloneClient implements RcloneClient, ObjectUploader {
     if (name.isEmpty) throw ArgumentError('remote has no file name: $remote');
 
     final boundary =
-        '----airclone${DateTime.now().microsecondsSinceEpoch.toRadixString(16)}';
+        '----$instanceTag'
+        '${DateTime.now().microsecondsSinceEpoch.toRadixString(16)}';
     // A quote or CRLF in a file name would break out of the part header, the
     // same way it would break a Content-Disposition response header.
     final safeName = name.replaceAll(RegExp('[\\"\\r\\n]'), '_');
@@ -373,7 +396,7 @@ class HttpRcloneClient implements RcloneClient, ObjectUploader {
     await _reapPreviousRcd();
 
     final port = await _freeLoopbackPort();
-    final user = 'airclone';
+    final user = instanceTag;
     final pass = _randomToken();
     _port = port;
     _authHeader = 'Basic ${base64Encode(utf8.encode('$user:$pass'))}';
@@ -824,6 +847,7 @@ RandomAccessFile? _takeSingleInstanceLock(File lockFile) {
 
 @visibleForTesting
 Future<RandomAccessFile?> reapOrphanedRcd({
+  required String tag,
   required Directory tempDir,
   required File lockFile,
   required int ownPid,
@@ -837,7 +861,7 @@ Future<RandomAccessFile?> reapOrphanedRcd({
     await for (final entry in tempDir.list(followLinks: false)) {
       final name = entry.path.split(Platform.pathSeparator).last;
       if (entry is! File ||
-          !name.startsWith('airclone_rcd_') ||
+          !name.startsWith('${tag}_rcd_') ||
           !name.endsWith('.pid')) {
         continue;
       }
