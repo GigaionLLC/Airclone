@@ -19,7 +19,9 @@ stops mid-way can be replaced by one that reads only this file.
 | **Branch** | `refactor/airclone-rc-package`, branched from `origin/main` at `4f346b6`, **no upstream on purpose** so a bare `git push` cannot reach `main` |
 | **Commits** | small, one per plan step, on the branch only. Nothing is pushed until the A3 checkpoint passes and the user says so |
 | **Other sessions** | edit `D:\git\Airclone` at the same time. Stage by explicit path, never `git add -A`, never `checkout`/`restore`/`stash` in the main worktree |
-| **Verify** | `cd /d/git/Airclone-rc/app && flutter pub get && dart format --output=none --set-exit-if-changed . && flutter analyze && flutter test` |
+| **Verify (app)** | `cd /d/git/Airclone-rc/app && flutter pub get && dart format --output=none --set-exit-if-changed lib test && flutter analyze && flutter test` |
+| **Verify (package)** | `cd /d/git/Airclone-rc/packages/airclone_rc && dart pub get && dart format --output=none --set-exit-if-changed . && dart analyze --fatal-infos && dart test` |
+| **Format gotcha** | format `lib test`, not `.`, once you have built locally: `build/` holds generated Dart (cargokit) that is not formatted, and `dart format` does not honour the analyzer's `exclude`. CI checks out clean, so it never sees this |
 | **Issue** | [#6](https://github.com/GigaionLLC/Airclone/issues/6) stays open; reply at each milestone (plan → "Keeping #6 informed"). Draft first, post only after the user approves |
 
 ## Status
