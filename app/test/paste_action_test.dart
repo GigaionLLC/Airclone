@@ -16,9 +16,13 @@ import 'package:flutter_test/flutter_test.dart' hide EnginePhase;
 /// Set [listThrows] to simulate a destination we cannot read — an offline
 /// backend, an expired token, a folder we lack permission on.
 class _FakeClient implements RcloneClient {
-  _FakeClient({this.listThrows = false});
+  _FakeClient({this.listThrows = false, this.listAnswersNothing = false});
 
   final bool listThrows;
+
+  /// A 200 with no `list` key in it — what an engine can answer instead of
+  /// throwing, and what must NOT read as "the folder is empty" here.
+  final bool listAnswersNothing;
   final transfers = <String>[];
 
   @override
@@ -28,6 +32,7 @@ class _FakeClient implements RcloneClient {
   ]) async {
     if (method == 'operations/list') {
       if (listThrows) throw StateError('destination unreadable');
+      if (listAnswersNothing) return const {};
       return {
         'list': [
           {'Name': 'dup.txt', 'Path': 'sub/dup.txt', 'IsDir': false, 'Size': 1},
@@ -230,6 +235,57 @@ void main() {
     // file without asking. Nothing may be transferred, and the user must be
     // told why.
     final client = _FakeClient(listThrows: true);
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          engineControllerProvider.overrideWith(() => _FakeEngine(client)),
+        ],
+        child: MaterialApp(
+          theme: AppTheme.light(),
+          home: Consumer(
+            builder: (ctx, ref, _) => Scaffold(
+              body: Center(
+                child: ElevatedButton(
+                  onPressed: () => transferNamesIntoFolder(
+                    ctx,
+                    ref,
+                    srcRemote: _remote,
+                    srcParentPath: 'from',
+                    names: const ['dup.txt'],
+                    destRemote: _remote,
+                    destPath: 'sub',
+                    type: JobType.copy,
+                    // No knownNames → the probe runs, and it throws.
+                    knownNames: null,
+                  ),
+                  child: const Text('drop'),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('drop'));
+    await tester.pumpAndSettle();
+
+    expect(client.transfers, isEmpty);
+    expect(
+      find.textContaining("Couldn't check the destination"),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('a listing-less answer FAILS CLOSED too, not just a throw', (
+    tester,
+  ) async {
+    // The engine answers 200 with no listing in it. That is not an empty
+    // folder - it is an answer we cannot read - and it used to be
+    // indistinguishable from one, because `res['list'] as List? ?? const []`
+    // flattens both. operations.listOrNull is what keeps them apart, and this
+    // path must refuse exactly as the throwing one does.
+    final client = _FakeClient(listAnswersNothing: true);
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
