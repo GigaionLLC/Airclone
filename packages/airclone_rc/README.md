@@ -88,6 +88,17 @@ credentials. This package therefore keeps only its own failure lines — de-dupl
 capped — and hands those to an `RcloneLogSink` you pass in. Pass nothing and you get silence.
 `echoEngineLines` prints everything unfiltered and is for development only.
 
+## Asking about it
+
+Questions about using the package belong in
+[Discussions](https://github.com/GigaionLLC/Airclone/discussions). Issues are for defects,
+and a question filed as one usually waits longer for a worse answer.
+
+This package lives in Airclone's repository rather than its own, because almost every change
+to the engine layer so far also changed the app. That is a maintenance decision, not a
+statement about who it is for: it is meant to be usable by anything, and a report from
+outside Airclone is as welcome as one from inside it.
+
 ## Licence
 
 AGPL-3.0-or-later, the same as Airclone. See [LICENSE](LICENSE).
