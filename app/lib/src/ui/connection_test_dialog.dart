@@ -36,7 +36,7 @@ Future<ConnectionResult> testRemoteConnection(
   } on RcloneException {
     // About is unsupported on some backends → prove reachability by listing.
     try {
-      await client.rpc('operations/list', r.listParams(''));
+      await RcApi(client).operations.list(r.listFs, '', opt: Remote.listOpt);
       return const ConnectionResult(
         true,
         'Reachable (this backend reports no usage info).',

@@ -53,16 +53,10 @@ class _FolderThumbnailState extends ConsumerState<FolderThumbnail> {
           ? folder.name
           : '${widget.parentPath}/${folder.name}';
 
-      final res = await client.rpc(
-        'operations/list',
-        remote.listParams(folderPath),
-      );
+      final list = await RcApi(
+        client,
+      ).operations.list(remote.listFs, folderPath, opt: Remote.listOpt);
       if (!mounted) return;
-
-      final list = (res['list'] as List? ?? const [])
-          .cast<Map<String, dynamic>>()
-          .map(RcloneFile.fromJson)
-          .toList();
 
       // Skip online-only cloud placeholders (composing a folder cover would
       // hydrate up to 4 files PER folder) and absurdly large originals.

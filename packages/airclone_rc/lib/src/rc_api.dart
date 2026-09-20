@@ -210,6 +210,25 @@ class RcOperations extends _Namespace {
     Map<String, Object?>? opt,
     Map<String, dynamic>? extra,
     RcOptions options = RcOptions.none,
+  }) async =>
+      await listOrNull(fs, remote, opt: opt, extra: extra, options: options) ??
+      const <RcloneFile>[];
+
+  /// Lists `fs:remote`, or **null when the answer carried no listing at all**.
+  ///
+  /// [list] cannot tell those two apart - it reports both as empty - and for
+  /// some callers that difference is the entire answer. Anything that decides
+  /// "this directory is empty, so it is safe to delete / overwrite / prune"
+  /// wants this method, because an empty listing is also what you get when a
+  /// crypt remote's second password is wrong: rclone skips every name it
+  /// cannot decrypt and still exits 0. "I read nothing" and "I could not read"
+  /// must not look the same to code that then writes.
+  Future<List<RcloneFile>?> listOrNull(
+    String fs,
+    String remote, {
+    Map<String, Object?>? opt,
+    Map<String, dynamic>? extra,
+    RcOptions options = RcOptions.none,
   }) async {
     final res = await send(
       'operations/list',
@@ -217,7 +236,9 @@ class RcOperations extends _Namespace {
       extra: extra,
       options: options,
     );
-    return ((res['list'] as List?) ?? const [])
+    final raw = res['list'];
+    if (raw is! List) return null;
+    return raw
         .map((e) => RcloneFile.fromJson(e as Map<String, dynamic>))
         .toList(growable: false);
   }

@@ -1477,14 +1477,10 @@ Future<bool> _transferGroups(
     final client = ref.read(engineControllerProvider).client;
     if (client == null) return false;
     try {
-      final res = await client.rpc(
-        'operations/list',
-        destRemote.listParams(destPath),
-      );
-      known = {
-        for (final it in (res['list'] as List? ?? const []))
-          ((it as Map)['Name'] ?? '').toString(),
-      };
+      final entries = await RcApi(
+        client,
+      ).operations.list(destRemote.listFs, destPath, opt: Remote.listOpt);
+      known = {for (final f in entries) f.name};
     } catch (_) {
       if (!context.mounted) return false;
       ScaffoldMessenger.maybeOf(context)?.showSnackBar(

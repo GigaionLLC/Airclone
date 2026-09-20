@@ -1,5 +1,6 @@
 // material (not widgets) for the ScaffoldMessenger the fail-closed path uses to
 // tell the user why nothing was copied.
+import 'package:airclone_rc/airclone_rc.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -103,15 +104,11 @@ Future<bool> transferNamesIntoFolder(
       final client = ref.read(engineControllerProvider).client;
       if (client == null) return false;
       try {
-        final res = await client.rpc(
-          'operations/list',
-          destRemote.listParams(destPath),
-        );
+        final entries = await RcApi(
+          client,
+        ).operations.list(destRemote.listFs, destPath, opt: Remote.listOpt);
         if (!context.mounted) return false;
-        destNames = {
-          for (final it in (res['list'] as List? ?? const []))
-            ((it as Map)['Name'] ?? '').toString(),
-        };
+        destNames = {for (final f in entries) f.name};
       } catch (_) {
         // FAIL CLOSED. An unreadable destination used to become an empty name
         // set, which reads as "no collisions" and dispatches a plain overwrite

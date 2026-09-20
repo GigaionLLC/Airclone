@@ -72,15 +72,16 @@ class BackupPruner {
 
     final List<RcloneFile> entries;
     try {
-      final res = await client.rpc('operations/list', {
-        'fs': fs,
-        'remote': '',
+      // listOrNull: this function DELETES what it finds, so an answer with
+      // no listing in it must not arrive here as "the folder is empty".
+      final listed = await RcApi(client).operations.listOrNull(
+        fs,
+        '',
         // Recursive, files only: a folder is never a version and listing them
         // would only add noise the grouping then has to ignore.
-        'opt': {'recurse': true, 'filesOnly': true, 'showHash': false},
-      });
-      final list = res['list'];
-      if (list is! List) {
+        opt: const {'recurse': true, 'filesOnly': true, 'showHash': false},
+      );
+      if (listed == null) {
         return (
           candidates: empty,
           deleted: 0,
@@ -89,10 +90,7 @@ class BackupPruner {
           error: 'The backup folder could not be listed.',
         );
       }
-      entries = [
-        for (final e in list)
-          if (e is Map<String, dynamic>) RcloneFile.fromJson(e),
-      ];
+      entries = listed;
     } catch (e) {
       // A listing that failed means we do not know what is there, and deleting
       // on a guess is exactly what must not happen.

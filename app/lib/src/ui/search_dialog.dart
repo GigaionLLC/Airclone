@@ -75,13 +75,13 @@ class _SearchDialogState extends State<_SearchDialog> {
       _results = null;
     });
     try {
-      final res = await widget.client.rpc('operations/list', {
-        'fs': widget.fs,
-        'remote': widget.basePath,
+      final found = await RcApi(widget.client).operations.list(
+        widget.fs,
+        widget.basePath,
         // Keep MimeType so result icons classify extensionless files the same
         // way the browser does; only drop modtimes (not shown in results).
-        'opt': {'recurse': true, 'noModTime': true},
-      });
+        opt: const {'recurse': true, 'noModTime': true},
+      );
       if (g != _gen || !mounted) return;
       final tokens = query
           .split(RegExp(r'\s+'))
@@ -92,8 +92,7 @@ class _SearchDialogState extends State<_SearchDialog> {
       // can't balloon the kept list (the cap is a real bound, not just display).
       var total = 0;
       final kept = <RcloneFile>[];
-      for (final item in (res['list'] as List? ?? const [])) {
-        final f = RcloneFile.fromJson((item as Map).cast<String, dynamic>());
+      for (final f in found) {
         final hay = '${f.name} ${f.path}'.toLowerCase();
         if (!tokens.every(hay.contains)) continue;
         total++;

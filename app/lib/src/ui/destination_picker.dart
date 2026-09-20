@@ -116,19 +116,11 @@ class _DestinationPickerDialogState
       return;
     }
     try {
-      final res = await client.rpc(
-        'operations/list',
-        remote.listParams(_currentPath),
-      );
-      final dirs =
-          (res['list'] as List? ?? const [])
-              .cast<Map<String, dynamic>>()
-              .map(RcloneFile.fromJson)
-              .where((f) => f.isDir)
-              .toList()
-            ..sort(
-              (a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()),
-            );
+      final entries = await RcApi(
+        client,
+      ).operations.list(remote.listFs, _currentPath, opt: Remote.listOpt);
+      final dirs = entries.where((f) => f.isDir).toList()
+        ..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
       if (!mounted) return;
       setState(() {
         _dirs = dirs;
