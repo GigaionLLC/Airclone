@@ -14,9 +14,9 @@ final mountTypesProvider = FutureProvider<List<String>>((ref) async {
   final client = ref.read(engineControllerProvider).client;
   if (client == null) return const [];
   try {
-    final res = await client.rpc('mount/types');
-    return (res['mountTypes'] as List?)?.whereType<String>().toList() ??
-        const [];
+    // Awaited, not returned: an un-awaited future escapes this try block,
+    // and the empty-list fallback below is the whole point of it.
+    return await RcApi(client).mount.types();
   } catch (_) {
     return const [];
   }
@@ -39,11 +39,7 @@ class MountController extends Notifier<List<MountInfo>> {
     final client = ref.read(engineControllerProvider).client;
     if (client == null) return;
     try {
-      final res = await client.rpc('mount/listmounts');
-      final list = res['mountPoints'];
-      state = list is List
-          ? [for (final e in list) MountInfo.fromList(e)]
-          : const [];
+      state = await RcApi(client).mount.listMounts();
     } catch (_) {
       // keep last good snapshot
     }
@@ -69,12 +65,12 @@ class MountController extends Notifier<List<MountInfo>> {
     if (client == null) {
       throw RcloneException('mount/mount', 'Engine not ready.');
     }
-    final res = await client.rpc('mount/mount', {
-      'fs': fs,
-      'mountPoint': mountPoint,
-      'vfsOpt': options.toVfsOpt(),
-      'mountOpt': options.toMountOpt(windows: HostPlatform.isWindows),
-    });
+    final res = await RcApi(client).mount.mount(
+      fs: fs,
+      mountPoint: mountPoint,
+      vfsOpt: options.toVfsOpt(),
+      mountOpt: options.toMountOpt(windows: HostPlatform.isWindows),
+    );
     await _poll();
     return (res['mountPoint'] as String?) ?? mountPoint;
   }
@@ -96,11 +92,11 @@ class MountController extends Notifier<List<MountInfo>> {
     final client = ref.read(engineControllerProvider).client;
     if (client == null) return 'Engine not ready.';
     try {
-      await client.rpc('vfs/refresh', {
-        if (fs.isNotEmpty) 'fs': fs,
-        'recursive': 'true',
-        '_async': true,
-      });
+      await RcApi(client).vfs.refresh(
+        fs: fs.isEmpty ? null : fs,
+        recursive: true,
+        options: const RcOptions(async: true),
+      );
       return null;
     } on RcloneException catch (e) {
       return e.message;
@@ -113,7 +109,7 @@ class MountController extends Notifier<List<MountInfo>> {
     final client = ref.read(engineControllerProvider).client;
     if (client == null) return;
     try {
-      await client.rpc('mount/unmount', {'mountPoint': mountPoint});
+      await RcApi(client).mount.unmount(mountPoint);
     } catch (_) {
       // may already be gone
     }
@@ -124,7 +120,7 @@ class MountController extends Notifier<List<MountInfo>> {
     final client = ref.read(engineControllerProvider).client;
     if (client == null) return;
     try {
-      await client.rpc('mount/unmountall');
+      await RcApi(client).mount.unmountAll();
     } catch (_) {}
     await _poll();
   }
@@ -147,7 +143,7 @@ class MountController extends Notifier<List<MountInfo>> {
   Future<void> unmountAllForExit() async {
     final client = ref.read(engineControllerProvider).client;
     if (client == null) return;
-    await client.rpc('mount/unmountall');
+    await RcApi(client).mount.unmountAll();
   }
 }
 
