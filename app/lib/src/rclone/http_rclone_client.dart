@@ -6,10 +6,10 @@ import 'dart:math';
 import 'package:flutter/foundation.dart' show kDebugMode, visibleForTesting;
 import 'package:http/http.dart' as http;
 
-import '../state/diagnostics.dart';
 import '../state/host_platform.dart';
 import '../state/undecryptable_names.dart';
 import 'rclone_client.dart';
+import 'rclone_log.dart';
 import 'windows_child_job.dart';
 
 /// RC methods Airclone calls on its OWN initiative to find out what a backend
@@ -168,6 +168,7 @@ class HttpRcloneClient implements RcloneClient, ObjectUploader {
     this.configPassword,
     this.extraArgs = const <String>[],
     this.extraEnv = const <String, String>{},
+    this.logSink = discardRcloneLog,
   });
 
   /// Path to the rclone binary (from [RcloneEngine]).
@@ -187,6 +188,13 @@ class HttpRcloneClient implements RcloneClient, ObjectUploader {
   /// Additional environment for the `rcd` child (e.g. Android's TMPDIR /
   /// RCLONE_LOCAL_NO_SET_MODTIME). RCLONE_CONFIG_PASS always wins over this.
   final Map<String, String> extraEnv;
+
+  /// Where engine events go. Defaults to discarding them.
+  ///
+  /// Only what [_onEngineLine] and [_noteTransportFailure] have already decided
+  /// to keep is sent here — never the raw child output, which can carry the rc
+  /// credentials at high verbosity.
+  final RcloneLogSink logSink;
 
   Process? _process;
   int? _port;
@@ -493,8 +501,8 @@ class HttpRcloneClient implements RcloneClient, ObjectUploader {
       // the ring only needs to say the condition happened.
       if (!_loggedUndecryptable) {
         _loggedUndecryptable = true;
-        logDiagnostic(
-          DiagLevel.warning,
+        logSink(
+          RcloneLogLevel.warning,
           'engine',
           'crypt: a name could not be decrypted, so entries are being hidden '
               'from listings (password/salt mismatch?)',
@@ -511,7 +519,7 @@ class HttpRcloneClient implements RcloneClient, ObjectUploader {
     if (line == _lastLoggedLine) return;
     _lastLoggedLine = line;
     _loggedLines++;
-    logDiagnostic(DiagLevel.error, 'engine', line);
+    logSink(RcloneLogLevel.error, 'engine', line);
   }
 
   String? _resolvedConfigPath;
@@ -644,8 +652,8 @@ class HttpRcloneClient implements RcloneClient, ObjectUploader {
     } else {
       _lastFailureReport = now;
     }
-    logDiagnostic(
-      recovered ? DiagLevel.info : DiagLevel.warning,
+    logSink(
+      recovered ? RcloneLogLevel.info : RcloneLogLevel.warning,
       'engine',
       recovered
           ? 'engine dropped a connection on $method; the retry succeeded'

@@ -13,6 +13,7 @@ import 'build_flavor.dart';
 import 'cache_crypto.dart';
 import 'config_password_vault.dart';
 import 'engine_flags.dart';
+import 'engine_log_bridge.dart';
 import 'engine_mode.dart';
 import 'host_platform.dart';
 import 'settings_controller.dart';
@@ -593,6 +594,7 @@ class EngineController extends Notifier<EngineUi> {
         configPath: configPath,
         configPassword: password,
         previewCacheDir: (await getTemporaryDirectory()).path,
+        logSink: logEngineEvent,
       );
     } else {
       final http = HttpRcloneClient(
@@ -606,6 +608,7 @@ class EngineController extends Notifier<EngineUi> {
           parseEngineFlags(ref.read(engineFlagsProvider)),
         ),
         extraEnv: extraEnv,
+        logSink: logEngineEvent,
       );
       // If rcd dies out from under us (crash, Android LMK), don't keep showing
       // a "ready" engine wired to a corpse — surface it with a restart path.
