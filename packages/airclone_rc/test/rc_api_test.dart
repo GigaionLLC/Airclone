@@ -122,6 +122,215 @@ void main() {
         throwsA(isA<RcloneException>()),
       );
     });
+    test('mount', () async {
+      await api.mount.mount(
+        fs: 'gdrive:',
+        mountPoint: 'X:',
+        vfsOpt: const {'CacheMode': 2, 'DirCacheTime': '24h'},
+        mountOpt: const {'NetworkMode': true},
+      );
+      expectCall('mount/mount', {
+        'fs': 'gdrive:',
+        'mountPoint': 'X:',
+        'vfsOpt': const {'CacheMode': 2, 'DirCacheTime': '24h'},
+        'mountOpt': const {'NetworkMode': true},
+      });
+
+      // No options at all is not the same as empty ones: rclone treats an
+      // empty vfsOpt as "reset every field to its zero value".
+      await api.mount.mount(fs: 'a:', mountPoint: '/mnt/a');
+      expectCall('mount/mount', {'fs': 'a:', 'mountPoint': '/mnt/a'});
+
+      await api.mount.unmount('X:');
+      expectCall('mount/unmount', {'mountPoint': 'X:'});
+
+      await api.mount.unmountAll();
+      expectCall('mount/unmountall', <String, dynamic>{});
+
+      client.answer = {
+        'mountPoints': [
+          {'MountPoint': 'X:', 'Fs': 'gdrive:'},
+          'Y:', // rclone has answered with bare strings; both parse.
+        ],
+      };
+      final mounts = await api.mount.listMounts();
+      expectCall('mount/listmounts', <String, dynamic>{});
+      expect(mounts.map((m) => m.mountPoint), ['X:', 'Y:']);
+      expect(mounts.first.fs, 'gdrive:');
+
+      client.answer = {
+        'mountTypes': ['mount', 'cmount'],
+      };
+      expect(await api.mount.types(), ['mount', 'cmount']);
+      expectCall('mount/types', <String, dynamic>{});
+
+      // A build with no mount support answers without the key at all.
+      client.answer = const {};
+      expect(await api.mount.types(), isEmpty);
+    });
+
+    test('serve', () async {
+      client.answer = {'id': 'srv-1', 'addr': '127.0.0.1:8080'};
+      await api.serve.start(
+        type: 'webdav',
+        fs: 'gdrive:',
+        addr: '127.0.0.1:0',
+        user: 'u',
+        pass: 'p',
+        readOnly: true,
+        vfsCacheMode: 'writes',
+      );
+      // snake_case, because these are rclone's wire names and not Dart's.
+      expectCall('serve/start', {
+        'type': 'webdav',
+        'fs': 'gdrive:',
+        'addr': '127.0.0.1:0',
+        'user': 'u',
+        'pass': 'p',
+        'read_only': true,
+        'vfs_cache_mode': 'writes',
+      });
+
+      // Read-only off sends nothing, rather than `false`: a server started
+      // writable is rclone's default, and this keeps the two forms identical.
+      await api.serve.start(type: 'dlna', fs: 'a:', addr: ':0');
+      expectCall('serve/start', {'type': 'dlna', 'fs': 'a:', 'addr': ':0'});
+
+      await api.serve.stop('srv-1');
+      expectCall('serve/stop', {'id': 'srv-1'});
+
+      await api.serve.stopAll();
+      expectCall('serve/stopall', <String, dynamic>{});
+
+      client.answer = {
+        'list': [
+          {
+            'id': 'srv-1',
+            'addr': '127.0.0.1:8080',
+            'params': {
+              'type': 'webdav',
+              'fs': 'gdrive:',
+              'opt': {'ListenAddr': '127.0.0.1:0'},
+            },
+          },
+        ],
+      };
+      final servers = await api.serve.list();
+      expectCall('serve/list', <String, dynamic>{});
+      expect(servers.single.id, 'srv-1');
+      // The bound address wins over the requested one - port 0 became 8080.
+      expect(servers.single.addr, '127.0.0.1:8080');
+      expect(servers.single.type, 'webdav');
+
+      client.answer = {
+        'types': ['http', 'webdav'],
+      };
+      expect(await api.serve.types(), ['http', 'webdav']);
+      expectCall('serve/types', <String, dynamic>{});
+    });
+
+    test('vfs', () async {
+      await api.vfs.refresh(
+        fs: 'gdrive:',
+        recursive: true,
+        options: const RcOptions(async: true),
+      );
+      // 'true' the string, not true the bool: this is the form that has
+      // shipped, and vfs/refresh's parameters are flags.
+      expectCall('vfs/refresh', {
+        'fs': 'gdrive:',
+        'recursive': 'true',
+        '_async': true,
+      });
+
+      await api.vfs.refresh();
+      expectCall('vfs/refresh', <String, dynamic>{});
+
+      await api.vfs.forget(fs: 'gdrive:', dir: 'papers');
+      expectCall('vfs/forget', {'fs': 'gdrive:', 'dir': 'papers'});
+
+      client.answer = {
+        'vfses': ['gdrive:', 'dropbox:'],
+      };
+      expect(await api.vfs.list(), ['gdrive:', 'dropbox:']);
+      expectCall('vfs/list', <String, dynamic>{});
+
+      await api.vfs.stats(fs: 'gdrive:');
+      expectCall('vfs/stats', {'fs': 'gdrive:'});
+    });
+
+    test('the destructive and comparing operations', () async {
+      await api.operations.check(
+        srcFs: 'a:',
+        dstFs: 'b:',
+        options: const RcOptions(
+          async: true,
+          filter: {
+            'IncludeRule': ['*.pdf'],
+          },
+        ),
+      );
+      // All five buckets on: a caller that only wanted counts would be
+      // reading core/stats instead.
+      expectCall('operations/check', {
+        'srcFs': 'a:',
+        'dstFs': 'b:',
+        'download': false,
+        'match': true,
+        'missingOnSrc': true,
+        'missingOnDst': true,
+        'differ': true,
+        'error': true,
+        '_async': true,
+        '_filter': const {
+          'IncludeRule': ['*.pdf'],
+        },
+      });
+
+      await api.operations.copyUrl(
+        fs: 'gdrive:',
+        remote: 'inbox',
+        url: 'https://example.com/a.pdf',
+        autoFilename: true,
+      );
+      expectCall('operations/copyurl', {
+        'fs': 'gdrive:',
+        'remote': 'inbox',
+        'url': 'https://example.com/a.pdf',
+        'autoFilename': true,
+      });
+
+      // Without autoFilename the flag is absent, not false, and `remote` is
+      // the full destination path.
+      await api.operations.copyUrl(
+        fs: 'gdrive:',
+        remote: 'inbox/a.pdf',
+        url: 'https://example.com/a.pdf',
+      );
+      expectCall('operations/copyurl', {
+        'fs': 'gdrive:',
+        'remote': 'inbox/a.pdf',
+        'url': 'https://example.com/a.pdf',
+      });
+
+      await api.operations.cleanup('gdrive:');
+      expectCall('operations/cleanup', {'fs': 'gdrive:'});
+
+      await api.operations.delete('gdrive:junk');
+      expectCall('operations/delete', {'fs': 'gdrive:junk'});
+    });
+
+    test('sync/bisync names its sides path1 and path2', () async {
+      client.answer = {'jobid': 12};
+      final job = await api.sync.bisync(path1: 'a:', path2: 'b:');
+      expect(job.id, 12);
+      expectCall('sync/bisync', {'path1': 'a:', 'path2': 'b:', '_async': true});
+    });
+
+    test('job/stopgroup stops by group, not by id', () async {
+      await api.job.stopGroup('airclone/copy');
+      expectCall('job/stopgroup', {'group': 'airclone/copy'});
+    });
   });
 
   group('extra and options', () {

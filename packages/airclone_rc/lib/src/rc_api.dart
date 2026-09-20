@@ -16,8 +16,10 @@
 /// provably behaviour-preserving.
 library;
 
+import 'models/mount_info.dart';
 import 'models/provider.dart';
 import 'models/rclone_file.dart';
+import 'models/serve_server.dart';
 import 'rc_options.dart';
 import 'rclone_client.dart';
 
@@ -33,7 +35,10 @@ class RcApi {
       config = RcConfig(client),
       operations = RcOperations(client),
       job = RcJob(client),
-      sync = RcSync(client);
+      sync = RcSync(client),
+      mount = RcMount(client),
+      serve = RcServe(client),
+      vfs = RcVfs(client);
 
   /// The engine underneath. Use it directly for anything not typed here.
   final RcloneClient client;
@@ -43,6 +48,9 @@ class RcApi {
   final RcOperations operations;
   final RcJob job;
   final RcSync sync;
+  final RcMount mount;
+  final RcServe serve;
+  final RcVfs vfs;
 }
 
 /// Shared plumbing: merge a method's own parameters with `extra` and
@@ -104,6 +112,16 @@ class RcCore extends _Namespace {
   /// want; this is the bare RC method.
   Future<Map<String, dynamic>> quit({Map<String, dynamic>? extra}) =>
       send('core/quit', const {}, extra: extra);
+
+  /// Memory the Go runtime is holding.
+  Future<Map<String, dynamic>> memstats({Map<String, dynamic>? extra}) =>
+      send('core/memstats', const {}, extra: extra);
+
+  // `core/command` is deliberately NOT here. It runs an arbitrary rclone
+  // command line, its output shape depends on `returnType`, and the caller
+  // that needs it (a command console) needs the streaming form and its own
+  // policy about what may be run at all. A typed wrapper would only make it
+  // look ordinary. Use `client.rpc` — or `HttpRcloneClient.commandStream`.
 }
 
 /// `config/*` — the remotes rclone knows about.
@@ -319,6 +337,82 @@ class RcOperations extends _Namespace {
     Map<String, dynamic>? extra,
   }) =>
       send('operations/publiclink', {'fs': fs, 'remote': remote}, extra: extra);
+
+  /// Compares two filesystems.
+  ///
+  /// The five bucket flags ask rclone to RETURN the per-bucket file lists, not
+  /// merely count them, and default to on because a caller that wanted counts
+  /// only would read `core/stats`. [download] compares by streaming bytes,
+  /// which is the only honest answer when the two backends share no hash.
+  ///
+  /// Pass `options: RcOptions(async: true)` for anything but a tiny tree; the
+  /// result is then an [AsyncJob] id to poll, and the buckets arrive in
+  /// `job/status`'s `output`.
+  Future<Map<String, dynamic>> check({
+    required String srcFs,
+    required String dstFs,
+    bool download = false,
+    bool match = true,
+    bool missingOnSrc = true,
+    bool missingOnDst = true,
+    bool differ = true,
+    bool error = true,
+    Map<String, dynamic>? extra,
+    RcOptions options = RcOptions.none,
+  }) => send(
+    'operations/check',
+    {
+      'srcFs': srcFs,
+      'dstFs': dstFs,
+      'download': download,
+      'match': match,
+      'missingOnSrc': missingOnSrc,
+      'missingOnDst': missingOnDst,
+      'differ': differ,
+      'error': error,
+    },
+    extra: extra,
+    options: options,
+  );
+
+  /// Copies the contents of a URL into `fs:remote`.
+  ///
+  /// With [autoFilename], `remote` is the DESTINATION DIRECTORY and rclone
+  /// takes the file name from the URL; without it, `remote` is the full
+  /// destination path including the name.
+  Future<Map<String, dynamic>> copyUrl({
+    required String fs,
+    required String remote,
+    required String url,
+    bool autoFilename = false,
+    Map<String, dynamic>? extra,
+    RcOptions options = RcOptions.none,
+  }) => send(
+    'operations/copyurl',
+    {
+      'fs': fs,
+      'remote': remote,
+      'url': url,
+      if (autoFilename) 'autoFilename': true,
+    },
+    extra: extra,
+    options: options,
+  );
+
+  /// Empties the backend's trash, where it has one. Irreversible.
+  Future<Map<String, dynamic>> cleanup(
+    String fs, {
+    Map<String, dynamic>? extra,
+    RcOptions options = RcOptions.none,
+  }) => send('operations/cleanup', {'fs': fs}, extra: extra, options: options);
+
+  /// **Deletes every file under `fs`**, honouring `_filter` if one is set.
+  /// [purge] removes a directory; this removes contents. Both are final.
+  Future<Map<String, dynamic>> delete(
+    String fs, {
+    Map<String, dynamic>? extra,
+    RcOptions options = RcOptions.none,
+  }) => send('operations/delete', {'fs': fs}, extra: extra, options: options);
 }
 
 /// `job/*` — the background jobs `_async` calls create.
@@ -334,6 +428,13 @@ class RcJob extends _Namespace {
   /// Asks a running job to stop.
   Future<Map<String, dynamic>> stop(int jobid, {Map<String, dynamic>? extra}) =>
       send('job/stop', {'jobid': jobid}, extra: extra);
+
+  /// Stops every job in a stats group — the group an `_group` parameter put
+  /// them in.
+  Future<Map<String, dynamic>> stopGroup(
+    String group, {
+    Map<String, dynamic>? extra,
+  }) => send('job/stopgroup', {'group': group}, extra: extra);
 
   /// The ids the engine currently knows about.
   Future<List<int>> list({Map<String, dynamic>? extra}) async {
@@ -397,4 +498,193 @@ class RcSync extends _Namespace {
       options: options,
     ),
   );
+
+  /// Two-way sync. Note the parameter names: `path1`/`path2`, not src/dst,
+  /// because neither side is the source. A first run needs
+  /// `extra: {'resync': true}` - without it rclone refuses to guess which
+  /// side is right.
+  Future<AsyncJob> bisync({
+    required String path1,
+    required String path2,
+    Map<String, dynamic>? extra,
+    RcOptions options = const RcOptions(async: true),
+  }) async => asJob(
+    await send(
+      'sync/bisync',
+      {'path1': path1, 'path2': path2},
+      extra: extra,
+      options: options,
+    ),
+  );
+}
+
+/// `mount/*` - mounting a remote as a drive or folder on the host.
+///
+/// Every one of these acts on the MACHINE THE ENGINE RUNS ON, which is not
+/// necessarily the machine that called: an engine reached over the network
+/// mounts a drive there, not here.
+class RcMount extends _Namespace {
+  const RcMount(super.client);
+
+  /// Mounts `fs` at [mountPoint].
+  ///
+  /// [vfsOpt] and [mountOpt] keys are rclone's **Go field names**
+  /// (`CacheMode`, `DirCacheTime`, `AttrTimeout`, ...), not its command-line
+  /// flags, and durations and sizes go over as strings (`"24h"`, `"32Mi"`)
+  /// which rclone parses itself. `CacheMode` is the exception: an int.
+  Future<Map<String, dynamic>> mount({
+    required String fs,
+    required String mountPoint,
+    Map<String, Object?>? vfsOpt,
+    Map<String, Object?>? mountOpt,
+    Map<String, dynamic>? extra,
+  }) => send('mount/mount', {
+    'fs': fs,
+    'mountPoint': mountPoint,
+    'vfsOpt': ?vfsOpt,
+    'mountOpt': ?mountOpt,
+  }, extra: extra);
+
+  /// Unmounts one mount point.
+  Future<Map<String, dynamic>> unmount(
+    String mountPoint, {
+    Map<String, dynamic>? extra,
+  }) => send('mount/unmount', {'mountPoint': mountPoint}, extra: extra);
+
+  /// Unmounts everything this engine mounted. Safe to call when there is
+  /// nothing mounted, which is why it is the sane thing to run at shutdown.
+  Future<Map<String, dynamic>> unmountAll({Map<String, dynamic>? extra}) =>
+      send('mount/unmountall', const {}, extra: extra);
+
+  /// What is mounted right now.
+  Future<List<MountInfo>> listMounts({Map<String, dynamic>? extra}) async {
+    final res = await send('mount/listmounts', const {}, extra: extra);
+    final list = res['mountPoints'];
+    return list is List
+        ? [for (final e in list) MountInfo.fromList(e)]
+        : const <MountInfo>[];
+  }
+
+  /// The mount implementations this build supports (`mount`, `cmount`,
+  /// `nfsmount`). An empty list means this rclone cannot mount at all.
+  Future<List<String>> types({Map<String, dynamic>? extra}) async {
+    final res = await send('mount/types', const {}, extra: extra);
+    return (res['mountTypes'] as List?)?.whereType<String>().toList(
+          growable: false,
+        ) ??
+        const <String>[];
+  }
+}
+
+/// `serve/*` - exposing a remote over a network protocol.
+class RcServe extends _Namespace {
+  const RcServe(super.client);
+
+  /// Starts a server of [type] (`http`, `webdav`, `ftp`, `sftp`, `dlna`, ...)
+  /// over `fs`, listening on [addr].
+  ///
+  /// The option names are rclone's own snake_case wire names, which is why
+  /// they are spelled out here rather than left to the caller: `read_only`,
+  /// `vfs_cache_mode`. **`user`/`pass` are ignored by protocols that cannot
+  /// authenticate** (DLNA and NFS), so a server started without them is
+  /// reachable by anyone who can reach [addr]; that is a decision for the host
+  /// app to put in front of its user, not something this can fix.
+  Future<Map<String, dynamic>> start({
+    required String type,
+    required String fs,
+    required String addr,
+    String? user,
+    String? pass,
+    bool readOnly = false,
+    String? vfsCacheMode,
+    Map<String, dynamic>? extra,
+  }) => send('serve/start', {
+    'type': type,
+    'fs': fs,
+    'addr': addr,
+    'user': ?user,
+    'pass': ?pass,
+    if (readOnly) 'read_only': true,
+    'vfs_cache_mode': ?vfsCacheMode,
+  }, extra: extra);
+
+  /// Stops one server by the id `start` returned.
+  Future<Map<String, dynamic>> stop(String id, {Map<String, dynamic>? extra}) =>
+      send('serve/stop', {'id': id}, extra: extra);
+
+  /// Stops every server this engine started.
+  Future<Map<String, dynamic>> stopAll({Map<String, dynamic>? extra}) =>
+      send('serve/stopall', const {}, extra: extra);
+
+  /// The servers running right now.
+  Future<List<ServeServer>> list({Map<String, dynamic>? extra}) async {
+    final res = await send('serve/list', const {}, extra: extra);
+    final list = res['list'];
+    return list is List
+        ? [
+            for (final e in list)
+              if (e is Map) ServeServer.fromList(e.cast<String, dynamic>()),
+          ]
+        : const <ServeServer>[];
+  }
+
+  /// The protocols this build can serve.
+  Future<List<String>> types({Map<String, dynamic>? extra}) async {
+    final res = await send('serve/types', const {}, extra: extra);
+    return (res['types'] as List?)?.whereType<String>().toList(
+          growable: false,
+        ) ??
+        const <String>[];
+  }
+}
+
+/// `vfs/*` - the cache that sits under a mount or a server.
+class RcVfs extends _Namespace {
+  const RcVfs(super.client);
+
+  /// Re-reads directories the VFS has cached, so a change made elsewhere
+  /// becomes visible inside a mount without waiting for `--dir-cache-time`.
+  ///
+  /// [recursive] travels as the STRING `'true'`, because that is what this
+  /// method's parameters are - rclone parses them as flags - and it is the
+  /// form Airclone has shipped since mounts existed. A refresh of a large tree
+  /// can take a while, so pass `options: RcOptions(async: true)`.
+  Future<Map<String, dynamic>> refresh({
+    String? fs,
+    String? dir,
+    bool recursive = false,
+    Map<String, dynamic>? extra,
+    RcOptions options = RcOptions.none,
+  }) => send(
+    'vfs/refresh',
+    {'fs': ?fs, 'dir': ?dir, if (recursive) 'recursive': 'true'},
+    extra: extra,
+    options: options,
+  );
+
+  /// Drops a directory or file from the cache instead of re-reading it.
+  /// Everything is forgotten when nothing is named.
+  Future<Map<String, dynamic>> forget({
+    String? fs,
+    String? dir,
+    String? file,
+    Map<String, dynamic>? extra,
+  }) =>
+      send('vfs/forget', {'fs': ?fs, 'dir': ?dir, 'file': ?file}, extra: extra);
+
+  /// The active VFSes, by the `fs` each was created for. More than one means
+  /// a later call must say which it means.
+  Future<List<String>> list({Map<String, dynamic>? extra}) async {
+    final res = await send('vfs/list', const {}, extra: extra);
+    return (res['vfses'] as List?)?.whereType<String>().toList(
+          growable: false,
+        ) ??
+        const <String>[];
+  }
+
+  /// Cache size, item counts and in-flight uploads.
+  Future<Map<String, dynamic>> stats({
+    String? fs,
+    Map<String, dynamic>? extra,
+  }) => send('vfs/stats', {'fs': ?fs}, extra: extra);
 }
