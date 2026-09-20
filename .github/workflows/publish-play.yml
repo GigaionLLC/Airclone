@@ -135,7 +135,7 @@ jobs:
 
       - name: Upload AAB to Google Play (open testing)
         if: inputs.mode == 'upload'
-        uses: r0adkll/upload-google-play@v1
+        uses: r0adkll/upload-google-play@e738b9dd8f2476ea806d921b64aacd24f34515a5  # v1.1.5
         with:
           serviceAccountJsonPlainText: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
           packageName: com.gigaionllc.airclone

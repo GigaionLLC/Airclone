@@ -75,6 +75,14 @@ the store lanes are thin wrappers around a script in
 [`tool/`](../tool/), named here so you can read what a run will actually do before you start it. All
 secrets/variables are named, **never valued** — this repo is public.
 
+**Third-party actions are pinned to a commit**, with the version in a trailing comment
+(`subosito/flutter-action@1a449444…  # v2.23.0`). A tag is a movable pointer its owner can
+repoint at any time, and several of these run in the same job as the signing keys. First-party
+`actions/*` stay on major tags — GitHub owns those namespaces, and a floating major is what
+keeps them off a deprecated Node runtime. [`.github/dependabot.yml`](../.github/dependabot.yml)
+opens one grouped pull request a month to move the pins forward; `dtolnay/rust-toolchain` is bumped
+by hand, because it publishes no releases and its only tag is older than the branch head.
+
 ### Build
 
 | Workflow | Trigger | What it does |

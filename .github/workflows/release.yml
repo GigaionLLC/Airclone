@@ -182,10 +182,11 @@ jobs:
     if: ${{ !cancelled() && (needs.release.result == 'success' || github.event_name == 'workflow_dispatch') }}
     steps:
       - uses: actions/checkout@v5
-      - uses: subosito/flutter-action@v2
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2  # v2.23.0
         with: { channel: stable, flutter-version: 3.47.0, cache: true }
       # super_native_extensions (drag-out) builds a Rust crate via cargokit.
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87  # stable branch
+        with: { toolchain: stable }
       - run: flutter config --enable-windows-desktop
       - run: flutter pub get
       # Pull in the prebuilt in-process engine (from the `librclone` job) so the
@@ -321,7 +322,7 @@ jobs:
       # job's working-directory, so paths are workspace-relative.
       - name: Sign app binary (Azure Trusted Signing)
         if: ${{ vars.WINDOWS_SIGNING_ENABLED == 'true' }}
-        uses: azure/trusted-signing-action@v2.0.0
+        uses: azure/trusted-signing-action@c7ab2a863ab5f9a846ddb8265964877ef296ee82  # v2.0.0
         with:
           azure-tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           azure-client-id: ${{ secrets.AZURE_CLIENT_ID }}
@@ -352,7 +353,7 @@ jobs:
       # Sign the installer itself (same Azure Trusted Signing gate as above).
       - name: Sign installer (Azure Trusted Signing)
         if: ${{ vars.WINDOWS_SIGNING_ENABLED == 'true' }}
-        uses: azure/trusted-signing-action@v2.0.0
+        uses: azure/trusted-signing-action@c7ab2a863ab5f9a846ddb8265964877ef296ee82  # v2.0.0
         with:
           azure-tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           azure-client-id: ${{ secrets.AZURE_CLIENT_ID }}
@@ -475,10 +476,11 @@ jobs:
         # desktop-file-validate and refuses to package without it, having already
         # done the slow work first.
         run: sudo apt-get update && sudo apt-get install -y ninja-build libgtk-3-dev libmpv-dev mpv libsecret-1-dev desktop-file-utils
-      - uses: subosito/flutter-action@v2
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2  # v2.23.0
         with: { channel: stable, flutter-version: 3.47.0, cache: true }
       # super_native_extensions (drag-out) builds a Rust crate via cargokit.
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87  # stable branch
+        with: { toolchain: stable }
       - run: flutter config --enable-linux-desktop
       - run: flutter pub get
       # Pull in the prebuilt in-process engine (from the `librclone` job) so the
@@ -714,10 +716,11 @@ jobs:
         run: |
           echo "::error::Tagged release but APPLE_DEVELOPER_ID_APPLICATION_P12_BASE64 is missing — refusing to publish an unsigned macOS build."
           exit 1
-      - uses: subosito/flutter-action@v2
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2  # v2.23.0
         with: { channel: stable, flutter-version: 3.47.0, cache: true }
       # super_native_extensions (drag-out) builds a Rust crate via cargokit.
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87  # stable branch
+        with: { toolchain: stable }
       - run: flutter config --enable-macos-desktop
       - run: flutter pub get
       # Pull in the prebuilt UNIVERSAL librclone.dylib (from the `librclone` job).
@@ -960,9 +963,10 @@ jobs:
           exit 1
       - uses: actions/setup-java@v5
         with: { distribution: temurin, java-version: '17' }
-      - uses: subosito/flutter-action@v2
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2  # v2.23.0
         with: { channel: stable, flutter-version: 3.47.0, cache: true }
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87  # stable branch
+        with: { toolchain: stable }
       - uses: actions/setup-go@v6
         # cache:false — there is no committed go.sum (the pinning module is
         # synthesized in /tmp at build time), so the default cache lookup would

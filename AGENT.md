@@ -69,7 +69,7 @@ Store shapes, contexts, and data models.
 | Cutting a release | [dev hub](dev/README.md) (Release checklist) | [`dev/releases/`](dev/releases/) — notes must exist **before** the tag |
 | Submitting to a store (Microsoft / Play / Apple) | [Store submissions index](docs/store/README.md) | [Windows](dev/windows-signing-and-store.md) · [Play](dev/google-play-store.md) · [Apple/macOS runbook](dev/apple-appstore-and-macos.md) + [Apple current state & traps](dev/apple-handoff.md) |
 | Writing, moving, or removing a doc | [Docs Blueprint](wiki/core/17-docs-blueprint.md) | [Knowledge Capture](wiki/core/18-knowledge-capture.md) — then `python tool/check-docs.py`, a CI gate: a broken relative link (into `wiki/`, `dev/`, `docs/` **or** `app/` source) or a control byte fails the build |
-| Editing a GitHub Actions workflow | [dev hub → CI workflows](dev/README.md) | `python tool/check-workflows.py` before pushing — an empty GitHub expression anywhere in a `.yml`, **comments included**, invalidates the whole file, and GitHub reports that as a logless run named after the path |
+| Editing a GitHub Actions workflow | [dev hub → CI workflows](dev/README.md) | `python tool/check-workflows.py` before pushing — an empty GitHub expression anywhere in a `.yml`, **comments included**, invalidates the whole file, and GitHub reports that as a logless run named after the path. A **third-party** action is added by full commit SHA with a `# version` comment, never by tag (`gh api repos/<owner>/<repo>/commits/<tag> --jq .sha`); [`.github/dependabot.yml`](.github/dependabot.yml) says why, and proposes the bumps |
 | Checking roadmap / parked items | [Backlog Index](dev/backlog/backlog-index.md) | [Feature Backlog](dev/backlog/feature-backlog.md) |
 
 > **🔒 Reference material:** Deep competitive research and notes that name third-party projects live
@@ -203,6 +203,20 @@ Store shapes, contexts, and data models.
     security rule did nothing. Found with `cat -A`. When a change that looks obviously correct has no
     effect, check the bytes before rewriting the logic — and prefer writing tricky literals to a file
     with a quoted heredoc over threading them through another layer of escaping.
+
+19. **An outside pull request's code never runs on this machine.** Read it on GitHub and let hosted
+    CI run it. Do not check the branch out, build it, `flutter pub get` it, or open it in anything
+    that runs an analyzer on it — and that includes the docker-compose container, which
+    bind-mounts the whole working tree (`./:/work`), so `dev/secrets/dev-profile.env`, the vault
+    passphrase, the `gh` login and the signing material are one `postinstall` script away from a
+    contributor. CI is not the soft target: a fork's run gets a read-only token and none of the
+    secrets, and no PR-triggerable workflow here uses any. This machine is, and running the code is
+    the only step that makes it reachable.
+    - **At merge time, read the bot's comment and the `cla-signatures` ledger — not the check's
+      colour.** A pull request that touches `.github/workflows/` can define a job named
+      `Airclone CLA` and report its own success under the context the ruleset requires. The sticky
+      comment names everyone who still has to sign, and the ledger branch is the record of who did.
+      Rule 9, turned on a status this repo publishes about itself.
 
 ## ✅ Mandatory Wrap-Up Protocol
 Whenever a task or feature is complete — including when the user says "wrap up", "we're done", "ship

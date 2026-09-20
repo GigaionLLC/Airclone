@@ -13,6 +13,45 @@ happened": nothing was logged between 2026-07-02 and 2026-07-15, or between 2026
      it is: it used to say ABOVE, which pushed it further down the file with every entry until
      it sat hundreds of lines under the newest one and pointed writers at the wrong place. -->
 
+## [2026-09-19] - Contributions become Gigaion's, and the actions beside our keys stop floating
+
+**Agent:** Claude Opus 5 - `main`
+**Files Modified:** `CLA.md`, `CLA-CORPORATE.md`, `CONTRIBUTING.md` (new),
+`.github/workflows/cla.yml` (new), `tool/cla_check.py` + `tool/test_cla_check.py` (new),
+`.github/workflows/ci.yml`, `tool/check-docs.py`, `README.md`, `AGENT.md`,
+`wiki/core/00-system-index.md`, then all 13 workflows that call a third-party action,
+`.github/dependabot.yml` (new) and `dev/README.md`.
+**Database/API Changes:** none in the app. Repository settings: private vulnerability reporting
+enabled; two rulesets added - `main` now requires the `Airclone CLA` status, and `cla-signatures`
+refuses deletion and non-fast-forward with no bypass.
+**Summary:** Every outside contributor now assigns their copyright to Gigaion before a pull request
+can merge, checked by our own script, and every third-party action is pinned to a commit SHA.
+
+**Two things worth keeping**
+
+1. **A licence cannot defend code it does not own.** GitHub's terms make an unaccompanied
+   contribution inbound=outbound, which here means AGPLv3 and nothing more - enough to put the App
+   Store builds at risk, since we can ship there only while one party holds every copyright.
+   `CLA.md` is therefore an assignment, in the present tense, with a tiered fallback for
+   jurisdictions where an assignment cannot take effect, and a licence back so contributors keep
+   the right to reuse their own work. The check is `tool/cla_check.py` (stdlib only, 25 tests in
+   the `docs` job): it requires every commit author rather than the opener, fails closed on
+   unlinked commit emails, and records each signature on the orphan `cla-signatures` branch with a
+   permalink to the exact text signed.
+2. **A version tag is a pointer its owner can repoint.** `subosito/flutter-action@v2` resolved to
+   whatever that tag pointed at on the morning of the run, in jobs that also hold the Azure signing
+   credentials, the Play service account and the Apple identities - and a retagged action is how
+   the best-known CI supply-chain compromise of March 2025 reached thousands of repositories at
+   once. All four third-party actions are now pinned to a full commit SHA, with the version in a
+   trailing comment. `dtolnay/rust-toolchain` also gained `with: { toolchain: stable }` at every
+   call site - not because the pin broke it. That action ships one branch per toolchain, and each
+   branch's `action.yml` carries its own default for the input, so pinning the `stable` branch HEAD
+   brought `default: stable` along with it. What a SHA drops is the ref NAME telling a reader which
+   toolchain the job installs - and both `master` and the repo's lone `v1` tag declare that input
+   required with no default, so the day someone moves the pin there, an unstated toolchain becomes
+   an exit 1. The input says it out loud instead.
+
+
 ## [2026-09-19] - v0.13.8 sent to all three app stores
 
 **Agent:** Claude Opus 5 - `main`

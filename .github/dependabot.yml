@@ -1,0 +1,44 @@
+# Keeps the pinned action versions from going stale.
+#
+# Third-party actions in this repo are pinned to a full commit SHA, not a tag.
+# A tag is a movable pointer its owner can repoint at any time, and several of
+# these actions run in the same job as the signing keys and store credentials,
+# where a repointed tag would be handed everything the job can see. A SHA
+# cannot be repointed - but it also never picks up a fix on its own, so
+# Dependabot proposes the bump as a pull request that can be read before it is
+# merged. The trailing `# v2.23.0` comment beside each SHA is what it reads to
+# know which version the SHA stands for, and what it rewrites on a bump.
+#
+# First-party `actions/*` stay on major tags (`actions/checkout@v5`): GitHub
+# owns those namespaces, and a floating major is what keeps them off a
+# deprecated Node runtime. Dependabot still proposes the major bumps, which is
+# the warning Core Development Rule 8 in AGENT.md says to treat as work.
+#
+# These pull requests are opened by a bot account, which the CLA check exempts,
+# so they need no signature to merge.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 3
+    commit-message:
+      prefix: ci
+    groups:
+      # One pull request a month for all of them, rather than one per action.
+      actions:
+        patterns:
+          - "*"
+    ignore:
+      # dtolnay/rust-toolchain publishes no releases. It ships one BRANCH per
+      # toolchain, each branch's action.yml defaulting the `toolchain` input to
+      # its own name, and its lone tag `v1` is older than the `stable` head we
+      # pin - and declares that input required with no default. Dependabot
+      # cannot tell those apart, so it would "update" the pin backwards, into a
+      # version that then refuses to run. Bump it by hand instead:
+      #   gh api repos/dtolnay/rust-toolchain/commits/stable --jq .sha
+      # Every call site passes `with: { toolchain: stable }`, so the pinned SHA
+      # does not decide which Rust version is installed - rustup resolves that
+      # at run time - and a stale pin costs only the action's own fixes.
+      - dependency-name: dtolnay/rust-toolchain
