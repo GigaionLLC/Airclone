@@ -299,6 +299,81 @@ void main() {
       );
     });
 
+    test('a start that never becomes ready leaves nothing behind', () async {
+      // `rcd --version` starts, prints and exits without ever serving the rc
+      // API, which is the shape of every real failure here: a child that runs
+      // and does not answer.
+      final doomed = HttpRcloneClient(
+        instanceTag: tag,
+        rclonePath: rclonePath ?? 'rclone',
+        configPath: sep(home.path, 'doomed.conf'),
+        extraArgs: const ['--version'],
+      );
+      await expectLater(doomed.start(), throwsA(isA<RcloneException>()));
+
+      // No marker: a failed start must not leave a PID for a later reap.
+      expect(
+        File(
+          sep(Directory.systemTemp.path, '${tag}_rcd_$pid.pid'),
+        ).existsSync(),
+        isFalse,
+        reason: 'a failed start left its reap marker behind',
+      );
+
+      // STOPPED, not error: the state was rolled back rather than left holding
+      // a dead process. This is the assertion that fails without the teardown
+      // - `_process` stays set, so the object reports a broken engine forever
+      // and the next start() returns immediately without doing anything.
+      expect((await doomed.status()).state, EngineState.stopped);
+
+      // And the machine is fine - a client with ordinary arguments starts,
+      // so the failure above was the arguments and nothing else.
+      final ok = HttpRcloneClient(
+        instanceTag: tag,
+        rclonePath: rclonePath ?? 'rclone',
+        configPath: sep(home.path, 'ok.conf'),
+      );
+      await ok.start();
+      expect((await ok.status()).state, EngineState.running);
+      await ok.quit();
+    });
+
+    test(
+      'requestTimeout is the caller\'s to set',
+      () async {
+        // Duration.zero cannot be beaten by any round trip, warm loopback
+        // included - which a 1ms timeout can, and did, quietly passing while
+        // proving nothing. Readiness polls with rpc, so a client that cannot
+        // complete a single call cannot start.
+        final impatient = HttpRcloneClient(
+          instanceTag: tag,
+          rclonePath: rclonePath ?? 'rclone',
+          configPath: sep(home.path, 'impatient.conf'),
+          requestTimeout: Duration.zero,
+        );
+        await expectLater(
+          impatient.start(),
+          throwsA(isA<RcloneException>()),
+          reason: 'the configured timeout was not the one applied',
+        );
+        await impatient.quit();
+
+        // The default value on the same machine, in the same test, starts -
+        // so the failure above is the timeout and not the engine.
+        final patient = HttpRcloneClient(
+          instanceTag: tag,
+          rclonePath: rclonePath ?? 'rclone',
+          configPath: sep(home.path, 'patient.conf'),
+        );
+        await patient.start();
+        expect((await patient.status()).state, EngineState.running);
+        await patient.quit();
+      },
+      // The readiness loop gives rclone 15 seconds to answer, and this test
+      // deliberately spends all of them.
+      timeout: const Timeout(Duration(minutes: 1)),
+    );
+
     test('quit() leaves no reap marker behind for the next launch', () async {
       await client.start();
       final marker = File(

@@ -74,6 +74,14 @@ case. If your code is about to delete or overwrite because a directory looked em
 second one: an empty listing is also what a crypt remote with the wrong `password2` returns,
 because rclone skips every name it cannot decrypt and still exits 0.
 
+### Timeouts and long work
+
+A single rc call is abandoned after `requestTimeout` (30 seconds by default, and yours to
+change). It is a transport timeout, not a patience setting: anything long-running belongs in
+a job, so pass `options: RcOptions(async: true)` and poll `rc.job.status(...)` rather than
+holding a socket open across a copy. `commandStream` has no timeout at all, by design — it
+streams for as long as the command runs.
+
 ### `instanceTag` is required for a reason
 
 `HttpRcloneClient` cleans up `rcd` processes orphaned by a hard exit. It does that by writing
