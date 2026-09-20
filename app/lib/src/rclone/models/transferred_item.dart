@@ -1,4 +1,4 @@
-import 'package:flutter/foundation.dart';
+import 'package:meta/meta.dart';
 
 /// One completed (or failed) transfer, from rclone's `core/transferred` RC.
 ///

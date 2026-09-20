@@ -1,4 +1,4 @@
-import 'package:flutter/foundation.dart';
+import 'package:meta/meta.dart';
 
 /// The key the Web UI server adds to an `operations/list` entry to report that
 /// its content is online-only. Prefixed so it cannot collide with a field

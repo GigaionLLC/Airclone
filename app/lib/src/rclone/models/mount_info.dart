@@ -1,4 +1,4 @@
-import 'package:flutter/foundation.dart';
+import 'package:meta/meta.dart';
 
 /// VFS cache modes (rclone `--vfs-cache-mode`). The RC takes the numeric value
 /// under `vfsOpt.CacheMode`; "writes" is the safe usable default.
