@@ -27,7 +27,14 @@ stops mid-way can be replaced by one that reads only this file.
 
 ## Status
 
-**Milestone B is done. The typed API exists, the app is on it, and every migration kept the
+**MERGED. Milestones A and B are both on `main` (PRs #7 and #8, rebase-merged 2026-09-20, in
+that order).** What is left is the maintainer's: the #6 update (drafted, awaiting wording
+approval), the v0.20.0 release, and Milestone C (pub.dev).
+
+Rebase merges, not squashes, on purpose: a squash would have collapsed thirty per-step commits
+into one and taken the `git mv` rename provenance with it.
+
+Previously: **Milestone B is done. The typed API exists, the app is on it, and every migration kept the
 suite at 1685 passing / 1 skipped** - which is what the golden tests exist to guarantee.
 What remains is the maintainer's: the merge (A4.4), the #6 updates, the v0.20.0 release, and
 Milestone C (pub.dev).
@@ -72,7 +79,8 @@ and the user's approval to merge. Nothing merges without it.
 | A4.1 web build | **DONE** | `flutter build web --no-web-resources-cdn` built clean in 160s — R6 closed |
 | A4.2 Flathub note | **DONE** `f72f1bb` | no manifest exists yet, so it is a note for whoever generates one |
 | A4.3 boundary docs | **DONE** `2de07e4` | `wiki/core/08` §3.0, AGENT.md, backlog row |
-| A4.4 merge | **WAITING ON THE USER** | expect an AGENT.md conflict with the CLA session's rule; `main` was still at `4f346b6` at the last check |
+| A4.4 merge | **MERGED 2026-09-20** | PR #7, rebase-merged; `main` went `4f346b6` → `2ce4ccf`. No conflict: the CLA session's AGENT.md rule was already in the base |
+| B merge | **MERGED 2026-09-20** | PR #8, the typed API and the app on it |
 | A5 notes | **DRAFTED** `1434ed0` | `dev/releases/v0.20.0.md`; the version bump and the release itself wait on the user |
 | A4.5 rcd smoke test | **DONE** `52bd8ab` | live `HttpRcloneClient` against the pinned rclone v1.75.1, 10 passing; the same test now runs in CI's `package-airclone-rc` job against a checksum-verified download |
 | B2 golden params | **DONE** | every typed method pins its method string and params map in `test/rc_api_test.dart` (15 tests) |
