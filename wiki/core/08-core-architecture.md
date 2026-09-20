@@ -196,6 +196,40 @@ engine is live.
 Because the JSON surface is byte-for-byte identical, **~95% of Airclone is transport-agnostic** and
 written once.
 
+### 3.0 Where that interface LIVES: the `airclone_rc` package boundary
+
+Since v0.20.0 the seam and both engines are a package, `packages/airclone_rc/`, which the app
+depends on by path. It is [published to pub.dev](https://github.com/GigaionLLC/Airclone/issues/6)
+when the typed API lands. See [the plan](../../dev/plans/airclone-rc-package-plan.md).
+
+**In the package** (`packages/airclone_rc/lib/src/`): `RcloneClient` and `ObjectUploader`,
+`HttpRcloneClient`, `FfiRcloneClient`, the librclone FFI bindings, `LibrcloneObjectServer`,
+`WindowsChildJob`, and the models that parse RC responses (`RcloneFile`, `RcloneProvider`,
+`MountInfo`, `ServeServer`, `TransferItem`, `TransferredItem`).
+
+**Still in the app**, because each is Airclone product logic and not rclone plumbing:
+`rclone_engine.dart` (finding, downloading and Store rules for the binary), `web_rclone_client.dart`
+(Airclone's own Web UI server), and the `Job`, `Remote` and `MountOptions` models.
+
+Four rules keep the boundary real:
+
+- **P1. The package imports neither the app nor Flutter.** Its `pubspec.yaml` has no `flutter:`
+  SDK entry, so an accidental `package:flutter` import fails at `dart pub get`; a `ci.yml` step
+  fails on any `package:airclone/` import.
+- **P2. `RcloneClient` never grows.** A new ability becomes a separate capability interface —
+  `ObjectUploader` is the precedent — because 24 test fakes and every outside implementation
+  would otherwise have to grow a member they do not care about. The typed API now being built
+  sits OVER `rpc`, never inside the interface.
+- **P3. A host's log sink only ever receives filtered lines.** At `-vv`/`--dump` rclone echoes
+  request headers carrying the rc credentials, so the client keeps only its own failure lines,
+  de-duplicated and capped, and hands those to the `RcloneLogSink` the host passed. Airclone
+  passes `logEngineEvent`, so redaction still happens at ingest in `state/diagnostics.dart`. The
+  default sink discards; `echoEngineLines` prints everything and is development-only.
+- **P4. A host names its own children.** `instanceTag` is required with no default: it prefixes
+  the PID markers and lock in the system temp dir that the orphan-`rcd` reaper matches on, and
+  two apps sharing a tag means one SIGKILLs the other's live engine. Airclone passes
+  `'airclone'`, which is what its markers have always been called.
+
 ### 3.1 librclone constraints to design around
 
 These bind the **in-process** engine — iOS and the Mac App Store — not Android, which spawns.
