@@ -91,8 +91,11 @@ pull request: `gh workflow run ci.yml --ref feat/airclone-rc-typed-api`. Same fo
 `linux-runner.yml` (the `compile` job). That is how to verify a branch nobody wants merged
 yet.
 
-Green on `04ff995`: `analyze-test`, `package-airclone-rc`, `docs`, `rclone-pin`. Dispatched
-again on `22859d6` (the example commit) plus the Linux build.
+Green on `04ff995` and again on `22859d6`: `analyze-test`, `package-airclone-rc`, `docs`,
+`rclone-pin`. `linux-runner.yml` on `22859d6`: `compile` **success**, `mount-probe`
+**success**, `flatpak` skipped, `popout` failing exactly as it does on `main`
+(`continue-on-error`, so the workflow still reports success). The whole of Milestone B is
+therefore verified by CI on a branch with no pull request.
 
 `package-airclone-rc` now downloads the pinned rclone, verifies its checksum and runs
 `rcd_integration_test.dart`, so the spawned engine is exercised live on every run - the FFI
