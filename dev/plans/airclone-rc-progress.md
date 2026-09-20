@@ -96,7 +96,9 @@ The two after-the-move numbers must add up to the baseline.
   against `main` to settle whether it is ours.
 - **The example runs standalone:** `dart run example/example.dart --librclone …` printed
   `rclone v1.74.4` and a real listing, with no Airclone involved.
-- **Local Windows build:** `flutter build windows --release` against the package.
+- **Local Windows build + run:** `flutter build windows --release` succeeded (387s) and the
+  built `airclone.exe --version` printed `Airclone 0.13.9` and exited 0 — the real desktop
+  binary, built against the package, running its headless path.
 - **Web build:** `flutter build web --no-web-resources-cdn` succeeded, so the conditional
   `dart.library.js_interop` exports still keep `dart:ffi` out of the web build.
 - **`popout` fails, and it is NOT ours.** The Linux runner's pop-out probe fails on `main`
