@@ -24,9 +24,10 @@ stops mid-way can be replaced by one that reads only this file.
 
 ## Status
 
-**Current step: A2 — create the package and move.** A1 is done: nothing under
-`app/lib/src/rclone/` imports `../state`, `../ui` or Flutter any more, apart from the two
-files that stay behind (`rclone_engine.dart`, `web_rclone_client.dart`).
+**Current step: A3 — the proof-of-concept checkpoint.** A1 and A2 are done and green
+locally. What remains before the branch is worth merging: push it, get `ci.yml` green on it,
+dispatch `librclone.yml` and `mas-verify.yml` against the branch, and smoke-test a real
+desktop build.
 
 | Step | State | Notes |
 | :--- | :--- | :--- |
@@ -39,7 +40,8 @@ files that stay behind (`rclone_engine.dart`, `web_rclone_client.dart`).
 | A1.6 playlist helper | **DONE** `d512e03` | `rclone/playlist_exts.dart`; `media_formats.dart` imports AND re-exports it (an export alone does not bring names into scope) |
 | A1.7 `package:meta` | **DONE** `04558df`, `51e08bc` | `meta` is now a direct dependency; only the lockfile's dependency KIND changed |
 | A1.8 redaction test | **DONE** `51e08bc` | `test/engine_log_bridge_test.dart` |
-| A2 package + move | `TODO` | |
+| A2 package + move | **DONE** `94c3915` | scaffold `a1f0e17`-style commit first, then one rename-only move commit |
+| A2 gates | **DONE** | lock diff = one path entry; 1685 app + 48 package = 1733; docs gate clean |
 | A3 checkpoint | `TODO` | |
 | A4 docs + merge | `TODO` | |
 | A5 release | `TODO` | |
@@ -61,8 +63,8 @@ files that stay behind (`rclone_engine.dart`, `web_rclone_client.dart`).
 | Where | Files | Tests passing |
 | :--- | ---: | ---: |
 | `app/test` at `4f346b6` | 181 | **1729 passing, 8 skipped** (exit 0) |
-| `app/test` after the move | | |
-| `packages/airclone_rc/test` after the move | | |
+| `app/test` after the move | 176 | **1685 passing, 1 skipped** |
+| `packages/airclone_rc/test` after the move | 6 | **48 passing, 7 skipped** |
 
 The two after-the-move numbers must add up to the baseline.
 
@@ -77,6 +79,12 @@ The two after-the-move numbers must add up to the baseline.
 - **2026-09-19 (A1.6):** `media_formats.dart` both imports and re-exports
   `playlist_exts.dart`. An `export` alone does not bring the names into the exporting
   library's own scope, which `isVideoLikeExt` needs.
+- **2026-09-19 (A2):** the package does NOT commit `pubspec.lock` (it is a library; consumers
+  resolve their own versions), so `packages/airclone_rc/.gitignore` excludes it.
+- **2026-09-19 (A2):** `engine_log_test` split in two. `isEngineFailureLine` went to the
+  package; the ingest-redaction assertion stayed in `app/test/engine_log_bridge_test.dart`.
+- **2026-09-19 (A2):** `src/platform.dart` is deliberately NOT exported from the barrel — a
+  host has its own idea of which OS it is on.
 - **2026-09-19 (A1):** two test fakes extend `HttpRcloneClient`
   (`console_controller_test`, `console_pane_focus_test`), so a required constructor
   argument reaches them too. Grep for `super(` as well as `HttpRcloneClient(`.
