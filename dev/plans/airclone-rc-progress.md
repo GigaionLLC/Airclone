@@ -24,10 +24,15 @@ stops mid-way can be replaced by one that reads only this file.
 
 ## Status
 
-**Current step: A3 — the proof-of-concept checkpoint.** A1 and A2 are done and green
-locally. What remains before the branch is worth merging: push it, get `ci.yml` green on it,
-dispatch `librclone.yml` and `mas-verify.yml` against the branch, and smoke-test a real
-desktop build.
+**Current step: A3 — the proof-of-concept checkpoint.** A1, A2 and most of A4 are done and
+green locally. The branch is pushed and **draft [PR #7](https://github.com/GigaionLLC/Airclone/pull/7)**
+is open, which is what makes `ci.yml` run (it triggers on `main` and pull requests, not on a
+branch push). `librclone.yml` and `mas-verify.yml` were dispatched against the branch;
+`ios-verify.yml`, the Linux and macOS runners fired on their own, which is itself evidence the
+repointed path filters work.
+
+**Remaining before the branch leaves draft:** CI green, the web build, a desktop smoke test,
+and the user's approval to merge. Nothing merges without it.
 
 | Step | State | Notes |
 | :--- | :--- | :--- |
@@ -42,8 +47,11 @@ desktop build.
 | A1.8 redaction test | **DONE** `51e08bc` | `test/engine_log_bridge_test.dart` |
 | A2 package + move | **DONE** `94c3915` | scaffold `a1f0e17`-style commit first, then one rename-only move commit |
 | A2 gates | **DONE** | lock diff = one path entry; 1685 app + 48 package = 1733; docs gate clean |
-| A3 checkpoint | `TODO` | |
-| A4 docs + merge | `TODO` | |
+| A3 checkpoint | **IN PROGRESS** | PR #7 draft; CI + librclone + mas-verify + ios-verify running |
+| A4.1 web build | **IN PROGRESS** | `flutter build web --no-web-resources-cdn` running locally |
+| A4.2 Flathub note | **DONE** `f72f1bb` | no manifest exists yet, so it is a note for whoever generates one |
+| A4.3 boundary docs | **DONE** `2de07e4` | `wiki/core/08` §3.0, AGENT.md, backlog row |
+| A4.4 merge | `TODO` | needs the user's approval; expect an AGENT.md conflict with the CLA session's rule |
 | A5 release | `TODO` | |
 
 ## A0 baseline (2026-09-19)
