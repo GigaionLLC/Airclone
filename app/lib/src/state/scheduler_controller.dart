@@ -374,7 +374,7 @@ Future<void> recordRunOutcome({
       return;
     }
     try {
-      final status = await client.rpc('job/status', {'jobid': rcJobid});
+      final status = await RcApi(client).job.status(rcJobid);
       if (status['finished'] == true) {
         final err = status['error'];
         record(

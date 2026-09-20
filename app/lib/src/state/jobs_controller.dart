@@ -200,7 +200,7 @@ class JobsController extends Notifier<List<Job>> {
     final jobid = job.jobid;
     if (client != null && jobid != null) {
       try {
-        await client.rpc('job/stop', {'jobid': jobid});
+        await RcApi(client).job.stop(jobid);
       } catch (_) {
         // Best-effort: the job may have already finished.
       }
@@ -221,6 +221,7 @@ class JobsController extends Notifier<List<Job>> {
     if (client == null) return;
     final running = state.where((j) => j.isRunning && j.jobid != null).toList();
     if (running.isEmpty) return;
+    final api = RcApi(client);
 
     for (final job in running) {
       final jobid = job.jobid!;
@@ -256,7 +257,7 @@ class JobsController extends Notifier<List<Job>> {
 
       // Completion check.
       try {
-        final status = await client.rpc('job/status', {'jobid': jobid});
+        final status = await api.job.status(jobid);
         final finished = status['finished'] == true;
         if (finished) {
           final success = status['success'] == true;
