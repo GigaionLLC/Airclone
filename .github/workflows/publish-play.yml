@@ -49,7 +49,7 @@ jobs:
       # Check out the TAG, not the default branch: the release notes and the
       # version code have to be the ones that belong to the artifact being
       # published, not whatever main has drifted to since.
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           ref: ${{ inputs.tag }}
 

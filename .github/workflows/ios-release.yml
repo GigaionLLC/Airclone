@@ -61,10 +61,10 @@ jobs:
     runs-on: macos-latest
     timeout-minutes: 120
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2  # v2.23.0
         with: { channel: stable, flutter-version: 3.47.0, cache: true }
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@v7
         with: { go-version: 'stable', cache: false }
 
       - name: Refuse without credentials
@@ -402,14 +402,14 @@ jobs:
             -exportOptionsPlist "$RUNNER_TEMP/export.plist" "$@"
           ls -lh "$RUNNER_TEMP/export"
 
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: ios-archive-log
           path: app/artifacts/ios-archive.log
           if-no-files-found: warn
 
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@v7
         if: ${{ always() && inputs.mode != 'dry-run' }}
         with:
           name: ios-ipa

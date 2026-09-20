@@ -50,10 +50,10 @@ jobs:
             lib: linux/librclone/librclone.so
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2  # v2.23.0
         with: { channel: stable, flutter-version: 3.47.0, cache: true }
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@v7
         # cache:false — there is no committed go.sum (the build script synthesizes
         # the pinning module in /tmp), so the default cache lookup would warn on
         # every run and cache nothing.
@@ -119,7 +119,7 @@ jobs:
           dart pub get
           dart test test/librclone_integration_test.dart
 
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@v7
         with:
           name: librclone-${{ matrix.os }}
           path: app/${{ matrix.lib }}

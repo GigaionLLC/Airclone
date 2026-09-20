@@ -48,7 +48,7 @@ jobs:
   revoke:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: Refuse without credentials
         env:
@@ -78,7 +78,7 @@ jobs:
           echo "Reminder: a LIVE app is unaffected by this. A build still in"
           echo "review is NOT - revoking its certificate invalidates it."
 
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@v7
         with: { python-version: '3.12' }
 
       - name: Install dependencies
