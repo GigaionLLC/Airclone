@@ -226,13 +226,130 @@ TOUCH controls** (`material.dart`), never the desktop ones. Those controls conta
 So on a television a film plays and the only thing the remote can do is leave.
 **No play, no pause, no seek.** This is not a regression and it is not what the
 user reported — they reported the rectangle — but it is the larger problem, and
-it needs D-pad video controls of our own rather than a fix to these. Tracked
-separately.
+it needs D-pad video controls of our own rather than a fix to these.
+
+**Closed 2026-09-21 — see *Playback with a remote* below.**
 
 Covered by `app/test/tv_row_actions_test.dart` and
 `app/test/audio_skip_controls_test.dart`, both confirmed RED against the code
 with the fix removed. Neither could be verified on a physical television from
 here — see *What a machine cannot do* below.
+
+## Playback with a remote
+
+The same user came back on 2026-09-21: *"If we listen music we cannot go to the
+next or previous track. If we watch video we cannot skip forward or backward in
+the video while it's playing."*
+
+The second half is the gap above. The first half is more interesting, because
+**the buttons were already there and production was already serving them**:
+`AudioSkipButton` shipped in v0.8.0 and the production track was on v0.13.8,
+which contains it. What the user was missing was any way to *reach* them — a
+480px card of 28px glyphs in the middle of a 1080p screen, with the only route
+to a control being a hunt with the D-pad. Across a room that is
+indistinguishable from a player with no skip controls at all.
+
+So both halves were the same missing thing, and it was never buttons: **it was
+the keys.**
+
+> Do not reason about "is this fix live?" from a version NUMBER. The tags here
+> are not chronological — v0.13.9 was cut ten days *after* v0.8.0 — so use
+> `git merge-base --is-ancestor <commit> <tag>`, and read the track report from
+> `store-feedback.yml` for what Play is actually serving.
+
+### What each key does
+
+One table, here, because it is the kind of thing that drifts the moment it is
+written down twice. Implemented by `TvPlaybackController`
+(`app/lib/src/ui/tv_player_keys.dart`).
+
+| Key | Controls hidden | Controls up, row focused |
+| :--- | :--- | :--- |
+| **OK / centre** | play/pause, and show the overlay | activates the focused button |
+| **LEFT / RIGHT** | seek, accelerating 10 → 30 → 60s | focus traversal along the row |
+| **UP / DOWN** | show the overlay | focus traversal |
+| **BACK** | close the player | hide the overlay |
+| **Play / Pause / PlayPause** | play/pause | play/pause |
+| **Rewind / Fast-forward** | seek 30s | seek 30s |
+| **Track next / previous** | the next file OF THE SAME KIND | same |
+| **Stop** | pause — never close | pause |
+
+Three decisions in there are not defaults:
+
+- **A run of presses is ONE seek.** Each commit can force a fresh ranged request
+  for a cloud object through the engine, so ten fast presses must be a single
+  seek of −100s, not ten seeks. The overlay shows the pending target
+  immediately, which is what keeps a deliberately delayed commit from looking
+  like a dropped press.
+- **LEFT/RIGHT mean two things, and the mode says which.** While the overlay is
+  up *because you are scrubbing*, the arrows keep scrubbing; once focus is in
+  the row they belong to traversal. Without that distinction the second press
+  of a run wanders into a button. Nothing was taken from another binding — the
+  fullscreen shape a TV renders never had key handling at all.
+- **The overlay never auto-hides while paused.** A paused film with no controls
+  is a dead end with no way to resume.
+
+### Transport keys do reach the app — measured, not assumed
+
+Spiked on the `airclone_tv` AVD (`sdk_google_atv64_x86_64`) before any of this
+was written, because the whole design would have needed a `MediaSession` if the
+answer had been no.
+
+A native probe logging `dispatchKeyEvent`, driven only by `adb shell input
+keyevent`, received **all of them**: 85 PLAY_PAUSE, 126 PLAY, 127 PAUSE, 86
+STOP, 89 REWIND, 90 FAST_FORWARD, 87 NEXT, 88 PREVIOUS — alongside the five
+D-pad codes. `dumpsys media_session` reported `Media key listener: null` and
+`0 sessions` throughout, and media_kit registers no session of its own. Flutter
+maps every one of those codes to a `LogicalKeyboardKey.media*`
+(`keyboard_maps.g.dart:99-104`), and a `CallbackShortcuts` binding on them
+fires for an Android-platform event.
+
+**Residual risk, which no emulator can stage:** on a real television another
+media app may hold an active `MediaSession`, and the framework can route
+transport keys to *it* rather than to the foreground app. The D-pad path does
+not depend on this. If someone reports the D-pad working but the dedicated
+transport buttons not, that is this, and the answer is a `MediaSession` of our
+own — which is wanted anyway for the Google TV now-playing row.
+
+### Two traps this work walked into
+
+Both are the same shape as everything else on this page: the evidence for
+"broken" and the evidence for "nothing to see" were identical.
+
+- **A probe that cannot render looks exactly like a key that was not
+  delivered.** The first two spike runs reported every key as undelivered —
+  including the D-pad, which demonstrably works in the shipping shell. The cause
+  was the probe: a fresh Flutter *debug* app never produced a first frame on the
+  TV image, so `InputDispatcher` logged *"no window has focus"* and ANR-killed
+  it. Airclone's own installed build renders on that same AVD perfectly, so the
+  lesson is **not** "Flutter cannot render here". Gate any rig on a focused
+  window (`dumpsys window | grep mCurrentFocus`) and re-check the process is
+  alive after every key, and keep the D-pad codes in the sweep as a control.
+- **A layout tested at the wrong size fits.** `TvNowPlaying`'s first version was
+  hand-tuned and overflowed by 7px at real television metrics — a 1080p set
+  reports **960x540dp** at xhdpi, and `tvOverscan` takes 27dp off each end, so
+  the screen has **486dp** of height and not 540. Every size in that file is now
+  derived from the constraints. This is the same mistake as the fixed-width
+  dialogs that clipped their own buttons on a phone.
+
+### Where it lives
+
+| File | What it owns |
+| :--- | :--- |
+| `ui/tv_player_keys.dart` | the key semantics, the seek arithmetic, both timers, and the `TvPlaybackTarget` seam that keeps all of it testable without libmpv |
+| `ui/tv_video_controls.dart` | our `Video(controls:)` overlay, plus the transport row and scrub bar the audio screen shares |
+| `ui/tv_now_playing.dart` | the audio screen that replaces the pointer card on a TV |
+| `ui/quick_look.dart` | `sameKindNeighbour` — previous/next walks its own kind, so an album with a `cover.jpg` is still playable end to end |
+
+Covered by `tv_player_keys_test.dart`, `tv_video_controls_test.dart`,
+`tv_now_playing_test.dart` and `same_kind_siblings_test.dart`. The mutations
+confirmed RED: removing the debounce cancel, removing the focus hand-back,
+letting the overlay auto-hide while paused, and reverting the sibling walk to a
+plain neighbour. Shrinking `commitDelay` is deliberately *not* one of them — the
+tests scale with the constant, because pinning 350ms would pin a tuning rather
+than a behaviour.
+
+**Not verified on a physical television.** See *What a machine cannot do*.
 
 ## A television has no file picker
 

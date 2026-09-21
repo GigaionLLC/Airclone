@@ -10,6 +10,9 @@ import 'package:media_kit_video/media_kit_video.dart';
 
 import '../state/media_prefs.dart';
 import 'theme/tokens.dart';
+import 'tv_now_playing.dart';
+import 'tv_player_keys.dart';
+import 'tv_video_controls.dart';
 
 /// How long a media file may sit without ever reaching "playing" before we stop
 /// showing a spinner and offer a way out. Cloud objects come through the local
@@ -93,6 +96,7 @@ class MediaPreviewBody extends ConsumerStatefulWidget {
     this.onOpenExternally,
     this.onPrevious,
     this.onNext,
+    this.title = '',
   });
 
   /// Direct/streamable URL of the media to play.
@@ -126,6 +130,11 @@ class MediaPreviewBody extends ConsumerStatefulWidget {
   final VoidCallback? onPrevious;
   final VoidCallback? onNext;
 
+  /// What to call this media on a surface that has no header of its own — the
+  /// television now-playing screen. The pointer card and the video frame both
+  /// sit under a host that already shows the name, so they ignore it.
+  final String title;
+
   @override
   ConsumerState<MediaPreviewBody> createState() => _MediaPreviewBodyState();
 }
@@ -133,6 +142,16 @@ class MediaPreviewBody extends ConsumerStatefulWidget {
 class _MediaPreviewBodyState extends ConsumerState<MediaPreviewBody> {
   Player? _player;
   VideoController? _controller;
+
+  /// The remote's transport controls. Created with the player and torn down
+  /// with it, so a Retry gets a controller bound to the new player rather than
+  /// one still holding the old one.
+  ///
+  /// Non-null on every platform, not only a television: the D-pad half is gated
+  /// inside it, while the MEDIA keys are honoured everywhere, because a
+  /// keyboard's transport keys and a Bluetooth remote paired to a phone are the
+  /// same keys and ignoring them buys nothing.
+  TvPlaybackController? _tv;
 
   StreamSubscription<String>? _errorSub;
   StreamSubscription<bool>? _bufferingSub;
@@ -163,6 +182,17 @@ class _MediaPreviewBodyState extends ConsumerState<MediaPreviewBody> {
   }
 
   @override
+  void didUpdateWidget(MediaPreviewBody old) {
+    super.didUpdateWidget(old);
+    // The host rebuilds with fresh closures as the sibling list moves under it,
+    // and hands a NULL one at either end. Re-pointing them here is what keeps
+    // the remote's ⏭/⏮ keys honest without rebuilding the player.
+    _tv
+      ?..onPrevious = widget.onPrevious
+      ..onNext = widget.onNext;
+  }
+
+  @override
   void dispose() {
     _teardown();
     super.dispose();
@@ -187,6 +217,16 @@ class _MediaPreviewBodyState extends ConsumerState<MediaPreviewBody> {
         ),
       );
       _player = player;
+      _tv = TvPlaybackController(
+        target: MediaKitPlaybackTarget(player),
+        onPrevious: widget.onPrevious,
+        onNext: widget.onNext,
+        // The audio screen's controls ARE the screen, so they never hide and
+        // the arrows belong to focus traversal. A video overlay hides, and its
+        // arrows scrub.
+        alwaysVisible: widget.audioOnly,
+        tvKeysEnabled: tvPlayerEnabled,
+      );
       if (!widget.audioOnly) {
         controller = VideoController(player);
         _controller = controller;
@@ -333,6 +373,8 @@ class _MediaPreviewBodyState extends ConsumerState<MediaPreviewBody> {
     final player = _player;
     _player = null;
     _controller = null;
+    _tv?.dispose();
+    _tv = null;
     try {
       await player?.dispose();
     } catch (_) {
@@ -361,7 +403,12 @@ class _MediaPreviewBodyState extends ConsumerState<MediaPreviewBody> {
     final colors = AircloneTheme.of(context);
     if (_error != null) return _errorCard(colors, _error!);
     try {
-      return widget.audioOnly ? _audio(colors) : _video(colors);
+      final body = widget.audioOnly ? _audio(colors) : _video(colors);
+      final tv = _tv;
+      // No controller yet means no player yet, and there is nothing for a
+      // transport key to act on — so the spinner is left exactly as it was.
+      if (tv == null) return body;
+      return TvPlaybackKeys(controller: tv, child: body);
     } catch (e) {
       // Defensive: a render-time failure must not take the preview down.
       return _errorCard(colors, '$e');
@@ -389,6 +436,23 @@ class _MediaPreviewBodyState extends ConsumerState<MediaPreviewBody> {
   Widget _surface(VideoController controller) {
     final repeat = ref.watch(repeatPlaybackProvider);
     void toggle() => ref.read(repeatPlaybackProvider.notifier).toggle();
+
+    // A television gets OUR controls, and none of media_kit's theming below
+    // applies to them: those themes exist to append a repeat button to
+    // media_kit's own bars, and on a TV there are no such bars to append to.
+    //
+    // Both of media_kit's sets are unusable with a remote — the touch one has
+    // no key handling and appears only from onTap, the desktop one reveals
+    // itself on mouse hover — which is why this branch exists at all rather
+    // than a themed variant of one of them.
+    final tv = _tv;
+    if (tvPlayerEnabled && tv != null) {
+      return Video(
+        controller: controller,
+        controls: (_) => TvVideoControls(controller: tv),
+      );
+    }
+
     final touch = _MaterialRepeatButton(repeat: repeat, onPressed: toggle);
 
     // Touch bar is [position, Spacer, fullscreen], so appending puts the button
@@ -448,8 +512,30 @@ class _MediaPreviewBodyState extends ConsumerState<MediaPreviewBody> {
   }
 
   /// Centered audio card: art, previous/play/next, and a seek slider.
+  ///
+  /// A television takes [TvNowPlaying] instead — same actions, at a scale that
+  /// can be read and aimed at from a sofa. See that file for why the card was
+  /// not merely a smaller version of the right answer.
   Widget _audio(AircloneColors colors) {
     final player = _player;
+    final tv = _tv;
+    if (tvPlayerEnabled && tv != null && player != null) {
+      return TvNowPlaying(
+        controller: tv,
+        title: widget.title,
+        // Built here rather than inside the TV screen: repeat is a preference
+        // that file has no business reading, and passing it keeps that screen
+        // renderable in a test with no ProviderScope.
+        trailing: _RepeatToggle(
+          repeat: ref.watch(repeatPlaybackProvider),
+          color: colors.textMuted,
+          activeColor: colors.primary,
+          onPressed: () => ref.read(repeatPlaybackProvider.notifier).toggle(),
+          iconSize: 40,
+          minTarget: 64,
+        ),
+      );
+    }
     return Container(
       color: colors.surfaceSunken,
       alignment: Alignment.center,
@@ -703,6 +789,8 @@ class _RepeatToggle extends StatelessWidget {
     required this.color,
     required this.activeColor,
     required this.onPressed,
+    this.iconSize,
+    this.minTarget,
   });
 
   final bool repeat;
@@ -710,11 +798,21 @@ class _RepeatToggle extends StatelessWidget {
   final Color activeColor;
   final VoidCallback onPressed;
 
+  /// Overridden by the television screen, where every other control in the row
+  /// is a 40px glyph in a 64px target and a default-sized one beside them is
+  /// both hard to see and hard to aim at.
+  final double? iconSize;
+  final double? minTarget;
+
   @override
   Widget build(BuildContext context) => IconButton(
     onPressed: onPressed,
     tooltip: _repeatTooltip(repeat),
     color: repeat ? activeColor : color,
+    iconSize: iconSize,
+    constraints: minTarget == null
+        ? null
+        : BoxConstraints(minWidth: minTarget!, minHeight: minTarget!),
     icon: Icon(_repeatIcon(repeat)),
   );
 }
@@ -882,11 +980,11 @@ class _SeekBar extends StatelessWidget {
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       Text(
-                        _fmt(position),
+                        formatMediaClock(position),
                         style: TextStyle(color: colors.textMuted, fontSize: 12),
                       ),
                       Text(
-                        _fmt(duration),
+                        formatMediaClock(duration),
                         style: TextStyle(color: colors.textFaint, fontSize: 12),
                       ),
                     ],
@@ -898,17 +996,5 @@ class _SeekBar extends StatelessWidget {
         );
       },
     );
-  }
-
-  /// `m:ss` (or `h:mm:ss` past an hour) clock formatting.
-  String _fmt(Duration d) {
-    final neg = d.isNegative;
-    final secs = d.inSeconds.abs();
-    final h = secs ~/ 3600;
-    final m = (secs % 3600) ~/ 60;
-    final s = secs % 60;
-    String two(int n) => n.toString().padLeft(2, '0');
-    final body = h > 0 ? '$h:${two(m)}:${two(s)}' : '$m:${two(s)}';
-    return neg ? '-$body' : body;
   }
 }
