@@ -18,6 +18,21 @@ a JSON map, and get a JSON map back.
 > **Unofficial.** Airclone and this package are independent projects, not affiliated with
 > the rclone project.
 
+## Adding it
+
+Not on pub.dev — see [below](#why-it-is-not-on-pubdev-yet) for why that is deliberate. A git
+dependency on this repository works today:
+
+```yaml
+dependencies:
+  airclone_rc:
+    git:
+      url: https://github.com/GigaionLLC/Airclone.git
+      path: packages/airclone_rc
+```
+
+Pin it with `ref:` (a tag or a commit) if you would rather not track `main`.
+
 ## Bring your own rclone
 
 This package ships **no binaries**. You supply either an `rclone` executable (for
@@ -140,6 +155,22 @@ This package lives in Airclone's repository rather than its own, because almost 
 to the engine layer so far also changed the app. That is a maintenance decision, not a
 statement about who it is for: it is meant to be usable by anything, and a report from
 outside Airclone is as welcome as one from inside it.
+
+## Why it is not on pub.dev yet
+
+Because a published version is permanent. pub.dev lets you retract one; it never lets you
+replace or delete it. This interface is young — the typed API, `operations.listOrNull`, a
+configurable request timeout and `RemoteRcloneClient` all arrived in the same week — and so
+far only one application has used it in only one way. Publishing now would freeze decisions
+that have not been tested by anyone else's code.
+
+So the plan is deliberately the slow one: stay a git dependency, get used, fix what that
+turns up, and publish when the shape has stopped moving. In the meantime the snippet in
+[Adding it](#adding-it) costs you a few lines of YAML, and carries the real advantage that
+anything wrong with this package can still be fixed in place rather than lived with.
+
+If you are building on it and something is missing or awkward, that is the most useful thing
+you could tell us, and now is when it is cheapest to act on — an issue is the best place.
 
 ## Licence
 

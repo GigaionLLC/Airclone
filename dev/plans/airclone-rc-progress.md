@@ -27,6 +27,13 @@ stops mid-way can be replaced by one that reads only this file.
 
 ## Status
 
+**Publishing to pub.dev is DEFERRED (2026-09-21) and is not a priority.** The workflow, the
+dry run, the docs gate and the checklist are all ready; the decision is to wait until the
+package is stable, proven in use by something other than Airclone, and has whatever an
+outside app turns out to need. A published API is permanent — retractable, never replaceable
+— and the interface is a week old. #6 stays open as the reminder, not as a question awaiting
+an answer. Do not open the publishing sequence unless the maintainer reopens the decision.
+
 **MERGED. Milestones A and B are both on `main` (PRs #7 and #8, rebase-merged 2026-09-20, in
 that order).** What is left is the maintainer's: the #6 update (drafted, awaiting wording
 approval), the v0.20.0 release, and Milestone C (pub.dev).
