@@ -114,7 +114,10 @@ jobs:
         # maps to its own --version flag and dies parsing it.
         run: |
           set -euo pipefail
-          ver="$(grep -oP 'RCLONE_VERSION: \Kv[0-9.]+' ../../.github/workflows/release.yml | head -1)"
+          # sed, not `grep -oP`: BSD grep on the macOS runner has no PCRE and
+          # exits 2 on -P, which is how this matrix earned its keep on its
+          # first run.
+          ver="$(sed -n 's/.*RCLONE_VERSION:[[:space:]]*\(v[0-9.]*\).*/\1/p' ../../.github/workflows/release.yml | head -1)"
           [ -n "$ver" ] || { echo "::error::could not read the rclone pin from release.yml"; exit 1; }
           work="$(mktemp -d)"
           zip="rclone-${ver}-${{ matrix.triple }}.zip"
