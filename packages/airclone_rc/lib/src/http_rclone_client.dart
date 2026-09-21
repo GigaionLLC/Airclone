@@ -6,6 +6,7 @@ import 'dart:math';
 import 'package:http/http.dart' as http;
 import 'package:meta/meta.dart' show visibleForTesting;
 
+import 'oauth_flow.dart';
 import 'platform.dart';
 import 'rclone_client.dart';
 import 'log_redaction.dart';
@@ -166,7 +167,8 @@ Future<T> sendWithConnectionRetry<T>(
 
 /// Desktop [RcloneClient]: spawns `rclone rcd` bound to loopback with per-session
 /// credentials, and drives it over HTTP. See `wiki/core/08-core-architecture.md` §3.
-class HttpRcloneClient implements RcloneClient, ObjectUploader {
+class HttpRcloneClient
+    implements RcloneClient, ObjectUploader, AuthUrlObserver {
   HttpRcloneClient({
     required this.instanceTag,
     required this.rclonePath,
@@ -265,6 +267,18 @@ class HttpRcloneClient implements RcloneClient, ObjectUploader {
   http.Client? _http;
 
   http.Client get _client => _http ??= http.Client();
+
+  /// Sign-in URLs seen in the engine's own output, for the engines that cannot
+  /// simply be asked (see [AuthUrlObserver]).
+  ///
+  /// Never closed. [restart] is quit-then-start on the SAME client, so closing
+  /// it on quit would leave a restarted engine with a dead stream and a sign-in
+  /// that silently never produces a link. A broadcast controller with no
+  /// listeners drops what it is given, which is the behaviour wanted anyway.
+  final _authUrls = StreamController<Uri>.broadcast();
+
+  @override
+  Stream<Uri> get authUrls => _authUrls.stream;
 
   /// Fires if the rcd child exits without [quit] being called (crash, OOM
   /// kill). The owner surfaces it and offers a restart.
@@ -604,6 +618,13 @@ class HttpRcloneClient implements RcloneClient, ObjectUploader {
   /// credentials — those must never be retained. The ring redacts at ingest as
   /// a second line of defence.
   void _onEngineLine(String line) {
+    // Also FIRST, and for the same reason the undecryptable check below is:
+    // the auth link is a NOTICE, so the debug early-return and the release
+    // ERROR/CRITICAL filter would each drop it before anyone could sign in.
+    // Only the PARSED url leaves this method — the line itself is not logged,
+    // not echoed onward, and not kept.
+    final authUrl = parseAuthUrl(line);
+    if (authUrl != null) _authUrls.add(authUrl);
     // Counted FIRST, on every build: this line is a NOTICE, so both the debug
     // early-return below and the release ERROR/CRITICAL filter would drop it
     // before a pane ever learned that its listing had been shortened.

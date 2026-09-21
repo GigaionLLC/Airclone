@@ -45,7 +45,13 @@
 	     entitlement to listen() at all, loopback included - WITHOUT it a MAS build has
 	     no image previews, no thumbnails, no video/audio playback and no PDF viewer.
 	     Justify to App Review as exactly that: an internal bridge between the embedded
-	     engine and the app's own player, reachable only from this machine. -->
+	     engine and the app's own player, reachable only from this machine.
+
+	     It has a SECOND use since guided sign-in: completing an OAuth sign-in means
+	     rclone listens on 127.0.0.1:53682 for the provider's redirect, which is the
+	     only way the standard flow can hand a token back. Same entitlement, same
+	     loopback-only justification - but state both uses when App Review asks, because
+	     "a preview bridge" no longer describes everything that listens. -->
 	<key>com.apple.security.network.server</key>
 	<true/>
 

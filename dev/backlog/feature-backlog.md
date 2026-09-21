@@ -353,7 +353,10 @@ Status verified against `app/lib` at v0.7.6. **✅ = built and in the shipping a
   (`ThemeMode` in `state/settings_controller.dart`), now with per-OS skins on top.
 - ◐ `[D+M]` First-run onboarding — there is a zero-remotes empty state that prompts to add the first
   remote (`ui/browser_pane.dart`, shown only once the list has *loaded* empty, never mid-load), and
-  OAuth works through the interactive config machine. A **guided** first-run wizard is not built.
+  **adding a cloud is now guided by default** — a curated picker, hand-written essentials for the
+  backends rclone asks nothing about, and OAuth as a real screen with cancel and cleanup
+  ([`feat-add-a-cloud.md`](../../wiki/features/feat-add-a-cloud.md)). What is still missing is the
+  onboarding *experience* expressing the product vision; the empty state remains the entry point.
 - ◐ `[D+M]` i18n-first — **not built**: no `intl`/`flutter_localizations` dependency, no `l10n`
   directory, strings are literals. The automated test suite for engine lifecycle + RC does exist
   (`app/test/`).

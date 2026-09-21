@@ -1,0 +1,365 @@
+{
+ "_source": "Captured from rclone v1.75.1 via librclone by dev/plans/fd2-probe/capture_flow.dart. Walks stop before any state that would bind the OAuth listener.",
+ "rcloneVersion": "v1.75.1",
+ "flows": {
+  "drive_declines_shared_id": {
+   "type": "drive",
+   "steps": [
+    {
+     "call": "create",
+     "result": {
+      "Error": "",
+      "Option": {
+       "Advanced": false,
+       "Default": false,
+       "DefaultStr": "false",
+       "Examples": [
+        {
+         "Help": "Yes",
+         "Value": "true"
+        },
+        {
+         "Help": "No",
+         "Value": "false"
+        }
+       ],
+       "Exclusive": true,
+       "FieldName": "",
+       "Help": "rclone's shared Google Drive client_id is being retired and will stop working during 2026.\nCreate your own to avoid interruption: https://rclone.org/drive/#making-your-own-client-id\n\nContinue using the shared client_id anyway?",
+       "Hide": 0,
+       "IsPassword": false,
+       "Name": "config_shared_client_id",
+       "NoPrefix": false,
+       "Required": false,
+       "Sensitive": false,
+       "Type": "bool",
+       "Value": null,
+       "ValueStr": "false"
+      },
+      "Result": "",
+      "State": "client_id_warning"
+     }
+    },
+    {
+     "call": "continue",
+     "answered": "config_shared_client_id",
+     "with": "false",
+     "result": {
+      "Error": "",
+      "Option": {
+       "Advanced": false,
+       "Default": "",
+       "DefaultStr": "",
+       "Exclusive": false,
+       "FieldName": "",
+       "Help": "Google Application Client Id",
+       "Hide": 0,
+       "IsPassword": false,
+       "Name": "client_id",
+       "NoPrefix": false,
+       "Required": true,
+       "Sensitive": false,
+       "Type": "string",
+       "Value": null,
+       "ValueStr": ""
+      },
+      "Result": "",
+      "State": "client_id_set"
+     }
+    }
+   ]
+  },
+  "drive_accepts_shared_id": {
+   "type": "drive",
+   "steps": [
+    {
+     "call": "create",
+     "result": {
+      "Error": "",
+      "Option": {
+       "Advanced": false,
+       "Default": false,
+       "DefaultStr": "false",
+       "Examples": [
+        {
+         "Help": "Yes",
+         "Value": "true"
+        },
+        {
+         "Help": "No",
+         "Value": "false"
+        }
+       ],
+       "Exclusive": true,
+       "FieldName": "",
+       "Help": "rclone's shared Google Drive client_id is being retired and will stop working during 2026.\nCreate your own to avoid interruption: https://rclone.org/drive/#making-your-own-client-id\n\nContinue using the shared client_id anyway?",
+       "Hide": 0,
+       "IsPassword": false,
+       "Name": "config_shared_client_id",
+       "NoPrefix": false,
+       "Required": false,
+       "Sensitive": false,
+       "Type": "bool",
+       "Value": null,
+       "ValueStr": "false"
+      },
+      "Result": "",
+      "State": "client_id_warning"
+     }
+    },
+    {
+     "call": "continue",
+     "answered": "config_shared_client_id",
+     "with": "true",
+     "result": {
+      "Error": "",
+      "Option": {
+       "Advanced": false,
+       "Default": true,
+       "DefaultStr": "true",
+       "Examples": [
+        {
+         "Help": "Yes",
+         "Value": "true"
+        },
+        {
+         "Help": "No",
+         "Value": "false"
+        }
+       ],
+       "Exclusive": true,
+       "FieldName": "",
+       "Help": "Use web browser to automatically authenticate rclone with remote?\n * Say Y if the machine running rclone has a web browser you can use\n * Say N if running rclone on a (remote) machine without web browser access\nIf not sure try Y. If Y failed, try N.\n",
+       "Hide": 0,
+       "IsPassword": false,
+       "Name": "config_is_local",
+       "NoPrefix": false,
+       "Required": false,
+       "Sensitive": false,
+       "Type": "bool",
+       "Value": null,
+       "ValueStr": "true"
+      },
+      "Result": "",
+      "State": "*oauth-islocal,teamdrive,oauth,"
+     }
+    }
+   ]
+  },
+  "googlephotos_declines_shared_id": {
+   "type": "google photos",
+   "steps": [
+    {
+     "call": "create",
+     "result": {
+      "Error": "",
+      "Option": {
+       "Advanced": false,
+       "Default": false,
+       "DefaultStr": "false",
+       "Examples": [
+        {
+         "Help": "Yes",
+         "Value": "true"
+        },
+        {
+         "Help": "No",
+         "Value": "false"
+        }
+       ],
+       "Exclusive": true,
+       "FieldName": "",
+       "Help": "rclone's shared Google Photos client_id is being retired and will stop working during 2026.\nCreate your own to avoid interruption: https://rclone.org/googlephotos/#making-your-own-client-id\n\nContinue using the shared client_id anyway?",
+       "Hide": 0,
+       "IsPassword": false,
+       "Name": "config_shared_client_id",
+       "NoPrefix": false,
+       "Required": false,
+       "Sensitive": false,
+       "Type": "bool",
+       "Value": null,
+       "ValueStr": "false"
+      },
+      "Result": "",
+      "State": "client_id_warning"
+     }
+    },
+    {
+     "call": "continue",
+     "answered": "config_shared_client_id",
+     "with": "false",
+     "result": {
+      "Error": "",
+      "Option": {
+       "Advanced": false,
+       "Default": "",
+       "DefaultStr": "",
+       "Exclusive": false,
+       "FieldName": "",
+       "Help": "OAuth Client Id",
+       "Hide": 0,
+       "IsPassword": false,
+       "Name": "client_id",
+       "NoPrefix": false,
+       "Required": true,
+       "Sensitive": false,
+       "Type": "string",
+       "Value": null,
+       "ValueStr": ""
+      },
+      "Result": "",
+      "State": "client_id_set"
+     }
+    }
+   ]
+  },
+  "googlecloudstorage": {
+   "type": "google cloud storage",
+   "steps": [
+    {
+     "call": "create",
+     "result": {
+      "Error": "",
+      "Option": {
+       "Advanced": false,
+       "Default": true,
+       "DefaultStr": "true",
+       "Examples": [
+        {
+         "Help": "Yes",
+         "Value": "true"
+        },
+        {
+         "Help": "No",
+         "Value": "false"
+        }
+       ],
+       "Exclusive": true,
+       "FieldName": "",
+       "Help": "Use web browser to automatically authenticate rclone with remote?\n * Say Y if the machine running rclone has a web browser you can use\n * Say N if running rclone on a (remote) machine without web browser access\nIf not sure try Y. If Y failed, try N.\n",
+       "Hide": 0,
+       "IsPassword": false,
+       "Name": "config_is_local",
+       "NoPrefix": false,
+       "Required": false,
+       "Sensitive": false,
+       "Type": "bool",
+       "Value": null,
+       "ValueStr": "true"
+      },
+      "Result": "",
+      "State": "*oauth-islocal,,,"
+     }
+    }
+   ]
+  },
+  "dropbox": {
+   "type": "dropbox",
+   "steps": [
+    {
+     "call": "create",
+     "result": {
+      "Error": "",
+      "Option": {
+       "Advanced": false,
+       "Default": true,
+       "DefaultStr": "true",
+       "Examples": [
+        {
+         "Help": "Yes",
+         "Value": "true"
+        },
+        {
+         "Help": "No",
+         "Value": "false"
+        }
+       ],
+       "Exclusive": true,
+       "FieldName": "",
+       "Help": "Use web browser to automatically authenticate rclone with remote?\n * Say Y if the machine running rclone has a web browser you can use\n * Say N if running rclone on a (remote) machine without web browser access\nIf not sure try Y. If Y failed, try N.\n",
+       "Hide": 0,
+       "IsPassword": false,
+       "Name": "config_is_local",
+       "NoPrefix": false,
+       "Required": false,
+       "Sensitive": false,
+       "Type": "bool",
+       "Value": null,
+       "ValueStr": "true"
+      },
+      "Result": "",
+      "State": "*oauth-islocal,,,"
+     }
+    }
+   ]
+  },
+  "onedrive": {
+   "type": "onedrive",
+   "steps": [
+    {
+     "call": "create",
+     "result": {
+      "Error": "",
+      "Option": {
+       "Advanced": false,
+       "Default": true,
+       "DefaultStr": "true",
+       "Examples": [
+        {
+         "Help": "Yes",
+         "Value": "true"
+        },
+        {
+         "Help": "No",
+         "Value": "false"
+        }
+       ],
+       "Exclusive": true,
+       "FieldName": "",
+       "Help": "Use web browser to automatically authenticate rclone with remote?\n * Say Y if the machine running rclone has a web browser you can use\n * Say N if running rclone on a (remote) machine without web browser access\nIf not sure try Y. If Y failed, try N.\n",
+       "Hide": 0,
+       "IsPassword": false,
+       "Name": "config_is_local",
+       "NoPrefix": false,
+       "Required": false,
+       "Sensitive": false,
+       "Type": "bool",
+       "Value": null,
+       "ValueStr": "true"
+      },
+      "Result": "",
+      "State": "*oauth-islocal,choose_type,,"
+     }
+    }
+   ]
+  },
+  "b2_asks_nothing": {
+   "type": "b2",
+   "steps": [
+    {
+     "call": "create",
+     "result": {
+      "Error": "",
+      "Option": null,
+      "Result": "",
+      "State": ""
+     }
+    }
+   ]
+  },
+  "sftp_asks_nothing": {
+   "type": "sftp",
+   "steps": [
+    {
+     "call": "create",
+     "result": {
+      "Error": "",
+      "Option": null,
+      "Result": "",
+      "State": ""
+     }
+    }
+   ]
+  }
+ }
+}
