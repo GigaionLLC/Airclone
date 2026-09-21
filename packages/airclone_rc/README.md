@@ -10,6 +10,7 @@ that differ in *how* they reach rclone and not at all in what you write:
 | :--- | :--- |
 | `HttpRcloneClient` | spawns `rclone rcd`, bound to loopback with per-session credentials, and drives it over HTTP |
 | `FfiRcloneClient` | runs `librclone` **in-process** through `dart:ffi` — the only way on iOS and the Mac App Store, where an app may not spawn processes |
+| `RemoteRcloneClient` | talks to an engine it does **not** own, wherever that is. No `dart:io`, so it runs on the **web** too — which is how a page served by a desktop app reaches the host that served it, since a browser cannot spawn anything |
 
 Both speak rclone's [remote-control API](https://rclone.org/rc/): you send a method name and
 a JSON map, and get a JSON map back.
@@ -73,6 +74,30 @@ answer with no listing in it as empty; **`operations.listOrNull` returns null** 
 case. If your code is about to delete or overwrite because a directory looked empty, use the
 second one: an empty listing is also what a crypt remote with the wrong `password2` returns,
 because rclone skips every name it cannot decrypt and still exits 0.
+
+### Reaching an engine you did not start
+
+```dart
+final rc = RcApi(RemoteRcloneClient(
+  baseUrl: Uri.parse('https://myhost.example/engine/'),
+  authorization: basicAuth('user', 'pass'),
+));
+```
+
+Same interface, same typed API, same models. Three differences worth knowing, all of them
+because the engine is someone else's process:
+
+- **`quit()` never stops it.** It releases the local HTTP client and nothing more. Sending
+  `core/quit` would take an engine away from whoever else is using it.
+- **`restart()` throws.** Restarting means owning the process.
+- **Plaintext HTTP off loopback is refused** unless you pass `allowInsecure: true`. rclone's
+  own docs equate rc access with shell access as the user running the engine, and these
+  credentials go in a header that is base64, not encryption. Use `https`, or decide
+  deliberately.
+
+`start()` is a reachability check rather than a launch, and it fails loudly if nothing
+answers — a client that reported success because a method returned would be worse than no
+client at all.
 
 ### Timeouts and long work
 
