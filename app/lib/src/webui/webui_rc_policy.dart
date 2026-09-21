@@ -69,6 +69,22 @@ const Set<String> kAllowedRcMethods = {
   // anywhere on the host. That grants nothing new: browsing the host's own
   // filesystem is the entire point of the Web UI, and is already reachable
   // through operations/list.
+  //
+  // config/dump and config/get RETURN EVERY REMOTE'S CREDENTIALS, and rclone's
+  // obscuring is reversible (`rclone reveal`). They are allowed anyway, and the
+  // reason is worth stating rather than discovering: the same Flutter app is
+  // served to the browser, its sidebar is built from a dump (name + type), the
+  // placeholder guard resolves wrapper remotes through one, and config
+  // export/import — a shipped feature, not web-gated — needs the whole thing.
+  // Taking them away would not harden a signed-in session so much as break it.
+  //
+  // What that means for whoever runs this: a signed-in Web UI session can read
+  // out every credential the config holds. It is the same power the app has on
+  // that machine, which is the Web UI's whole premise ("you, remotely"), but it
+  // is a larger blast radius than "browse my files from the sofa" suggests.
+  // Anyone narrowing this later wants a projection for the browser (names,
+  // types, wrapper links) plus a separate, re-authenticated path for export —
+  // not a smaller allowlist.
   'config/listremotes',
   'config/dump',
   'config/get',
