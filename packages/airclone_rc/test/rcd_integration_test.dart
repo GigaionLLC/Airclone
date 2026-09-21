@@ -374,6 +374,43 @@ void main() {
       timeout: const Timeout(Duration(minutes: 1)),
     );
 
+    test(
+      'RemoteRcloneClient drives the very same engine, owning nothing',
+      () async {
+        // The web/self-hosted case, proven against a real engine: one client
+        // spawns rclone and another - the kind a browser would use - talks to
+        // the same endpoint over HTTP with the same credentials.
+        await client.start();
+        final ref = client.objectRef('x:', 'y');
+        final root = Uri.parse(ref.url);
+        final remote = RemoteRcloneClient(
+          baseUrl: Uri.parse('http://127.0.0.1:${root.port}/'),
+          authorization: ref.headers['Authorization'],
+        );
+        try {
+          await remote.start();
+          expect((await remote.status()).state, EngineState.running);
+          expect(
+            await RcApi(remote).core.version(),
+            matches(RegExp(r'^v?\d+\.\d+\.\d+')),
+          );
+
+          final dir = await Directory.systemTemp.createTemp('airclone-remote');
+          await File(sep(dir.path, 'shared.txt')).writeAsString('hello');
+          final listed = await RcApi(remote).operations.list(dir.path, '');
+          expect(listed.map((f) => f.name), ['shared.txt']);
+          await dir.delete(recursive: true);
+
+          // quit() on the remote client must NOT take the engine down: the
+          // process belongs to the client that spawned it.
+          await remote.quit();
+          expect((await client.status()).state, EngineState.running);
+        } finally {
+          await remote.quit();
+        }
+      },
+    );
+
     test('quit() leaves no reap marker behind for the next launch', () async {
       await client.start();
       final marker = File(
