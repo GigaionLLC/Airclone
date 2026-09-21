@@ -398,6 +398,41 @@ void main() {
     },
   );
 
+  test('renaming after a failure does not orphan the first stub', () async {
+    // The user reaches the failure screen, chooses "enter the details myself",
+    // and types a different name. Nothing else would ever clean up the section
+    // written under the FIRST name — cancel only knows about the current one.
+    final client = _SignInClient()..openingError = 'something went wrong';
+    final c = _container(client);
+    final ctrl = c.read(addRemoteControllerProvider.notifier);
+    ctrl.pickProviderGuided(_drive);
+    ctrl.setName('gdrive');
+    await ctrl.signIn(SignInMethod.thisDevice);
+    expect(client.remotes, contains('gdrive'));
+    expect(c.read(addRemoteControllerProvider).phase, AddPhase.error);
+
+    ctrl.switchToAdvanced();
+    ctrl.setName('gdrive-personal');
+    await ctrl.submit();
+
+    expect(
+      client.remotes,
+      isNot(contains('gdrive')),
+      reason: 'the abandoned stub must not be left behind',
+    );
+    expect(client.remotes, contains('gdrive-personal'));
+  });
+
+  test('a message from startEdit is redacted before it is shown', () async {
+    final client = _RefusingEditClient();
+    final c = _container(client);
+    final ctrl = c.read(addRemoteControllerProvider.notifier);
+    await ctrl.startEdit(const Remote(name: 'nas', type: 'drive', fs: 'nas:'));
+    final error = c.read(addRemoteControllerProvider).error!;
+    expect(error, isNot(contains('hunter2')));
+    expect(error, contains('<credentials>'));
+  });
+
   test('a bind failure is explained, not echoed', () async {
     final client = _SignInClient()
       ..openingError =
@@ -417,4 +452,21 @@ void main() {
     // the port recoverable.
     expect(state.error, contains('Try again'));
   });
+}
+
+/// An engine whose `config/get` fails with a message quoting a credential.
+class _RefusingEditClient extends _SignInClient {
+  @override
+  Future<Map<String, dynamic>> rpc(
+    String method, [
+    Map<String, dynamic>? params,
+  ]) async {
+    if (method == 'config/get') {
+      throw RcloneException(
+        method,
+        'cannot read https://admin:hunter2@nas.example/dav',
+      );
+    }
+    return super.rpc(method, params);
+  }
 }

@@ -346,7 +346,10 @@ class AddRemoteController extends Notifier<AddRemoteState> {
       );
       return null;
     } catch (e) {
-      state = AddRemoteState(phase: AddPhase.error, error: '$e');
+      state = AddRemoteState(
+        phase: AddPhase.error,
+        error: redactSensitive('$e'),
+      );
       return null;
     }
   }
@@ -407,6 +410,11 @@ class AddRemoteController extends Notifier<AddRemoteState> {
         // and then waits for the token to be pasted back.
         sticky['config_is_local'] = 'false';
     }
+    assert(
+      sticky.keys.every(_isEphemeral),
+      'sticky answers are re-sent without obscure and must be ephemeral: '
+      '${sticky.keys.where((k) => !_isEphemeral(k))}',
+    );
     state = state.copyWith(
       sticky: sticky,
       signInMethod: method,
@@ -441,6 +449,14 @@ class AddRemoteController extends Notifier<AddRemoteState> {
         phase: AddPhase.setup,
       );
       return;
+    }
+    // A stub this flow wrote under a DIFFERENT name is now orphaned: the user
+    // reached the failure screen, chose "enter the details myself", and typed
+    // a new name. Nothing else will ever clean it up, because cancel only
+    // knows about the current one.
+    final orphan = state.createdName;
+    if (!state.isEdit && orphan != null && orphan != wanted) {
+      await _deleteRemote(client, orphan);
     }
     if (taken.contains(wanted)) {
       // ...unless it is the stub THIS attempt wrote a moment ago. rclone
@@ -492,6 +508,16 @@ class AddRemoteController extends Notifier<AddRemoteState> {
       if (e.value.isNotEmpty) e.key: e.value,
     ...state.sticky,
   };
+
+  /// Every sticky key must be one rclone treats as ephemeral.
+  ///
+  /// **This is a secret-handling rule, not tidiness.** Sticky values are
+  /// re-sent on every `continue`, and a continue carries no `opt.obscure` — so
+  /// a secret placed here would be written to the config in the clear, and a
+  /// key without the `config_` prefix would be PERSISTED rather than stripped.
+  /// The two keys used today are both ephemeral; this stops the third from
+  /// quietly not being.
+  static bool _isEphemeral(String key) => key.startsWith('config_');
 
   /// Answer the current interactive [question] and continue the flow. Routes to
   /// config/update during an edit (never config/create, which would recreate).
@@ -917,9 +943,17 @@ class AddRemoteController extends Notifier<AddRemoteState> {
         values: values,
       );
     } on RcloneException catch (e) {
-      state = AddRemoteState(phase: AddPhase.error, error: e.message);
+      // Redacted for the same reason _fail redacts: the ring sanitises at
+      // ingest, a screen does not, and rclone quotes what it failed on.
+      state = AddRemoteState(
+        phase: AddPhase.error,
+        error: redactSensitive(e.message),
+      );
     } catch (e) {
-      state = AddRemoteState(phase: AddPhase.error, error: '$e');
+      state = AddRemoteState(
+        phase: AddPhase.error,
+        error: redactSensitive('$e'),
+      );
     }
   }
 

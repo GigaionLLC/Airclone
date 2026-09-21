@@ -69,6 +69,25 @@ RecipeField _fieldFromOption(ProviderOption o) => RecipeField(
   required: o.required,
 );
 
+/// Whether a question's answer should be hidden as it is typed.
+///
+/// rclone's flags are necessary and not sufficient: it marks `client_secret` as
+/// neither `IsPassword` nor `Sensitive`, and `access_key_id` as `Sensitive`
+/// rather than `IsPassword` (plan §2.2). The routed screens obscure the fields
+/// they own, but a question that falls through to the generic renderer must not
+/// be shown in the clear just because rclone forgot to say so — so the NAME is
+/// read as well as the flags.
+bool looksSecret(ProviderOption q) {
+  if (q.isPassword || q.sensitive) return true;
+  final n = q.name.toLowerCase();
+  return n.contains('secret') ||
+      n.contains('password') ||
+      n.contains('token') ||
+      n.contains('_key') ||
+      n.endsWith('key') ||
+      n.contains('credential');
+}
+
 /// The one screen before anything is created: a name, and whatever this
 /// backend actually needs.
 class GuidedSetup extends ConsumerWidget {
@@ -212,7 +231,7 @@ class _GuidedQuestionState extends ConsumerState<GuidedQuestion> {
                         )
                       : TextEntry(
                           initial: _value,
-                          obscure: q.isPassword || q.sensitive,
+                          obscure: looksSecret(q),
                           keyboardNumber: q.isInt,
                           hint: q.defaultStr,
                           onChanged: (v) => setState(() => _value = v),

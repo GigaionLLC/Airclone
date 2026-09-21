@@ -174,6 +174,55 @@ void main() {
     });
   });
 
+  group('looksSecret', () {
+    test('trusts rclone when rclone says so', () {
+      expect(
+        looksSecret(const ProviderOption(name: 'pass', isPassword: true)),
+        isTrue,
+      );
+      expect(
+        looksSecret(const ProviderOption(name: 'host', sensitive: true)),
+        isTrue,
+      );
+    });
+
+    test('does not trust rclone to always say so', () {
+      // The real counter-examples: rclone flags client_secret as NEITHER
+      // IsPassword nor Sensitive, and the s3 key pair as Sensitive rather than
+      // IsPassword. A question that falls through to the generic renderer must
+      // not appear in the clear because rclone forgot to mark it.
+      for (final name in [
+        'client_secret',
+        'secret_access_key',
+        'access_key_id',
+        'config_token',
+        'api_key',
+        'key',
+        'password2',
+        'credentials',
+      ]) {
+        expect(
+          looksSecret(ProviderOption(name: name)),
+          isTrue,
+          reason: '$name would have been typed in the clear',
+        );
+      }
+    });
+
+    test('does not hide ordinary fields', () {
+      for (final name in [
+        'host',
+        'user',
+        'port',
+        'region',
+        'endpoint',
+        'url',
+      ]) {
+        expect(looksSecret(ProviderOption(name: name)), isFalse, reason: name);
+      }
+    });
+  });
+
   group('usesOAuth', () {
     test('is detected from the options, not a list of names', () {
       expect(usesOAuth(fixture['drive']), isTrue);
