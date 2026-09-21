@@ -92,6 +92,33 @@ and the user's approval to merge. Nothing merges without it.
 | B5 operations | **DONE** | everything but `list` first, then `list`'s 14 call sites |
 | B5 complete | **ALL NAMESPACES MIGRATED** | what stays raw, and why, is written at each site: hashed listings (`RcloneFile` has no Hashes), the console translator, the webui allowlist |
 
+## After the release: what a second consumer needed (2026-09-20)
+
+v0.20.0 shipped the split. Using the package as a LIBRARY rather than as Airclone's insides
+turned up four more things, none of which Airclone could ever have hit:
+
+- **Credentials reached the host's log sink raw.** At `-vv` rclone announces the rc password
+  it read from the environment, three lines before serving a request. Airclone redacts at
+  ingest; nobody else's sink would. `redactEngineLine` now runs on everything leaving the
+  package (PR #12).
+- **Three lifecycle bugs** that only appear when engines are created and quit repeatedly: a
+  hardcoded 30s request timeout with no override, an `http.Client` that was never closed, and
+  a failed `start()` that left a live child AND a wedged object - `_process` stayed set, so
+  the next `start()` returned immediately and handed back a client that could never work
+  (PR #15).
+- **`package-airclone-rc` now runs on ubuntu, windows and macos.** This package is where the
+  OS shows through. On its FIRST run the matrix failed on macOS - not in the package, in the
+  CI step: `grep -oP` is GNU-only and BSD grep exits 2 on it.
+- **A client for an engine this process did not start** (`RemoteRcloneClient`, PR #16),
+  prompted by the collaborator on #6, whose goal is all six platforms first-class including
+  self-hosted web from the desktop. Both existing clients OWN an engine; a browser cannot
+  spawn one. No `dart:io`, so it compiles to JavaScript, and its `quit()` never stops an
+  engine it does not own.
+
+**For Milestone C:** that last one widened the public surface, and a public surface is what
+goes permanent on pub.dev. It is the part worth a second pair of eyes before the first
+publish - which is what the drafted #6 reply asks the collaborator for.
+
 ## Verified in the real app (2026-09-20)
 
 Unit tests answer `rpc` with fakes, so none of them can show that the app, the package and a
