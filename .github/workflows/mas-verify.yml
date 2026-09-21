@@ -40,6 +40,12 @@ on:
       # workflow IS the compiler for it. A Swift file missing from
       # project.pbxproj also fails here rather than silently never building.
       - 'app/macos/**'
+      # The sandboxed sign-in probe and everything it exercises. Binding the
+      # OAuth redirect listener is the one thing the App Sandbox can refuse
+      # that would silently cost every Mac App Store copy the ability to add a
+      # cloud at all.
+      - 'app/tool/mas_oauth_probe.dart'
+      - 'packages/airclone_rc/lib/src/oauth_flow.dart'
       - '.github/workflows/mas-verify.yml'
 
 permissions:
@@ -87,6 +93,16 @@ jobs:
           cp macos/librclone/librclone.dylib "$APP/Contents/Frameworks/librclone.dylib"
           lipo -info "$APP/Contents/Frameworks/librclone.dylib"
 
+      - name: Put the sign-in probe inside the bundle
+        # Inside Contents/MacOS on purpose: defaultLibrclonePath() then resolves
+        # Contents/Frameworks/librclone.dylib exactly as the real app does, so
+        # the probe also proves the path resolution the app depends on.
+        run: |
+          set -euo pipefail
+          APP="build/macos/Build/Products/Release/Airclone.app"
+          dart compile exe tool/mas_oauth_probe.dart -o "$APP/Contents/MacOS/mas-oauth-probe"
+          chmod +x "$APP/Contents/MacOS/mas-oauth-probe"
+
       - name: Sign ad-hoc WITH the sandbox entitlement
         # The signature is ad-hoc (`-s -`), which is all that is needed for the
         # kernel to enforce the sandbox. Inside-out, per Apple's guidance: every
@@ -99,6 +115,9 @@ jobs:
             -exec codesign --force --timestamp=none -s - {} \; 2>/dev/null || true
           find "$APP/Contents/Frameworks" -type d -name '*.framework' \
             -exec codesign --force --timestamp=none -s - {} \; 2>/dev/null || true
+          codesign --force --timestamp=none \
+            --entitlements macos/Runner/MacAppStore.entitlements \
+            -s - "$APP/Contents/MacOS/mas-oauth-probe"
           codesign --force --timestamp=none \
             --entitlements macos/Runner/MacAppStore.entitlements \
             -s - "$APP"
@@ -117,6 +136,36 @@ jobs:
           else
             echo "::error::the app-sandbox entitlement is MISSING - this run proves nothing"
             exit 1
+          fi
+
+      - name: Can a sandboxed build bind the sign-in listener?
+        # THE Mac App Store question this feature raises. Completing an OAuth
+        # sign-in means rclone listens on 127.0.0.1:53682 for the provider's
+        # redirect, and the sandbox refuses to listen() at all without
+        # com.apple.security.network.server. Having the entitlement in the file
+        # is not the same as the listener binding, and only one of those is
+        # worth anything to a customer.
+        #
+        # Exit codes are read rather than trusted as pass/fail: 4 and 5 mean the
+        # listener was REFUSED, which is a real finding and fails this job.
+        # Anything else non-zero means the probe could not run (a bare Mach-O
+        # carrying app-sandbox may not get a container), which proves nothing
+        # either way and is reported as such rather than blocking the pipeline
+        # on it.
+        run: |
+          set -uo pipefail
+          APP="build/macos/Build/Products/Release/Airclone.app"
+          mkdir -p ../artifacts
+          "$APP/Contents/MacOS/mas-oauth-probe" 2>&1 | tee ../artifacts/mas-oauth-probe.txt
+          CODE=${PIPESTATUS[0]}
+          echo "probe exit=$CODE"
+          if [ "$CODE" = "0" ]; then
+            echo "the sandboxed build CAN bind the sign-in listener"
+          elif [ "$CODE" = "4" ] || [ "$CODE" = "5" ]; then
+            echo "::error::the App Sandbox refused the OAuth listener - a Mac App Store build cannot add a cloud. Check com.apple.security.network.server in MacAppStore.entitlements."
+            exit 1
+          else
+            echo "::warning::the sign-in probe did not run to a verdict (exit $CODE) - this run proves nothing about the sandbox and the listener still needs checking by hand"
           fi
 
       - name: Run it, and watch for sandbox denials
@@ -184,4 +233,5 @@ jobs:
           path: |
             artifacts/screen.png
             artifacts/sandbox-log.txt
+            artifacts/mas-oauth-probe.txt
           if-no-files-found: warn

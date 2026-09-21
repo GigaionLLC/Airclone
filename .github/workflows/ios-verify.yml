@@ -43,6 +43,8 @@ on:
       - 'packages/airclone_rc/lib/src/librclone_ffi_io.dart'
       - 'app/ios/**'
       - 'dev/ios/**'
+      - 'app/integration_test/sign_in_mechanism_test.dart'
+      - 'packages/airclone_rc/lib/src/oauth_flow.dart'
       - '.github/workflows/ios-verify.yml'
 
 permissions:
@@ -227,6 +229,32 @@ jobs:
             echo "::warning::screenshot failed"
           kill "$LOG_PID" 2>/dev/null || true
 
+      - name: Drive the sign-in mechanism on the simulator
+        # The app LAUNCHING proves the archive linked and dart:ffi found the
+        # symbols. It does not prove rclone can actually run a sign-in here -
+        # and a loopback listener is the thing an Apple platform is most likely
+        # to refuse. This runs the mechanism itself, in-process, on the
+        # simulator: create as an async job, read the auth URL back out of
+        # config/oauthstatus, connect to the listener, then cancel.
+        #
+        # It stops where automation has to stop. Completing the sign-in means
+        # handing a code to Google, which needs a real account and a person at
+        # a consent screen; everything on our side of that redirect is covered.
+        env:
+          UDID: ${{ steps.sim.outputs.udid }}
+        working-directory: app
+        run: |
+          set -uo pipefail
+          flutter test integration_test/sign_in_mechanism_test.dart \
+            -d "$UDID" 2>&1 | tee ../artifacts/ios-signin.txt
+          CODE=${PIPESTATUS[0]}
+          if [ "$CODE" = "0" ]; then
+            echo "the sign-in mechanism works on iOS"
+          else
+            echo "::error::the sign-in mechanism FAILED on the iOS simulator (exit $CODE) - adding a cloud would not work on iOS"
+            exit 1
+          fi
+
       - name: Report
         # This step FAILS when the app is not running, deliberately. mas-verify
         # only warns, because there the sandbox denials were the to-do list and
@@ -256,6 +284,7 @@ jobs:
           name: ios-simulator-verify
           path: |
             artifacts/ios-screen.png
+            artifacts/ios-signin.txt
             artifacts/ios-log.txt
             artifacts/ios-build.log
           if-no-files-found: warn

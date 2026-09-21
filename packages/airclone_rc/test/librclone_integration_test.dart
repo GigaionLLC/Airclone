@@ -163,6 +163,202 @@ void main() {
     });
   }, skip: skip);
 
+  /// The guided sign-in, against a REAL librclone on this OS.
+  ///
+  /// This is the part no unit test with a fake client can prove: that rclone,
+  /// running IN THIS PROCESS through dart:ffi, hands back the sign-in URL,
+  /// binds the loopback listener the provider redirects to, and lets go of both
+  /// when told. On macOS this is the only automated evidence the Apple builds
+  /// have — nobody on this project owns a Mac.
+  ///
+  /// No account, no credentials, and no call to any provider: rclone binds the
+  /// listener and waits, and everything here happens on this machine.
+  group('guided sign-in mechanism (live librclone)', () {
+    late Directory tmp;
+    late FfiRcloneClient client;
+
+    setUp(() async {
+      tmp = await Directory.systemTemp.createTemp('airclone-oauth');
+      // Its own config file. This creates a remote, and it must never be the
+      // developer's or the runner's real one.
+      client = FfiRcloneClient(
+        libraryPath: libPath!,
+        configPath: '${tmp.path}${Platform.pathSeparator}rclone.conf',
+      );
+    });
+
+    tearDown(() async {
+      // Always let go of the port, whatever the test did. A leaked listener
+      // would fail every following test with a bind error rather than with
+      // whatever actually went wrong.
+      try {
+        await client.rpc('config/oauthstop');
+      } catch (_) {
+        /* nothing was running, which is the state we wanted anyway */
+      }
+      await client.quit();
+      await tmp.delete(recursive: true);
+    });
+
+    /// Starts a Drive sign-in as an async job, pre-answering everything up to
+    /// the OAuth wait. Returns the job id.
+    Future<num> beginSignIn() async {
+      final started = await client.rpc('config/create', {
+        'name': 'oauthprobe',
+        'type': 'drive',
+        'parameters': {
+          'config_shared_client_id': 'true',
+          'config_is_local': 'true',
+          'config_auth_no_browser': 'true',
+        },
+        'opt': {'nonInteractive': true, 'obscure': true},
+        '_async': true,
+      });
+      final jobid = started['jobid'];
+      expect(
+        jobid,
+        isA<num>(),
+        reason:
+            'config/create must run as a job — a blocking one would freeze the '
+            'single worker isolate for as long as a sign-in takes',
+      );
+      return jobid as num;
+    }
+
+    Future<Map<String, dynamic>> awaitJob(num jobid) async {
+      final deadline = DateTime.now().add(const Duration(seconds: 20));
+      while (DateTime.now().isBefore(deadline)) {
+        final status = await client.rpc('job/status', {'jobid': jobid});
+        if (status['finished'] == true) return status;
+        await Future<void>.delayed(const Duration(milliseconds: 100));
+      }
+      fail('the job never finished');
+    }
+
+    /// Waits until rclone reports a sign-in is waiting, and returns its URL.
+    Future<Uri?> awaitAuthUrl() async {
+      final deadline = DateTime.now().add(const Duration(seconds: 30));
+      while (DateTime.now().isBefore(deadline)) {
+        final status = await client.rpc('config/oauthstatus');
+        if (status['status'] == 'running') {
+          final raw = status['authUrl'];
+          // Validated by the same function the app uses, so this also proves
+          // that what the app will accept is what rclone actually produces.
+          return raw is String ? asAuthUrl(raw) : null;
+        }
+        await Future<void>.delayed(const Duration(milliseconds: 200));
+      }
+      return null;
+    }
+
+    test(
+      'the auth URL is reported, the port is bound, and stop frees both',
+      () async {
+        await client.start();
+        expect(
+          (await client.rpc('config/oauthstatus'))['status'],
+          'stopped',
+          reason: 'nothing should be waiting before we start',
+        );
+
+        final jobid = await beginSignIn();
+        final url = await awaitAuthUrl();
+
+        expect(
+          url,
+          isNotNull,
+          reason: 'config/oauthstatus never handed back a usable auth URL',
+        );
+        expect(url!.host, kOAuthHost);
+        expect(url.port, kOAuthPort);
+        expect(url.queryParameters['state'], isNotEmpty);
+
+        // The engine is still answering while the sign-in waits. That is the
+        // whole reason this runs as a job.
+        expect((await client.rpc('core/version'))['version'], isNotNull);
+
+        // The listener the provider would be redirected to is really there.
+        final probe = await Socket.connect(
+          kOAuthHost,
+          kOAuthPort,
+          timeout: const Duration(seconds: 5),
+        );
+        await probe.close();
+
+        await client.rpc('config/oauthstop');
+
+        final status = await awaitJob(jobid);
+        expect(
+          '${status['error']}',
+          contains('cancel'),
+          reason: 'the job should end because it was cancelled',
+        );
+        expect((await client.rpc('config/oauthstatus'))['status'], 'stopped');
+
+        // And the port is free, so a second attempt can bind it.
+        await expectLater(
+          Socket.connect(
+            kOAuthHost,
+            kOAuthPort,
+            timeout: const Duration(seconds: 2),
+          ),
+          throwsA(isA<SocketException>()),
+          reason:
+              'the listener must let go of the port, or the NEXT sign-in '
+              'fails to bind',
+        );
+      },
+    );
+
+    test(
+      'cancelOAuth() ends a real flow, and says so when there is none',
+      () async {
+        await client.start();
+        // Nothing running: rclone answers HTTP 500 "no oauth authentication is
+        // in progress", which is the state cancel wanted, not a failure.
+        expect(await cancelOAuth(client), isTrue);
+
+        final jobid = await beginSignIn();
+        expect(await awaitAuthUrl(), isNotNull);
+
+        expect(await cancelOAuth(client), isTrue);
+        await awaitJob(jobid);
+        expect(await cancelOAuth(client), isTrue, reason: 'idempotent');
+      },
+    );
+
+    test('the pre-1.75 fallback still unblocks a waiting sign-in', () async {
+      // Engines older than 1.75 have neither RC method, and the app falls back
+      // to a plain GET at the redirect address: rclone pushes a failure onto
+      // the same channel the flow is blocked on for any request carrying no
+      // code. Exercised because the minimum supported rclone is 1.73.5 and a
+      // desktop user may point Airclone at their own binary.
+      //
+      // It also proves the listener RECEIVES and ACTS ON an inbound request —
+      // the redirect leg — without contacting any provider. Completing a real
+      // redirect would mean handing a code to Google, which needs an account
+      // and a person; this covers everything on our side of that.
+      await client.start();
+      final jobid = await beginSignIn();
+      expect(await awaitAuthUrl(), isNotNull);
+
+      final http = HttpClient();
+      try {
+        final req = await http.getUrl(
+          Uri.parse('http://$kOAuthHost:$kOAuthPort/'),
+        );
+        final resp = await req.close();
+        await resp.drain<void>();
+        expect(resp.statusCode, 400, reason: 'a redirect carrying no code');
+      } finally {
+        http.close(force: true);
+      }
+
+      final status = await awaitJob(jobid);
+      expect('${status['error']}', isNotEmpty);
+    });
+  }, skip: skip);
+
   group('FfiRcloneClient objectRef bridge (live librclone)', () {
     test('serves object bytes over loopback — full + Range', () async {
       final srcDir = await Directory.systemTemp.createTemp('airclone-src');
