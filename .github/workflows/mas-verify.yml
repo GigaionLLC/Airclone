@@ -40,6 +40,12 @@ on:
       # workflow IS the compiler for it. A Swift file missing from
       # project.pbxproj also fails here rather than silently never building.
       - 'app/macos/**'
+      # The sandboxed sign-in probe and everything it exercises. Binding the
+      # OAuth redirect listener is the one thing the App Sandbox can refuse
+      # that would silently cost every Mac App Store copy the ability to add a
+      # cloud at all.
+      - 'app/tool/mas_oauth_probe.dart'
+      - 'packages/airclone_rc/lib/src/oauth_flow.dart'
       - '.github/workflows/mas-verify.yml'
 
 permissions:
@@ -87,6 +93,49 @@ jobs:
           cp macos/librclone/librclone.dylib "$APP/Contents/Frameworks/librclone.dylib"
           lipo -info "$APP/Contents/Frameworks/librclone.dylib"
 
+      - name: Build the sign-in probe as a sandboxed app of its own
+        # It gets its OWN .app rather than riding inside Airclone.app, because
+        # the App Sandbox needs a container and a container comes from a bundle
+        # identifier. A bare Mach-O signed with `app-sandbox` and nothing else
+        # is killed at launch with SIGTRAP before main() runs - which is what
+        # the first version of this step did, and it proved nothing.
+        #
+        # The layout mirrors a real app on purpose: the probe in Contents/MacOS
+        # and librclone in Contents/Frameworks, so defaultLibrclonePath()
+        # resolves it exactly as the shipping app does.
+        run: |
+          set -euo pipefail
+          PROBE="build/macos/SignInProbe.app"
+          rm -rf "$PROBE"
+          mkdir -p "$PROBE/Contents/MacOS" "$PROBE/Contents/Frameworks"
+          dart compile exe tool/mas_oauth_probe.dart -o "$PROBE/Contents/MacOS/probe"
+          chmod +x "$PROBE/Contents/MacOS/probe"
+          cp macos/librclone/librclone.dylib "$PROBE/Contents/Frameworks/librclone.dylib"
+          printf '%s\n' \
+            '<?xml version="1.0" encoding="UTF-8"?>' \
+            '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">' \
+            '<plist version="1.0">' \
+            '<dict>' \
+            '  <key>CFBundleIdentifier</key><string>com.gigaionllc.airclone.signinprobe</string>' \
+            '  <key>CFBundleName</key><string>SignInProbe</string>' \
+            '  <key>CFBundleExecutable</key><string>probe</string>' \
+            '  <key>CFBundlePackageType</key><string>APPL</string>' \
+            '  <key>CFBundleShortVersionString</key><string>1.0</string>' \
+            '  <key>CFBundleVersion</key><string>1</string>' \
+            '</dict>' \
+            '</plist>' > "$PROBE/Contents/Info.plist"
+          plutil -lint "$PROBE/Contents/Info.plist"
+
+          # Inside-out, and with the SAME entitlements the store build carries -
+          # which is the whole point of the exercise.
+          codesign --force --timestamp=none -s - "$PROBE/Contents/Frameworks/librclone.dylib"
+          codesign --force --timestamp=none \
+            --entitlements macos/Runner/MacAppStore.entitlements \
+            -s - "$PROBE"
+          codesign --verify --strict --verbose=2 "$PROBE"
+          echo "--- entitlements on the probe ---"
+          codesign -d --entitlements - "$PROBE" || true
+
       - name: Sign ad-hoc WITH the sandbox entitlement
         # The signature is ad-hoc (`-s -`), which is all that is needed for the
         # kernel to enforce the sandbox. Inside-out, per Apple's guidance: every
@@ -117,6 +166,48 @@ jobs:
           else
             echo "::error::the app-sandbox entitlement is MISSING - this run proves nothing"
             exit 1
+          fi
+
+      - name: Can a sandboxed build bind the sign-in listener?
+        # THE Mac App Store question this feature raises. Completing an OAuth
+        # sign-in means rclone listens on 127.0.0.1:53682 for the provider's
+        # redirect, and the sandbox refuses to listen() at all without
+        # com.apple.security.network.server. Having the entitlement in the file
+        # is not the same as the listener binding, and only one of those is
+        # worth anything to a customer.
+        #
+        # Exit codes are read rather than trusted as pass/fail: 4 and 5 mean the
+        # listener was REFUSED, which is a real finding and fails this job.
+        # Anything else non-zero means the probe could not run (a bare Mach-O
+        # carrying app-sandbox may not get a container), which proves nothing
+        # either way and is reported as such rather than blocking the pipeline
+        # on it.
+        run: |
+          # `set +e` EXPLICITLY. GitHub runs every `run:` block as `bash -e {0}`,
+          # so a failing probe aborts the step before the exit code below can be
+          # read - which turned the first run's inconclusive crash into a hard
+          # failure that said nothing about the sandbox.
+          set +e
+          set -u -o pipefail
+          PROBE="build/macos/SignInProbe.app/Contents/MacOS/probe"
+          mkdir -p ../artifacts
+          "$PROBE" 2>&1 | tee ../artifacts/mas-oauth-probe.txt
+          CODE=${PIPESTATUS[0]}
+          echo "probe exit=$CODE"
+          if [ "$CODE" = "0" ]; then
+            echo "the sandboxed build CAN bind the sign-in listener"
+          elif [ "$CODE" = "4" ] || [ "$CODE" = "5" ]; then
+            echo "::error::the App Sandbox refused the OAuth listener - a Mac App Store build cannot add a cloud. Check com.apple.security.network.server in MacAppStore.entitlements."
+            exit 1
+          else
+            # 133 is SIGTRAP, which on a sandboxed binary means the container
+            # could not be established: the process died before any of our code
+            # ran, so it says nothing about the listener either way.
+            echo "::warning::the sign-in probe did not run to a verdict (exit $CODE) - this run proves nothing about the sandbox and the listener still needs checking by hand"
+            echo "--- anything the log has to say about it ---"
+            log show --last 3m --style compact \
+              --predicate 'eventMessage CONTAINS "signinprobe"' 2>/dev/null \
+              | tail -20 || true
           fi
 
       - name: Run it, and watch for sandbox denials
@@ -184,4 +275,5 @@ jobs:
           path: |
             artifacts/screen.png
             artifacts/sandbox-log.txt
+            artifacts/mas-oauth-probe.txt
           if-no-files-found: warn
