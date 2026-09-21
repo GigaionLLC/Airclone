@@ -356,9 +356,9 @@ posted only after the maintainer approves the wording. Record each one in the ta
 | :--- | :--- | :--- | :--- |
 | 0 | Plan agreed | We'll do it: `airclone_rc`, pure Dart, AGPLv3, bring your own rclone; Airclone first, no timeline | 2026-09-19 ([comment](https://github.com/GigaionLLC/Airclone/issues/6#issuecomment-5744557750)) |
 | 1 | Work starts (A0) | The split is under way | superseded — the work finished before a reply was approved, so it folds into update 2 |
-| 2 | A4 merged to `main` | The package is in the repo; the git-dependency snippet now works; link to its README | drafted 2026-09-20, awaiting wording approval |
-| 3 | A5 released | Airclone v0.20.0 ships on the package | `[ ]` |
-| 4 | B1–B2 land | The typed API foundation exists; ask for feedback on its shape | `[ ]` |
+| 2 | A4 merged to `main` | The package is in the repo; the git-dependency snippet now works; link to its README | 2026-09-20 ([comment](https://github.com/GigaionLLC/Airclone/issues/6#issuecomment-5754014996)) — posted as an AI-written progress report, labelled as one at the top |
+| 3 | A5 released | Airclone v0.20.0 ships on the package | folded into update 2, which was posted after the release |
+| 4 | B1–B2 land | The typed API foundation exists; ask for feedback on its shape | folded into update 2, which asks for exactly that — and says why now: a published API can be retracted, never replaced |
 | 5 | C published | On pub.dev with a link; **close #6** | `[ ]` |
 
 If the plan stalls or the A3 checkpoint is a no-go, say so on #6 as well, instead of going
