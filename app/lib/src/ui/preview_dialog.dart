@@ -122,6 +122,16 @@ _PreviewKind _kindFor(RcloneFile file) {
 /// so the button and the actual preview never disagree.
 bool isImagePreview(RcloneFile file) => _kindFor(file) == _PreviewKind.image;
 
+/// True when this file would open in the media player.
+///
+/// Used to build a sibling list of the SAME KIND: "next track" landing on
+/// `cover.jpg` is not a next track, and on a television — where the only way
+/// through a folder is those two keys — it is how an album stops being
+/// playable. Quick Look already filters its siblings this way for the pop-out
+/// image viewer; these are the same idea for the two media kinds.
+bool isAudioPreview(RcloneFile file) => _kindFor(file) == _PreviewKind.audio;
+bool isVideoPreview(RcloneFile file) => _kindFor(file) == _PreviewKind.video;
+
 IconData _iconFor(_PreviewKind kind) {
   switch (kind) {
     case _PreviewKind.image:
@@ -334,6 +344,9 @@ class PreviewContent extends ConsumerWidget {
           onOpenExternally: openExternally,
           onPrevious: onPrevious,
           onNext: onNext,
+          // Only the television now-playing screen renders this; every other
+          // media surface sits under a host that already names the file.
+          title: file.name,
         );
       case _PreviewKind.unsupported:
         return _UnsupportedBody(file: file, onOpenExternally: openExternally);

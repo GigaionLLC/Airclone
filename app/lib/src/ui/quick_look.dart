@@ -103,6 +103,39 @@ Future<void> showQuickLook(
   );
 }
 
+/// The index in [files] of the nearest entry of the same KIND as `files[from]`,
+/// in [direction] (−1 back, +1 forward), or null when there is none.
+///
+/// A media player's previous/next must walk its own kind. A folder of songs
+/// usually holds a `cover.jpg`, and often a `.cue` or a `.log` as well, so
+/// "next track" landing on one of those is not a next track. On a phone that is
+/// a shrug — a swipe moves on again. On a television those two keys are the
+/// only way through a folder, which is how an album stops being playable.
+///
+/// Non-media entries keep the plain neighbour: a swipe and the arrow keys move
+/// the pager exactly one page, and always have.
+///
+/// A top-level function, and public, because it is the whole decision: the
+/// widget that calls it needs a running engine and a remote, and this needs
+/// neither, so it can be pinned by a test instead of by a television.
+int? sameKindNeighbour(List<RcloneFile> files, int from, int direction) {
+  if (from < 0 || from >= files.length) return null;
+  final file = files[from];
+  final bool Function(RcloneFile) sameKind;
+  if (isAudioPreview(file)) {
+    sameKind = isAudioPreview;
+  } else if (isVideoPreview(file)) {
+    sameKind = isVideoPreview;
+  } else {
+    final next = from + direction;
+    return next >= 0 && next < files.length ? next : null;
+  }
+  for (var i = from + direction; i >= 0 && i < files.length; i += direction) {
+    if (sameKind(files[i])) return i;
+  }
+  return null;
+}
+
 /// The overlay body. A [ConsumerStatefulWidget] so it can read the engine client
 /// for the desktop "Pop out" action and for handing a file to another app.
 class _QuickLook extends ConsumerStatefulWidget {
@@ -513,6 +546,16 @@ class _QuickLookState extends ConsumerState<_QuickLook> {
     );
   }
 
+  /// Jump straight to [index] (as opposed to [_go], which steps by pages).
+  void _goTo(int index) {
+    if (index == _i) return;
+    _pager.animateToPage(
+      index,
+      duration: const Duration(milliseconds: 220),
+      curve: Curves.easeOutCubic,
+    );
+  }
+
   /// The swipeable page stack, shared by both shapes.
   Widget _pagerView() => PageView.builder(
     controller: _pager,
@@ -520,6 +563,8 @@ class _QuickLookState extends ConsumerState<_QuickLook> {
     onPageChanged: (p) => setState(() => _i = p),
     itemBuilder: (context, p) {
       final f = _files[p];
+      final previous = sameKindNeighbour(_files, p, -1);
+      final next = sameKindNeighbour(_files, p, 1);
       return PreviewContent(
         key: ValueKey(f.path),
         remote: widget.remote,
@@ -530,9 +575,10 @@ class _QuickLookState extends ConsumerState<_QuickLook> {
         imageBackground: widget.fullscreen ? Colors.black : null,
         // Null at the ends, so the media players can disable rather than
         // pretend. A swipe and the arrow keys already move the pager; these
-        // exist for a device that has neither, which is a television remote.
-        onPrevious: p > 0 ? () => _go(-1) : null,
-        onNext: p < _files.length - 1 ? () => _go(1) : null,
+        // exist for a device that has neither, which is a television remote —
+        // and they move by KIND, so an album plays like an album.
+        onPrevious: previous == null ? null : () => _goTo(previous),
+        onNext: next == null ? null : () => _goTo(next),
       );
     },
   );

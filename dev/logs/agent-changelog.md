@@ -13,6 +13,58 @@ happened": nothing was logged between 2026-07-02 and 2026-07-15, or between 2026
      it is: it used to say ABOVE, which pushed it further down the file with every entry until
      it sat hundreds of lines under the newest one and pointed writers at the wrong place. -->
 
+## [2026-09-21] - TV playback: the remote can run the player, and the buttons were never the problem
+
+**Agent:** Claude Opus 5 - `feat/tv-playback-remote`
+**Files Modified:** new `ui/tv_player_keys.dart`, `ui/tv_video_controls.dart`,
+`ui/tv_now_playing.dart`; `ui/media_preview.dart` (TV branches for both surfaces, `title`, the
+shared clock), `ui/preview_dialog.dart` (+`isAudioPreview`/`isVideoPreview`), `ui/quick_look.dart`
+(+`sameKindNeighbour`); `dev/android-tv.md` (the gap above it closed, plus the key table),
+new `wiki/features/feat-media-playback.md` + the features index, new
+`dev/plans/tv-playback-plan.md`. Five new test files (`tv_player_keys_test.dart`,
+`tv_video_controls_test.dart`, `tv_now_playing_test.dart`, `same_kind_siblings_test.dart`,
+`tv_playback_fake.dart`).
+**Database/API Changes:** none. No new dependencies, no pubspec changes beyond the version bump.
+**Summary:** A Google TV user reported that they could not change track in the music player, nor
+seek in a video. The video half was a total gap — `AdaptiveVideoControls` routes Android to
+media_kit's touch controls, which have no key handling and appear only from `onTap`. The music half
+was not a missing feature at all: the skip buttons shipped in v0.8.0 and production was already
+serving them. Both halves were the same missing thing, and it was the KEYS. 1828 app tests (from
+1777), analyze and format clean.
+
+**Five things worth keeping**
+
+1. **Do not reason about "is this fix live?" from a version number.** The music buttons were
+   assumed missing from production. They were not: `git merge-base --is-ancestor 2a26933 v0.13.8`
+   is YES, and Play serves 143 = v0.13.8. The tags in this repo are **not chronological** —
+   v0.13.9 was cut ten days after v0.8.0 — so the number tells you nothing. Use `merge-base`, and
+   read `store-feedback.yml` for what Play actually serves.
+2. **A probe that cannot render looks exactly like a key that was not delivered.** The first two
+   spike runs reported every transport key as undelivered — including the D-pad, which
+   demonstrably works in the shipping shell. The cause was the probe: a fresh Flutter *debug* app
+   never produced a first frame on the TV image, so `InputDispatcher` logged "no window has focus"
+   and ANR-killed it. Airclone's own build renders on that AVD. Gate any rig on a focused window
+   and re-check the process is alive after every key, and keep the D-pad codes in as a control.
+3. **Rule 9 caught me, on my own build.** `flutter build apk --debug ... 2>&1 | tail -6` discarded
+   both the Gradle error and the exit code, so the wrapper reported success — and a full emulator
+   session was then spent driving a **v0.7.0** APK left on the AVD, old enough to predate the skip
+   buttons. The "old audio card with no skip buttons" screenshot was not evidence about this work
+   at all. Never pipe a build through `tail`.
+4. **A layout tested at the wrong size fits.** `TvNowPlaying` overflowed by 7px at real television
+   metrics: a 1080p set reports **960x540dp** at xhdpi and `tvOverscan` takes 27dp off each end, so
+   the screen has **486dp** of height, not 540. Every size in that file is now derived from the
+   constraints. Same mistake as the fixed-width dialogs that clipped their own buttons on a phone.
+5. **A passing test can pass for the wrong reason.** The first coalescing test survived a mutation
+   that removed the debounce entirely, because ten presses fired back-to-back collapse even at zero
+   delay — each press cancels the pending commit. The fix was to pump BETWEEN presses. Four
+   mutations are confirmed red; shrinking `commitDelay` is deliberately not one of them, because
+   the tests scale with the constant and pinning 350ms would pin a tuning, not a behaviour.
+
+**Known limitation:** verified by tests and by an emulator measurement of key delivery, **not** on a
+physical television, and the local Android build could not be used to check the wiring end to end
+(a guava/`ListenableFuture` compile-classpath conflict that CI does not have). Said plainly in
+`dev/releases/v0.22.0.md` rather than implied away.
+
 ## [2026-09-20] - Add a cloud: guided by default, and rclone 1.75 made half the plan unnecessary
 
 **Agent:** Claude Opus 5 - `feat/guided-remote-setup` (PR #20)
