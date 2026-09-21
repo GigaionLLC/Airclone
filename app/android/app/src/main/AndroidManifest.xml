@@ -134,5 +134,20 @@
             <action android:name="android.intent.action.SEND"/>
             <data android:mimeType="*/*"/>
         </intent>
+        <!-- Signing in to a cloud opens a browser: the provider's page over
+             https, and rclone's own loopback redirect over http. Under Android
+             11+ package visibility an app cannot SEE a browser it has not
+             declared an intent for, so without these two the Custom Tab does
+             not open and a sign-in has no way to finish. Declared as schemes
+             rather than as a wildcard VIEW so the visibility granted is only
+             what a browser answers. -->
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
+            <data android:scheme="https"/>
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
+            <data android:scheme="http"/>
+        </intent>
     </queries>
 </manifest>

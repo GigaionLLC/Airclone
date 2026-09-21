@@ -13,6 +13,58 @@ happened": nothing was logged between 2026-07-02 and 2026-07-15, or between 2026
      it is: it used to say ABOVE, which pushed it further down the file with every entry until
      it sat hundreds of lines under the newest one and pointed writers at the wrong place. -->
 
+## [2026-09-20] - Add a cloud: guided by default, and rclone 1.75 made half the plan unnecessary
+
+**Agent:** Claude Opus 5 - `main`
+**Files Modified:** new `state/remote_setup_recipes.dart`, `ui/add_remote/` (5 files),
+`packages/airclone_rc/lib/src/oauth_flow.dart`; rewritten `state/add_remote_controller.dart` and
+`ui/add_remote_dialog.dart`; `http_rclone_client.dart` (+`AuthUrlObserver`), `models/provider.dart`
+(+`Provider` gating), `AndroidManifest.xml` (browser `<queries>`), `MacAppStore.entitlements`
+(comment), `feat-add-a-cloud.md` (new) + three doc indexes + the backlog. Six new test files, two
+captured fixtures, the probe harnesses under `dev/plans/fd2-probe/`.
+**Database/API Changes:** none. New RC methods consumed: `config/oauthstatus`, `config/oauthstop`
+(rclone 1.75+), with the pre-1.75 path kept.
+**Summary:** Adding storage is now a guided flow by default — ten curated tiles, hand-written
+essentials for the backends rclone asks nothing about, and OAuth as a real screen — with the old
+option form intact behind Advanced. Both are one driver over rclone's own interactive config
+machine. 1771 app tests (from 1684) and 91 package tests pass.
+
+**Four things worth keeping**
+
+1. **Reading the source pinned to the wrong version cost a whole subsystem.** §2.1 of the plan was
+   read from rclone **1.74.4**; the app ships against **1.75.1**. 1.75 added `config/oauthstatus`
+   and `config/oauthstop`, which hand over the sign-in URL and cancel it as first-class RC methods.
+   The plan had instead designed a way to *scrape* that URL out of the engine's stderr through a
+   pipe — and a full day's verification proving that mechanism works on POSIX and, on Windows,
+   silently **destroys** the engine's logging. All of it was unnecessary. Read the source for the
+   version you ship, and when a design needs something heroic, check whether the dependency has
+   since grown a way to just ask.
+
+2. **`opt.all: true` was the whole reason this felt like an interrogation.** It makes rclone walk
+   every option as a separate question, and only non-empty values count as pre-answered — so every
+   field left blank in the form came straight back as a question. Dropping it is most of what made
+   the flow guided. The other half is that rclone strips `config_*` answers before saving and
+   rebuilds its answer map from `parameters` on every call, so an ephemeral answer given once is
+   forgotten two steps later and must be re-sent every time. Passwords are the exact opposite and
+   must never be.
+
+3. **`config/delete` cannot tell you it failed.** It calls rclone's `DeleteRemote`, which is `void`;
+   deleting a section that is not there is a silent no-op, and `SaveConfig()` swallows its own error
+   after retrying. It answers `200` whether it deleted the remote, deleted nothing, or could not
+   write the file. Cancelling a half-finished sign-in therefore re-reads the config and says so if
+   the remote survived. Rule 9, one level down: the status code is not evidence the thing happened.
+
+4. **The widget tests found two layout bugs that no amount of reading would have.** The curated tile
+   overflowed by 73 px at phone width and the select's escape hatch by 11 px. Screen capture is
+   impossible from this session, so layout is verified at 375 dp by widget test — and it works.
+   Separately, a unicode escape written into a source file arrived as a **literal NUL byte**, which
+   is AGENT.md rule 18 happening again; it was caught by `od -c`, replaced with index-based dropdown
+   values, and every touched file was then scanned for NUL and backspace bytes.
+
+**Still open:** the security-focused adversarial review the plan gates merge on (user-triggered), and
+a manual pass on real Google/Backblaze accounts across Windows, Android and iOS. Nothing is
+committed.
+
 ## [2026-09-20] - The actions are pinned, and the run badges were lying
 
 **Agent:** Claude Opus 5 - `main`

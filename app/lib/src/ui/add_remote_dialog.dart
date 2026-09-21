@@ -1,12 +1,26 @@
+/// "Add a cloud" — a thin router over the guided and advanced front ends.
+///
+/// The screens live in `add_remote/`; this file decides which one is showing,
+/// how big the dialog should be for it, and what happens when it closes. It
+/// used to be all of them at once, at a fixed 520x560, which is why the option
+/// list and the sign-in step were the same shape as a two-line question.
+library;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:airclone_rc/airclone_rc.dart';
+
 import '../rclone/models/remote.dart';
 import '../state/add_remote_controller.dart';
-import '../state/providers_provider.dart';
+import '../state/browser_controller.dart';
+import '../state/remotes_provider.dart';
+import 'add_remote/advanced_form.dart';
+import 'add_remote/guided_steps.dart';
+import 'add_remote/own_client_id_step.dart';
+import 'add_remote/provider_picker.dart';
+import 'add_remote/sign_in_step.dart';
 import 'dialog_body.dart';
-import 'disclosure.dart';
 import 'theme/tokens.dart';
 
 Future<void> showAddRemoteDialog(BuildContext context) =>
@@ -30,50 +44,269 @@ class AddRemoteDialog extends ConsumerStatefulWidget {
 }
 
 class _AddRemoteDialogState extends ConsumerState<AddRemoteDialog> {
-  String _filter = '';
+  late final AddRemoteController _ctrl = ref.read(
+    addRemoteControllerProvider.notifier,
+  );
+
+  /// Tracked so [dispose] knows whether this flow left something behind,
+  /// without reading a provider at a point where that is not allowed.
+  bool _needsCleanup = false;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      final ctrl = ref.read(addRemoteControllerProvider.notifier);
       if (widget.editRemote != null) {
-        ctrl.startEdit(widget.editRemote!);
+        _ctrl.startEdit(widget.editRemote!);
       } else {
-        ctrl.reset();
+        _ctrl.reset();
       }
     });
+  }
+
+  @override
+  void dispose() {
+    // Closing an unfinished create has to clean up after it, whichever way the
+    // dialog was closed — button, Escape, or a tap on the barrier.
+    //
+    // Keyed on "is there a section this flow wrote and did not finish", NOT on
+    // being mid-sign-in. rclone writes `[name] type = …` as soon as a call
+    // returns at a QUESTION, so walking away from the shared-client_id screen
+    // leaves exactly the same unusable remote behind as abandoning the sign-in
+    // does. A successful create clears the marker, so this can never delete a
+    // remote that worked.
+    if (_needsCleanup) {
+      _ctrl.cancelSignIn();
+    }
+    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     final c = AircloneTheme.of(context);
     final state = ref.watch(addRemoteControllerProvider);
+    _needsCleanup = !state.isEdit && state.createdName != null;
 
+    // An edit finishes silently, the way it always has. A create earns its
+    // success screen.
     ref.listen(addRemoteControllerProvider, (prev, next) {
-      if (next.phase == AddPhase.done && mounted) Navigator.of(context).pop();
+      if (next.phase == AddPhase.done && next.isEdit && mounted) {
+        Navigator.of(context).pop();
+      }
     });
 
+    final (width, height) = _sizeFor(state);
     return Dialog(
       backgroundColor: c.surfaceRaised,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(Radii.lg),
       ),
       child: DialogBody(
-        width: 520,
-        height: 560,
+        width: width,
+        height: height,
         child: Padding(
           padding: const EdgeInsets.all(Space.x5),
-          child: switch (state.phase) {
-            AddPhase.pickProvider => _buildPicker(c),
-            AddPhase.creating => const Center(
-              child: CircularProgressIndicator(),
-            ),
-            AddPhase.error => _buildError(c, state),
-            _ => _buildForm(c, state),
-          },
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (state.phase != AddPhase.pickProvider) _header(c, state),
+              Expanded(child: _body(state)),
+            ],
+          ),
         ),
       ),
+    );
+  }
+
+  /// The dialog is sized for the step it is showing. A 78-option form and a
+  /// yes/no question do not want the same box.
+  (double, double) _sizeFor(AddRemoteState state) => switch (state.phase) {
+    AddPhase.pickProvider => (560, 600),
+    AddPhase.busy || AddPhase.verifying => (420, 260),
+    AddPhase.done => (480, 380),
+    AddPhase.signingIn => (520, 480),
+    AddPhase.question =>
+      isSharedClientIdQuestion(state.question) ||
+              isOwnClientIdQuestion(state.question)
+          ? (520, 600)
+          : (520, 460),
+    AddPhase.setup ||
+    AddPhase.error => state.mode == AddMode.advanced ? (560, 620) : (520, 540),
+  };
+
+  Widget _header(AircloneColors c, AddRemoteState state) {
+    final showAdvancedLink =
+        !state.isEdit &&
+        state.mode == AddMode.guided &&
+        (state.phase == AddPhase.setup || state.phase == AddPhase.question);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: Space.x3),
+      child: Row(
+        children: [
+          IconButton(
+            onPressed: () => state.isEdit
+                ? Navigator.of(context).pop()
+                : _ctrl.backToProviders(),
+            icon: Icon(state.isEdit ? Icons.close : Icons.arrow_back, size: 18),
+            visualDensity: VisualDensity.compact,
+          ),
+          const SizedBox(width: Space.x1),
+          Expanded(
+            child: Text(
+              state.isEdit
+                  ? 'Edit ${state.providerLabel}'
+                  : state.providerLabel,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: c.text,
+                fontSize: 15,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+          // The guided flow never hides the manual one. This is the second of
+          // its three entrances; the others are on each tile in the picker and
+          // on the failure screen.
+          if (showAdvancedLink)
+            TextButton(
+              onPressed: _ctrl.switchToAdvanced,
+              child: Text(
+                'Advanced',
+                style: TextStyle(color: c.textMuted, fontSize: 12),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _body(AddRemoteState state) {
+    switch (state.phase) {
+      case AddPhase.pickProvider:
+        return const ProviderPicker();
+
+      case AddPhase.busy:
+        return const Center(child: CircularProgressIndicator());
+
+      case AddPhase.verifying:
+        return const VerifyingStep();
+
+      case AddPhase.signingIn:
+        return const SignInWaiting();
+
+      case AddPhase.question:
+        final q = state.question;
+        if (isSharedClientIdQuestion(q)) return const SharedClientIdChoice();
+        if (isOwnClientIdQuestion(q)) return OwnClientIdStep(question: q!);
+        // rclone asks for a config token when the sign-in is being done
+        // somewhere else. That is a screen, not a text box.
+        if (q?.name == 'config_token') return AuthorizeHandoff(question: q!);
+        if (q == null) return const Center(child: CircularProgressIndicator());
+        return GuidedQuestion(key: ValueKey(state.questionState), question: q);
+
+      case AddPhase.setup:
+        if (state.mode == AddMode.advanced) {
+          return AdvancedForm(onSubmit: () => _onSubmit(state));
+        }
+        // An OAuth backend has nothing useful to ask before sign-in: its
+        // standard options are a client_id and a scope, which belong in
+        // Advanced. Everything else gets the essentials screen.
+        if (recipeIsAbsentAndOAuth(state)) return const SignInStart();
+        return const GuidedSetup();
+
+      case AddPhase.done:
+        return SuccessStep(
+          onOpen: _openRemote,
+          onAddAnother: _ctrl.reset,
+          onDone: () => Navigator.of(context).pop(),
+        );
+
+      case AddPhase.error:
+        return _buildError(state);
+    }
+  }
+
+  /// True when rclone drives this backend itself through an OAuth sign-in, so
+  /// the guided path is one button rather than a form.
+  bool recipeIsAbsentAndOAuth(AddRemoteState state) =>
+      state.recipeFields.isEmpty && usesOAuth(state.provider);
+
+  Future<void> _onSubmit(AddRemoteState state) async {
+    if (state.isEdit) {
+      await _onSaveEdit(state);
+    } else {
+      await _ctrl.submit();
+    }
+  }
+
+  Future<void> _openRemote(String name) async {
+    final navigator = Navigator.of(context);
+    final remotes = await ref.read(remotesProvider.future);
+    Remote? found;
+    for (final r in remotes) {
+      if (r.name == name) {
+        found = r;
+        break;
+      }
+    }
+    if (found != null) {
+      await ref.read(paneProvider(0).notifier).open(found);
+    }
+    if (mounted) navigator.pop();
+  }
+
+  Widget _buildError(AddRemoteState state) {
+    final c = AircloneTheme.of(context);
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Icon(Icons.error_outline, size: 36, color: c.error),
+        const SizedBox(height: Space.x3),
+        Text(
+          "That didn't work",
+          style: TextStyle(
+            color: c.text,
+            fontSize: 16,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        const SizedBox(height: Space.x2),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: Space.x4),
+          child: Text(
+            state.error ?? 'Unknown error',
+            textAlign: TextAlign.center,
+            style: TextStyle(color: c.textMuted, fontSize: 13),
+          ),
+        ),
+        const SizedBox(height: Space.x5),
+        Wrap(
+          alignment: WrapAlignment.center,
+          spacing: Space.x2,
+          runSpacing: Space.x2,
+          children: [
+            TextButton(
+              onPressed: _ctrl.backToProviders,
+              child: const Text('Start over'),
+            ),
+            // Carries the values across, so nothing is retyped — the third
+            // entrance to the manual path, offered exactly when the guided one
+            // has just failed somebody.
+            if (state.provider != null)
+              TextButton(
+                onPressed: _ctrl.switchToAdvanced,
+                child: const Text('Enter details myself'),
+              ),
+            // Port 53682 held by an abandoned attempt is the commonest
+            // recoverable failure here, and it has a one-press fix.
+            if ((state.error ?? '').contains('$kOAuthPort'))
+              FilledButton(
+                onPressed: _ctrl.retryAfterCancel,
+                child: const Text('Try again'),
+              ),
+          ],
+        ),
+      ],
     );
   }
 
@@ -81,15 +314,12 @@ class _AddRemoteDialogState extends ConsumerState<AddRemoteDialog> {
   /// rclone derives from it, so everything already uploaded with the OLD password
   /// silently becomes permanently undecryptable. When that's what a save would do,
   /// make the user confirm it first; otherwise save straight through.
-  Future<void> _onSaveEdit(
-    AddRemoteState state,
-    AddRemoteController ctrl,
-  ) async {
+  Future<void> _onSaveEdit(AddRemoteState state) async {
     if (_cryptPasswordChanged(state)) {
       final confirmed = await _confirmCryptPasswordChange();
       if (!mounted || confirmed != true) return;
     }
-    ctrl.submitEdit();
+    await _ctrl.submitEdit();
   }
 
   /// True when a `crypt` remote is being edited and a new, non-blank value has
@@ -127,7 +357,7 @@ class _AddRemoteDialogState extends ConsumerState<AddRemoteDialog> {
         ),
         content: Text(
           'Files already uploaded with the current password will become '
-          'permanently unreadable — the new password can\'t decrypt them, and '
+          'permanently unreadable — the new password cannot decrypt them, and '
           'there is no way to reset it. This cannot be undone.',
           style: TextStyle(color: c.textMuted, fontSize: 13),
         ),
@@ -154,532 +384,6 @@ class _AddRemoteDialogState extends ConsumerState<AddRemoteDialog> {
           ),
         ],
       ),
-    );
-  }
-
-  Widget _header(AircloneColors c, String title, {String? subtitle}) => Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
-      Text(
-        title,
-        style: TextStyle(
-          color: c.text,
-          fontSize: 18,
-          fontWeight: FontWeight.w600,
-        ),
-      ),
-      if (subtitle != null) ...[
-        const SizedBox(height: Space.x1),
-        Text(subtitle, style: TextStyle(color: c.textMuted, fontSize: 13)),
-      ],
-      const SizedBox(height: Space.x4),
-    ],
-  );
-
-  Widget _buildPicker(AircloneColors c) {
-    final providers = ref.watch(providersProvider);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        _header(
-          c,
-          'Add a remote',
-          subtitle: 'Choose a storage type to connect.',
-        ),
-        TextField(
-          decoration: InputDecoration(
-            isDense: true,
-            prefixIcon: const Icon(Icons.search, size: 18),
-            hintText: 'Search storage types…',
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(Radii.md),
-            ),
-          ),
-          onChanged: (v) => setState(() => _filter = v.toLowerCase()),
-        ),
-        const SizedBox(height: Space.x3),
-        Expanded(
-          child: providers.when(
-            data: (list) {
-              final filtered = list
-                  .where(
-                    (p) =>
-                        _filter.isEmpty ||
-                        p.name.toLowerCase().contains(_filter) ||
-                        p.description.toLowerCase().contains(_filter),
-                  )
-                  .toList();
-              return ListView.builder(
-                itemCount: filtered.length,
-                itemBuilder: (_, i) => _providerTile(c, filtered[i]),
-              );
-            },
-            loading: () => const Center(child: CircularProgressIndicator()),
-            error: (e, _) => Center(
-              child: Text('$e', style: TextStyle(color: c.error)),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _providerTile(AircloneColors c, RcloneProvider p) => InkWell(
-    onTap: () => ref.read(addRemoteControllerProvider.notifier).pickProvider(p),
-    borderRadius: BorderRadius.circular(Radii.md),
-    child: Padding(
-      padding: const EdgeInsets.symmetric(
-        horizontal: Space.x2,
-        vertical: Space.x3,
-      ),
-      child: Row(
-        children: [
-          Icon(Icons.cloud_outlined, size: 20, color: c.primary),
-          const SizedBox(width: Space.x3),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  p.name,
-                  style: TextStyle(
-                    color: c.text,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                Text(
-                  p.description,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(color: c.textFaint, fontSize: 12),
-                ),
-              ],
-            ),
-          ),
-          Icon(Icons.chevron_right, size: 18, color: c.textFaint),
-        ],
-      ),
-    ),
-  );
-
-  Widget _buildForm(AircloneColors c, AddRemoteState state) {
-    final p = state.provider;
-    final question = state.phase == AddPhase.question ? state.question : null;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            IconButton(
-              onPressed: () => state.isEdit
-                  ? Navigator.of(context).pop()
-                  : ref
-                        .read(addRemoteControllerProvider.notifier)
-                        .backToProviders(),
-              icon: Icon(
-                state.isEdit ? Icons.close : Icons.arrow_back,
-                size: 18,
-              ),
-              visualDensity: VisualDensity.compact,
-            ),
-            const SizedBox(width: Space.x1),
-            Expanded(
-              child: Text(
-                state.isEdit
-                    ? 'Edit ${p?.name ?? ''}'
-                    : question != null
-                    ? 'Configure ${p?.name ?? ''}'
-                    : 'Set up ${p?.name ?? ''}',
-                style: TextStyle(
-                  color: c.text,
-                  fontSize: 18,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: Space.x3),
-        Expanded(
-          child: question != null
-              ? _buildQuestion(c, state, question)
-              : _buildFields(c, state, p!),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildFields(
-    AircloneColors c,
-    AddRemoteState state,
-    RcloneProvider p,
-  ) {
-    final ctrl = ref.read(addRemoteControllerProvider.notifier);
-    return Column(
-      children: [
-        Expanded(
-          child: ListView(
-            children: [
-              _LabeledField(
-                label: 'Name',
-                help: state.isEdit
-                    ? 'The remote name (fixed while editing).'
-                    : 'A short name for this remote (e.g. my-drive).',
-                child: state.isEdit
-                    ? Align(
-                        alignment: Alignment.centerLeft,
-                        child: Text(
-                          state.name,
-                          style: TextStyle(
-                            color: c.textMuted,
-                            fontSize: 14,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      )
-                    : _TextEntry(
-                        initial: state.name,
-                        hint: 'my-remote',
-                        onChanged: ctrl.setName,
-                      ),
-              ),
-              for (final o in p.standardOptions)
-                _optionField(c, state, o, ctrl),
-              if (p.advancedOptions.isNotEmpty)
-                Disclosure(
-                  label: 'Advanced',
-                  expanded: state.showAdvanced,
-                  onToggle: ctrl.toggleAdvanced,
-                  children: [
-                    for (final o in p.advancedOptions)
-                      _optionField(c, state, o, ctrl),
-                  ],
-                ),
-            ],
-          ),
-        ),
-        const SizedBox(height: Space.x3),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.end,
-          children: [
-            FilledButton(
-              onPressed: state.isEdit
-                  ? () => _onSaveEdit(state, ctrl)
-                  : ctrl.submit,
-              child: Text(state.isEdit ? 'Save changes' : 'Create remote'),
-            ),
-          ],
-        ),
-      ],
-    );
-  }
-
-  Widget _optionField(
-    AircloneColors c,
-    AddRemoteState state,
-    ProviderOption o,
-    AddRemoteController ctrl,
-  ) {
-    final value = state.values[o.name] ?? '';
-    final Widget input;
-    if (o.isBool) {
-      input = _BoolEntry(
-        value: value == 'true',
-        onChanged: (b) => ctrl.setValue(o.name, '$b'),
-      );
-    } else if (o.isSelect) {
-      input = _SelectEntry(
-        value: value,
-        options: o.examples,
-        exclusive: o.exclusive,
-        onChanged: (v) => ctrl.setValue(o.name, v),
-      );
-    } else {
-      input = _TextEntry(
-        initial: value,
-        obscure: o.isPassword,
-        keyboardNumber: o.isInt,
-        hint: o.defaultStr,
-        onChanged: (v) => ctrl.setValue(o.name, v),
-      );
-    }
-    return _LabeledField(
-      label: o.name + (o.required ? ' *' : ''),
-      help: (state.isEdit && o.isPassword)
-          ? (o.summary.isEmpty
-                ? 'Leave blank to keep the current password.'
-                : '${o.summary} Leave blank to keep current.')
-          : o.summary,
-      child: input,
-    );
-  }
-
-  Widget _buildQuestion(
-    AircloneColors c,
-    AddRemoteState state,
-    ProviderOption q,
-  ) {
-    final ctrl = ref.read(addRemoteControllerProvider.notifier);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          q.summary.isEmpty ? q.name : q.summary,
-          style: TextStyle(
-            color: c.text,
-            fontSize: 14,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-        if (q.help.contains('\n')) ...[
-          const SizedBox(height: Space.x2),
-          Expanded(
-            child: SingleChildScrollView(
-              child: Text(
-                q.help,
-                style: TextStyle(color: c.textMuted, fontSize: 12),
-              ),
-            ),
-          ),
-        ] else
-          const Spacer(),
-        const SizedBox(height: Space.x3),
-        if (q.isBool)
-          Row(
-            mainAxisAlignment: MainAxisAlignment.end,
-            children: [
-              TextButton(
-                onPressed: () => ctrl.answer('false'),
-                child: const Text('No'),
-              ),
-              const SizedBox(width: Space.x2),
-              FilledButton(
-                onPressed: () => ctrl.answer('true'),
-                child: const Text('Yes'),
-              ),
-            ],
-          )
-        else
-          _QuestionTextAnswer(option: q, onSubmit: ctrl.answer),
-      ],
-    );
-  }
-
-  Widget _buildError(AircloneColors c, AddRemoteState state) => Column(
-    mainAxisAlignment: MainAxisAlignment.center,
-    children: [
-      Icon(Icons.error_outline, size: 40, color: c.error),
-      const SizedBox(height: Space.x3),
-      Text(
-        "Couldn't create the remote",
-        style: TextStyle(
-          color: c.text,
-          fontSize: 16,
-          fontWeight: FontWeight.w600,
-        ),
-      ),
-      const SizedBox(height: Space.x2),
-      Padding(
-        padding: const EdgeInsets.symmetric(horizontal: Space.x4),
-        child: Text(
-          state.error ?? 'Unknown error',
-          textAlign: TextAlign.center,
-          style: TextStyle(color: c.textMuted, fontSize: 13),
-        ),
-      ),
-      const SizedBox(height: Space.x4),
-      FilledButton(
-        onPressed: () =>
-            ref.read(addRemoteControllerProvider.notifier).backToProviders(),
-        child: const Text('Start over'),
-      ),
-    ],
-  );
-}
-
-// ── small field widgets ───────────────────────────────────────────────────────
-
-class _LabeledField extends StatelessWidget {
-  const _LabeledField({
-    required this.label,
-    required this.help,
-    required this.child,
-  });
-  final String label;
-  final String help;
-  final Widget child;
-
-  @override
-  Widget build(BuildContext context) {
-    final c = AircloneTheme.of(context);
-    return Padding(
-      padding: const EdgeInsets.only(bottom: Space.x4),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            label,
-            style: TextStyle(
-              color: c.text,
-              fontSize: 13,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          if (help.isNotEmpty) ...[
-            const SizedBox(height: 2),
-            Text(help, style: TextStyle(color: c.textFaint, fontSize: 11)),
-          ],
-          const SizedBox(height: Space.x2),
-          child,
-        ],
-      ),
-    );
-  }
-}
-
-class _TextEntry extends StatefulWidget {
-  const _TextEntry({
-    required this.initial,
-    required this.onChanged,
-    this.hint = '',
-    this.obscure = false,
-    this.keyboardNumber = false,
-  });
-  final String initial;
-  final ValueChanged<String> onChanged;
-  final String hint;
-  final bool obscure;
-  final bool keyboardNumber;
-
-  @override
-  State<_TextEntry> createState() => _TextEntryState();
-}
-
-class _TextEntryState extends State<_TextEntry> {
-  late final TextEditingController _c = TextEditingController(
-    text: widget.initial,
-  );
-
-  @override
-  void dispose() {
-    _c.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return TextField(
-      controller: _c,
-      obscureText: widget.obscure,
-      keyboardType: widget.keyboardNumber ? TextInputType.number : null,
-      decoration: InputDecoration(
-        isDense: true,
-        hintText: widget.hint,
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(Radii.md),
-        ),
-      ),
-      onChanged: widget.onChanged,
-    );
-  }
-}
-
-class _BoolEntry extends StatelessWidget {
-  const _BoolEntry({required this.value, required this.onChanged});
-  final bool value;
-  final ValueChanged<bool> onChanged;
-
-  @override
-  Widget build(BuildContext context) => Align(
-    alignment: Alignment.centerLeft,
-    child: Switch(value: value, onChanged: onChanged),
-  );
-}
-
-class _SelectEntry extends StatelessWidget {
-  const _SelectEntry({
-    required this.value,
-    required this.options,
-    required this.exclusive,
-    required this.onChanged,
-  });
-  final String value;
-  final List<OptionExample> options;
-  final bool exclusive;
-  final ValueChanged<String> onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    final c = AircloneTheme.of(context);
-    final items = options
-        .map(
-          (e) => DropdownMenuItem(
-            value: e.value,
-            child: Text(
-              e.value.isEmpty ? '(default)' : e.value,
-              style: TextStyle(color: c.text, fontSize: 13),
-            ),
-          ),
-        )
-        .toList();
-    final current = options.any((e) => e.value == value) ? value : null;
-    return DropdownButtonFormField<String>(
-      initialValue: current,
-      isExpanded: true,
-      decoration: InputDecoration(
-        isDense: true,
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(Radii.md),
-        ),
-      ),
-      items: items,
-      onChanged: (v) => onChanged(v ?? ''),
-    );
-  }
-}
-
-class _QuestionTextAnswer extends StatefulWidget {
-  const _QuestionTextAnswer({required this.option, required this.onSubmit});
-  final ProviderOption option;
-  final ValueChanged<String> onSubmit;
-
-  @override
-  State<_QuestionTextAnswer> createState() => _QuestionTextAnswerState();
-}
-
-class _QuestionTextAnswerState extends State<_QuestionTextAnswer> {
-  final _c = TextEditingController();
-
-  @override
-  void dispose() {
-    _c.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Expanded(
-          child: TextField(
-            controller: _c,
-            obscureText: widget.option.isPassword,
-            decoration: InputDecoration(
-              isDense: true,
-              hintText: widget.option.defaultStr,
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(Radii.md),
-              ),
-            ),
-          ),
-        ),
-        const SizedBox(width: Space.x2),
-        FilledButton(
-          onPressed: () => widget.onSubmit(_c.text),
-          child: const Text('Continue'),
-        ),
-      ],
     );
   }
 }

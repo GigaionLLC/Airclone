@@ -26,7 +26,7 @@ around them — the ones that create, overwrite or remove a remote in bulk.
 | Surface | Actions |
 | :--- | :--- |
 | **Sidebar** (a remote's ⋯ menu) | Test connection · Edit · Duplicate · Delete remote (a sidebar *location* offers "Remove from sidebar" instead — it is not in the config) |
-| **+ Add remote** | The provider grid → dynamic form → `config/create` |
+| **+ Add a cloud** | The guided flow, with the dynamic form kept as **Advanced** — see [Add a Cloud](feat-add-a-cloud.md). Both drive `config/create`. |
 | **Settings → Config** | Import · Export · Import/Export QR · **Remove all remotes** · Restore a backup · **Use a different config file…** (desktop) · **Encrypt this config… / Change password… / Remove encryption…** (§6, desktop) · the opt-in **external config backup** (§7, Android) |
 
 ## 2. `config/create` overwrites. Nothing here may let that happen by accident

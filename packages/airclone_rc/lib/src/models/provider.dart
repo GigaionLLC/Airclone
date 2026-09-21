@@ -22,6 +22,16 @@ class RcloneProvider {
   List<ProviderOption> get advancedOptions =>
       options.where((o) => !o.hide && o.advanced).toList();
 
+  /// [options] narrowed to those that apply when `provider` is set to
+  /// [chosenProvider], which is what makes a backend like s3 presentable: its
+  /// option list is the union of every S3-compatible service, and only a
+  /// fraction of it belongs to whichever one the user picked.
+  ///
+  /// An empty [chosenProvider] keeps everything, matching rclone.
+  List<ProviderOption> optionsFor(String chosenProvider) => options
+      .where((o) => matchesProvider(o.provider, chosenProvider))
+      .toList();
+
   factory RcloneProvider.fromJson(Map<String, dynamic> json) {
     final opts = (json['Options'] as List? ?? const [])
         .cast<Map<String, dynamic>>()
@@ -50,6 +60,7 @@ class ProviderOption {
     this.advanced = false,
     this.hide = false,
     this.exclusive = false,
+    this.provider = '',
   });
 
   final String name;
@@ -67,6 +78,14 @@ class ProviderOption {
 
   /// When true with [examples], the value must be one of the examples (a select).
   final bool exclusive;
+
+  /// Which `provider` values this option belongs to (rclone's `MatchProvider`).
+  ///
+  /// Empty means "every provider". A comma-separated list means those; a list
+  /// prefixed with `!` means every provider EXCEPT those. This is how s3 keeps
+  /// ~95 options sane: choosing AWS hides the ones that only exist for Ceph,
+  /// Alibaba or Wasabi. See [matchesProvider].
+  final String provider;
 
   bool get isBool => type == 'bool';
   bool get isInt => type == 'int' || type == 'SizeSuffix' || type == 'Duration';
@@ -93,6 +112,7 @@ class ProviderOption {
       advanced: (json['Advanced'] ?? false) as bool,
       hide: ((json['Hide'] ?? 0) as num) != 0,
       exclusive: (json['Exclusive'] ?? false) as bool,
+      provider: (json['Provider'] ?? '') as String,
     );
   }
 }
@@ -107,4 +127,22 @@ class OptionExample {
     value: (json['Value'] ?? '').toString(),
     help: (json['Help'] ?? '') as String,
   );
+}
+
+/// rclone's `fs.MatchProvider`, ported exactly (`fs/backend_config.go`).
+///
+/// Ported rather than approximated because the app uses it to decide which
+/// fields a user is shown: guessing wrong hides a field someone needs, or shows
+/// one that does nothing. Either blank matches everything; a leading `!` negates
+/// the list; comparison is whole-token, so `one` does not match `on`.
+bool matchesProvider(String providerConfig, String provider) {
+  if (providerConfig.isEmpty || provider.isEmpty) return true;
+  var config = providerConfig;
+  var negate = false;
+  if (config.startsWith('!')) {
+    config = config.substring(1);
+    negate = true;
+  }
+  final matched = config.split(',').contains(provider);
+  return negate ? !matched : matched;
 }

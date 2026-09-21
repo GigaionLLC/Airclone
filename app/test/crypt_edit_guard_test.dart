@@ -86,7 +86,10 @@ void main() {
     tester,
   ) async {
     final client = await _openCryptEdit(tester);
-    await tester.enterText(find.byType(TextField), 'newpass');
+    await tester.enterText(
+      find.byKey(const ValueKey('option-password')),
+      'newpass',
+    );
     await tester.pump(); // let the value land in controller state before save
     await tester.tap(find.text('Save changes'));
     await tester.pumpAndSettle();
@@ -105,7 +108,10 @@ void main() {
     tester,
   ) async {
     final client = await _openCryptEdit(tester);
-    await tester.enterText(find.byType(TextField), 'newpass');
+    await tester.enterText(
+      find.byKey(const ValueKey('option-password')),
+      'newpass',
+    );
     await tester.pump(); // let the value land in controller state before save
     await tester.tap(find.text('Save changes'));
     await tester.pumpAndSettle();
