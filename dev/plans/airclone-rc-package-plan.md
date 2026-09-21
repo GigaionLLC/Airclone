@@ -303,10 +303,36 @@ the wire models. The plan above does none of these.
 - **Stays raw by design:** `core/command` (the console and its policy), the console's
   argv→RC translator, and the Web UI server's RC allowlist.
 
-### Milestone C: publish to pub.dev (when chosen)
+### Milestone C: publish to pub.dev (DEFERRED, and not a priority)
 
-**Prepared 2026-09-20. Everything that can be done without an account is done; what is left
-needs a person, and is listed at the end of this section.**
+**Decision, 2026-09-21: publishing waits.** Not blocked, not abandoned — deliberately not
+yet. The machinery is built and proven; what is missing is confidence, and confidence is the
+one precondition that cannot be automated.
+
+Three reasons, in the order they matter:
+
+1. **A published API is permanent.** A pub.dev version can be retracted; it can never be
+   replaced or deleted. Whatever shape the interface has on the day of the first publish is
+   a shape other people's code depends on, and the last week added `RcApi`'s eight
+   namespaces, `listOrNull`, `requestTimeout` and a whole third client — none of which has
+   been used by anything except Airclone and its tests.
+2. **"Works" is not the same as "is usable by someone else."** Airclone exercises this
+   package hard, but it exercises it ONE way. Every defect found after the split came from
+   asking what a second consumer would do: create and quit engines in a loop, hand logs to a
+   one-line sink, run where there is no process to spawn. That list is not obviously
+   finished.
+3. **The features an outside app needs may not all be here.** The collaborator on #6 wants
+   all six platforms first-class, which is what prompted `RemoteRcloneClient`; their work
+   against it is the best test the interface will get, and it has not happened yet.
+
+**So: no publish until the package is stable, proven in use, and has what it needs.** Until
+then a git dependency on this repository works and costs an outside user nothing but a line
+of YAML — with the honest advantage that anything wrong can still be fixed in place.
+
+[#6](https://github.com/GigaionLLC/Airclone/issues/6) **stays open as the reminder.** It is
+not waiting on an answer; it is the thread where this gets announced when it happens.
+
+Everything below is ready for that day and needs no further work.
 
 - Preconditions: **all met.** B1 plus the `operations`, `core`, `job` and `config`
   namespaces done (all eight namespaces, in fact); an `example/` that runs against both
@@ -328,7 +354,10 @@ needs a person, and is listed at the end of this section.**
 - **Publishing is effectively permanent** (pub.dev versions can be retracted but not
   deleted). Configuring pub.dev and the first publish are the maintainer's actions.
 
-#### What only the maintainer can do
+#### What only the maintainer can do — WHEN the decision above is revisited
+
+None of this is queued work. It is the checklist for the day publishing is chosen, kept here
+so that day is short.
 
 1. **Claim the package name and enable automated publishing on pub.dev.** On the package's
    admin page, allow publishing from GitHub Actions for `GigaionLLC/Airclone` with the tag
@@ -359,7 +388,7 @@ posted only after the maintainer approves the wording. Record each one in the ta
 | 2 | A4 merged to `main` | The package is in the repo; the git-dependency snippet now works; link to its README | 2026-09-20 ([comment](https://github.com/GigaionLLC/Airclone/issues/6#issuecomment-5754014996)) — posted as an AI-written progress report, labelled as one at the top |
 | 3 | A5 released | Airclone v0.20.0 ships on the package | folded into update 2, which was posted after the release |
 | 4 | B1–B2 land | The typed API foundation exists; ask for feedback on its shape | folded into update 2, which asks for exactly that — and says why now: a published API can be retracted, never replaced |
-| 5 | C published | On pub.dev with a link; **close #6** | `[ ]` |
+| 5 | C published | On pub.dev with a link; **close #6** | deferred — publishing is parked until the package is stable and proven in use (see Milestone C). #6 stays open as the reminder |
 
 If the plan stalls or the A3 checkpoint is a no-go, say so on #6 as well, instead of going
 quiet.
