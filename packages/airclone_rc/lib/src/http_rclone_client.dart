@@ -9,6 +9,7 @@ import 'package:meta/meta.dart' show visibleForTesting;
 import 'oauth_flow.dart';
 import 'platform.dart';
 import 'rclone_client.dart';
+import 'log_redaction.dart';
 import 'rclone_log.dart';
 import 'windows_child_job.dart';
 
@@ -62,8 +63,9 @@ bool isEngineFailureLine(String line) {
 ///
 ///     NOTICE: 5etumoc8orqj4ia13cu8c9tu58: Skipping undecryptable file name: …
 ///
-/// It is the ONLY signal that a listing was silently shortened — see
-/// [noteUndecryptableName] for why a UI has to care.
+/// It is the ONLY signal that a listing was silently shortened, which is what
+/// [HttpRcloneClient.onUndecryptableName] exists to hand to a host: a user
+/// looking at a folder that reports itself empty deserves to be told why.
 ///
 /// Matched on rclone's fixed phrase rather than on severity, deliberately: the
 /// line is a NOTICE, so both the debug early-return and the release
@@ -177,6 +179,7 @@ class HttpRcloneClient
     this.logSink = discardRcloneLog,
     this.onUndecryptableName,
     this.echoEngineLines = false,
+    this.requestTimeout = const Duration(seconds: 30),
   }) : assert(
          _tagShape.hasMatch(instanceTag),
          'instanceTag must be a short filename-safe token: $instanceTag',
@@ -195,8 +198,20 @@ class HttpRcloneClient
   /// of which leaves this process's loopback socket.
   final String instanceTag;
 
-  /// Path to the rclone binary (from [RcloneEngine]).
+  /// Path to the rclone binary. Finding, downloading and updating one is the
+  /// host's job — this package ships none and looks for none.
   final String rclonePath;
+
+  /// How long a single rc call may take before it is abandoned.
+  ///
+  /// This is a TRANSPORT timeout, not a patience setting: rclone answers most
+  /// rc calls immediately because anything long-running belongs in a job. If
+  /// you are raising this to wait out a copy or a `check` over a big tree, the
+  /// call wants `_async` and `job/status` instead ([RcOptions.async]) — raise
+  /// it for a backend that is genuinely slow to answer, not to hold a socket
+  /// open across work. `core/command` streaming has no timeout at all, by
+  /// design; see [commandStream].
+  final Duration requestTimeout;
 
   /// Optional explicit `--config` path; null uses rclone's default.
   final String? configPath;
@@ -237,9 +252,21 @@ class HttpRcloneClient
   Process? _process;
   int? _port;
   String? _authHeader;
+
+  /// This session's rc password, kept so engine output can be checked for it
+  /// before anyone sees the line. It is already in memory inside [_authHeader];
+  /// holding it separately is what makes redaction possible.
+  String? _rcPass;
   String? _version;
   bool _quitting = false;
-  final _client = http.Client();
+  // Created on demand and CLOSED when the engine stops, rather than living as
+  // long as the object. One client per process is fine for an app that starts
+  // one engine and keeps it; a host that creates and quits clients — a test
+  // suite, a CLI doing a few operations, a server handling a request — leaked
+  // a connection pool every time, because nothing ever closed this.
+  http.Client? _http;
+
+  http.Client get _client => _http ??= http.Client();
 
   /// Sign-in URLs seen in the engine's own output, for the engines that cannot
   /// simply be asked (see [AuthUrlObserver]).
@@ -258,6 +285,15 @@ class HttpRcloneClient
   void Function()? onDied;
 
   Uri _uri(String method) => Uri.parse('http://127.0.0.1:$_port/$method');
+
+  /// The literal strings that must never reach a sink: this session's rc
+  /// password, the base64 `user:pass` blob it travels in (what `--dump headers`
+  /// actually prints), and the config password if one was supplied.
+  List<String> get _sessionSecrets => [
+    ?_rcPass,
+    ?_authHeader?.replaceFirst('Basic ', ''),
+    if (configPassword != null && configPassword!.isNotEmpty) configPassword!,
+  ];
 
   /// Marker recording the PID of the `rcd` child WE spawned, so a fresh launch
   /// can reap a leftover from a force-killed prior run.
@@ -412,6 +448,7 @@ class HttpRcloneClient
     final port = await _freeLoopbackPort();
     final user = instanceTag;
     final pass = _randomToken();
+    _rcPass = pass;
     _port = port;
     _authHeader = 'Basic ${base64Encode(utf8.encode('$user:$pass'))}';
 
@@ -496,7 +533,47 @@ class HttpRcloneClient
     _lastLoggedLine = null;
     _drainChildOutput(watched);
 
-    await _awaitReady();
+    try {
+      await _awaitReady();
+    } catch (_) {
+      // A start that did not finish must leave nothing running and must leave
+      // this object startable again. Without this, `_process` stays set, so the
+      // next start() returns immediately and hands back a client that can
+      // never work — while the child it spawned keeps running for the life of
+      // the host. Airclone never saw it: one engine, started once, and a user
+      // who restarts the app. A library gets tried again in a loop.
+      await _teardown();
+      rethrow;
+    }
+  }
+
+  /// Stops the child if there is one and returns this object to its
+  /// before-start state: no process, no port, no credentials, no HTTP client,
+  /// no reap marker, no reap lock. Idempotent, and safe when nothing started.
+  Future<void> _teardown() async {
+    _quitting = true;
+    final proc = _process;
+    if (proc != null) {
+      proc.kill();
+      await proc.exitCode.timeout(
+        const Duration(seconds: 5),
+        onTimeout: () => -1,
+      );
+    }
+    _process = null;
+    _port = null;
+    _authHeader = null;
+    _rcPass = null;
+    _version = null;
+    _http?.close();
+    _http = null;
+    // Clean shutdown: drop the reap marker so no future launch targets this PID.
+    try {
+      await _markerFile.delete();
+    } catch (_) {
+      /* already gone; ignore */
+    }
+    _releaseReapLock();
   }
 
   /// Reads the `rcd` child's stdout AND stderr to end, always, on every build.
@@ -569,8 +646,14 @@ class HttpRcloneClient
       }
     }
     if (echoEngineLines) {
+      // Unfiltered means no failure-line filter, no de-duplication and no cap.
+      // It does NOT mean the rc password gets printed: this is the mode a
+      // developer turns on WITH `-vv`, which is exactly when rclone echoes the
+      // Authorization header of every call this package makes.
       // ignore: avoid_print
-      print('[rclone] $line');
+      print(
+        '[rclone] ${redactEngineLine(line, sessionSecrets: _sessionSecrets)}',
+      );
       return;
     }
     if (_loggedLines >= _maxLoggedLines) return;
@@ -578,7 +661,11 @@ class HttpRcloneClient
     if (line == _lastLoggedLine) return;
     _lastLoggedLine = line;
     _loggedLines++;
-    logSink(RcloneLogLevel.error, 'engine', line);
+    logSink(
+      RcloneLogLevel.error,
+      'engine',
+      redactEngineLine(line, sessionSecrets: _sessionSecrets),
+    );
   }
 
   String? _resolvedConfigPath;
@@ -651,7 +738,7 @@ class HttpRcloneClient
               },
               body: jsonEncode(params ?? const {}),
             )
-            .timeout(const Duration(seconds: 30)),
+            .timeout(requestTimeout),
         onTransportFailure: (e, {required recovered}) =>
             _noteTransportFailure(method, e, recovered: recovered),
       );
@@ -717,7 +804,7 @@ class HttpRcloneClient
       recovered
           ? 'engine dropped a connection on $method; the retry succeeded'
           : 'no answer from the engine for $method',
-      detail: '$error',
+      detail: redactEngineLine('$error', sessionSecrets: _sessionSecrets),
     );
   }
 
@@ -764,30 +851,18 @@ class HttpRcloneClient
 
   @override
   Future<void> quit() async {
-    final proc = _process;
-    if (proc == null) return;
-    _quitting = true;
-    try {
-      await rpc('core/quit').timeout(const Duration(seconds: 3));
-    } catch (_) {
-      /* fall through to kill */
+    // NOT `if (_process == null) return`: the child may have died on its own,
+    // and the marker, the lock and the HTTP client would then outlive it.
+    // Asking rclone to exit is the only part that needs a live process.
+    if (_process != null) {
+      _quitting = true;
+      try {
+        await rpc('core/quit').timeout(const Duration(seconds: 3));
+      } catch (_) {
+        /* fall through to kill */
+      }
     }
-    proc.kill();
-    await proc.exitCode.timeout(
-      const Duration(seconds: 5),
-      onTimeout: () => -1,
-    );
-    _process = null;
-    _port = null;
-    _authHeader = null;
-    _version = null;
-    // Clean shutdown: drop the reap marker so no future launch targets this PID.
-    try {
-      await _markerFile.delete();
-    } catch (_) {
-      /* already gone; ignore */
-    }
-    _releaseReapLock();
+    await _teardown();
   }
 
   @override

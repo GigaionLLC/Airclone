@@ -26,3 +26,20 @@ consumes it from the same repository by path.
   that answers `rpc` answers the typed calls too.
 - `operations.listOrNull`, which returns null when the engine's answer carried no listing at
   all — a distinction `list` cannot make, and one that any caller about to write needs.
+- `RemoteRcloneClient`: an `RcloneClient` for an engine this process did not start, anywhere
+  it can be reached over HTTP. It has no `dart:io`, so it compiles and runs on the **web** —
+  the case it exists for, since a browser cannot spawn a process but can ask the host that
+  served the page. `quit()` never stops an engine it does not own, `restart()` throws, and
+  plaintext HTTP off loopback is refused unless the caller opts in. `basicAuth` builds the
+  header for `--rc-user`/`--rc-pass`.
+- `HttpRcloneClient.requestTimeout`, because 30 seconds was hardcoded: a host driving a slow
+  backend could not raise it and one driving a fast one could not lower it.
+- Lifecycle fixes that only a host creating more than one engine would ever hit: the HTTP
+  client is now closed when the engine stops rather than living as long as the object (it
+  leaked a connection pool per client), and a `start()` that never becomes ready tears its
+  child down and rolls the object back to stopped — it used to keep the dead process, so the
+  next `start()` returned immediately and handed back a client that could never work.
+- Engine output is redacted before it reaches an `RcloneLogSink` or `echoEngineLines`: this
+  session's rc password (which rclone echoes at `-vv` from the environment, unprompted), the
+  base64 credentials blob, the config password, and the credential shapes rclone emits
+  whoever they belong to. `redactEngineLine` is exported for host text.

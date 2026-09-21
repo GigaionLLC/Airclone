@@ -6,7 +6,10 @@
 ///   * [HttpRcloneClient] spawns `rclone rcd` on loopback with per-session
 ///     credentials and drives it over HTTP;
 ///   * [FfiRcloneClient] runs `librclone` in-process through `dart:ffi`, which
-///     is the only legal engine on iOS and the Mac App Store.
+///     is the only legal engine on iOS and the Mac App Store;
+///   * [RemoteRcloneClient] talks to an engine it does NOT own, wherever that
+///     is — which is how a page served by a desktop app reaches the host that
+///     served it, since a browser cannot spawn anything.
 ///
 /// This package ships no rclone. The host supplies the binary or the shared
 /// library — see the README.
@@ -33,6 +36,8 @@ export 'src/playlist_exts.dart';
 export 'src/rc_api.dart';
 export 'src/rc_options.dart';
 export 'src/rclone_client.dart';
+export 'src/remote_rclone_client.dart';
+export 'src/log_redaction.dart';
 export 'src/rclone_log.dart';
 export 'src/windows_child_job.dart';
 

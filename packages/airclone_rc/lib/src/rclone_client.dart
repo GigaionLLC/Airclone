@@ -44,8 +44,9 @@ abstract interface class RcloneClient {
 ///     `operations/uploadfile`, touching no disk;
 ///   * the in-process library cannot — `RcloneRPC` speaks JSON and nothing else
 ///     — so it stages to a file and then copies;
-///   * [WebRcloneClient] has no engine of its own, so it POSTs to the Web UI
-///     server, which then does one of the two above on the host.
+///   * a browser-side client has no engine of its own, so it POSTs to whatever
+///     is hosting one — in Airclone, its Web UI server — which then does one of
+///     the two above on the host.
 ///
 /// (An earlier version of this comment claimed the web client could not be an
 /// uploader "because it is the thing asking". That was wrong: asking the server

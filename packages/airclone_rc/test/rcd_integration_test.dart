@@ -1,6 +1,7 @@
 @TestOn('vm')
 library;
 
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -233,6 +234,182 @@ void main() {
         reason: 'core/command STREAM must reach us as lines',
       );
     });
+
+    test('at -vv the rc password never reaches the output', () async {
+      // The leak this guards against is not hypothetical, and it is more
+      // direct than the Authorization header everyone expects: at -vv rclone
+      // echoes the password it read out of RCLONE_RC_PASS, in three separate
+      // lines, before it has served a single request. Without redaction this
+      // test prints the real token - it was written by watching it happen.
+      // echoEngineLines is the loudest path there is, so if anything is
+      // redacted, it is redacted here.
+      final printed = <String>[];
+      final loud = HttpRcloneClient(
+        instanceTag: tag,
+        rclonePath: rclonePath ?? 'rclone',
+        configPath: sep(home.path, 'loud.conf'),
+        extraArgs: const ['-vv', '--dump', 'headers'],
+        echoEngineLines: true,
+      );
+      await runZoned(
+        () async {
+          await loud.start();
+          await loud.rpc('rc/noop', {'ping': 'pong'});
+          await loud.rpc('core/version');
+          // The child writes on its own schedule; give it a moment to drain.
+          await Future<void>.delayed(const Duration(milliseconds: 600));
+          await loud.quit();
+        },
+        zoneSpecification: ZoneSpecification(
+          print: (self, parent, zone, line) => printed.add(line),
+        ),
+      );
+
+      final all = printed.join('\n');
+      expect(
+        printed,
+        isNotEmpty,
+        reason: '-vv produced no output at all - the test proves nothing',
+      );
+      // What rclone actually echoes is not the Authorization header (rcd
+      // dumps its OUTBOUND backend traffic, not the rc calls made to it) but
+      // something more direct: the password it reads out of the environment,
+      // three times, at DEBUG and INFO. Those lines are the leak, and their
+      // redacted form is what must appear.
+      expect(
+        all,
+        contains('--pass <redacted>'),
+        reason:
+            'the authenticated-user line did not appear, so this test is '
+            'not exercising what it claims',
+      );
+      // NOT the `Setting rc_pass="..."` line: rclone prints that on Windows
+      // and not on Linux, so asserting it made this a platform check. The
+      // environment variable's own value appears on both.
+      expect(all, contains('RCLONE_RC_PASS="<redacted>"'));
+      // And the token itself is nowhere: _randomToken is 24 random bytes as
+      // base64url, so anything that long in a password position is the real
+      // one having walked straight through.
+      expect(
+        RegExp(
+          r'(rc_pass="|--pass |--rc-pass |RCLONE_RC_PASS=")[A-Za-z0-9_-]{12,}',
+        ).hasMatch(all),
+        isFalse,
+        reason: 'an un-redacted rc password reached the output',
+      );
+    });
+
+    test('a start that never becomes ready leaves nothing behind', () async {
+      // `rcd --version` starts, prints and exits without ever serving the rc
+      // API, which is the shape of every real failure here: a child that runs
+      // and does not answer.
+      final doomed = HttpRcloneClient(
+        instanceTag: tag,
+        rclonePath: rclonePath ?? 'rclone',
+        configPath: sep(home.path, 'doomed.conf'),
+        extraArgs: const ['--version'],
+      );
+      await expectLater(doomed.start(), throwsA(isA<RcloneException>()));
+
+      // No marker: a failed start must not leave a PID for a later reap.
+      expect(
+        File(
+          sep(Directory.systemTemp.path, '${tag}_rcd_$pid.pid'),
+        ).existsSync(),
+        isFalse,
+        reason: 'a failed start left its reap marker behind',
+      );
+
+      // STOPPED, not error: the state was rolled back rather than left holding
+      // a dead process. This is the assertion that fails without the teardown
+      // - `_process` stays set, so the object reports a broken engine forever
+      // and the next start() returns immediately without doing anything.
+      expect((await doomed.status()).state, EngineState.stopped);
+
+      // And the machine is fine - a client with ordinary arguments starts,
+      // so the failure above was the arguments and nothing else.
+      final ok = HttpRcloneClient(
+        instanceTag: tag,
+        rclonePath: rclonePath ?? 'rclone',
+        configPath: sep(home.path, 'ok.conf'),
+      );
+      await ok.start();
+      expect((await ok.status()).state, EngineState.running);
+      await ok.quit();
+    });
+
+    test(
+      'requestTimeout is the caller\'s to set',
+      () async {
+        // Duration.zero cannot be beaten by any round trip, warm loopback
+        // included - which a 1ms timeout can, and did, quietly passing while
+        // proving nothing. Readiness polls with rpc, so a client that cannot
+        // complete a single call cannot start.
+        final impatient = HttpRcloneClient(
+          instanceTag: tag,
+          rclonePath: rclonePath ?? 'rclone',
+          configPath: sep(home.path, 'impatient.conf'),
+          requestTimeout: Duration.zero,
+        );
+        await expectLater(
+          impatient.start(),
+          throwsA(isA<RcloneException>()),
+          reason: 'the configured timeout was not the one applied',
+        );
+        await impatient.quit();
+
+        // The default value on the same machine, in the same test, starts -
+        // so the failure above is the timeout and not the engine.
+        final patient = HttpRcloneClient(
+          instanceTag: tag,
+          rclonePath: rclonePath ?? 'rclone',
+          configPath: sep(home.path, 'patient.conf'),
+        );
+        await patient.start();
+        expect((await patient.status()).state, EngineState.running);
+        await patient.quit();
+      },
+      // The readiness loop gives rclone 15 seconds to answer, and this test
+      // deliberately spends all of them.
+      timeout: const Timeout(Duration(minutes: 1)),
+    );
+
+    test(
+      'RemoteRcloneClient drives the very same engine, owning nothing',
+      () async {
+        // The web/self-hosted case, proven against a real engine: one client
+        // spawns rclone and another - the kind a browser would use - talks to
+        // the same endpoint over HTTP with the same credentials.
+        await client.start();
+        final ref = client.objectRef('x:', 'y');
+        final root = Uri.parse(ref.url);
+        final remote = RemoteRcloneClient(
+          baseUrl: Uri.parse('http://127.0.0.1:${root.port}/'),
+          authorization: ref.headers['Authorization'],
+        );
+        try {
+          await remote.start();
+          expect((await remote.status()).state, EngineState.running);
+          expect(
+            await RcApi(remote).core.version(),
+            matches(RegExp(r'^v?\d+\.\d+\.\d+')),
+          );
+
+          final dir = await Directory.systemTemp.createTemp('airclone-remote');
+          await File(sep(dir.path, 'shared.txt')).writeAsString('hello');
+          final listed = await RcApi(remote).operations.list(dir.path, '');
+          expect(listed.map((f) => f.name), ['shared.txt']);
+          await dir.delete(recursive: true);
+
+          // quit() on the remote client must NOT take the engine down: the
+          // process belongs to the client that spawned it.
+          await remote.quit();
+          expect((await client.status()).state, EngineState.running);
+        } finally {
+          await remote.quit();
+        }
+      },
+    );
 
     test('quit() leaves no reap marker behind for the next launch', () async {
       await client.start();

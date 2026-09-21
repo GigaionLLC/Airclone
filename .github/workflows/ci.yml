@@ -57,9 +57,29 @@ jobs:
   # on the package's code. Nothing would fail; the code would just be
   # ungoverned.
   package-airclone-rc:
-    runs-on: ubuntu-latest
+    # Three OSes, because this package is where the OS shows through: the
+    # orphan-reaper writes and kills by PID, the object server binds loopback,
+    # and the spawned engine is a child process with pipes. A pure-Dart package
+    # tested only on Linux says nothing about any of that, and Airclone ships
+    # on all three.
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            triple: linux-amd64
+            sha: sha256sum
+          - os: windows-latest
+            triple: windows-amd64
+            sha: sha256sum
+          - os: macos-latest
+            triple: osx-arm64
+            sha: shasum -a 256
     defaults:
       run:
+        # bash on Windows too, so one script serves every leg.
+        shell: bash
         working-directory: packages/airclone_rc
     steps:
       - uses: actions/checkout@v7
@@ -72,9 +92,12 @@ jobs:
           cache: true
       - name: Install dependencies
         run: dart pub get
+      # Platform-independent, so one leg answers for all three.
       - name: Verify formatting
+        if: runner.os == 'Linux'
         run: dart format --output=none --set-exit-if-changed .
       - name: Analyze
+        if: runner.os == 'Linux'
         # --fatal-infos matches `flutter analyze`, which fails on any info-level
         # lint; without it the two sides are held to different standards.
         run: dart analyze --fatal-infos
@@ -91,23 +114,29 @@ jobs:
         # maps to its own --version flag and dies parsing it.
         run: |
           set -euo pipefail
-          ver="$(grep -oP 'RCLONE_VERSION: \Kv[0-9.]+' ../../.github/workflows/release.yml | head -1)"
+          # sed, not `grep -oP`: BSD grep on the macOS runner has no PCRE and
+          # exits 2 on -P, which is how this matrix earned its keep on its
+          # first run.
+          ver="$(sed -n 's/.*RCLONE_VERSION:[[:space:]]*\(v[0-9.]*\).*/\1/p' ../../.github/workflows/release.yml | head -1)"
           [ -n "$ver" ] || { echo "::error::could not read the rclone pin from release.yml"; exit 1; }
           work="$(mktemp -d)"
-          zip="rclone-${ver}-linux-amd64.zip"
+          zip="rclone-${ver}-${{ matrix.triple }}.zip"
           base="https://downloads.rclone.org/${ver}"
           curl -fsSL --retry 3 -o "$work/$zip" "$base/$zip"
           curl -fsSL --retry 3 -o "$work/SHA256SUMS.txt" "$base/SHA256SUMS"
           expected="$(awk -v f="$zip" '{ n=$NF; sub(/^[*.\/]+/, "", n); if (n == f) { print $1; exit } }' "$work/SHA256SUMS.txt")"
           [ -n "$expected" ] || { echo "::error::no checksum for $zip in SHA256SUMS"; exit 1; }
-          actual="$(sha256sum "$work/$zip" | awk '{print $1}')"
+          actual="$(${{ matrix.sha }} "$work/$zip" | awk '{print $1}')"
           [ "$actual" = "$expected" ] || { echo "::error::rclone checksum mismatch (expected $expected, got $actual)"; exit 1; }
           unzip -q "$work/$zip" -d "$work/extract"
-          bin="$work/extract/rclone-${ver}-linux-amd64/rclone"
+          dir="$work/extract/rclone-${ver}-${{ matrix.triple }}"
+          bin="$dir/rclone"
+          [ -f "$bin" ] || bin="$dir/rclone.exe"
           chmod +x "$bin"
           echo "testing against $("$bin" version | head -1)"
           AIRCLONE_RCLONE="$bin" dart test test/rcd_integration_test.dart
       - name: The package never imports the app
+        if: runner.os == 'Linux'
         # The whole point of the split. The trailing slash is load-bearing:
         # without it this also matches the package's own package:airclone_rc
         # imports and fails every time.
