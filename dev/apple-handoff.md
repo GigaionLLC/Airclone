@@ -9,7 +9,7 @@ by design** — real IDs, key paths and account state live in the encrypted vaul
 (`python tool/vault.py unlock`, then
 `dev/vault/notes/apple-appstore-setup-record.md`).
 
-## State: last written 2026-09-19 — 0.13.3 IS LIVE; 0.13.8 IS IN REVIEW
+## State: last written 2026-09-22 — 0.13.8 IS LIVE; 0.22.0 IS IN REVIEW
 
 Read back from App Store Connect by the workflows that changed it, so these rows are observed.
 
@@ -21,8 +21,10 @@ Read back from App Store Connect by the workflows that changed it, so these rows
 | 0.13.2 | READY_FOR_SALE | DEVELOPER_REJECTED, then renamed to 0.13.3 with `set_version` |
 | **0.13.3** | **READY_FOR_SALE**, build 138 | **READY_FOR_SALE**, build 138 |
 | 0.13.4 – 0.13.7 | ❌ no record — never submitted | ❌ no record |
-| **0.13.8** | **WAITING_FOR_REVIEW**, build 143, submitted 2026-09-19 | **WAITING_FOR_REVIEW**, build 143, submitted 2026-09-19 |
-| 0.13.8 `releaseType` | MANUAL | MANUAL |
+| **0.13.8** | **READY_FOR_SALE**, build 143 | **READY_FOR_SALE**, build 143 |
+| 0.13.9 – 0.21.0 | ❌ no record — never submitted | ❌ no record |
+| **0.22.0** | **WAITING_FOR_REVIEW**, build 147, submitted 2026-09-22 | **WAITING_FOR_REVIEW**, build 147, submitted 2026-09-22 |
+| 0.22.0 `releaseType` | MANUAL | MANUAL |
 
 **0.13.8's first attempt (2026-09-16) failed with *"no IOS version 0.13.8"*.** It went straight to
 `asc-submit-review.yml`, but that workflow only submits a version that already exists. Nothing creates
@@ -55,6 +57,20 @@ one version at a time; both were superseded while 0.9.0 held the lane. The App S
 0.7.7, 0.8.0 and 0.8.1 never got Apple records at all. That is not an error to repair — a version
 nobody submitted needs no record — but it does mean the App Store is several versions behind the
 GitHub releases, and the next submission jumps from 0.7.6 to whatever ships next.
+
+**2026-09-22, and the reason this file says to re-read.** Every row above for 0.13.8 said
+WAITING_FOR_REVIEW when the 0.22.0 submission began. It was wrong — Apple had approved and released
+both platforms in the intervening two days, so the lane was free and nothing needed cancelling. One
+read-only `asc-release.yml -f mode=dry-run` per platform answered it in about a minute. Had the doc
+been trusted, the next move would have been `asc-submit-review.yml -f mode=cancel` on a version that
+was already live, which costs a queue position for nothing.
+
+0.22.0 followed the runbook from step 0 with no surprises. Two notes for the next one: the macOS
+build read VALID roughly **two minutes** after `UPLOAD SUCCEEDED` and was absent at 78 seconds, so a
+single early check is not evidence of the silent-death case that killed builds 117 and 118 — poll it.
+And the screenshot step was **skipped deliberately** on both platforms; Apple carried the sets
+forward from the previous version and the audit confirmed them complete (`APP_DESKTOP 5/5`,
+`APP_IPHONE_67 4/4`, `APP_IPAD_PRO_3GEN_129 4/4`), so it is only needed when the UI actually changed.
 
 Re-read the live state before acting on any of this:
 
