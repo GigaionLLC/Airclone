@@ -16,6 +16,7 @@ your first cloud connection.
 
 | Page | What it covers |
 | :--- | :--- |
+| **[What works on each platform](platforms.md)** | A checklist of every feature on every build (Windows, Microsoft Store, macOS, Mac App Store, Linux, Flatpak, Android, Android TV, iPhone and iPad), which features need Advanced mode, and why some are missing. |
 | [Getting started](getting-started.md) | Installing Airclone on each platform, the first-launch engine setup, what a remote is, adding and testing your first one, and what Advanced mode turns on. |
 | [Browsing your files](browsing.md) | Panes, tabs, view modes, sorting, filter versus search, selection, the details panel, Quick Look, thumbnails and drag-and-drop. |
 | [Copying, moving and syncing](transferring.md) | The four transfer modes and why only Sync can lose data, dry runs and the preview, the conflict prompt, and the transfers list — including what pause really does. |
@@ -41,29 +42,10 @@ tablet and an iPad get the desktop layout, a desktop window dragged narrow switc
 layout, and an Android TV always uses the phone shell with the tabs as a side rail. The layouts are
 compared in [Browsing your files](browsing.md).
 
-| Capability | Windows | macOS | Linux | Android | iOS |
-| :--- | :--- | :--- | :--- | :--- | :--- |
-| Scheduled tasks run while Airclone is open | yes | yes | yes | yes | no |
-| Scheduled tasks run with Airclone closed | yes | no | no | yes | no |
-| Mount a remote as a drive | yes, with WinFsp | yes, except the Mac App Store build | yes | no | no |
-| Serve a remote on your network | yes | yes, except the Mac App Store build | yes | no | no |
-| Camera-roll backup | no | no | no | yes | no |
-| Keyboard shortcuts | yes | yes | yes | in the desktop layout only | in the desktop layout only |
-
-- **Background scheduling.** Only Windows and Android can run a saved task with Airclone closed, and
-  only they show the `Also run while Airclone is closed` checkbox. macOS and Linux run schedules
-  while the app is open and catch up one missed run on the next launch. On iPhone and iPad you start
-  saved tasks by hand. See [Running tasks on a schedule](scheduling.md).
-- **Mounting and serving are desktop features.** Both sit behind Advanced mode and appear only in
-  the desktop shell's top bar and command palette. A large Android tablet gets that top bar, but
-  Android cannot provide a mounted drive — treat both as Windows, macOS and Linux only. See
-  [Mounting a drive and sharing](mount-and-share.md).
-- **Camera-roll backup is Android only.** The `Back up your photos` section does not exist on any
-  other platform; elsewhere, back up a folder instead. See
-  [Backing up your photos (Android)](photos-android.md) and [Backing up a folder](backup.md).
-- **The phone shell has no keyboard shortcuts**, no details panel and no bandwidth control, and it
-  puts Settings in a tab rather than a dialog. Everything else — including the transfer dialog,
-  saved tasks and the command console — is reachable there. See [Browsing your files](browsing.md).
+**The full platform-by-platform checklist is on its own page: [What works on each
+platform](platforms.md).** It covers every build, including the Microsoft Store, Mac App Store,
+Flatpak, Google Play and Android TV builds. It marks which features need Advanced mode and explains
+why each missing feature is missing.
 
 Two more differences that catch people out: the rclone engine ships inside the app on Windows,
 Android and Linux, is downloaded on first launch on the macOS direct-download build, and runs inside

@@ -18,6 +18,10 @@
 </p>
 
 <p align="center">
+  <b>👉 <a href="docs/guide/platforms.md">See what works on your platform</a></b> — a feature checklist for every build and store
+</p>
+
+<p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/explorer-hero-dark.png">
     <img alt="Airclone dual-pane cloud file explorer — dragging a file from Google Drive to OneDrive" src="docs/screenshots/explorer-hero.png" width="860">
@@ -89,6 +93,30 @@ experience**, and brings it to the desktop *and* the phone:
 > (Windows), and **Google Play** (Android — publishing to open testing and to production are both buttons someone presses; no tag does it by
 > hand). Windows and Android builds bundle the rclone engine (no first-run download). Stack:
 > **Flutter** over a single `RcloneClient` seam — see [Architecture at a glance](#-architecture-at-a-glance).
+
+## ✅ What works on each platform
+
+**Not every feature is on every platform.** Some operating systems and stores do not allow certain
+things, and a few features are not built yet on every platform. The big ones:
+
+- 📱 **Phones and tablets cannot mount a drive, serve to your network, or host the Web UI.** Android
+  and iOS do not let an app add a filesystem driver, and they stop apps running in the background.
+  You can still *open* a computer's Web UI from your phone's browser.
+- 🍎 **The Mac App Store build runs in Apple's sandbox**, so it cannot mount, show files in Finder,
+  or work with archives. The signed download from Releases can.
+- 🪟 **The Microsoft Store build** is the same as the installer, except that the app and its rclone
+  engine update only through the Store.
+- ⏰ **Scheduled tasks run with Airclone closed only on Windows and Android.** On macOS and Linux they
+  run while it is open, and iOS has no scheduling yet.
+- 🔧 **Some features stay hidden until you turn on Advanced mode** in Settings: mounting, serving,
+  two-way sync and the command console among them.
+
+### 👉 **[Open the full platform comparison →](docs/guide/platforms.md)**
+
+It is a checklist of every feature on every build: Windows, Microsoft Store, macOS, Mac App Store,
+Linux, Flatpak, Android (Google Play and APK), Android TV, iPhone and iPad. It marks which features
+need Advanced mode and explains why each missing feature is missing. **Check it before you choose
+which build to install.**
 
 ## 📸 A tour
 
@@ -169,6 +197,7 @@ This repo follows a structured documentation methodology. **Agents and contribut
 
 | You want to… | Read |
 | :--- | :--- |
+| **Check what works on your platform** | **[What works on each platform](docs/guide/platforms.md)**: every feature on every build and store, what needs Advanced mode, and why |
 | **Use the app** | [User guide](docs/guide/README.md) — browsing, transferring, backup, scheduling, mounting, the console, and [the Web UI](docs/guide/web-ui.md) |
 | Understand the product | [Vision & North Star](wiki/core/01-vision-north-star.md) · [Product Context](wiki/core/02-product-context.md) |
 | Understand the architecture | [Core Architecture](wiki/core/08-core-architecture.md) *(framework choice + the `RcloneClient` seam)* |
@@ -242,6 +271,8 @@ Direct links always resolve to the **newest release**, so they stay correct as v
 
 > **Which one should I pick?** If your platform has a store listing and you want it to update itself,
 > use the store. Otherwise take the first direct link for your platform. Both are the same app.
+> The one exception is the Mac: the App Store build is sandboxed and cannot mount drives. Compare
+> every build in **[What works on each platform](docs/guide/platforms.md)**.
 
 ### Reaching it from another device
 

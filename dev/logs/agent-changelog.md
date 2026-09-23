@@ -13,6 +13,22 @@ happened": nothing was logged between 2026-07-02 and 2026-07-15, or between 2026
      it is: it used to say ABOVE, which pushed it further down the file with every entry until
      it sat hundreds of lines under the newest one and pointed writers at the wrong place. -->
 
+## [2026-09-23] - Docs: a per-platform feature checklist, linked prominently from the README
+
+**Agent:** Claude Code (Claude Opus 5.5)
+**Files Modified:** new `docs/guide/platforms.md`; `README.md` (header link, new "What works on each
+platform" section, Downloads note, Documentation row); `docs/guide/README.md` (the partial
+five-column capability table replaced by a pointer to the new page, plus an index row)
+**Database/API Changes:** None
+**Summary:** One page now lists every feature across ten builds (Windows, MS Store, macOS, Mac App
+Store, Linux, Flatpak, Android Play/APK, Android TV, iPhone/iPad), marks the Advanced-mode ones, and
+explains each gap as "the platform can't", "the store forbids it" or "not built yet". Every cell was
+checked against the gates in code (`HostPlatform`, `build_flavor.dart`, `mount_policy`,
+`serve_policy`, `scheduling_policy`, `native_actions_policy`, `install_source`, `advancedModeProvider`).
+The page gives the INTENDED behaviour, so two cells are currently wrong in the app: Mount and Serve
+still show on an Android tablet or iPad in the desktop layout (no platform gate), and the Mac App
+Store build still offers an rclone engine update (`isStoreManaged()` covers only MSIX + Flathub).
+
 ## [2026-09-21] - TV playback: the remote can run the player, and the buttons were never the problem
 
 **Agent:** Claude Opus 5 - `feat/tv-playback-remote`
