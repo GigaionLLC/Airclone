@@ -1,5 +1,8 @@
 # What works on each platform
 
+<!-- Maintainers: AGENT.md rule 20. Any change to which platform, build or Advanced-mode setting
+     gets a feature updates this page in the same commit, marked from the gate in code. -->
+
 Airclone is one app on every platform, but each operating system and each store puts limits on it.
 This page shows what you get on each build. It also shows which features need **Advanced mode**, and
 explains *why* a feature is missing where it is.

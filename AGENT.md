@@ -218,6 +218,24 @@ Store shapes, contexts, and data models.
       comment names everyone who still has to sign, and the ledger branch is the record of who did.
       Rule 9, turned on a status this repo publishes about itself.
 
+20. **A change to what a platform can do updates the platform checklist in the same commit.**
+    [`docs/guide/platforms.md`](docs/guide/platforms.md) is the user-facing promise of which
+    feature works on which build, and which needs Advanced mode. The README sends people there to
+    choose what to install. Update it, **and** the user-guide page that documents the feature
+    (`docs/guide/*.md`), whenever a change:
+    - adds, removes or renames a user-visible feature;
+    - changes which platform or build gets it: `HostPlatform` checks, `kMacAppStoreBuild`,
+      Flatpak/Flathub, MSIX/`isStoreManaged()`, Android TV, or the 700px desktop/phone layout split;
+    - moves it behind Advanced mode (`advancedModeProvider`) or out from behind it;
+    - or turns a ⏳ "not built yet" into ✅, or the reverse.
+
+    Update the cell, the note under its table, and the **"Why some features are missing"** reason if
+    the reason changed. Pick the mark by the cause: ❌ means the platform or store cannot do it, ⏳
+    means we have not built it. Mark the cell from the gate in code, not from memory. If the code
+    and the checklist disagree and you are not fixing the code, keep the checklist's intended
+    behaviour and record the mismatch in the changelog entry. A headline limit that changes also
+    changes the short list in the README's **What works on each platform** section.
+
 ## ✅ Mandatory Wrap-Up Protocol
 Whenever a task or feature is complete — including when the user says "wrap up", "we're done", "ship
 it", "that's it", or closes out a conversation — you **MUST**:
@@ -232,7 +250,10 @@ it", "that's it", or closes out a conversation — you **MUST**:
 **Summary:** One sentence summary of changes.
 ```
 
-**Part 2 — Docs sync:** Update any `wiki/` file whose described behavior changed.
+**Part 2 — Docs sync:** Update any `wiki/` file whose described behavior changed, the user-guide
+page (`docs/guide/*.md`) for any feature whose behavior changed, and — per rule 20 — the platform
+checklist in [`docs/guide/platforms.md`](docs/guide/platforms.md) if what a platform, build or
+Advanced mode offers has changed.
 
 **Part 3 — Archive completed plans:** Move the finished plan from `dev/plans/[plan].md` to
 `dev/archive-plans/[plan].md` — read [`dev/archive-plans/README.md`](dev/archive-plans/README.md)
