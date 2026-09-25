@@ -358,6 +358,111 @@ void main() {
     });
   });
 
+  /// A Google TV user, 2026-09-25, after v0.22.0: *"if I click to skip forward
+  /// while the video is playing, it only advances by one second and
+  /// automatically returns to the Play button, preventing me from skipping any
+  /// further. [...] as long as the Skip Forward or Skip Backward button remains
+  /// pressed, the video continues moving forward or backward. It would stop
+  /// when the button is released."*
+  group('holding ⏪/⏩ scans, releasing stops', () {
+    testWidgets('a tap is still one 30-second jump', (tester) async {
+      await tester.pumpWidget(const SizedBox());
+      c.handleKey(down(LogicalKeyboardKey.mediaFastForward));
+      c.handleKey(up(LogicalKeyboardKey.mediaFastForward));
+      await tester.pump(TvPlaybackController.holdDelay * 3);
+      expect(target.seeks, [const Duration(minutes: 5, seconds: 30)]);
+      await tester.pump(TvPlaybackController.autoHideDelay * 2);
+    });
+
+    testWidgets('held, it keeps going and commits ONCE on release', (
+      tester,
+    ) async {
+      await tester.pumpWidget(const SizedBox());
+      c.handleKey(down(LogicalKeyboardKey.mediaFastForward));
+      // Pump in steps, feeding repeats the way a remote does, so the watchdog
+      // sees a key that is genuinely still down.
+      for (var i = 0; i < 12; i++) {
+        await tester.pump(TvPlaybackController.scanInterval);
+        c.handleKey(repeat(LogicalKeyboardKey.mediaFastForward));
+      }
+      final held = c.pendingTarget!;
+      expect(
+        held - const Duration(minutes: 5),
+        greaterThan(const Duration(minutes: 2)),
+        reason: 'three seconds of holding must cover real ground',
+      );
+      expect(target.seeks, isEmpty, reason: 'nothing commits mid-scan');
+
+      c.handleKey(up(LogicalKeyboardKey.mediaFastForward));
+      await tester.pump(TvPlaybackController.scanInterval * 4);
+      expect(target.seeks, [held], reason: 'released means stopped');
+      await tester.pump(TvPlaybackController.autoHideDelay * 2);
+    });
+
+    testWidgets('rewind scans backwards and stops at the start', (
+      tester,
+    ) async {
+      await tester.pumpWidget(const SizedBox());
+      c.handleKey(down(LogicalKeyboardKey.mediaRewind));
+      for (var i = 0; i < 40; i++) {
+        await tester.pump(TvPlaybackController.scanInterval);
+        c.handleKey(repeat(LogicalKeyboardKey.mediaRewind));
+      }
+      expect(c.pendingTarget, Duration.zero);
+      c.handleKey(up(LogicalKeyboardKey.mediaRewind));
+      await tester.pump(TvPlaybackController.commitDelay * 2);
+      expect(target.seeks, [Duration.zero]);
+      await tester.pump(TvPlaybackController.autoHideDelay * 2);
+    });
+
+    testWidgets('a lost key-up cannot scan to the end of the film', (
+      tester,
+    ) async {
+      await tester.pumpWidget(const SizedBox());
+      c.handleKey(down(LogicalKeyboardKey.mediaFastForward));
+      // No repeats, no key-up: the release was delivered somewhere else.
+      await tester.pump(TvPlaybackController.holdWatchdog * 2);
+      expect(c.holdDirection, 0);
+      expect(target.seeks, hasLength(1));
+      expect(target.seeks.single, lessThan(const Duration(minutes: 7)));
+      await tester.pump(TvPlaybackController.autoHideDelay * 2);
+    });
+
+    testWidgets('pressed from the row, the overlay stays in the row', (
+      tester,
+    ) async {
+      // The v0.22.0 bug. seekBy switched to scrubbing, which hands focus to
+      // the video surface; the next OK then toggled playback and focus went
+      // back to Play.
+      await tester.pumpWidget(const SizedBox());
+      c.showControls();
+      c.seekBy(TvPlaybackController.transportStep);
+      expect(c.mode, TvControlsMode.browsing);
+      await tester.pump(TvPlaybackController.autoHideDelay * 2);
+    });
+
+    test('a held OK is one press, not a play/pause flicker', () {
+      c.handleKey(down(LogicalKeyboardKey.select));
+      expect(target.playPauseCalls, 1);
+      // Now browsing; the repeats of the same press must go nowhere, or the
+      // focused play/pause button re-activates on every one.
+      for (var i = 0; i < 5; i++) {
+        expect(
+          c.handleKey(repeat(LogicalKeyboardKey.select)),
+          KeyEventResult.handled,
+        );
+      }
+      expect(target.playPauseCalls, 1);
+    });
+
+    test('a held ⏯ is one press too', () {
+      c.handleKey(down(LogicalKeyboardKey.mediaPlayPause));
+      c.handleKey(repeat(LogicalKeyboardKey.mediaPlayPause));
+      c.handleKey(repeat(LogicalKeyboardKey.mediaPlayPause));
+      expect(target.playPauseCalls, 1);
+    });
+  });
+
   group('an always-visible surface (the audio screen)', () {
     testWidgets('its arrows are traversal, and its controls never hide', (
       tester,

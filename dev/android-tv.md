@@ -270,7 +270,8 @@ written down twice. Implemented by `TvPlaybackController`
 | **UP / DOWN** | show the overlay | focus traversal |
 | **BACK** | close the player | hide the overlay |
 | **Play / Pause / PlayPause** | play/pause | play/pause |
-| **Rewind / Fast-forward** | seek 30s | seek 30s |
+| **Rewind / Fast-forward** | tap: seek 30s; hold: scan until released | same |
+| **OK held on the ⏪ / ⏩ button** | — | tap: seek 30s; hold: scan until released, focus stays on the button |
 | **Track next / previous** | the next file OF THE SAME KIND | same |
 | **Stop** | pause — never close | pause |
 
@@ -288,6 +289,14 @@ Three decisions in there are not defaults:
   fullscreen shape a TV renders never had key handling at all.
 - **The overlay never auto-hides while paused.** A paused film with no controls
   is a dead end with no way to resume.
+- **⏪/⏩ are a hold, not a click (v0.22.1).** A tap jumps 30s; held past 400ms
+  the pending target scans, accelerating 10 → 30 → 60s per 250ms tick, and ONE
+  seek commits on release. The scan runs on its own timer, not the remote's
+  repeat rate, and a 1.2s watchdog ends a hold whose key-up was lost. Pressing
+  them from the row never leaves browsing mode: in v0.22.0 it switched to
+  scrubbing, which moved focus to the surface, so the second OK toggled
+  playback and focus snapped back to Play. Every other held key (OK, ⏯) is ONE
+  press — its repeats are swallowed, or a held OK flickers play/pause.
 
 ### Transport keys do reach the app — measured, not assumed
 

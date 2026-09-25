@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import 'theme/tokens.dart';
 import 'tv.dart' show tvOverscan;
@@ -442,14 +443,19 @@ class TvTransportRow extends StatelessWidget {
                 foreground: fg,
                 disabled: faint,
               ),
-            _TvControlButton(
-              icon: Icons.fast_rewind_rounded,
-              tooltip: 'Back 30 seconds',
-              onPressed: controller.seekable
-                  ? () => controller.seekBy(-TvPlaybackController.transportStep)
-                  : null,
-              foreground: fg,
-              disabled: faint,
+            _TvSeekHold(
+              controller: controller,
+              direction: -1,
+              child: _TvControlButton(
+                icon: Icons.fast_rewind_rounded,
+                tooltip: 'Back 30 seconds (hold to rewind)',
+                onPressed: controller.seekable
+                    ? () =>
+                          controller.seekBy(-TvPlaybackController.transportStep)
+                    : null,
+                foreground: fg,
+                disabled: faint,
+              ),
             ),
             _TvControlButton(
               icon: playing ? Icons.pause_rounded : Icons.play_arrow_rounded,
@@ -460,14 +466,19 @@ class TvTransportRow extends StatelessWidget {
               focusNode: playPauseFocus,
               primary: true,
             ),
-            _TvControlButton(
-              icon: Icons.fast_forward_rounded,
-              tooltip: 'Forward 30 seconds',
-              onPressed: controller.seekable
-                  ? () => controller.seekBy(TvPlaybackController.transportStep)
-                  : null,
-              foreground: fg,
-              disabled: faint,
+            _TvSeekHold(
+              controller: controller,
+              direction: 1,
+              child: _TvControlButton(
+                icon: Icons.fast_forward_rounded,
+                tooltip: 'Forward 30 seconds (hold to fast-forward)',
+                onPressed: controller.seekable
+                    ? () =>
+                          controller.seekBy(TvPlaybackController.transportStep)
+                    : null,
+                foreground: fg,
+                disabled: faint,
+              ),
             ),
             if (inAList)
               _TvControlButton(
@@ -482,6 +493,61 @@ class TvTransportRow extends StatelessWidget {
       },
     );
   }
+}
+
+/// Makes OK on ⏪/⏩ a hold rather than a click: key-down jumps one
+/// [TvPlaybackController.transportStep], keeping it down scans, key-up stops.
+///
+/// Field report, 2026-09-25: *"as long as the Skip Forward or Skip Backward
+/// button remains pressed, the video continues moving forward or backward. It
+/// would stop when the button is released."* An [IconButton] only knows
+/// "activated", and Flutter re-activates it on every key repeat — thirty
+/// seconds twenty times a second. So the OK key is taken here, before it can
+/// reach the button's activation, and the pointer path keeps `onPressed`.
+///
+/// Never takes focus itself; the button inside is still the focus stop.
+class _TvSeekHold extends StatelessWidget {
+  const _TvSeekHold({
+    required this.controller,
+    required this.direction,
+    required this.child,
+  });
+
+  final TvPlaybackController controller;
+  final int direction;
+  final Widget child;
+
+  static bool _isOk(LogicalKeyboardKey key) =>
+      key == LogicalKeyboardKey.select ||
+      key == LogicalKeyboardKey.enter ||
+      key == LogicalKeyboardKey.gameButtonA;
+
+  @override
+  Widget build(BuildContext context) => Focus(
+    canRequestFocus: false,
+    skipTraversal: true,
+    // Focus leaving mid-hold (BACK, the route closing) must stop the scan: the
+    // key-up will be delivered somewhere else, or nowhere.
+    onFocusChange: (focused) {
+      if (!focused && controller.holdDirection == direction) {
+        controller.endHold();
+      }
+    },
+    onKeyEvent: (_, event) {
+      if (!_isOk(event.logicalKey) || !controller.seekable) {
+        return KeyEventResult.ignored;
+      }
+      if (event is KeyDownEvent) {
+        controller.beginHold(direction);
+      } else if (event is KeyRepeatEvent) {
+        controller.holdHeartbeat();
+      } else if (event is KeyUpEvent) {
+        controller.endHold();
+      }
+      return KeyEventResult.handled;
+    },
+    child: child,
+  );
 }
 
 /// One control in [TvTransportRow].

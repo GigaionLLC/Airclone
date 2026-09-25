@@ -79,3 +79,17 @@ KeyDownEvent down(LogicalKeyboardKey key) => KeyDownEvent(
   physicalKey: PhysicalKeyboardKey.f13,
   timeStamp: Duration.zero,
 );
+
+/// The auto-repeat Android sends while a key stays down.
+KeyRepeatEvent repeat(LogicalKeyboardKey key) => KeyRepeatEvent(
+  logicalKey: key,
+  physicalKey: PhysicalKeyboardKey.f13,
+  timeStamp: Duration.zero,
+);
+
+/// The release. It matters for exactly one pair — a held ⏪/⏩ stops on it.
+KeyUpEvent up(LogicalKeyboardKey key) => KeyUpEvent(
+  logicalKey: key,
+  physicalKey: PhysicalKeyboardKey.f13,
+  timeStamp: Duration.zero,
+);

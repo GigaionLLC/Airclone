@@ -35,6 +35,8 @@ So on a TV the player is driven by **keys**, and the full table lives in
 - **LEFT / RIGHT** seek, accelerating from 10s to 60s as you hold a run of presses; once focus is in
   the control row they move between buttons instead.
 - **The remote's own ⏯ ⏪ ⏩ ⏭ ⏮ keys work**, wherever focus happens to be.
+- **⏪ / ⏩ — the remote keys or the on-screen buttons — jump 30s on a tap and keep scanning while
+  held**, accelerating, until released; the seek lands once, on release.
 - **BACK** hides the controls, then leaves.
 
 The controls hide themselves while a film plays and come back on any key — **except while paused**,

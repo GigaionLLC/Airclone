@@ -201,6 +201,91 @@ void main() {
     expect(target.seeks, hasLength(1));
   });
 
+  /// The 2026-09-25 report, end to end through real key events: focus on the
+  /// on-screen ⏩, then OK. In v0.22.0 the first press moved focus to the
+  /// surface, the second toggled playback and focus snapped back to Play.
+  group('the on-screen ⏪/⏩ with a remote', () {
+    Future<void> pumpWithKeys(WidgetTester tester) async {
+      tester.view.physicalSize = const Size(1920, 1080);
+      tester.view.devicePixelRatio = 2;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: AppTheme.light(),
+          home: Scaffold(
+            body: TvFocusOverlay(
+              child: TvPlaybackKeys(
+                controller: controller,
+                child: TvVideoControls(controller: controller),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+      controller.showControls();
+      await tester.pumpAndSettle();
+      // Play/pause holds focus; one RIGHT is the fast-forward button.
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+      await tester.pump();
+    }
+
+    String? focused() => FocusManager.instance.primaryFocus?.debugLabel;
+
+    bool focusIsOn(WidgetTester tester, IconData icon) {
+      final node = FocusManager.instance.primaryFocus;
+      final button = find.widgetWithIcon(IconButton, icon);
+      if (node?.context == null || button.evaluate().isEmpty) return false;
+      return find
+          .descendant(
+            of: button,
+            matching: find.byWidget(node!.context!.widget),
+          )
+          .evaluate()
+          .isNotEmpty;
+    }
+
+    testWidgets('pressing ⏩ repeatedly skips repeatedly', (tester) async {
+      await pumpWithKeys(tester);
+      expect(focusIsOn(tester, Icons.fast_forward_rounded), isTrue);
+
+      for (var i = 0; i < 3; i++) {
+        await tester.sendKeyEvent(LogicalKeyboardKey.select);
+        await tester.pump(TvPlaybackController.commitDelay * 2);
+        await tester.pumpAndSettle();
+        expect(
+          focusIsOn(tester, Icons.fast_forward_rounded),
+          isTrue,
+          reason: 'press ${i + 1}: focus must stay on ⏩, not jump to Play',
+        );
+        expect(focused(), isNot('tv play/pause'));
+      }
+      expect(target.playPauseCalls, 0, reason: 'no press was play/pause');
+      expect(target.position, const Duration(minutes: 6, seconds: 30));
+      await drain(tester);
+    });
+
+    testWidgets('holding OK on ⏩ scans until it is released', (tester) async {
+      await pumpWithKeys(tester);
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.select);
+      for (var i = 0; i < 12; i++) {
+        await tester.pump(TvPlaybackController.scanInterval);
+        await tester.sendKeyRepeatEvent(LogicalKeyboardKey.select);
+      }
+      expect(target.seeks, isEmpty);
+      final held = controller.pendingTarget!;
+      expect(held, greaterThan(const Duration(minutes: 7)));
+
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.select);
+      await tester.pump(TvPlaybackController.commitDelay * 2);
+      await tester.pumpAndSettle();
+      expect(target.seeks, [held]);
+      expect(target.playPauseCalls, 0);
+      expect(focusIsOn(tester, Icons.fast_forward_rounded), isTrue);
+      await drain(tester);
+    });
+  });
+
   testWidgets('a live stream says so instead of offering a dead bar', (
     tester,
   ) async {

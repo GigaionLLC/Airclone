@@ -198,6 +198,26 @@ class TvPlaybackController extends ChangeNotifier {
   /// on how fast the last one was.
   static const Duration transportStep = Duration(seconds: 30);
 
+  /// How long ⏪/⏩ must stay held before a tap becomes a continuous scan.
+  ///
+  /// A Google TV user, 2026-09-25: *"as long as the Skip Forward or Skip
+  /// Backward button remains pressed, the video continues moving forward or
+  /// backward. It would stop when the button is released."* A tap is still one
+  /// [transportStep]; holding past this keeps going.
+  static const Duration holdDelay = Duration(milliseconds: 400);
+
+  /// How often a held ⏪/⏩ advances the pending target. The steps accelerate
+  /// through [stepSeconds] exactly as a D-pad burst does, so a long hold
+  /// crosses a film in seconds while a short one stays precise.
+  static const Duration scanInterval = Duration(milliseconds: 250);
+
+  /// A hold with no key event for this long is treated as released.
+  ///
+  /// Android repeats a held key continuously, so silence means the key-up was
+  /// lost (focus moved, the route changed). Without this a lost key-up would
+  /// scan on to the end of the film.
+  static const Duration holdWatchdog = Duration(milliseconds: 1200);
+
   TvControlsMode _mode;
   TvControlsMode get mode => _mode;
   bool get controlsVisible => alwaysVisible || _mode != TvControlsMode.hidden;
@@ -216,6 +236,14 @@ class TvPlaybackController extends ChangeNotifier {
   int _burstPresses = 0;
   Timer? _commitTimer;
   Timer? _hideTimer;
+
+  /// Direction of a held ⏪/⏩ (−1 / +1), or 0 when nothing is held.
+  int _holdDirection = 0;
+  int get holdDirection => _holdDirection;
+  int _scanTicks = 0;
+  Timer? _holdTimer;
+  Timer? _scanTimer;
+  Timer? _watchdog;
 
   // ── media-key ownership ────────────────────────────────────────────────────
   //
@@ -237,6 +265,7 @@ class TvPlaybackController extends ChangeNotifier {
   void dispose() {
     _commitTimer?.cancel();
     _hideTimer?.cancel();
+    _cancelHoldTimers();
     _mediaKeyOwners.remove(this);
     super.dispose();
   }
@@ -250,14 +279,14 @@ class TvPlaybackController extends ChangeNotifier {
   /// this wrong is how a TV fix becomes the next "the D-pad does nothing"
   /// report.
   KeyEventResult handleKey(KeyEvent event) {
+    // Media keys first: they mean the same thing in every mode, and they are
+    // the only keys honoured off a television. Checked before the key-up
+    // filter because a held ⏪/⏩ ends on its key-up.
+    if (_handleMediaKey(event)) return KeyEventResult.handled;
     if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
       return KeyEventResult.ignored;
     }
     final key = event.logicalKey;
-
-    // Media keys first: they mean the same thing in every mode, and they are
-    // the only keys honoured off a television.
-    if (_handleMediaKey(key)) return KeyEventResult.handled;
     if (!tvKeysEnabled) return KeyEventResult.ignored;
 
     if (key == LogicalKeyboardKey.arrowLeft ||
@@ -285,6 +314,12 @@ class TvPlaybackController extends ChangeNotifier {
     if (key == LogicalKeyboardKey.select ||
         key == LogicalKeyboardKey.enter ||
         key == LogicalKeyboardKey.gameButtonA) {
+      // A HELD OK is one press. Its repeats are swallowed here, in every mode:
+      // on the surface each repeat would toggle playback again, and in the row
+      // Flutter's activation fires on repeats too, so a held OK on play/pause
+      // flickered between play and pause and landed wherever it stopped. The
+      // ⏪/⏩ buttons see a hold before this does (see `_TvSeekHold` in tv_video_controls.dart).
+      if (event is KeyRepeatEvent) return KeyEventResult.handled;
       // With the row up, OK belongs to whatever button holds focus.
       if (_mode == TvControlsMode.browsing) return KeyEventResult.ignored;
       commitPending();
@@ -313,12 +348,33 @@ class TvPlaybackController extends ChangeNotifier {
   ///
   /// Also the [HardwareKeyboard] entry point — see [ownsMediaKeys].
   bool handleMediaKeyGlobally(KeyEvent event) {
-    if (event is! KeyDownEvent && event is! KeyRepeatEvent) return false;
     if (!ownsMediaKeys) return false;
-    return _handleMediaKey(event.logicalKey);
+    return _handleMediaKey(event);
   }
 
-  bool _handleMediaKey(LogicalKeyboardKey key) {
+  bool _handleMediaKey(KeyEvent event) {
+    final key = event.logicalKey;
+    // ⏪/⏩ are the one pair where the key-UP matters: holding them scans, and
+    // releasing stops. Every phase of them is ours.
+    if (key == LogicalKeyboardKey.mediaFastForward ||
+        key == LogicalKeyboardKey.mediaRewind) {
+      final direction = key == LogicalKeyboardKey.mediaRewind ? -1 : 1;
+      if (event is KeyDownEvent) {
+        beginHold(direction);
+      } else if (event is KeyRepeatEvent) {
+        holdHeartbeat();
+      } else if (event is KeyUpEvent) {
+        endHold();
+      }
+      return true;
+    }
+    if (event is KeyUpEvent) return false;
+    if (event is KeyRepeatEvent) {
+      // A held transport key is one press, same as a held OK. Claimed so the
+      // repeat cannot fall through to a focused button either.
+      return _isMediaKey(key);
+    }
+
     if (key == LogicalKeyboardKey.mediaPlayPause ||
         key == LogicalKeyboardKey.mediaPlay ||
         key == LogicalKeyboardKey.mediaPause) {
@@ -337,12 +393,6 @@ class TvPlaybackController extends ChangeNotifier {
       if (!alwaysVisible) _show(TvControlsMode.browsing);
       return true;
     }
-    if (key == LogicalKeyboardKey.mediaFastForward ||
-        key == LogicalKeyboardKey.mediaRewind) {
-      final back = key == LogicalKeyboardKey.mediaRewind;
-      seekBy(back ? -transportStep : transportStep);
-      return true;
-    }
     if (key == LogicalKeyboardKey.mediaTrackNext) {
       onNext?.call();
       return true;
@@ -354,7 +404,15 @@ class TvPlaybackController extends ChangeNotifier {
     return false;
   }
 
-  // ── actions ────────────────────────────────────────────────────────────────
+  static bool _isMediaKey(LogicalKeyboardKey key) =>
+      key == LogicalKeyboardKey.mediaPlayPause ||
+      key == LogicalKeyboardKey.mediaPlay ||
+      key == LogicalKeyboardKey.mediaPause ||
+      key == LogicalKeyboardKey.mediaStop ||
+      key == LogicalKeyboardKey.mediaTrackNext ||
+      key == LogicalKeyboardKey.mediaTrackPrevious;
+
+  // ── actions────────────────────────────────────────────────────────────────
 
   void playPause() {
     target.playOrPause();
@@ -408,17 +466,102 @@ class TvPlaybackController extends ChangeNotifier {
   }
 
   /// A single deliberate jump (the ⏪/⏩ keys, and the overlay's own buttons).
-  /// Coalesced like [nudge] so holding a key down is still one seek.
+  /// Coalesced like [nudge], so a run of taps is still one seek.
+  ///
+  /// Does NOT leave [TvControlsMode.browsing]. It used to switch to scrubbing,
+  /// which hands focus from the row to the video surface — so after one press
+  /// of the on-screen ⏩ the next OK landed on the surface, toggled playback
+  /// and put focus back on Play. The user could skip once and never again
+  /// (field report, 2026-09-25). Pressed from the row, focus now stays on the
+  /// button that was pressed.
   void seekBy(Duration delta) {
+    _addToPending(delta);
+    _commitTimer?.cancel();
+    _commitTimer = null;
+    // A hold owns the commit: it lands on release, never mid-scan.
+    if (_pending != null && _holdDirection == 0) {
+      _commitTimer = Timer(commitDelay, commitPending);
+    }
+  }
+
+  void _addToPending(Duration delta) {
+    final mode = _mode == TvControlsMode.browsing
+        ? TvControlsMode.browsing
+        : TvControlsMode.scrubbing;
     if (!seekable) {
-      _show(TvControlsMode.scrubbing);
+      _show(mode);
       return;
     }
-    _pending = (_pending ?? target.position) + delta;
-    _show(TvControlsMode.scrubbing);
-    _commitTimer?.cancel();
-    _commitTimer = Timer(commitDelay, commitPending);
+    // Clamped as it accumulates, so a scan pinned at an end stops there
+    // instead of banking minutes that the first press the other way must undo.
+    _pending = _clamp((_pending ?? target.position) + delta);
+    _show(mode);
     notifyListeners();
+  }
+
+  /// ⏪/⏩ went down (−1 back, +1 forward). A tap is one [transportStep]; held
+  /// past [holdDelay] it scans until [endHold].
+  void beginHold(int direction) {
+    if (_holdDirection == direction) {
+      // A second key-down with no key-up between is a repeat by another name.
+      holdHeartbeat();
+      return;
+    }
+    if (_holdDirection != 0) endHold();
+    if (!seekable) {
+      seekBy(transportStep * direction); // shows the overlay's "Live" state
+      return;
+    }
+    _holdDirection = direction;
+    _scanTicks = 0;
+    seekBy(transportStep * direction);
+    _holdTimer = Timer(holdDelay, () {
+      _holdTimer = null;
+      _scanTimer = Timer.periodic(scanInterval, (_) => _scanTick());
+      _scanTick();
+    });
+    holdHeartbeat();
+  }
+
+  /// The held key is still down. Only feeds the watchdog: the scan keeps its
+  /// own pace rather than the remote's repeat rate, which varies by remote.
+  void holdHeartbeat() {
+    if (_holdDirection == 0) return;
+    _watchdog?.cancel();
+    _watchdog = Timer(holdWatchdog, endHold);
+  }
+
+  /// ⏪/⏩ came up. Commits after [commitDelay] like any other seek, so quick
+  /// taps still coalesce into one request.
+  void endHold() {
+    if (_holdDirection == 0) return;
+    _holdDirection = 0;
+    _cancelHoldTimers();
+    _commitTimer?.cancel();
+    _commitTimer = _pending == null ? null : Timer(commitDelay, commitPending);
+    notifyListeners();
+  }
+
+  void _scanTick() {
+    if (_holdDirection == 0) return;
+    final tier = (_scanTicks ~/ pressesPerStep).clamp(
+      0,
+      stepSeconds.length - 1,
+    );
+    _scanTicks++;
+    var step = Duration(seconds: stepSeconds[tier]);
+    final cap = target.duration ~/ 10;
+    if (cap > Duration.zero && step > cap) step = cap;
+    _addToPending(step * _holdDirection);
+  }
+
+  void _cancelHoldTimers() {
+    _holdTimer?.cancel();
+    _holdTimer = null;
+    _scanTimer?.cancel();
+    _scanTimer = null;
+    _watchdog?.cancel();
+    _watchdog = null;
   }
 
   /// Commits whatever the scrub added up to. Safe to call with nothing pending.

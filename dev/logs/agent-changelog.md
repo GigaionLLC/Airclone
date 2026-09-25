@@ -13,6 +13,22 @@ happened": nothing was logged between 2026-07-02 and 2026-07-15, or between 2026
      it is: it used to say ABOVE, which pushed it further down the file with every entry until
      it sat hundreds of lines under the newest one and pointed writers at the wrong place. -->
 
+## [2026-09-25] - v0.22.1: TV ⏪/⏩ skip repeatedly, and hold to scan
+
+**Agent:** Claude Code (Claude Opus 5.5)
+**Files Modified:** `app/lib/src/ui/tv_player_keys.dart`, `app/lib/src/ui/tv_video_controls.dart`,
+`app/test/tv_playback_fake.dart`, `app/test/tv_player_keys_test.dart`,
+`app/test/tv_video_controls_test.dart`, `app/pubspec.yaml` (0.22.1+148), `dev/releases/v0.22.1.md`,
+`dev/android-tv.md`, `wiki/features/feat-media-playback.md`
+**Database/API Changes:** None
+**Summary:** Field report on v0.22.0: the on-screen ⏩ skipped once, then "returns to the Play button".
+`seekBy` switched browsing → scrubbing, which hands focus to the video surface, so the next OK was
+play/pause and focus went back to Play; a held OK's repeats toggled playback over and over. `seekBy` now
+keeps browsing mode; ⏪/⏩ (buttons via `_TvSeekHold`, and the media keys) are a hold — tap = 30s, held
+past 400ms scans with acceleration, one seek on release, 1.2s watchdog for a lost key-up; OK/⏯ repeats
+are swallowed. Mutation (old scrubbing switch) turns 3 new tests RED. Known, left alone: after a scrub
+commits while playing, the overlay does not auto-hide until the next key (pre-existing).
+
 ## [2026-09-23] - Docs: a per-platform feature checklist, linked prominently from the README
 
 **Agent:** Claude Code (Claude Opus 5.5)
