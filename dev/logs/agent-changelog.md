@@ -13,6 +13,22 @@ happened": nothing was logged between 2026-07-02 and 2026-07-15, or between 2026
      it is: it used to say ABOVE, which pushed it further down the file with every entry until
      it sat hundreds of lines under the newest one and pointed writers at the wrong place. -->
 
+## [2026-09-25] - v0.22.1 sent to all three stores
+
+**Agent:** Claude Code (Claude Opus 5.5)
+**Files Modified:** `dev/apple-handoff.md` (state table), this log
+**Database/API Changes:** Store state only.
+**Summary:** Google Play: `publish-play` upload → beta 148 confirmed, then `promote-play` dry run →
+`rollout=100` → production serves 148 at 100%. Microsoft: dry run showed 0.22.0's submission
+1152921505701946719 already PUBLISHED and nothing pending, so a plain `mode=stage` (no
+`delete_pending`) created **1152921505701979502** holding MSIX `0.22.1.0`, pricing preserved — NOT
+submitted; a human presses Submit in Partner Center, and its What's new is cloned from the previous
+submission, so check it first. Apple: `asc-release` dry run showed 0.22.0 READY_FOR_SALE on both, so the
+lane was free; runbook steps 0–7 on both platforms (screenshots skipped, UI unchanged on Apple), build
+148 VALID within ~4 min of upload, audit "No gaps", submitted 23:43Z, WAITING_FOR_REVIEW, releaseType
+MANUAL. Gotcha for the next poller: ERE `+` in `grep -c` without `-E` never matches, so a
+"wait until VALID" loop spun 20 minutes after both builds were already VALID.
+
 ## [2026-09-25] - v0.22.1: TV ⏪/⏩ skip repeatedly, and hold to scan
 
 **Agent:** Claude Code (Claude Opus 5.5)

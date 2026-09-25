@@ -9,7 +9,7 @@ by design** — real IDs, key paths and account state live in the encrypted vaul
 (`python tool/vault.py unlock`, then
 `dev/vault/notes/apple-appstore-setup-record.md`).
 
-## State: last written 2026-09-22 — 0.13.8 IS LIVE; 0.22.0 IS IN REVIEW
+## State: last written 2026-09-25 — 0.22.0 IS LIVE; 0.22.1 IS IN REVIEW
 
 Read back from App Store Connect by the workflows that changed it, so these rows are observed.
 
@@ -23,8 +23,9 @@ Read back from App Store Connect by the workflows that changed it, so these rows
 | 0.13.4 – 0.13.7 | ❌ no record — never submitted | ❌ no record |
 | **0.13.8** | **READY_FOR_SALE**, build 143 | **READY_FOR_SALE**, build 143 |
 | 0.13.9 – 0.21.0 | ❌ no record — never submitted | ❌ no record |
-| **0.22.0** | **WAITING_FOR_REVIEW**, build 147, submitted 2026-09-22 | **WAITING_FOR_REVIEW**, build 147, submitted 2026-09-22 |
-| 0.22.0 `releaseType` | MANUAL | MANUAL |
+| **0.22.0** | **READY_FOR_SALE**, build 147 | **READY_FOR_SALE**, build 147 |
+| **0.22.1** | **WAITING_FOR_REVIEW**, build 148, submitted 2026-09-25 | **WAITING_FOR_REVIEW**, build 148, submitted 2026-09-25 |
+| 0.22.1 `releaseType` | MANUAL | MANUAL |
 
 **0.13.8's first attempt (2026-09-16) failed with *"no IOS version 0.13.8"*.** It went straight to
 `asc-submit-review.yml`, but that workflow only submits a version that already exists. Nothing creates
