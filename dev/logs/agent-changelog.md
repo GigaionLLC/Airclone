@@ -13,6 +13,17 @@ happened": nothing was logged between 2026-07-02 and 2026-07-15, or between 2026
      it is: it used to say ABOVE, which pushed it further down the file with every entry until
      it sat hundreds of lines under the newest one and pointed writers at the wrong place. -->
 
+## [2026-09-28] - v0.22.1 live in all three stores
+
+**Agent:** Claude Code (Claude Opus 5.5)
+**Files Modified:** `dev/apple-handoff.md` (state table, 500 trap), `dev/releases/v0.22.1.md` (Where to get it), this log
+**Database/API Changes:** Store state only.
+**Summary:** Apple: `asc-release` dry run showed 0.22.1 PENDING_DEVELOPER_RELEASE on both platforms; `mode=release`
+published iOS first time, macOS got HTTP 500 on `/v1/appStoreVersionReleaseRequests`, a dry run confirmed still
+pending, one retry -> READY_FOR_SALE. Google Play: `promote-play` dry run -> production already serves 148 at 100%,
+no change. Microsoft: `submit-msstore` dry run -> submission 1152921505701979502 (MSIX `0.22.1.0`, in Certification
+on 2026-09-26) is now the last published submission, nothing pending, advanced pricing intact (`priceId Base`).
+
 ## [2026-09-25] - v0.22.1 sent to all three stores
 
 **Agent:** Claude Code (Claude Opus 5.5)
