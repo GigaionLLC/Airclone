@@ -9,7 +9,7 @@ by design** — real IDs, key paths and account state live in the encrypted vaul
 (`python tool/vault.py unlock`, then
 `dev/vault/notes/apple-appstore-setup-record.md`).
 
-## State: last written 2026-09-25 — 0.22.0 IS LIVE; 0.22.1 IS IN REVIEW
+## State: last written 2026-09-28 — 0.22.1 IS LIVE on both platforms
 
 Read back from App Store Connect by the workflows that changed it, so these rows are observed.
 
@@ -24,8 +24,14 @@ Read back from App Store Connect by the workflows that changed it, so these rows
 | **0.13.8** | **READY_FOR_SALE**, build 143 | **READY_FOR_SALE**, build 143 |
 | 0.13.9 – 0.21.0 | ❌ no record — never submitted | ❌ no record |
 | **0.22.0** | **READY_FOR_SALE**, build 147 | **READY_FOR_SALE**, build 147 |
-| **0.22.1** | **WAITING_FOR_REVIEW**, build 148, submitted 2026-09-25 | **WAITING_FOR_REVIEW**, build 148, submitted 2026-09-25 |
+| **0.22.1** | **READY_FOR_SALE**, build 148, released 2026-09-28 | **READY_FOR_SALE**, build 148, released 2026-09-28 |
 | 0.22.1 `releaseType` | MANUAL | MANUAL |
+
+**0.22.1's macOS release (2026-09-28) hit HTTP 500 on `/v1/appStoreVersionReleaseRequests`**
+(*"An unexpected error occurred on the server side"*). Nothing had changed: an `asc-release.yml`
+`-f mode=dry-run` straight after still read `PENDING_DEVELOPER_RELEASE`, and one retry of
+`mode=release` moved it to `READY_FOR_SALE`. iOS released first time. So a 500 there is Apple's, not
+ours: dry-run to confirm the state, then retry.
 
 **0.13.8's first attempt (2026-09-16) failed with *"no IOS version 0.13.8"*.** It went straight to
 `asc-submit-review.yml`, but that workflow only submits a version that already exists. Nothing creates
