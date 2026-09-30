@@ -354,4 +354,265 @@ void main() {
       expect(isNonPublicAddress(InternetAddress('100.128.0.0')), isFalse);
     });
   });
+
+  /// A signed-in session could make the host run a program without ever
+  /// calling a denied method: create an sftp remote whose `ssh` option is a
+  /// command line, or name one inline in `fs`, then list it. These pin the
+  /// refusal AND that everything the app itself sends still passes.
+  group('program-running options and on-the-fly remotes', () {
+    group('config/create and config/update', () {
+      for (final key in [
+        'ssh',
+        'server_command',
+        'bearer_token_command',
+        'password_command',
+        'some_future_command',
+        'SSH',
+      ]) {
+        test('"$key" is refused', () {
+          expect(
+            rcParamsViolation('config/create', {
+              'name': 'x',
+              'type': 'sftp',
+              'parameters': {'host': 'example.com', key: 'touch /tmp/pwned'},
+            }),
+            isNotNull,
+          );
+          expect(
+            rcParamsViolation('config/update', {
+              'name': 'x',
+              'parameters': {key: 'touch /tmp/pwned'},
+            }),
+            isNotNull,
+          );
+        });
+      }
+
+      test('parameters sent as a JSON string are read too', () {
+        expect(
+          rcParamsViolation('config/create', {
+            'name': 'x',
+            'type': 'webdav',
+            'parameters': '{"url":"https://a","bearer_token_command":"id"}',
+          }),
+          isNotNull,
+        );
+      });
+
+      test('a wrapper remote cannot point at an on-the-fly sftp', () {
+        expect(
+          rcParamsViolation('config/create', {
+            'name': 'x',
+            'type': 'alias',
+            'parameters': {'remote': ':sftp,host=h,ssh=id:'},
+          }),
+          isNotNull,
+        );
+        expect(
+          rcParamsViolation('config/create', {
+            'name': 'x',
+            'type': 'union',
+            'parameters': {'upstreams': 'gdrive:a gdrive,ssh=id:b'},
+          }),
+          isNotNull,
+        );
+        expect(
+          rcParamsViolation('config/create', {
+            'name': 'x',
+            'type': 'combine',
+            'parameters': {'upstreams': "dir=s,ssh='id -a':"},
+          }),
+          isNotNull,
+        );
+      });
+
+      /// What the Add Remote flow sends. If this fails the guard broke the
+      /// feature.
+      test('an ordinary remote still passes', () {
+        expect(
+          rcParamsViolation('config/create', {
+            'name': 'nas',
+            'type': 'sftp',
+            'parameters': {
+              'host': 'nas.lan',
+              'user': 'me',
+              'pass': 'p,a:s"s',
+              'key_file': '~/.ssh/id_ed25519',
+            },
+            'opt': {'obscure': true, 'nonInteractive': true},
+          }),
+          isNull,
+        );
+        expect(
+          rcParamsViolation('config/create', {
+            'name': 'secret',
+            'type': 'crypt',
+            'parameters': {'remote': 'gdrive:My Files/vault'},
+          }),
+          isNull,
+        );
+        expect(
+          rcParamsViolation('config/create', {
+            'name': 'u',
+            'type': 'union',
+            'parameters': {'upstreams': 'a:x b:y:ro'},
+          }),
+          isNull,
+        );
+        expect(
+          rcParamsViolation('config/create', {
+            'name': 'here',
+            'type': 'local',
+            'parameters': <String, dynamic>{},
+          }),
+          isNull,
+        );
+      });
+    });
+
+    group('global options on any method', () {
+      test('in a _config block', () {
+        for (final key in [
+          'MetadataMapper',
+          'metadata_mapper',
+          'PasswordCommand',
+        ]) {
+          expect(
+            rcParamsViolation('sync/copy', {
+              'srcFs': 'a:',
+              'dstFs': 'b:',
+              '_config': {key: 'id'},
+            }),
+            isNotNull,
+            reason: key,
+          );
+        }
+      });
+
+      test('as a flat top-level parameter', () {
+        expect(
+          rcParamsViolation('operations/list', {
+            'fs': 'a:',
+            'remote': '',
+            'metadata_mapper': 'id',
+          }),
+          isNotNull,
+        );
+      });
+
+      test('a name_transform that runs a command', () {
+        expect(
+          rcParamsViolation('sync/copy', {
+            'srcFs': 'a:',
+            'dstFs': 'b:',
+            '_config': {
+              'NameTransform': ['command=/bin/id'],
+            },
+          }),
+          isNotNull,
+        );
+        expect(
+          rcParamsViolation('sync/copy', {
+            'srcFs': 'a:',
+            'dstFs': 'b:',
+            '_config': {
+              'NameTransform': ['nfc'],
+            },
+          }),
+          isNull,
+        );
+      });
+
+      /// The transfer options the app itself puts in _config.
+      test('the options the app sends still pass', () {
+        expect(
+          rcParamsViolation('sync/sync', {
+            'srcFs': 'a:',
+            'dstFs': 'b:',
+            '_async': true,
+            '_config': {
+              'IgnoreExisting': true,
+              'Transfers': 4,
+              'MaxDelete': 10,
+              'Checksum': true,
+            },
+            '_filter': {
+              'IncludeRule': ['*.jpg'],
+            },
+          }),
+          isNull,
+        );
+      });
+    });
+
+    group('fs values', () {
+      for (final bad in [
+        ':sftp,host=h,ssh=id:',
+        ':sftp:',
+        ':webdav,url=http://x:',
+        'gdrive,ssh=id:',
+        "nas,ssh='id -a':/",
+        'nas,server_command=x:',
+        ':local,copy_links=true,ssh=x:/',
+      ]) {
+        test('"$bad" is refused', () {
+          expect(fsValueViolation(bad), isNotNull);
+          expect(
+            rcParamsViolation('operations/list', {'fs': bad, 'remote': ''}),
+            isNotNull,
+          );
+        });
+      }
+
+      test('the JSON-object form of fs is refused', () {
+        expect(
+          rcParamsViolation('operations/list', {
+            'fs': {'type': 'sftp', 'ssh': 'id', '_root': '/'},
+            'remote': '',
+          }),
+          isNotNull,
+        );
+      });
+
+      test('srcFs, dstFs and bisync paths are checked too', () {
+        for (final key in ['srcFs', 'dstFs', 'path1', 'path2']) {
+          expect(
+            rcParamsViolation('sync/copy', {key: ':sftp:'}),
+            isNotNull,
+            reason: key,
+          );
+        }
+      });
+
+      /// Every shape the app itself sends. `listFsFor` puts copy_links on
+      /// local listings, in both of these forms.
+      for (final good in [
+        'gdrive:',
+        'gdrive:Photos/2024',
+        'My Drive:a,b:c',
+        '/',
+        '/home/me/a,b:c',
+        'C:/',
+        r'C:\Users\me',
+        ':local,copy_links=true:C:/',
+        ':local,copy_links=true:/',
+        ':local:/home',
+        'mylocal,copy_links=true:docs',
+      ]) {
+        test('"$good" passes', () {
+          expect(fsValueViolation(good), isNull);
+        });
+      }
+
+      test('remote is a path, not a remote, and is not inspected', () {
+        expect(
+          rcParamsViolation('operations/list', {
+            'fs': 'gdrive:',
+            'remote': 'weird,name:with colon',
+          }),
+          isNull,
+        );
+      });
+    });
+  });
 }

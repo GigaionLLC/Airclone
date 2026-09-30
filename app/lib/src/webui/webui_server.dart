@@ -462,11 +462,18 @@ class WebUiServer {
     // the method name does not suggest. rcPolicyFor never sees params, and the
     // client-side rules for both run in the browser, where a direct POST to
     // this endpoint never executes them. See webui_param_guards.dart.
-    final paramViolation = switch (method) {
-      'serve/start' => serveStartViolation(params),
-      'operations/copyurl' => await copyUrlViolation(params),
-      _ => null,
-    };
+    //
+    // rcParamsViolation runs first and for EVERY method: program-running
+    // options (sftp `ssh`, `*_command`, `metadata_mapper`...) and on-the-fly
+    // remotes in `fs`/`srcFs`/`dstFs` ride in the parameters of methods that
+    // are otherwise harmless, and would turn a session into command execution.
+    final paramViolation =
+        rcParamsViolation(method, params) ??
+        switch (method) {
+          'serve/start' => serveStartViolation(params),
+          'operations/copyurl' => await copyUrlViolation(params),
+          _ => null,
+        };
     if (paramViolation != null) {
       log(
         WebUiLogLevel.warning,
@@ -556,6 +563,17 @@ class WebUiServer {
         'error': 'That destination path is not allowed.',
       });
     }
+    // The same fs rule as /api/rc: an on-the-fly remote or inline option
+    // here would define a backend (sftp `ssh=...`) that runs a program.
+    final fsProblem = fsValueViolation(fs);
+    if (fsProblem != null) {
+      await request.drain<void>();
+      log(
+        WebUiLogLevel.warning,
+        'Web UI refused an upload from ${_peerKey(request)}: $fsProblem',
+      );
+      return _json(request, HttpStatus.forbidden, {'error': fsProblem});
+    }
 
     final client = engineClient();
     if (client is! ObjectUploader) {
@@ -598,6 +616,14 @@ class WebUiServer {
       return _json(request, HttpStatus.badRequest, {
         'error': 'fs and remote are required.',
       });
+    }
+    final fsProblem = fsValueViolation(fs);
+    if (fsProblem != null) {
+      log(
+        WebUiLogLevel.warning,
+        'Web UI refused an object read from ${_peerKey(request)}: $fsProblem',
+      );
+      return _json(request, HttpStatus.forbidden, {'error': fsProblem});
     }
 
     // A download is a CONTENT read, and this repo's standing rule is that every

@@ -20,9 +20,28 @@
 /// **What this does and does not protect.** The operator is authenticated and is
 /// the administrator of this Airclone; the allowlist is not there to restrain
 /// them. It is defence in depth for the cases that actually happen: a stolen or
-/// leaked session, a compromised browser, and an accidentally exposed port. In
-/// each of those, the difference between "can browse and copy files" and "can
-/// run arbitrary commands as the user running rclone" is the whole game.
+/// leaked session, a compromised browser, and an accidentally exposed port.
+///
+/// What it buys in those cases is narrower than "browse and copy files", and
+/// an operator should know exactly how much narrower:
+///
+///  * **It stops rclone running a program for the session directly.** The
+///    method list keeps `core/command` out, and `rcParamsViolation` in
+///    `webui_param_guards.dart` refuses the parameters that do the same thing
+///    through an allowed method - program-running backend options (`ssh`,
+///    `*_command`), global ones (`metadata_mapper`, `password_command`), and
+///    on-the-fly remotes that could carry either. The method list alone did
+///    NOT do this, whatever an earlier version of this comment implied.
+///  * **It does not make a session less than the host user.** A session can
+///    read every credential in the rclone config (see `config/dump` below),
+///    and can read and write any file the user running Airclone can, through
+///    a `local` remote or a local path - browsing the host's own disk is a Web
+///    UI feature. Writing into a login script or an autostart folder is code
+///    execution at the next login, and nothing here prevents it.
+///
+/// So treat a Web UI session - and therefore its password - as equivalent to
+/// a login as the user running Airclone, and bind it beyond loopback only on
+/// that basis.
 library;
 
 /// Methods that must NEVER be reachable from a browser, with the reason.
@@ -66,9 +85,12 @@ const Set<String> kAllowedRcMethods = {
 
   // ── Remotes and configuration ───────────────────────────────────────────
   // config/create and config/update can define a `local` remote pointing
-  // anywhere on the host. That grants nothing new: browsing the host's own
-  // filesystem is the entire point of the Web UI, and is already reachable
-  // through operations/list.
+  // anywhere on the host. That grants nothing operations/list on a local path
+  // does not already grant - browsing the host's own filesystem is a Web UI
+  // feature - but that is full read/write as the host user, not "nothing".
+  // They can ALSO set options that make rclone run a program (sftp `ssh`,
+  // webdav `bearer_token_command`...); those are refused by parameter, in
+  // rcParamsViolation, not here.
   //
   // config/dump and config/get RETURN EVERY REMOTE'S CREDENTIALS, and rclone's
   // obscuring is reversible (`rclone reveal`). They are allowed anyway, and the

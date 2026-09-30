@@ -512,6 +512,30 @@ void main() {
       await res.drain<void>();
     });
 
+    test('an on-the-fly remote is refused for uploads too', () async {
+      final cookie = await signIn();
+      final res = await send(
+        'POST',
+        '/api/upload?fs=${Uri.encodeQueryComponent(':sftp,ssh=id:')}'
+            '&remote=a.txt',
+        cookie: cookie,
+      );
+      expect(res.statusCode, HttpStatus.forbidden);
+      await res.drain<void>();
+    });
+
+    test('and for object reads', () async {
+      final cookie = await signIn();
+      final res = await send(
+        'GET',
+        '/api/object?fs=${Uri.encodeQueryComponent('nas,ssh=id:')}'
+            '&remote=a.txt',
+        cookie: cookie,
+      );
+      expect(res.statusCode, HttpStatus.forbidden);
+      await res.drain<void>();
+    });
+
     test(
       'an engine that cannot upload says so, rather than failing oddly',
       () async {
@@ -718,6 +742,37 @@ void main() {
       });
       expect(status, HttpStatus.forbidden);
       expect(calls, isNot(contains('operations/copyurl')));
+    });
+
+    test(
+      'an sftp remote with an ssh command never reaches the engine',
+      () async {
+        final (status, calls) = await rc('config/create', {
+          'name': 'x',
+          'type': 'sftp',
+          'parameters': {'host': 'h', 'ssh': 'touch /tmp/pwned'},
+        });
+        expect(status, HttpStatus.forbidden);
+        expect(calls, isNot(contains('config/create')));
+      },
+    );
+
+    test('an on-the-fly remote in fs never reaches the engine', () async {
+      final (status, calls) = await rc('operations/list', {
+        'fs': ":sftp,host=h,ssh='touch /tmp/pwned':",
+        'remote': '',
+      });
+      expect(status, HttpStatus.forbidden);
+      expect(calls, isNot(contains('operations/list')));
+    });
+
+    test('a local listing the app itself sends is forwarded', () async {
+      final (status, calls) = await rc('operations/list', {
+        'fs': ':local,copy_links=true:/',
+        'remote': '',
+      });
+      expect(status, isNot(HttpStatus.forbidden));
+      expect(calls, contains('operations/list'));
     });
 
     /// Everything else is untouched: the guard must not become a second,

@@ -1,4 +1,4 @@
-/// Server-side checks on the PARAMETERS of two allowlisted RC methods.
+/// Server-side checks on the PARAMETERS of allowlisted RC methods.
 ///
 /// The allowlist in `webui_rc_policy.dart` decides which methods a Web UI
 /// session may call. It never sees their parameters, and for these two that is
@@ -23,6 +23,7 @@
 /// and is unaffected.
 library;
 
+import 'dart:convert';
 import 'dart:io';
 
 /// Resolves a hostname to addresses. Injected so tests never touch DNS.
@@ -296,4 +297,314 @@ bool _nonPublicV4(List<int> b) {
       (o0 == 192 && o1 == 0 && b[2] == 0) || // 192.0.0/24 IETF protocol
       (o0 == 198 && (o1 == 18 || o1 == 19)) || // 198.18/15 benchmarking
       o0 >= 224; // multicast, reserved, broadcast
+}
+
+// ── Every forwarded method: program-running options and on-the-fly remotes ──
+
+/// Why any forwarded RC request must be refused, or null when it may proceed.
+///
+/// The method allowlist keeps `core/command` out, but rclone has other ways to
+/// make the HOST run a program, and every one of them rides in a parameter of
+/// a method that is allowed:
+///
+///  * **Backend options that name a program.** `sftp`'s `ssh` and
+///    `server_command`, `webdav`'s `bearer_token_command`. Create a remote with
+///    one (`config/create`, `config/update`) and the next `operations/list` on
+///    it runs that program as the user running rclone.
+///  * **The same options, inline.** An `fs` of `:sftp,ssh='...':` or
+///    `gdrive,ssh=...:` defines them on the fly with no `config/create` at
+///    all, and rclone also accepts an `fs` given as a JSON OBJECT of options.
+///    A wrapper remote (`alias`, `crypt`, `union`...) whose `remote` or
+///    `upstreams` is such a spec does the same one level down.
+///  * **Global options.** `password_command`, `metadata_mapper` and a
+///    `name_transform` with a `command=` step all run a program. rclone reads
+///    them from a `_config` block on ANY call, and - since 1.75 - also from a
+///    top-level parameter of the same name.
+///
+/// None of these is anything the app sends. The one inline form it does send
+/// is `copy_links=true` on a LOCAL listing (`listFsFor` in
+/// `rclone/models/remote.dart`), which [kSafeInlineFsParams] admits.
+///
+/// What this does NOT change: a session can still create a `local` remote and
+/// read or write any file the Airclone user can - browsing the host's own
+/// disk is a Web UI feature. See the header of `webui_rc_policy.dart`.
+String? rcParamsViolation(String method, Map<String, dynamic> params) {
+  final commandKey = _commandOptionIn(params);
+  if (commandKey != null) return _runsAProgram(commandKey);
+
+  if (params.containsKey('_config')) {
+    final config = _asMap(params['_config']);
+    if (config == null) return 'The Web UI could not read the _config block.';
+    final key = _commandOptionIn(config);
+    if (key != null) return _runsAProgram(key);
+  }
+
+  for (final key in kFsParamKeys) {
+    if (!params.containsKey(key)) continue;
+    final problem = fsValueViolation(params[key]);
+    if (problem != null) return problem;
+  }
+
+  if (method == 'config/create' || method == 'config/update') {
+    if (params.containsKey('parameters')) {
+      final parameters = _asMap(params['parameters']);
+      if (parameters == null) {
+        return 'The Web UI could not read the remote parameters.';
+      }
+      final key = _commandOptionIn(parameters);
+      if (key != null) {
+        return 'The Web UI cannot set "$key" on a remote: it makes rclone run '
+            'a program on the host. Set it from the Airclone app on that '
+            'machine instead.';
+      }
+      for (final nested in const ['remote', 'upstreams']) {
+        final value = parameters[nested];
+        if (value == null) continue;
+        if (value is! String) return 'The "$nested" parameter must be text.';
+        // A quoted inline option can hide a space, which the split below
+        // would cut in half. Quotes AND a comma is never something the app
+        // writes, so it is refused rather than parsed.
+        if (value.contains(',') &&
+            (value.contains('"') || value.contains("'"))) {
+          return 'The Web UI does not accept inline remote options in '
+              '"$nested".';
+        }
+        for (final token in _upstreamTokens(value)) {
+          final problem = fsValueViolation(token);
+          if (problem != null) return problem;
+        }
+      }
+    }
+  }
+  return null;
+}
+
+String _runsAProgram(String key) =>
+    'The Web UI does not accept the "$key" option: it makes rclone run a '
+    'program on the host.';
+
+/// RC parameters rclone resolves as a remote (`fs.Fs`), not as a path in one.
+///
+/// `remote`, `srcRemote` and `dstRemote` are NOT here: rclone reads those as a
+/// plain path inside the `fs` (`rc.GetFsAndRemote`), never as a remote spec,
+/// so a file genuinely named `a,b:c` must keep working.
+const Set<String> kFsParamKeys = {
+  'fs',
+  'srcFs',
+  'dstFs',
+  'path1',
+  'path2',
+  'backupdir1',
+  'backupdir2',
+};
+
+/// Inline (connection-string) parameters an `fs` may carry from the Web UI.
+///
+/// Only what the app itself sends. Anything else a user needs on a remote
+/// belongs in its saved config, where [rcParamsViolation] checks it.
+const Set<String> kSafeInlineFsParams = {'copy_links'};
+
+/// On-the-fly backends (`:type:path`) an `fs` may name from the Web UI.
+const Set<String> kSafeInlineBackends = {'local'};
+
+/// Why an `fs`-style value must be refused, or null when it may proceed.
+///
+/// Mirrors rclone's own `fspath.Parse`, because the question is not what the
+/// string looks like but what rclone will do with it: `/a,b:c` is a local
+/// path, `C:\x` is a drive letter, `gdrive:` is a named remote, and
+/// `gdrive,ssh=x:` and `:sftp:` are remotes defined on the fly.
+String? fsValueViolation(Object? value) {
+  if (value == null) return null;
+  if (value is! String) {
+    // rclone turns a JSON object into `:type,key=value:root` - an on-the-fly
+    // remote with arbitrary options - so the object form is refused outright.
+    return 'The Web UI only accepts a remote as text, not as a set of options.';
+  }
+  final parsed = parseFsSpec(value);
+  if (parsed == null) return 'That remote could not be read.';
+  if (parsed.onTheFly && !kSafeInlineBackends.contains(parsed.name)) {
+    return 'The Web UI does not accept on-the-fly remotes like '
+        '":${parsed.name}:". Add the remote in Airclone first, then use it by '
+        'name.';
+  }
+  final extra = parsed.params.keys.where(
+    (k) => !kSafeInlineFsParams.contains(k.toLowerCase()),
+  );
+  if (extra.isNotEmpty) {
+    return 'The Web UI does not accept inline remote options '
+        '(${extra.join(', ')}). Save them in the remote instead.';
+  }
+  return null;
+}
+
+/// A remote spec as rclone splits it: `name,key=value,...:path`.
+class FsSpec {
+  const FsSpec({
+    required this.name,
+    required this.onTheFly,
+    required this.params,
+  });
+
+  /// The remote name, the backend type when [onTheFly], or empty for a local
+  /// path.
+  final String name;
+
+  /// True for `:type...:` - a backend with no saved config behind it.
+  final bool onTheFly;
+
+  /// Inline parameters, empty when there are none.
+  final Map<String, String> params;
+}
+
+/// Splits [path] the way rclone's `fspath.Parse` (1.75.1) does, or returns
+/// null where rclone would refuse it too.
+///
+/// Only the NAME and PARAMETER part is modelled - the path after the colon
+/// does not change which backend rclone builds.
+FsSpec? parseFsSpec(String path) {
+  const local = FsSpec(name: '', onTheFly: false, params: {});
+  if (path.isEmpty) return null;
+  if (!path.contains(':')) return local;
+  final onTheFly = path.startsWith(':');
+  var i = onTheFly ? 1 : 0;
+  // The name, up to the first ':' or ','.
+  while (i < path.length) {
+    final c = path[i];
+    if (c == '/' || c == '\\') {
+      // A separator before any ':' or ',' makes it a local path - unless it
+      // started with ':', which rclone rejects.
+      return onTheFly ? null : local;
+    }
+    if (c == ':' || c == ',') break;
+    i++;
+  }
+  if (i >= path.length) return null;
+  final name = path.substring(onTheFly ? 1 : 0, i);
+  if (name.isEmpty) return null;
+  if (path[i] == ':') {
+    // `C:` and friends: rclone treats a single-letter name as a drive.
+    if (!onTheFly && _isDriveLetter(name)) return local;
+    return FsSpec(name: name, onTheFly: onTheFly, params: const {});
+  }
+  // Parameters: key[=value][,key[=value]]...:  with optional '' or "" quoting.
+  final params = <String, String>{};
+  i++; // past the ','
+  while (true) {
+    final keyStart = i;
+    while (i < path.length && !':,='.contains(path[i])) {
+      i++;
+    }
+    if (i >= path.length) return null;
+    final key = path.substring(keyStart, i);
+    if (key.isEmpty) return null;
+    if (path[i] != '=') {
+      params[key] = 'true';
+      if (path[i] == ':') break;
+      i++;
+      continue;
+    }
+    i++; // past '='
+    String value;
+    if (i < path.length && (path[i] == '"' || path[i] == "'")) {
+      final quote = path[i];
+      final buf = StringBuffer();
+      i++;
+      while (true) {
+        if (i >= path.length) return null;
+        if (path[i] == quote) {
+          if (i + 1 < path.length && path[i + 1] == quote) {
+            buf.write(quote);
+            i += 2;
+            continue;
+          }
+          i++;
+          break;
+        }
+        buf.write(path[i]);
+        i++;
+      }
+      if (i >= path.length || (path[i] != ':' && path[i] != ',')) return null;
+      value = buf.toString();
+    } else {
+      final valueStart = i;
+      while (i < path.length && path[i] != ':' && path[i] != ',') {
+        i++;
+      }
+      if (i >= path.length) return null;
+      value = path.substring(valueStart, i);
+    }
+    params[key] = value;
+    if (path[i] == ':') break;
+    i++;
+  }
+  return FsSpec(name: name, onTheFly: onTheFly, params: params);
+}
+
+bool _isDriveLetter(String s) =>
+    s.length == 1 && RegExp(r'^[A-Za-z]$').hasMatch(s);
+
+/// The first key in [m] that names an option which makes rclone run a
+/// program, or null.
+///
+/// Matched on a normalised name - lower case, `_` and `-` removed - because
+/// rclone accepts both the config spelling (`password_command`) and the Go
+/// field spelling (`PasswordCommand`) depending on where the option rides.
+///
+/// The list is every option in rclone 1.75.1 whose value reaches
+/// `exec.Command`: `ssh`, `server_command` (sftp), `bearer_token_command`
+/// (webdav), `password_command`, `metadata_mapper`, and `name_transform` when
+/// it has a `command=` step. Anything ENDING in `command` is refused as well,
+/// so a future option that follows rclone's naming is caught before anyone
+/// reads its release notes.
+String? _commandOptionIn(Map<String, dynamic> m) {
+  for (final entry in m.entries) {
+    final n = entry.key.toLowerCase().replaceAll(RegExp('[_-]'), '');
+    if (n.endsWith('command') || n == 'ssh' || n == 'metadatamapper') {
+      return entry.key;
+    }
+    if (n == 'nametransform' &&
+        '${entry.value}'.toLowerCase().contains('command')) {
+      return entry.key;
+    }
+  }
+  return null;
+}
+
+/// [raw] as a map, whether it arrived as a JSON object or as a JSON string of
+/// one (rclone accepts both), or null when it is neither.
+Map<String, dynamic>? _asMap(Object? raw) {
+  if (raw == null) return const {};
+  if (raw is Map) return raw.cast<String, dynamic>();
+  if (raw is String) {
+    if (raw.trim().isEmpty) return const {};
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is Map) return decoded.cast<String, dynamic>();
+    } on FormatException {
+      return null;
+    }
+  }
+  return null;
+}
+
+/// The remote specs inside a wrapper remote's `remote` / `upstreams` value.
+///
+/// `union` takes `a:path b:path:ro`, `combine` takes `dir=a:path`, both
+/// space-separated with optional quotes; everything else is a single spec.
+Iterable<String> _upstreamTokens(String value) sync* {
+  for (var token in value.split(RegExp(r'\s+'))) {
+    if (token.isEmpty) continue;
+    token = token.replaceAll('"', '').replaceAll("'", '');
+    // combine's `dir=remote:path`: drop the label, but only when the '=' comes
+    // before any ':' or ',' - otherwise it belongs to an inline option.
+    final eq = token.indexOf('=');
+    if (eq >= 0) {
+      final colon = token.indexOf(':');
+      final comma = token.indexOf(',');
+      if ((colon < 0 || eq < colon) && (comma < 0 || eq < comma)) {
+        token = token.substring(eq + 1);
+      }
+    }
+    if (token.isNotEmpty) yield token;
+  }
 }
