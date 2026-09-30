@@ -268,17 +268,24 @@ in the Mac App Store build. When it has been switched off by policy the dialog s
 
 4. **Port** — pre-filled with the default for the protocol; change it if something else is using it.
 5. **Reachable from** — `This device only` (the default) or `My local network`.
-6. **Read-only** — a switch, off by default. Turn it on if the other end should not be able to change
+6. **Username** and **Password** — for HTTP, WebDAV, FTP and SFTP these come filled in: username
+   `airclone` and a new random password, which is shown in the field (the eye button hides it, the
+   refresh button makes a new one). Use them wherever you connect from. Clearing both serves
+   without a password, which is only allowed for `This device only`.
+7. **Read-only** — a switch, off by default. Turn it on if the other end should not be able to change
    or delete anything.
-7. Press **Start server**.
+8. Press **Start server**.
 
 ### What the app refuses, and why
 
 - **`This device only` is the default.** It binds to your machine's loopback address, so nothing
   outside the computer can connect, whatever your firewall is set to.
-- **A network server must have a username and password.** Choosing `My local network` on HTTP,
-  WebDAV, FTP or SFTP makes the Username and Password fields appear, and `Start server` stays
-  disabled until both are filled in. This is enforced where the server is actually started, not just
+- **It still has a password by default.** "This device only" keeps other computers out, not other
+  programs on this one: another account on the machine, or a web page using a trick called DNS
+  rebinding, could otherwise read and change the served files. You can clear the password; the
+  dialog then says `No password: any program or web page on this device can open this server.`
+- **A network server must have a username and password.** On `My local network`, HTTP, WebDAV, FTP
+  and SFTP keep `Start server` disabled until both fields are filled in. This is enforced where the server is actually started, not just
   in the dialog, so there is no path to an unauthenticated server on your network.
 - **DLNA has to be acknowledged instead.** DLNA cannot authenticate at all, so serving it to your
   network shows a tick box you have to confirm:
@@ -310,6 +317,8 @@ Each row has:
 
 - **Open in browser** — only for HTTP and WebDAV, which browsers can speak.
 - **Copy URL** — puts the address on the clipboard to paste into another device.
+- **Copy password** (a key) — on servers started with a password in this session; the row also
+  shows the username.
 - **Stop**.
 
 **Stop all** at the top right stops every running server at once.

@@ -131,6 +131,43 @@ void main() {
       }
     });
 
+    /// The panel now fills in a password for loopback serves too (DNS
+    /// rebinding and other local programs reach 127.0.0.1). The controller
+    /// must forward it, and remember it so the running row can copy it.
+    test(
+      'loopback bind forwards credentials when given, and remembers them',
+      () async {
+        final client = _CapturingClient()
+          ..onRpc = (method, _) => method == 'serve/list'
+              ? {
+                  'list': [
+                    {
+                      'id': 'webdav-1',
+                      'addr': '127.0.0.1:8080',
+                      'params': {'type': 'webdav', 'fs': 'gd:'},
+                    },
+                  ],
+                }
+              : {'id': 'webdav-1', 'addr': '127.0.0.1:8080'};
+        final c = _container(client);
+        final ctl = c.read(serveControllerProvider.notifier);
+        final pass = generateServePassword();
+        await ctl.start(
+          type: 'webdav',
+          fs: 'gd:',
+          lan: false,
+          port: 8080,
+          user: kDefaultServeUser,
+          pass: pass,
+        );
+        final call = client.calls.firstWhere((c) => c.method == 'serve/start');
+        expect(call.params!['addr'], '127.0.0.1:8080');
+        expect(call.params!['user'], kDefaultServeUser);
+        expect(call.params!['pass'], pass);
+        expect(ctl.credentialsFor('webdav-1')?.pass, pass);
+      },
+    );
+
     test('LAN auth-capable serve REFUSES without user+pass (no rpc)', () async {
       final client = _CapturingClient();
       final c = _container(client);
@@ -187,6 +224,21 @@ void main() {
       expect(client.calls.any((c) => c.method == 'serve/start'), isFalse);
       await c.read(serveControllerProvider.notifier).panicStopAll();
       expect(client.calls.any((c) => c.method == 'serve/stopall'), isTrue);
+    });
+  });
+
+  group('generateServePassword', () {
+    test('is 20 unambiguous characters', () {
+      final p = generateServePassword();
+      expect(p, hasLength(20));
+      expect(RegExp(r'^[a-km-zA-HJ-NP-Z2-9]+$').hasMatch(p), isTrue, reason: p);
+      expect(p, isNot(contains('0')));
+      expect(p, isNot(contains('l')));
+    });
+
+    test('is different every time', () {
+      final seen = {for (var i = 0; i < 50; i++) generateServePassword()};
+      expect(seen, hasLength(50));
     });
   });
 }
