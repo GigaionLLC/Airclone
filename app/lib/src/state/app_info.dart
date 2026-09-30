@@ -89,7 +89,7 @@ final updateCheckProvider = FutureProvider<UpdateStatus>((ref) async {
   }
   final json = jsonDecode(res.body) as Map<String, dynamic>;
   final tag = (json['tag_name'] as String?) ?? '';
-  final url = (json['html_url'] as String?) ?? '';
+  final url = releasePageUrl(json['html_url'] as String?);
   // A release counts as an update when it is STRICTLY NEWER. This used to ask
   // whether the tag contained our version, which told every 0.9.1 user they
   // were up to date for the whole of 0.9.10's life - "v0.9.10" contains
@@ -103,3 +103,23 @@ final updateCheckProvider = FutureProvider<UpdateStatus>((ref) async {
     url: url,
   );
 });
+
+/// Where "view release" may point: the release page GitHub reported, if it is
+/// on this project's own repository, otherwise the latest-release page.
+///
+/// The button hands this URL to the OS. It comes from a network response, and
+/// an update check is the wrong place to let a response choose what the user's
+/// browser opens.
+String releasePageUrl(String? reported) {
+  const repo = 'https://github.com/GigaionLLC/Airclone/';
+  final uri = reported == null ? null : Uri.tryParse(reported);
+  if (uri != null &&
+      uri.scheme == 'https' &&
+      uri.host == 'github.com' &&
+      uri.userInfo.isEmpty &&
+      !uri.hasPort &&
+      reported!.startsWith(repo)) {
+    return reported;
+  }
+  return '${repo}releases/latest';
+}
