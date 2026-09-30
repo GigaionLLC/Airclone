@@ -708,10 +708,19 @@ class WebUiServer {
       final value = upstreamResponse.headers.value(header);
       if (value != null) response.headers.set(header, value);
     }
+    // Cloud content is untrusted, and this is the Web UI's own origin: an
+    // `.html` or `.svg` rendered here, or a `.js` loaded as a script, would run
+    // with the session. `sandbox` makes any document this becomes an opaque,
+    // script-less origin; active types are never rendered inline at all. The
+    // app itself fetches previews (images, media, PDF, text) as data, which
+    // neither header affects.
+    response.headers.set('Content-Security-Policy', 'sandbox');
+    response.headers.set('Cross-Origin-Resource-Policy', 'same-origin');
     // `?download=1` turns a preview into a save. Everything else about the
     // request is identical — same proxy, same Range support — so this is a
     // header, not a second code path.
-    if (request.uri.queryParameters['download'] == '1') {
+    if (request.uri.queryParameters['download'] == '1' ||
+        isActiveContentType(upstreamResponse.headers.contentType)) {
       response.headers.set(
         'Content-Disposition',
         contentDispositionAttachment(remote),
@@ -854,4 +863,21 @@ String contentDispositionAttachment(String remotePath) {
   final safeAscii = ascii.isEmpty ? 'download' : ascii;
   final encoded = Uri.encodeComponent(name);
   return "attachment; filename=\"$safeAscii\"; filename*=UTF-8''$encoded";
+}
+
+/// Content types a browser would EXECUTE if a same-origin page navigated to or
+/// included them: HTML and XML documents (SVG included) and scripts.
+/// `/api/object` always serves these as attachments.
+bool isActiveContentType(ContentType? type) {
+  if (type == null) return false;
+  final mime = type.mimeType.toLowerCase();
+  return mime == 'text/html' ||
+      mime == 'application/xhtml+xml' ||
+      mime == 'image/svg+xml' ||
+      mime == 'text/xml' ||
+      mime == 'application/xml' ||
+      mime == 'text/javascript' ||
+      mime == 'application/javascript' ||
+      mime == 'application/ecmascript' ||
+      mime == 'text/ecmascript';
 }
