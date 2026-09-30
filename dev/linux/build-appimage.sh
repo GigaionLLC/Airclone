@@ -44,6 +44,13 @@ TOOLS="${APPIMAGE_TOOLS:-$HOME/.cache/airclone-appimage-tools}"
 # maintainer can see.
 LINUXDEPLOY_URL="https://github.com/linuxdeploy/linuxdeploy/releases/download/1-alpha-20240109-1/linuxdeploy-x86_64.AppImage"
 APPIMAGETOOL_URL="https://github.com/AppImage/appimagetool/releases/download/1.9.0/appimagetool-x86_64.AppImage"
+# ...and pinned by CONTENT, not just by tag. A release asset on someone else's
+# repository can be replaced without the tag moving, and both tools run with
+# whatever the release job holds - then build the AppImage users download.
+# Hashes taken on 2026-09-29 from the assets at the URLs above (GitHub's API
+# publishes no digest for assets this old). Bumping a URL means bumping its hash.
+LINUXDEPLOY_SHA256="c86d6540f1df31061f02f539a2d3445f8d7f85cc3994eee1e74cd1ac97b76df0"
+APPIMAGETOOL_SHA256="46fdd785094c7f6e545b61afcfb0f3d98d8eab243f644b4b17698c01d06083d1"
 
 say() { printf '\n== %s\n' "$*"; }
 
@@ -64,14 +71,28 @@ command -v desktop-file-validate >/dev/null || {
 
 say "Fetching packaging tools"
 mkdir -p "$TOOLS"
-fetch() { # url dest
-  [ -x "$2" ] && { echo "  cached $(basename "$2")"; return; }
+sha_ok() { # file sha256
+  [ -f "$1" ] && [ "$(sha256sum "$1" | cut -d' ' -f1)" = "$2" ]
+}
+fetch() { # url dest sha256
+  if [ -x "$2" ] && sha_ok "$2" "$3"; then
+    echo "  cached $(basename "$2")"
+    return
+  fi
   echo "  downloading $(basename "$2")"
-  curl -fsSL --retry 3 -o "$2" "$1"
+  curl -fsSL --retry 3 -o "$2.part" "$1"
+  if ! sha_ok "$2.part" "$3"; then
+    echo "SHA-256 mismatch for $1 - refusing to run it." >&2
+    echo "  expected $3" >&2
+    echo "  got      $(sha256sum "$2.part" | cut -d' ' -f1)" >&2
+    rm -f "$2.part"
+    exit 1
+  fi
+  mv -f "$2.part" "$2"
   chmod +x "$2"
 }
-fetch "$LINUXDEPLOY_URL" "$TOOLS/linuxdeploy"
-fetch "$APPIMAGETOOL_URL" "$TOOLS/appimagetool"
+fetch "$LINUXDEPLOY_URL" "$TOOLS/linuxdeploy" "$LINUXDEPLOY_SHA256"
+fetch "$APPIMAGETOOL_URL" "$TOOLS/appimagetool" "$APPIMAGETOOL_SHA256"
 
 # Both tools are themselves AppImages. A CI container (and WSL) often has no
 # FUSE, and mounting would fail with a message that reads like a build error, so
