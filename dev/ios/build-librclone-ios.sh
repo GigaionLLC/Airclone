@@ -21,7 +21,7 @@
 # Usage: dev/ios/build-librclone-ios.sh [-v RCLONE_VERSION] [-o OUT_DIR]
 set -euo pipefail
 
-RCLONE_VERSION="v1.75.0"
+RCLONE_VERSION="v1.75.1"
 MIN_VERSION="13.0"          # must match IPHONEOS_DEPLOYMENT_TARGET
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 OUT_DIR="${REPO_ROOT}/app/ios/librclone"
