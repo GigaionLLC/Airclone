@@ -82,8 +82,12 @@ rclone rcd <user extraArgs…> --rc-addr 127.0.0.1:<free port> --rc-user airclon
   loopback bind and per-session credentials always override anything pasted into the engine-flags
   setting.
 - `RCLONE_CONFIG_PASS` travels via **env only**, never argv.
-- Orphan containment: `WindowsChildJob.adopt(pid)` on spawn, plus a PID marker at
-  `<systemTemp>/airclone_rcd.pid` reaped on the next launch (skipped on Android).
+- Orphan containment: `WindowsChildJob.adopt(pid)` on spawn, plus a per-instance PID marker
+  (`airclone_rcd_<ourPid>.pid`) reaped on the next launch (skipped on Android). The marker lives in
+  `reapMarkerDir()`: `$XDG_RUNTIME_DIR` on Linux (per user; `/tmp` until 2026-09, still swept under
+  its own lock for markers an older version left), the per-user temp dir elsewhere. A PID is killed
+  only if `looksLikeOurRcd` confirms it is still an `rclone … rcd` of ours (`/proc` cmdline, `ps`,
+  `tasklist`); anything unconfirmed is left running.
 - **Both** `stdout` and `stderr` are drained unconditionally, on every build — that is a pipe-deadlock
   fix, not a logging feature ([14-performance-standards.md §6](14-performance-standards.md)).
   **Retention is the separate decision:** debug prints every line, while a release build keeps only

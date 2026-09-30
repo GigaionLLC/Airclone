@@ -479,6 +479,9 @@ Off-screen thumbnail players obey the same reasoning from the other direction �
 - **Why:** the Job Object only helps a process that is still alive to hold it; the marker lets the
   *next* launch kill a leftover from a force-killed prior run. It records only the one PID we
   spawned — never a broad process-name match, which would kill the user's own rclone processes.
+  And a PID is not an identity: it is recycled after a crash, and a Linux marker used to sit in the
+  shared `/tmp`. So `looksLikeOurRcd` re-checks that the PID is still an `rclone … rcd` of ours
+  before the kill, and fails safe (no kill) when it cannot tell.
 - **Enforced in:** `_markerFile` / `_reapPreviousRcd` in
   [http_rclone_client.dart](../../packages/airclone_rc/lib/src/http_rclone_client.dart), called at the top of
   `start()`. Skipped on Android, where `systemTemp` is not app-writable and the OS kills the process
