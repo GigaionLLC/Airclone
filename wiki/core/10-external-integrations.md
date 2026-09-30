@@ -142,12 +142,15 @@ first hit wins:
 
 1. explicit settings override,
 2. **Android** → `bundledAndroidBinary()` and nothing else,
-3. the app-managed engine dir (`<applicationSupport>/engine/rclone[.exe]`),
-4. a binary bundled beside the executable (`bundledDesktopBinary()` — every desktop build ships one),
-5. `rclone` on `PATH` (`where` / `which`).
+3. the app-managed engine dir (`<applicationSupport>/engine/rclone[.exe]`) **or** a binary bundled
+   beside the executable (`bundledDesktopBinary()` — every desktop build ships one), whichever is
+   newer when both exist,
+4. `rclone` on `PATH` (`where` / `which`).
 
-Managed is checked **before** bundled deliberately, so a user-initiated engine update wins on the next
-launch.
+When both 3-candidates exist, each is asked `rclone version` and `pickNewerEngine` keeps the managed
+one unless the bundled one is **strictly** newer (a tie, or a bundled binary that cannot answer,
+keeps the managed one). Until 2026-09 the managed dir simply won, so a user-initiated update from
+months ago outranked every newer, security-fixed engine later app releases bundled.
 
 | Concern | Behaviour |
 | :--- | :--- |
@@ -155,6 +158,7 @@ launch.
 | **Download is fail-closed** | Resolves `downloads.rclone.org/version.txt`, fetches `rclone-<ver>-<os>-<arch>.zip`, and refuses to install if the official `SHA256SUMS` cannot be fetched, parsed for that zip name, or matched — a `StateError`, never an unverified engine. |
 | **Swap is recoverable** | Downloads land in a `.new` staging file; `installStaged` renames the current binary to `<managed>.old` (undone by `rollbackEngine`), with a 10×200 ms rename retry because Windows briefly holds a handle on a just-exited process's image. |
 | **Minimum version** | `minRcloneVersion = '1.73.5'`, enforced fail-closed — an unparseable version does **not** meet the minimum. |
+| **Security version** | `secureRcloneVersion = '1.75.1'` (archive zip-slip, listing and symlink escapes). Not a start gate — raising the floor would strand PATH, Store and Flatpak users with no in-app download — so below it only `archive extract` is refused (`ArchiveService.runJob` asks the binary it is about to spawn) and Settings shows a warning under the engine version. |
 
 ### 1.4 `LibrcloneObjectServer` — the in-process byte bridge
 

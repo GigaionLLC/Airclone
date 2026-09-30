@@ -1663,6 +1663,28 @@ class _EngineVersionSectionState extends ConsumerState<_EngineVersionSection> {
               ),
           ],
         ),
+        // Not a block - the engine still runs - but the one feature 1.75.1
+        // made safe is off until it is updated, and this is where the user
+        // can do that. See RcloneEngine.secureRcloneVersion.
+        if (running != null && !RcloneEngine.meetsSecureRclone(running)) ...[
+          const SizedBox(height: Space.x1),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(Icons.warning_amber_rounded, size: 14, color: c.warning),
+              const SizedBox(width: Space.x2),
+              Expanded(
+                child: Text(
+                  'This rclone is older than '
+                  '${RcloneEngine.secureRcloneVersion}, which fixed security '
+                  'issues. Extracting archives is off until the engine is '
+                  'updated.',
+                  style: TextStyle(color: c.warning, fontSize: 12),
+                ),
+              ),
+            ],
+          ),
+        ],
         if (_error != null) ...[
           const SizedBox(height: Space.x1),
           Text(_error!, style: TextStyle(color: c.error, fontSize: 12)),
