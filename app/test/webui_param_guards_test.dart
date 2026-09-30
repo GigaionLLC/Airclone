@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:airclone/src/state/config_transfer_controller.dart';
 import 'package:airclone/src/webui/webui_param_guards.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -363,7 +364,6 @@ void main() {
     group('config/create and config/update', () {
       for (final key in [
         'ssh',
-        'server_command',
         'bearer_token_command',
         'password_command',
         'some_future_command',
@@ -387,6 +387,172 @@ void main() {
           );
         });
       }
+
+      /// rclone WRITES `md5sum_command` / `sha1sum_command` into an sftp
+      /// section by itself after probing the server, and `server_command` is
+      /// a documented setting. All three run on the REMOTE host, so an
+      /// ordinary exported sftp remote must still import and edit.
+      test('sftp options that run on the server, not here, still pass', () {
+        expect(
+          rcParamsViolation(
+            'config/create',
+            importCreateBody('nas', {
+              'type': 'sftp',
+              'host': 'nas.lan',
+              'user': 'me',
+              'key_file': '~/.ssh/id_ed25519',
+              'shell_type': 'unix',
+              'md5sum_command': 'md5sum',
+              'sha1sum_command': 'sha1sum',
+              'server_command': 'sudo /usr/libexec/openssh/sftp-server',
+            }),
+          ),
+          isNull,
+        );
+      });
+
+      /// ...except as an ssh OPTION: with an external `ssh` program these
+      /// values become one of its arguments.
+      test('a server-side command that is really an ssh flag is refused', () {
+        for (final key in ['server_command', 'md5sum_command']) {
+          expect(
+            rcParamsViolation('config/update', {
+              'name': 'nas',
+              'parameters': {key: '-oProxyCommand=id'},
+            }),
+            isNotNull,
+            reason: key,
+          );
+        }
+      });
+
+      /// The edit form re-sends every field. A remote set up with a custom
+      /// `ssh` in the app must stay editable from the browser, as long as the
+      /// program itself is not changed there.
+      group('an unchanged saved value', () {
+        const saved = {
+          'type': 'sftp',
+          'host': 'nas.lan',
+          'ssh': 'ssh -i ~/.ssh/nas me@nas.lan',
+        };
+
+        test('passes when re-sent as it is', () {
+          expect(
+            rcParamsViolation('config/update', {
+              'name': 'nas',
+              'parameters': {
+                'host': 'nas.lan',
+                'ssh': 'ssh -i ~/.ssh/nas me@nas.lan',
+                'pass': 'new-password',
+              },
+              'opt': {'nonInteractive': true, 'obscure': true},
+            }, existingRemote: saved),
+            isNull,
+          );
+        });
+
+        test('is refused once changed', () {
+          expect(
+            rcParamsViolation('config/update', {
+              'name': 'nas',
+              'parameters': {'ssh': 'sh -c id'},
+            }, existingRemote: saved),
+            isNotNull,
+          );
+        });
+
+        test('is refused with no saved remote to compare with', () {
+          expect(
+            rcParamsViolation('config/update', {
+              'name': 'nas',
+              'parameters': {'ssh': 'ssh -i ~/.ssh/nas me@nas.lan'},
+            }),
+            isNotNull,
+          );
+        });
+
+        test('configCommandKeys says when the saved remote is needed', () {
+          expect(
+            configCommandKeys({
+              'name': 'nas',
+              'parameters': {'ssh': 'x', 'host': 'h'},
+            }),
+            ['ssh'],
+          );
+          expect(
+            configCommandKeys({
+              'name': 'nas',
+              'parameters': {'host': 'h', 'md5sum_command': 'md5sum'},
+            }),
+            isEmpty,
+          );
+        });
+      });
+
+      /// What import sends for the backends people actually have: every one
+      /// must pass. Values are shaped like a real rclone.conf section.
+      test('imported sections of common backends pass', () {
+        final sections = <String, Map<String, String>>{
+          'gdrive': {
+            'type': 'drive',
+            'scope': 'drive',
+            'token':
+                '{"access_token":"x","token_type":"Bearer","expiry":"2026-01-01T00:00:00Z"}',
+          },
+          'onedrive': {
+            'type': 'onedrive',
+            'drive_type': 'personal',
+            'token': '{"access_token":"x"}',
+          },
+          's3': {
+            'type': 's3',
+            'provider': 'AWS',
+            'access_key_id': 'AKIA',
+            'secret_access_key': 's,e:c"r\'et',
+            'region': 'eu-west-1',
+          },
+          'dav': {
+            'type': 'webdav',
+            'url': 'https://dav.example.com/remote.php/dav/files/me',
+            'vendor': 'nextcloud',
+            'user': 'me',
+            'pass': 'obscured',
+          },
+          'box': {'type': 'crypt', 'remote': 'gdrive:vault', 'password': 'x'},
+          'mix': {'type': 'union', 'upstreams': 'gdrive:a onedrive:b:ro'},
+          'here': {'type': 'alias', 'remote': '/srv/data'},
+          'win': {'type': 'alias', 'remote': r'C:\Users\me\Documents'},
+          'disk': {'type': 'local'},
+        };
+        for (final e in sections.entries) {
+          expect(
+            rcParamsViolation(
+              'config/create',
+              importCreateBody(e.key, e.value),
+            ),
+            isNull,
+            reason: e.key,
+          );
+        }
+      });
+
+      /// The interactive (OAuth) flow's continue step.
+      test('an Add Remote continue step passes', () {
+        expect(
+          rcParamsViolation('config/create', {
+            'name': 'gdrive',
+            'type': 'drive',
+            'parameters': {'config_is_local': 'false'},
+            'opt': {
+              'nonInteractive': true,
+              'continue': true,
+              'state': '*oauth-islocal,teamdrive,,',
+              'result': 'false',
+            },
+          }),
+          isNull,
+        );
+      });
 
       test('parameters sent as a JSON string are read too', () {
         expect(

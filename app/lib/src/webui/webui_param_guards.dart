@@ -307,8 +307,8 @@ bool _nonPublicV4(List<int> b) {
 /// make the HOST run a program, and every one of them rides in a parameter of
 /// a method that is allowed:
 ///
-///  * **Backend options that name a program.** `sftp`'s `ssh` and
-///    `server_command`, `webdav`'s `bearer_token_command`. Create a remote with
+///  * **Backend options that name a program.** `sftp`'s `ssh`, `webdav`'s
+///    `bearer_token_command`. Create a remote with
 ///    one (`config/create`, `config/update`) and the next `operations/list` on
 ///    it runs that program as the user running rclone.
 ///  * **The same options, inline.** An `fs` of `:sftp,ssh='...':` or
@@ -328,7 +328,18 @@ bool _nonPublicV4(List<int> b) {
 /// What this does NOT change: a session can still create a `local` remote and
 /// read or write any file the Airclone user can - browsing the host's own
 /// disk is a Web UI feature. See the header of `webui_rc_policy.dart`.
-String? rcParamsViolation(String method, Map<String, dynamic> params) {
+///
+/// [existingRemote] is the saved config of the remote a `config/update` (or a
+/// `config/create` over an existing name) targets, when the caller could read
+/// it. A program-running option whose value is UNCHANGED from it is allowed:
+/// the Web UI's edit form re-sends every field, and re-saving a remote that
+/// was set up with a custom `ssh` on this machine is no escalation. Only a new
+/// or changed value is refused. See [configCommandKeys].
+String? rcParamsViolation(
+  String method,
+  Map<String, dynamic> params, {
+  Map<String, dynamic>? existingRemote,
+}) {
   final commandKey = _commandOptionIn(params);
   if (commandKey != null) return _runsAProgram(commandKey);
 
@@ -351,7 +362,7 @@ String? rcParamsViolation(String method, Map<String, dynamic> params) {
       if (parameters == null) {
         return 'The Web UI could not read the remote parameters.';
       }
-      final key = _commandOptionIn(parameters);
+      final key = _commandOptionIn(parameters, unchangedFrom: existingRemote);
       if (key != null) {
         return 'The Web UI cannot set "$key" on a remote: it makes rclone run '
             'a program on the host. Set it from the Airclone app on that '
@@ -543,31 +554,67 @@ FsSpec? parseFsSpec(String path) {
 bool _isDriveLetter(String s) =>
     s.length == 1 && RegExp(r'^[A-Za-z]$').hasMatch(s);
 
+/// The keys of a `config/create` / `config/update` [params] block that would
+/// be refused as program-running options, ignoring any saved value.
+///
+/// The server uses this to decide whether it needs the remote's saved config
+/// (`config/get`) before it can judge the request - see `existingRemote` on
+/// [rcParamsViolation].
+List<String> configCommandKeys(Map<String, dynamic> params) {
+  final parameters = _asMap(params['parameters']);
+  if (parameters == null) return const [];
+  return [
+    for (final e in parameters.entries)
+      if (_isHostCommandOption(e.key, e.value)) e.key,
+  ];
+}
+
 /// The first key in [m] that names an option which makes rclone run a
-/// program, or null.
+/// program on THIS machine, or null. A key whose value equals the one in
+/// [unchangedFrom] is not counted.
+String? _commandOptionIn(
+  Map<String, dynamic> m, {
+  Map<String, dynamic>? unchangedFrom,
+}) {
+  for (final entry in m.entries) {
+    if (!_isHostCommandOption(entry.key, entry.value)) continue;
+    final saved = unchangedFrom?[entry.key];
+    if (saved != null && '$saved' == '${entry.value}') continue;
+    return entry.key;
+  }
+  return null;
+}
+
+/// Whether option [key] with [value] makes rclone run a program on the host.
 ///
 /// Matched on a normalised name - lower case, `_` and `-` removed - because
 /// rclone accepts both the config spelling (`password_command`) and the Go
 /// field spelling (`PasswordCommand`) depending on where the option rides.
 ///
-/// The list is every option in rclone 1.75.1 whose value reaches
-/// `exec.Command`: `ssh`, `server_command` (sftp), `bearer_token_command`
-/// (webdav), `password_command`, `metadata_mapper`, and `name_transform` when
-/// it has a `command=` step. Anything ENDING in `command` is refused as well,
-/// so a future option that follows rclone's naming is caught before anyone
-/// reads its release notes.
-String? _commandOptionIn(Map<String, dynamic> m) {
-  for (final entry in m.entries) {
-    final n = entry.key.toLowerCase().replaceAll(RegExp('[_-]'), '');
-    if (n.endsWith('command') || n == 'ssh' || n == 'metadatamapper') {
-      return entry.key;
-    }
-    if (n == 'nametransform' &&
-        '${entry.value}'.toLowerCase().contains('command')) {
-      return entry.key;
-    }
+/// Every option in rclone 1.75.1 whose value reaches a local `exec.Command`:
+/// `ssh` (sftp), `bearer_token_command` (webdav), `password_command`,
+/// `metadata_mapper`, and `name_transform` with a `command=` step. Anything
+/// else ENDING in `command` is refused as well, so a future option that
+/// follows rclone's naming is caught before anyone reads its release notes -
+/// with two exceptions that run on the REMOTE server, not here:
+///
+///  * sftp's `server_command` and the `*sum_command` family (`md5sum_command`,
+///    `sha1sum_command`...). rclone WRITES the latter into the config by
+///    itself after probing a server, so an ordinary exported sftp remote
+///    carries them and refusing them would break import and edit. They are
+///    passed to the ssh session as the remote command - but with an external
+///    `ssh` program they become one of its arguments, so a value starting
+///    with `-` (an ssh option such as `-oProxyCommand=...`, which OpenSSH
+///    accepts after the host name) is still refused.
+bool _isHostCommandOption(String key, Object? value) {
+  final n = key.toLowerCase().replaceAll(RegExp('[_-]'), '');
+  if (n == 'servercommand' || RegExp(r'^[a-z0-9]+sumcommand$').hasMatch(n)) {
+    return '$value'.trimLeft().startsWith('-');
   }
-  return null;
+  if (n.endsWith('command') || n == 'ssh' || n == 'metadatamapper') {
+    return true;
+  }
+  return n == 'nametransform' && '$value'.toLowerCase().contains('command');
 }
 
 /// [raw] as a map, whether it arrived as a JSON object or as a JSON string of

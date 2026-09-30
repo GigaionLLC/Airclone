@@ -467,8 +467,24 @@ class WebUiServer {
     // options (sftp `ssh`, `*_command`, `metadata_mapper`...) and on-the-fly
     // remotes in `fs`/`srcFs`/`dstFs` ride in the parameters of methods that
     // are otherwise harmless, and would turn a session into command execution.
+    //
+    // An edit re-sends every field, so a remote set up with a custom `ssh` on
+    // this machine would be refused on every save. The saved config is read
+    // only in that case, and an UNCHANGED value passes.
+    Map<String, dynamic>? existingRemote;
+    if ((method == 'config/update' || method == 'config/create') &&
+        params['name'] is String &&
+        configCommandKeys(params).isNotEmpty) {
+      try {
+        existingRemote = await engineClient().rpc('config/get', {
+          'name': params['name'],
+        });
+      } on Exception {
+        existingRemote = null; // no such remote: nothing is "unchanged"
+      }
+    }
     final paramViolation =
-        rcParamsViolation(method, params) ??
+        rcParamsViolation(method, params, existingRemote: existingRemote) ??
         switch (method) {
           'serve/start' => serveStartViolation(params),
           'operations/copyurl' => await copyUrlViolation(params),
