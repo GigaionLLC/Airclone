@@ -237,4 +237,33 @@ void main() {
       expect((await run()).ok, isTrue);
     });
   });
+
+  /// release.yml signs `airclone <tag> <timestamp>`. The check that refuses a
+  /// replayed older manifest must match the tag as a TOKEN: `v0.9.10`
+  /// contains `v0.9.1`.
+  group('trustedCommentNamesTag', () {
+    test('the exact tag token matches', () {
+      expect(
+        trustedCommentNamesTag(
+          'airclone v0.22.1 2026-09-28T10:00:00Z',
+          'v0.22.1',
+        ),
+        isTrue,
+      );
+    });
+
+    test('a longer tag containing it does not', () {
+      expect(
+        trustedCommentNamesTag(
+          'airclone v0.9.10 2026-09-28T10:00:00Z',
+          'v0.9.1',
+        ),
+        isFalse,
+      );
+    });
+
+    test('an empty tag never matches', () {
+      expect(trustedCommentNamesTag('airclone  x', ''), isFalse);
+    });
+  });
 }
