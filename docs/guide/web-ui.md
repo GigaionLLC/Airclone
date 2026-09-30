@@ -168,10 +168,12 @@ every file the account running Airclone can, and read every credential in your r
 the password accordingly, and keep the Web UI on `127.0.0.1` unless you need it elsewhere.
 
 **Some remote settings can only be made in the app.** The Web UI refuses anything that would make
-rclone run a program on the host: options such as an SFTP remote's custom `ssh` command, any
-`..._command` option, a metadata mapper, and remotes defined inline (`:sftp,...:` or
+rclone run a program on the host: an SFTP remote's custom `ssh` command, a WebDAV bearer-token
+command, a password command, a metadata mapper, and remotes defined inline (`:sftp,...:` or
 `remote,option=value:`). Set those up in the Airclone app on that machine, then use the remote by
-name from the browser.
+name from the browser. A remote that already has one can still be used, and edited, from the
+browser, as long as that setting itself is left as it is. Importing a config that contains one
+imports every other remote and reports that one as failed.
 
 ## What it does not do
 
