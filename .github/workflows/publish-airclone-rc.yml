@@ -32,19 +32,24 @@ on:
         type: boolean
         default: true
 
+# Read-only for the workflow. The OIDC token pub.dev verifies (there is no API
+# key here) is granted to the `publish` job ALONE: `verify` runs `dart pub get`,
+# `dart test` and `dart doc`, i.e. third-party code, and a job that can mint a
+# publishing token should run none.
 permissions:
-  id-token: write   # the OIDC token pub.dev verifies; there is no API key here
   contents: read
 
 jobs:
-  publish:
+  verify:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     defaults:
       run:
         working-directory: packages/airclone_rc
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - uses: dart-lang/setup-dart@6afc89df92d6eb3834022f73cd65adc8cdfcb92d  # v1.8.1
 
       - name: Install dependencies
@@ -92,8 +97,25 @@ jobs:
       - name: Dry run
         run: dart pub publish --dry-run
 
-      # LAST, and only for a tag. A manual dispatch validates and stops, so
-      # this workflow can be exercised without consequence.
+  # LAST, and only for a tag, and only after every gate above passed. A manual
+  # dispatch validates and stops, so this workflow can be exercised without
+  # consequence. This job runs no tests, builds and no project code: `dart pub
+  # publish` resolves and uploads, which is all a job holding the token needs.
+  publish:
+    needs: verify
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      id-token: write   # the OIDC token pub.dev verifies
+      contents: read
+    defaults:
+      run:
+        working-directory: packages/airclone_rc
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: dart-lang/setup-dart@6afc89df92d6eb3834022f73cd65adc8cdfcb92d  # v1.8.1
       - name: Publish
-        if: startsWith(github.ref, 'refs/tags/')
         run: dart pub publish --force

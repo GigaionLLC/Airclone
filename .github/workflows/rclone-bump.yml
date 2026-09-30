@@ -123,5 +123,8 @@ jobs:
           # The body lives in a template beside this file: building markdown
           # inside a YAML block scalar means escaping it twice, and the second
           # escape is where it goes wrong.
-          sed -e "s/__CURRENT__/${CURRENT}/g" -e "s/__LATEST__/${LATEST}/g" \n            .github/workflows/rclone-bump-body.md > "${RUNNER_TEMP}/pr-body.md"
-          gh pr create \n            --title "chore(engine): pin rclone ${LATEST}" \n            --body-file "${RUNNER_TEMP}/pr-body.md"
+          sed -e "s/__CURRENT__/${CURRENT}/g" -e "s/__LATEST__/${LATEST}/g" \
+            .github/workflows/rclone-bump-body.md > "${RUNNER_TEMP}/pr-body.md"
+          gh pr create \
+            --title "chore(engine): pin rclone ${LATEST}" \
+            --body-file "${RUNNER_TEMP}/pr-body.md"
