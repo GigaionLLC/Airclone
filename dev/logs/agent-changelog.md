@@ -13,6 +13,17 @@ happened": nothing was logged between 2026-07-02 and 2026-07-15, or between 2026
      it is: it used to say ABOVE, which pushed it further down the file with every entry until
      it sat hundreds of lines under the newest one and pointed writers at the wrong place. -->
 
+## [2026-09-30] - v0.22.2 cut (security hardening)
+
+**Agent:** Claude Code (Claude Opus 5.5)
+**Files Modified:** `app/pubspec.yaml` (0.22.2+149), `dev/releases/v0.22.2.md`, this log
+**Database/API Changes:** None.
+**Summary:** Release of the 2026-09 security review fixes (PR #24, squash `125528a`). Coordinator re-review before
+merge: app analyze clean + 1907 tests, airclone_rc analyze clean + 127 tests, AppImage tool SHA-256 pins re-checked
+against fresh downloads, release.yml staging traced so no failure path drops an asset. First tag through the
+restructured release.yml (platform jobs hand `release-<platform>` artifacts to `checksums`) - verify every asset
+landed. Store lanes not run; they stay buttons.
+
 ## [2026-09-29] - Security review fixes (2026-09 review)
 
 **Agent:** Claude Code (Claude Opus 5.5)
