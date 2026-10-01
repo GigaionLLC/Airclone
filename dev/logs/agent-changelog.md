@@ -13,6 +13,21 @@ happened": nothing was logged between 2026-07-02 and 2026-07-15, or between 2026
      it is: it used to say ABOVE, which pushed it further down the file with every entry until
      it sat hundreds of lines under the newest one and pointed writers at the wrong place. -->
 
+## [2026-10-01] - v0.22.2 sent to all three stores
+
+**Agent:** Claude Code (Claude Opus 5.5)
+**Files Modified:** `dev/apple-handoff.md` (state table), this log
+**Database/API Changes:** Store state only.
+**Summary:** Release run 36799357041 (first through the least-privilege release.yml) green; all 14 assets present with
+v0.22.1's names, SHA256SUMS verifies, rclone bundled (Windows/Linux), librclone.dylib in the mac app, app + DMG notarized,
+exe + installer Azure-signed. Google Play: `publish-play` upload -> beta 149 confirmed, `promote-play` dry run ->
+`rollout=100` committed, production serves 149 at 100%. Microsoft: dry run (last published 1152921505701979502, pricing
+Base/advanced) -> `mode=stage` created **1152921505702016058** with MSIX `0.22.2.0`, pricing preserved - NOT submitted;
+the tool noted priceId reads Free vs Base live (legacy projection of advanced pricing) - confirm Pricing in Partner Center,
+check What's new (cloned), then press Submit. Apple: `asc-release` dry runs showed both lanes free (0.22.1
+READY_FOR_SALE); runbook steps 0, 1, 3-7 on both (screenshots skipped - only the Serve dialog changed), build 149 VALID
+(iOS within minutes, macOS a few minutes later), audit "No gaps", both submitted, releaseType MANUAL.
+
 ## [2026-09-30] - v0.22.2 cut (security hardening)
 
 **Agent:** Claude Code (Claude Opus 5.5)

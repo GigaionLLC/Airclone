@@ -9,7 +9,7 @@ by design** — real IDs, key paths and account state live in the encrypted vaul
 (`python tool/vault.py unlock`, then
 `dev/vault/notes/apple-appstore-setup-record.md`).
 
-## State: last written 2026-09-28 — 0.22.1 IS LIVE on both platforms
+## State: last written 2026-10-01 — 0.22.2 IN REVIEW on both platforms (0.22.1 live)
 
 Read back from App Store Connect by the workflows that changed it, so these rows are observed.
 
@@ -26,6 +26,8 @@ Read back from App Store Connect by the workflows that changed it, so these rows
 | **0.22.0** | **READY_FOR_SALE**, build 147 | **READY_FOR_SALE**, build 147 |
 | **0.22.1** | **READY_FOR_SALE**, build 148, released 2026-09-28 | **READY_FOR_SALE**, build 148, released 2026-09-28 |
 | 0.22.1 `releaseType` | MANUAL | MANUAL |
+| **0.22.2** | **WAITING_FOR_REVIEW**, build 149, submitted 2026-10-01 | **WAITING_FOR_REVIEW**, build 149, submitted 2026-10-01 |
+| 0.22.2 `releaseType` | MANUAL — press release after approval (`asc-release.yml`) | MANUAL |
 
 **0.22.1's macOS release (2026-09-28) hit HTTP 500 on `/v1/appStoreVersionReleaseRequests`**
 (*"An unexpected error occurred on the server side"*). Nothing had changed: an `asc-release.yml`
