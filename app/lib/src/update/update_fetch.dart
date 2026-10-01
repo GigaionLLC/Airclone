@@ -179,7 +179,7 @@ class UpdateFetcher {
 
     // The tag is inside the signed comment, so this is the check that makes a
     // replayed older manifest useless: it is genuinely signed, and it says so.
-    if (!verdict.trustedComment!.contains(tag)) {
+    if (!trustedCommentNamesTag(verdict.trustedComment!, tag)) {
       return UpdateOutcome.refused(
         UpdateRefusal.wrongRelease,
         detail: 'signed comment "${verdict.trustedComment}" is not about $tag',
@@ -376,3 +376,13 @@ Future<String?> newestReleaseTag({http.Client? client}) async {
     if (client == null) c.close();
   }
 }
+
+/// Whether the signed [comment] names exactly [tag].
+///
+/// release.yml signs `airclone <tag> <timestamp>`, so the tag is one
+/// whitespace-separated token. This used to be a substring test, which
+/// `v0.9.10` passes for `v0.9.1`. Strict version parsing elsewhere made that
+/// unexploitable, but the check that stops a replayed older manifest should
+/// not lean on a different check to mean what it says.
+bool trustedCommentNamesTag(String comment, String tag) =>
+    tag.isNotEmpty && comment.trim().split(RegExp(r'\s+')).contains(tag);

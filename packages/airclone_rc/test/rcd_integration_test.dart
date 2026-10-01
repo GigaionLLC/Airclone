@@ -314,7 +314,8 @@ void main() {
       // No marker: a failed start must not leave a PID for a later reap.
       expect(
         File(
-          sep(Directory.systemTemp.path, '${tag}_rcd_$pid.pid'),
+          // Where the client writes it: per-user XDG_RUNTIME_DIR on Linux.
+          sep(reapMarkerDir().path, '${tag}_rcd_$pid.pid'),
         ).existsSync(),
         isFalse,
         reason: 'a failed start left its reap marker behind',
@@ -414,7 +415,8 @@ void main() {
     test('quit() leaves no reap marker behind for the next launch', () async {
       await client.start();
       final marker = File(
-        sep(Directory.systemTemp.path, '${tag}_rcd_$pid.pid'),
+        // Where the client writes it: per-user XDG_RUNTIME_DIR on Linux.
+        sep(reapMarkerDir().path, '${tag}_rcd_$pid.pid'),
       );
       expect(
         marker.existsSync(),

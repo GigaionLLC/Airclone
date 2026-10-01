@@ -462,11 +462,34 @@ class WebUiServer {
     // the method name does not suggest. rcPolicyFor never sees params, and the
     // client-side rules for both run in the browser, where a direct POST to
     // this endpoint never executes them. See webui_param_guards.dart.
-    final paramViolation = switch (method) {
-      'serve/start' => serveStartViolation(params),
-      'operations/copyurl' => await copyUrlViolation(params),
-      _ => null,
-    };
+    //
+    // rcParamsViolation runs first and for EVERY method: program-running
+    // options (sftp `ssh`, `*_command`, `metadata_mapper`...) and on-the-fly
+    // remotes in `fs`/`srcFs`/`dstFs` ride in the parameters of methods that
+    // are otherwise harmless, and would turn a session into command execution.
+    //
+    // An edit re-sends every field, so a remote set up with a custom `ssh` on
+    // this machine would be refused on every save. The saved config is read
+    // only in that case, and an UNCHANGED value passes.
+    Map<String, dynamic>? existingRemote;
+    if ((method == 'config/update' || method == 'config/create') &&
+        params['name'] is String &&
+        configCommandKeys(params).isNotEmpty) {
+      try {
+        existingRemote = await engineClient().rpc('config/get', {
+          'name': params['name'],
+        });
+      } on Exception {
+        existingRemote = null; // no such remote: nothing is "unchanged"
+      }
+    }
+    final paramViolation =
+        rcParamsViolation(method, params, existingRemote: existingRemote) ??
+        switch (method) {
+          'serve/start' => serveStartViolation(params),
+          'operations/copyurl' => await copyUrlViolation(params),
+          _ => null,
+        };
     if (paramViolation != null) {
       log(
         WebUiLogLevel.warning,
@@ -556,6 +579,17 @@ class WebUiServer {
         'error': 'That destination path is not allowed.',
       });
     }
+    // The same fs rule as /api/rc: an on-the-fly remote or inline option
+    // here would define a backend (sftp `ssh=...`) that runs a program.
+    final fsProblem = fsValueViolation(fs);
+    if (fsProblem != null) {
+      await request.drain<void>();
+      log(
+        WebUiLogLevel.warning,
+        'Web UI refused an upload from ${_peerKey(request)}: $fsProblem',
+      );
+      return _json(request, HttpStatus.forbidden, {'error': fsProblem});
+    }
 
     final client = engineClient();
     if (client is! ObjectUploader) {
@@ -598,6 +632,14 @@ class WebUiServer {
       return _json(request, HttpStatus.badRequest, {
         'error': 'fs and remote are required.',
       });
+    }
+    final fsProblem = fsValueViolation(fs);
+    if (fsProblem != null) {
+      log(
+        WebUiLogLevel.warning,
+        'Web UI refused an object read from ${_peerKey(request)}: $fsProblem',
+      );
+      return _json(request, HttpStatus.forbidden, {'error': fsProblem});
     }
 
     // A download is a CONTENT read, and this repo's standing rule is that every
@@ -666,10 +708,19 @@ class WebUiServer {
       final value = upstreamResponse.headers.value(header);
       if (value != null) response.headers.set(header, value);
     }
+    // Cloud content is untrusted, and this is the Web UI's own origin: an
+    // `.html` or `.svg` rendered here, or a `.js` loaded as a script, would run
+    // with the session. `sandbox` makes any document this becomes an opaque,
+    // script-less origin; active types are never rendered inline at all. The
+    // app itself fetches previews (images, media, PDF, text) as data, which
+    // neither header affects.
+    response.headers.set('Content-Security-Policy', 'sandbox');
+    response.headers.set('Cross-Origin-Resource-Policy', 'same-origin');
     // `?download=1` turns a preview into a save. Everything else about the
     // request is identical — same proxy, same Range support — so this is a
     // header, not a second code path.
-    if (request.uri.queryParameters['download'] == '1') {
+    if (request.uri.queryParameters['download'] == '1' ||
+        isActiveContentType(upstreamResponse.headers.contentType)) {
       response.headers.set(
         'Content-Disposition',
         contentDispositionAttachment(remote),
@@ -812,4 +863,21 @@ String contentDispositionAttachment(String remotePath) {
   final safeAscii = ascii.isEmpty ? 'download' : ascii;
   final encoded = Uri.encodeComponent(name);
   return "attachment; filename=\"$safeAscii\"; filename*=UTF-8''$encoded";
+}
+
+/// Content types a browser would EXECUTE if a same-origin page navigated to or
+/// included them: HTML and XML documents (SVG included) and scripts.
+/// `/api/object` always serves these as attachments.
+bool isActiveContentType(ContentType? type) {
+  if (type == null) return false;
+  final mime = type.mimeType.toLowerCase();
+  return mime == 'text/html' ||
+      mime == 'application/xhtml+xml' ||
+      mime == 'image/svg+xml' ||
+      mime == 'text/xml' ||
+      mime == 'application/xml' ||
+      mime == 'text/javascript' ||
+      mime == 'application/javascript' ||
+      mime == 'application/ecmascript' ||
+      mime == 'text/ecmascript';
 }

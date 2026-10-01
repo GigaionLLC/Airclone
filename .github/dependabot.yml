@@ -9,7 +9,7 @@
 # merged. The trailing `# v2.23.0` comment beside each SHA is what it reads to
 # know which version the SHA stands for, and what it rewrites on a bump.
 #
-# First-party `actions/*` stay on major tags (`actions/checkout@v5`): GitHub
+# First-party `actions/*` stay on major tags (`actions/checkout@v7`): GitHub
 # owns those namespaces, and a floating major is what keeps them off a
 # deprecated Node runtime. Dependabot still proposes the major bumps, which is
 # the warning Core Development Rule 8 in AGENT.md says to treat as work.

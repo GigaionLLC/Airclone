@@ -382,7 +382,7 @@ and on the platform, which is why the list is not identical everywhere:
 | `Copy to…`, `Move to…`, `Open in other pane` | always |
 | `Set as sync source`, `Sync … into this folder…` | folders, Advanced mode only |
 | `Compress…` | builds allowed to start another program |
-| `Extract here`, `Extract to…`, `List contents…` | the same builds, and only on a recognised archive |
+| `Extract here`, `Extract to…`, `List contents…` | the same builds, and only on a recognised archive. Extracting also needs rclone 1.75.1 or newer, since older versions can write outside the destination folder; Settings says so when yours is older |
 | `Rename`, `Delete` | always |
 | `Get public link` | only when the backend supports it |
 

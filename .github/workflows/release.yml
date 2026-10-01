@@ -39,8 +39,16 @@ on:
     tags: ['v*']
   workflow_dispatch:
 
+# READ-ONLY by default. Two jobs write, and they are the only ones that hold a
+# write token: `release` (creates the GitHub Release) and `checksums` (attaches
+# every platform's assets, then the manifest). The platform jobs run pub,
+# cargo, go, gradle, brew/apt/choco and downloaded packaging tools - a great
+# deal of third-party code - so they build, and hand their release files over
+# as `release-<platform>` workflow artifacts instead of uploading them. Until
+# 2026-09 every job here had `contents: write`, with the token persisted in
+# .git/config for the whole job.
 permissions:
-  contents: write
+  contents: read
 
 env:
   # The single pinned rclone version for the whole release: bundled into the
@@ -107,8 +115,12 @@ jobs:
     # publish steps (which used to make release notes whoever-finishes-first).
     if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - name: Create GitHub Release
         working-directory: .
         env:
@@ -152,6 +164,8 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - uses: actions/setup-go@v7
         # cache:false — no committed go.sum (the build script synthesizes the
         # pinning module in /tmp), so the default cache lookup warns + caches nothing.
@@ -182,6 +196,8 @@ jobs:
     if: ${{ !cancelled() && (needs.release.result == 'success' || github.event_name == 'workflow_dispatch') }}
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2  # v2.23.0
         with: { channel: stable, flutter-version: 3.47.0, cache: true }
       # super_native_extensions (drag-out) builds a Rust crate via cargokit.
@@ -370,14 +386,15 @@ jobs:
           path: |
             app/airclone-windows-x64.zip
             app/windows/installer/airclone-setup-x64.exe
-      - name: Upload to release
+      # Staged for the release, not uploaded: this job holds a read-only token.
+      # The `checksums` job attaches everything staged here. See `permissions:`.
+      - name: Stage for the release
         if: startsWith(github.ref, 'refs/tags/')
         shell: bash
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release upload "$GITHUB_REF_NAME" airclone-windows-x64.zip --clobber --repo "$GITHUB_REPOSITORY"
-          gh release upload "$GITHUB_REF_NAME" windows/installer/airclone-setup-x64.exe --clobber --repo "$GITHUB_REPOSITORY"
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/release-assets"
+          cp airclone-windows-x64.zip windows/installer/airclone-setup-x64.exe "$RUNNER_TEMP/release-assets/"
       # MSIX for the Microsoft Store. --store => unsigned, Partner-Center-ready
       # (the Store signs it), so no certificate and no interactive prompt.
       #
@@ -440,18 +457,24 @@ jobs:
         with:
           name: airclone-msix
           path: app/airclone.msix
-      - name: Upload MSIX to release
+      - name: Stage MSIX for the release
         if: startsWith(github.ref, 'refs/tags/')
         continue-on-error: true
         shell: bash
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           if [ -f airclone.msix ]; then
-            gh release upload "$GITHUB_REF_NAME" airclone.msix --clobber --repo "$GITHUB_REPOSITORY"
+            cp airclone.msix "$RUNNER_TEMP/release-assets/"
           else
             echo "no airclone.msix produced — skipping (non-fatal)"
           fi
+      - name: Hand the release files to the checksums job
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-windows
+          path: ${{ runner.temp }}/release-assets/
+          if-no-files-found: error
+          retention-days: 7
       # Microsoft Store submission is NOT automatic — it is a button, exactly like
       # promoting on Google Play: .github/workflows/submit-msstore.yml, run from
       # the Actions tab against a tag. Certification takes DAYS and a bad
@@ -466,6 +489,8 @@ jobs:
     if: ${{ !cancelled() && (needs.release.result == 'success' || github.event_name == 'workflow_dispatch') }}
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - name: Install build deps
         # libmpv-dev + mpv: media_kit (video/audio preview) — without them
         # `flutter build linux` fails to link (regressed in alpha.6).
@@ -688,14 +713,20 @@ jobs:
         with:
           name: airclone-linux-flatpak
           path: app/airclone.flatpak
-      - name: Upload to release
+      - name: Stage for the release
         if: startsWith(github.ref, 'refs/tags/')
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release upload "$GITHUB_REF_NAME" airclone-linux-x64.tar.gz --clobber --repo "$GITHUB_REPOSITORY"
-          gh release upload "$GITHUB_REF_NAME" Airclone-x86_64.AppImage --clobber --repo "$GITHUB_REPOSITORY"
-          gh release upload "$GITHUB_REF_NAME" airclone.flatpak --clobber --repo "$GITHUB_REPOSITORY"
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/release-assets"
+          cp airclone-linux-x64.tar.gz Airclone-x86_64.AppImage airclone.flatpak "$RUNNER_TEMP/release-assets/"
+      - name: Hand the release files to the checksums job
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-linux
+          path: ${{ runner.temp }}/release-assets/
+          if-no-files-found: error
+          retention-days: 7
 
   macos:
     runs-on: macos-latest
@@ -709,6 +740,8 @@ jobs:
       HAS_NOTARY_CREDS: ${{ secrets.APPLE_ID != '' && secrets.APPLE_APP_SPECIFIC_PASSWORD != '' && secrets.APPLE_TEAM_ID != '' }}
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       # Fail fast on a tagged release if the signing cert is missing — mirrors the
       # Android keystore guard: never publish an unsigned "release" build.
       - name: Require Developer ID signing on tagged builds
@@ -839,14 +872,17 @@ jobs:
         with:
           name: airclone-macos
           path: app/airclone-macos.zip
-      # Publish the signed zip BEFORE notarization so an Apple notary outage or
+      # Stage the signed zip BEFORE notarization so an Apple notary outage or
       # timeout can never block the release (abcli hit exactly that); the stapled
-      # zip + DMG below replace/join it when notarization succeeds.
-      - name: Upload signed zip to release
+      # zip + DMG below replace/join it when notarization succeeds. Every step
+      # between here and the hand-off is continue-on-error, so the signed zip
+      # always reaches the release.
+      - name: Stage signed zip for the release
         if: startsWith(github.ref, 'refs/tags/')
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release upload "$GITHUB_REF_NAME" airclone-macos.zip --clobber --repo "$GITHUB_REPOSITORY"
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/release-assets"
+          cp airclone-macos.zip "$RUNNER_TEMP/release-assets/"
       - name: Notarize + staple app
         id: notarize
         if: env.HAS_SIGNING_CERT == 'true' && env.HAS_NOTARY_CREDS == 'true'
@@ -909,18 +945,22 @@ jobs:
           bash "$GITHUB_WORKSPACE/.github/scripts/notarize.sh" airclone-macos.dmg dmg
           xcrun stapler staple airclone-macos.dmg
           xcrun stapler validate airclone-macos.dmg
-      # Two separate uploads so a DMG-only failure can never block re-publishing
-      # the stapled zip (which replaces the pre-notarization signed zip).
-      - name: Upload stapled zip to release
+      # Two separate steps so a DMG-only failure can never block publishing the
+      # stapled zip (which replaces the pre-notarization signed zip).
+      - name: Stage stapled zip for the release
         if: startsWith(github.ref, 'refs/tags/') && steps.notarize.outcome == 'success'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release upload "$GITHUB_REF_NAME" airclone-macos.zip --clobber --repo "$GITHUB_REPOSITORY"
-      - name: Upload DMG to release
+        run: cp -f airclone-macos.zip "$RUNNER_TEMP/release-assets/"
+      - name: Stage DMG for the release
         if: startsWith(github.ref, 'refs/tags/') && steps.dmg.outcome == 'success'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release upload "$GITHUB_REF_NAME" airclone-macos.dmg --clobber --repo "$GITHUB_REPOSITORY"
+        run: cp -f airclone-macos.dmg "$RUNNER_TEMP/release-assets/"
+      - name: Hand the release files to the checksums job
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-macos
+          path: ${{ runner.temp }}/release-assets/
+          if-no-files-found: error
+          retention-days: 7
       - name: Warn if not notarized
         if: steps.notarize.outcome != 'success'
         run: |
@@ -951,6 +991,8 @@ jobs:
       AIRCLONE_KEYSTORE_BASE64: ${{ secrets.AIRCLONE_KEYSTORE_BASE64 }}
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       # Fail fast on a real (tagged) release if the signing secret is missing,
       # rather than debug-signing the APK and publishing it — a debug-signed
       # "release" carries an ephemeral/unknown key and can't update in place over
@@ -1073,22 +1115,27 @@ jobs:
       #
       # Open testing:  .github/workflows/publish-play.yml  (this AAB, by tag)
       # Production:    .github/workflows/promote-play.yml  (promotes that code)
-      - name: Upload to release
+      - name: Stage for the release
         if: startsWith(github.ref, 'refs/tags/')
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          set -euo pipefail
           # End users install the per-ABI APKs. The Play App Bundle (.aab) is the
           # Play CONSOLE upload artifact — attached here (with a clear name) as a
           # convenience for manual upload. It carries no private signing key (Play
           # App Signing re-signs server-side), so publishing it is safe. It is NOT
           # decoration: publish-play.yml downloads THIS asset by tag rather than
           # rebuilding, so what testers install is what was built here.
-          cp build/app/outputs/bundle/release/app-release.aab airclone-playstore.aab
-          gh release upload "$GITHUB_REF_NAME" \
-            build/app/outputs/flutter-apk/airclone-android-*.apk \
-            airclone-playstore.aab \
-            --clobber --repo "$GITHUB_REPOSITORY"
+          mkdir -p "$RUNNER_TEMP/release-assets"
+          cp build/app/outputs/flutter-apk/airclone-android-*.apk "$RUNNER_TEMP/release-assets/"
+          cp build/app/outputs/bundle/release/app-release.aab "$RUNNER_TEMP/release-assets/airclone-playstore.aab"
+      - name: Hand the release files to the checksums job
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-android
+          path: ${{ runner.temp }}/release-assets/
+          if-no-files-found: error
+          retention-days: 7
 
   # A checksum manifest for the release, and a signature over it.
   #
@@ -1117,11 +1164,43 @@ jobs:
       run:
         working-directory: .
 
-    # `always()` so a release that lost one platform still gets a manifest for
-    # the platforms it did produce; the step below hashes whatever is attached.
+    # `always()` so a release that lost one platform still gets that platform's
+    # siblings attached and a manifest for them; the steps below attach and
+    # hash whatever the platform jobs handed over.
     if: always() && startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
+    # The only job besides `release` with a write token. It runs no build and
+    # no project code: it moves files, hashes them and signs the hash list.
+    permissions:
+      contents: write
     steps:
+      # Each platform job stages its release files as a `release-<platform>`
+      # artifact instead of uploading them itself (see `permissions:` at the top).
+      # A platform that failed before its hand-off simply has no artifact - the
+      # same outcome as when it used to fail before its own upload step.
+      - name: Collect the platform jobs' release files
+        continue-on-error: true
+        uses: actions/download-artifact@v8
+        with:
+          pattern: release-*
+          path: release-assets
+          merge-multiple: true
+
+      - name: Attach them to the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          files=(release-assets/*)
+          if [ "${#files[@]}" -eq 0 ]; then
+            echo "::warning::no platform job handed over any release files"
+            exit 0
+          fi
+          printf '  %s\n' "${files[@]}"
+          gh release upload "$GITHUB_REF_NAME" "${files[@]}" \
+            --clobber --repo "$GITHUB_REPOSITORY"
+
       - name: Hash every asset on the release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

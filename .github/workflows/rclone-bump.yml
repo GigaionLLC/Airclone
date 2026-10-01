@@ -9,8 +9,8 @@ name: rclone pin bump
 # proposes the bump and lets CI and a human agree to it — the same outcome, a
 # few hours later, reproducible.
 #
-# The version is pinned in FOUR places (release.yml drives the binary bundling
-# and the Android jniLib; the three scripts build librclone). ci.yml already
+# The version is pinned in FIVE places (release.yml drives the binary bundling
+# and the Android jniLib; the four scripts build librclone, iOS included). ci.yml already
 # warns when they drift or fall behind, but a warning in a CI log is precisely
 # the kind of thing that gets missed — that is how this repo shipped three
 # releases with no bundled rclone. A PR shows up in the PR list instead.
@@ -71,13 +71,21 @@ jobs:
             dev/android/build-rclone.ps1 dev/desktop/build-librclone.ps1
           sed -i "s/^RCLONE_VERSION=\"${CURRENT}\"\$/RCLONE_VERSION=\"${LATEST}\"/" \
             dev/desktop/build-librclone.sh
+          # The iOS pin is rewritten from WHATEVER it holds, not from CURRENT:
+          # it is the site that has drifted before (v1.75.0 under a v1.75.1
+          # release pin), and a CURRENT-anchored sed would silently skip it.
+          sed -i -E "s/^RCLONE_VERSION=\"v[0-9.]+\"\$/RCLONE_VERSION=\"${LATEST}\"/" \
+            dev/ios/build-librclone-ios.sh
+          grep -q "^RCLONE_VERSION=\"${LATEST}\"\$" dev/ios/build-librclone-ios.sh \
+            || { echo "::error::dev/ios/build-librclone-ios.sh did not move to ${LATEST}"; exit 1; }
 
-          # Assert all four moved. A sed that matched nothing exits 0, and a PR
-          # that bumps three of four sites is worse than no PR at all: the
+          # Assert all five moved. A sed that matched nothing exits 0, and a PR
+          # that bumps four of five sites is worse than no PR at all: the
           # binary and the library would come from different rclone versions.
           fail=0
           for f in .github/workflows/release.yml dev/android/build-rclone.ps1 \
-                   dev/desktop/build-librclone.ps1 dev/desktop/build-librclone.sh; do
+                   dev/desktop/build-librclone.ps1 dev/desktop/build-librclone.sh \
+                   dev/ios/build-librclone-ios.sh; do
             if grep -q "${CURRENT}" "$f"; then
               # release.yml's prose comment legitimately still names the old
               # version; only the machine-read pin must have moved.
@@ -115,5 +123,8 @@ jobs:
           # The body lives in a template beside this file: building markdown
           # inside a YAML block scalar means escaping it twice, and the second
           # escape is where it goes wrong.
-          sed -e "s/__CURRENT__/${CURRENT}/g" -e "s/__LATEST__/${LATEST}/g" \n            .github/workflows/rclone-bump-body.md > "${RUNNER_TEMP}/pr-body.md"
-          gh pr create \n            --title "chore(engine): pin rclone ${LATEST}" \n            --body-file "${RUNNER_TEMP}/pr-body.md"
+          sed -e "s/__CURRENT__/${CURRENT}/g" -e "s/__LATEST__/${LATEST}/g" \
+            .github/workflows/rclone-bump-body.md > "${RUNNER_TEMP}/pr-body.md"
+          gh pr create \
+            --title "chore(engine): pin rclone ${LATEST}" \
+            --body-file "${RUNNER_TEMP}/pr-body.md"

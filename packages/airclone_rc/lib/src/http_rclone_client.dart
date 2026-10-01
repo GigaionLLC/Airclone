@@ -305,7 +305,10 @@ class HttpRcloneClient
   /// that now pointed at the second one's child. One file per owner means two
   /// instances cannot confuse each other's children.
   File get _markerFile =>
-      File('${Directory.systemTemp.path}/${instanceTag}_rcd_$pid.pid');
+      File('${_markerDir.path}/${instanceTag}_rcd_$pid.pid');
+
+  /// Where the markers and the lock live: [reapMarkerDir].
+  Directory get _markerDir => reapMarkerDir();
 
   /// Held for this process's lifetime while we are the only Airclone running.
   ///
@@ -315,8 +318,7 @@ class HttpRcloneClient
   /// desktops.
   RandomAccessFile? _reapLock;
 
-  File get _reapLockFile =>
-      File('${Directory.systemTemp.path}/${instanceTag}_rcd.lock');
+  File get _reapLockFile => File('${_markerDir.path}/${instanceTag}_rcd.lock');
 
   /// Best-effort kill of `rcd` children orphaned by a hard exit.
   ///
@@ -329,15 +331,46 @@ class HttpRcloneClient
   ///
   /// Skipped on Android: systemTemp resolves to /data/local/tmp (not
   /// app-writable), and Android kills the app's process group anyway.
+  ///
+  /// A marker only says "this PID was our engine once". PIDs are recycled, and
+  /// on Linux the markers used to sit in the shared /tmp where any account
+  /// could plant one, so every PID is checked with [looksLikeOurRcd] - is it
+  /// still an `rclone rcd` of ours? - before anything is killed.
   Future<void> _reapPreviousRcd() async {
     if (EnginePlatform.isAndroid) return;
+    Future<void> killIfOurs(int p) async {
+      if (await looksLikeOurRcd(p, tag: instanceTag)) {
+        Process.killPid(p, ProcessSignal.sigkill);
+      }
+    }
+
     _reapLock = await reapOrphanedRcd(
       tag: instanceTag,
-      tempDir: Directory(Directory.systemTemp.path),
+      tempDir: _markerDir,
       lockFile: _reapLockFile,
       ownPid: pid,
-      kill: (p) => Process.killPid(p, ProcessSignal.sigkill),
+      kill: killIfOurs,
     );
+    // Linux moved its markers out of /tmp. Markers an earlier version left
+    // there are still reaped - under THAT location's lock, so an older copy of
+    // Airclone that is still running (and holding it) keeps its engine.
+    final legacy = Directory(Directory.systemTemp.path);
+    if (_reapLock != null && legacy.path != _markerDir.path) {
+      final legacyLock = await reapOrphanedRcd(
+        tag: instanceTag,
+        tempDir: legacy,
+        lockFile: File('${legacy.path}/${instanceTag}_rcd.lock'),
+        ownPid: pid,
+        kill: killIfOurs,
+      );
+      try {
+        legacyLock
+          ?..unlockSync()
+          ..closeSync();
+      } catch (_) {
+        /* best-effort */
+      }
+    }
   }
 
   /// Release the single-instance lock, if we took it.
@@ -947,7 +980,7 @@ Future<RandomAccessFile?> reapOrphanedRcd({
   required Directory tempDir,
   required File lockFile,
   required int ownPid,
-  required void Function(int pid) kill,
+  required FutureOr<void> Function(int pid) kill,
   RandomAccessFile? Function(File lockFile)? acquireLock,
 }) async {
   final lock = (acquireLock ?? _takeSingleInstanceLock)(lockFile);
@@ -965,7 +998,7 @@ Future<RandomAccessFile?> reapOrphanedRcd({
         final orphan = int.tryParse((await entry.readAsString()).trim());
         if (orphan != null && orphan != ownPid) {
           try {
-            kill(orphan);
+            await kill(orphan);
           } catch (_) {
             /* stale or already gone; ignore */
           }
@@ -979,4 +1012,120 @@ Future<RandomAccessFile?> reapOrphanedRcd({
     /* temp dir unreadable; reaping is best-effort */
   }
   return lock;
+}
+
+/// The directory the reap markers and lock live in.
+///
+/// Linux: `$XDG_RUNTIME_DIR` (per user, mode 0700, cleared at logout) when the
+/// session has one. The shared `/tmp` it used to be let any other account
+/// plant a marker naming one of this user's processes, or pre-create the lock
+/// so reaping never ran. Everywhere else the system temp dir is already per
+/// user (`%TEMP%` on Windows, `$TMPDIR` on macOS) and stays.
+@visibleForTesting
+Directory reapMarkerDir({Map<String, String>? environment, bool? isLinux}) {
+  final linux = isLinux ?? Platform.isLinux;
+  if (linux) {
+    final runtime = (environment ?? Platform.environment)['XDG_RUNTIME_DIR'];
+    if (runtime != null && runtime.isNotEmpty) {
+      final dir = Directory(runtime);
+      if (dir.existsSync()) return dir;
+    }
+  }
+  return Directory(Directory.systemTemp.path);
+}
+
+/// Whether [pid] is, right now, an `rclone rcd` this engine layer could have
+/// started - the check between reading a marker and killing what it names.
+///
+/// A marker outlives its process: after a crash the PID can be recycled by
+/// anything the user runs next (Windows does not clear `%TEMP%` on reboot),
+/// and on Linux a marker used to sit where other accounts could write. So the
+/// process must still look like ours:
+///
+///  * **Linux**: `/proc/<pid>/cmdline` - argv[0] is an `rclone*` binary, the
+///    subcommand is `rcd`, and `--rc-user`, when present, is [tag].
+///  * **macOS**: the same, from `/bin/ps -o args=`.
+///  * **Windows**: the image name, from `tasklist`, starts with `rclone`.
+///    (The command line needs WMI, and a Windows orphan is rare anyway: the
+///    kill-on-close job object ends the child with its parent.)
+///
+/// Anything that cannot be confirmed is NOT killed. An orphaned engine left
+/// running is a wasted port; a wrong kill is somebody's unsaved work.
+Future<bool> looksLikeOurRcd(
+  int pid, {
+  required String tag,
+  Future<ProcessResult> Function(String exe, List<String> args)? run,
+  String Function(String path)? readProcFile,
+}) async {
+  if (pid <= 0) return false;
+  final exec = run ?? (exe, args) => Process.run(exe, args, runInShell: false);
+  try {
+    if (Platform.isLinux) {
+      final raw = (readProcFile ?? (p) => File(p).readAsStringSync())(
+        '/proc/$pid/cmdline',
+      );
+      return argvLooksLikeOurRcd(
+        raw.split('\u0000').where((a) => a.isNotEmpty).toList(),
+        tag: tag,
+      );
+    }
+    if (Platform.isMacOS) {
+      final res = await exec('/bin/ps', ['-o', 'args=', '-p', '$pid']);
+      if (res.exitCode != 0) return false;
+      final line = '${res.stdout}'.trim();
+      if (line.isEmpty) return false;
+      return argvLooksLikeOurRcd(line.split(RegExp(r'\s+')), tag: tag);
+    }
+    if (Platform.isWindows) {
+      final root = Platform.environment['SystemRoot'] ?? r'C:\Windows';
+      final res = await exec('$root\\System32\\tasklist.exe', [
+        '/FI',
+        'PID eq $pid',
+        '/FO',
+        'CSV',
+        '/NH',
+      ]);
+      if (res.exitCode != 0) return false;
+      return windowsTasklistLooksLikeRclone('${res.stdout}', pid);
+    }
+  } catch (_) {
+    return false;
+  }
+  return false;
+}
+
+/// The argv rule behind [looksLikeOurRcd], separated so it is testable on
+/// every OS.
+///
+/// Tolerates a binary path that contained spaces and was split on them (the
+/// macOS `ps` form): the `rclone*` basename may be any token before `rcd`.
+@visibleForTesting
+bool argvLooksLikeOurRcd(List<String> argv, {required String tag}) {
+  final rcd = argv.indexOf('rcd');
+  if (rcd < 1) return false;
+  final binaryOk = argv.take(rcd).any((a) {
+    final base = a.split(RegExp(r'[/\\]')).last.toLowerCase();
+    return base.startsWith('rclone');
+  });
+  if (!binaryOk) return false;
+  for (var i = rcd + 1; i < argv.length; i++) {
+    final a = argv[i];
+    if (a == '--rc-user' && i + 1 < argv.length) return argv[i + 1] == tag;
+    if (a.startsWith('--rc-user=')) return a.substring(10) == tag;
+  }
+  return true;
+}
+
+/// Whether `tasklist /FO CSV /NH` output names an `rclone*` image for [pid].
+@visibleForTesting
+bool windowsTasklistLooksLikeRclone(String output, int pid) {
+  for (final line in const LineSplitter().convert(output)) {
+    final fields = RegExp(
+      r'"([^"]*)"',
+    ).allMatches(line).map((m) => m.group(1)!).toList();
+    if (fields.length < 2) continue;
+    if (fields[1] != '$pid') continue;
+    return fields[0].toLowerCase().startsWith('rclone');
+  }
+  return false;
 }

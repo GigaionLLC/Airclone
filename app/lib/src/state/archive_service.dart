@@ -21,6 +21,19 @@ class ArchiveError implements Exception {
   String toString() => 'ArchiveError: $message';
 }
 
+/// Shown when an extract is refused because the engine predates the fix for
+/// archive entries escaping the destination.
+const String kArchiveExtractNeedsUpdate =
+    'Extracting needs rclone ${RcloneEngine.secureRcloneVersion} or newer: '
+    'older versions can write files outside the destination folder. Update '
+    'the engine in Settings, then try again.';
+
+/// True when [cmd] is an `archive extract`.
+bool isArchiveExtract(ArchiveCommand cmd) =>
+    cmd.args.length > 1 &&
+    cmd.args[0] == 'archive' &&
+    cmd.args[1] == ArchiveOp.extract.name;
+
 /// Runs `rclone archive create/extract/list` as a real subprocess (rclone exposes
 /// no RC method for archives; verified against v1.74 `rc/list`). create/extract are
 /// tracked as [JobType.archive] jobs — live percentage from `--stats`, and Stop
@@ -76,6 +89,21 @@ class ArchiveService {
         job.id,
         JobStatus.failed,
         error: 'The rclone engine binary was not found.',
+      );
+      return job.id;
+    }
+    // rclone before 1.75.1 lets a crafted archive write outside the chosen
+    // destination (GHSA-66hp-wgxq-6f5q) - a zip in a shared folder could drop
+    // a file into a startup folder. Asked of the binary about to run, not of
+    // the engine state, because this spawns its own process.
+    if (isArchiveExtract(cmd) &&
+        !RcloneEngine.meetsSecureRclone(
+          await RcloneEngine.binaryVersion(rclone),
+        )) {
+      jobs.markDone(
+        job.id,
+        JobStatus.failed,
+        error: kArchiveExtractNeedsUpdate,
       );
       return job.id;
     }

@@ -147,4 +147,93 @@ void main() {
       expect(RcloneEngine.meetsMinRclone(''), isFalse);
     });
   });
+
+  /// A user who once pressed "update engine" kept that managed binary forever,
+  /// past every later app release that bundled a newer (security-fixed) one.
+  group('pickNewerEngine', () {
+    test('a strictly newer bundled engine wins', () {
+      expect(
+        RcloneEngine.pickNewerEngine(
+          managedVersion: 'rclone v1.74.4',
+          bundledVersion: 'rclone v1.75.1',
+        ),
+        EngineSource.bundled,
+      );
+    });
+
+    test('a newer managed engine keeps its precedence', () {
+      expect(
+        RcloneEngine.pickNewerEngine(
+          managedVersion: 'rclone v1.76.0',
+          bundledVersion: 'rclone v1.75.1',
+        ),
+        EngineSource.managed,
+      );
+    });
+
+    test('a tie keeps the managed engine, as before', () {
+      expect(
+        RcloneEngine.pickNewerEngine(
+          managedVersion: 'rclone v1.75.1',
+          bundledVersion: 'rclone v1.75.1',
+        ),
+        EngineSource.managed,
+      );
+    });
+
+    test('a managed engine that cannot say loses to one that can', () {
+      expect(
+        RcloneEngine.pickNewerEngine(
+          managedVersion: null,
+          bundledVersion: 'rclone v1.75.1',
+        ),
+        EngineSource.bundled,
+      );
+    });
+
+    test('when neither can say, nothing changes', () {
+      expect(
+        RcloneEngine.pickNewerEngine(
+          managedVersion: null,
+          bundledVersion: null,
+        ),
+        EngineSource.managed,
+      );
+      expect(
+        RcloneEngine.pickNewerEngine(
+          managedVersion: 'rclone v1.74.0',
+          bundledVersion: 'garbage',
+        ),
+        EngineSource.managed,
+      );
+    });
+  });
+
+  group('meetsSecureRclone', () {
+    test('is 1.75.1, the archive zip-slip fix', () {
+      expect(RcloneEngine.secureRcloneVersion, '1.75.1');
+    });
+
+    test('below it fails, at or above passes', () {
+      expect(RcloneEngine.meetsSecureRclone('rclone v1.75.0'), isFalse);
+      expect(RcloneEngine.meetsSecureRclone('v1.74.4'), isFalse);
+      expect(RcloneEngine.meetsSecureRclone('rclone v1.75.1'), isTrue);
+      expect(RcloneEngine.meetsSecureRclone('1.76.0-beta.1'), isTrue);
+    });
+
+    test('unknown or unparseable fails closed', () {
+      expect(RcloneEngine.meetsSecureRclone(null), isFalse);
+      expect(RcloneEngine.meetsSecureRclone('rclone'), isFalse);
+    });
+
+    test('is not the hard floor, which stays lower', () {
+      expect(
+        RcloneEngine.compareRcloneVersions(
+          RcloneEngine.minRcloneVersion,
+          RcloneEngine.secureRcloneVersion,
+        ),
+        lessThan(0),
+      );
+    });
+  });
 }

@@ -1,12 +1,13 @@
 Upstream rclone is now **__LATEST__**; this repo pinned **__CURRENT__**.
 
-All four pin sites are updated together, because the bundled binary and the
+All five pin sites are updated together, because the bundled binary and the
 in-process librclone must come from the same rclone version:
 
 - `.github/workflows/release.yml` — the bundled binary and the Android jniLib
 - `dev/android/build-rclone.ps1`
 - `dev/desktop/build-librclone.ps1`
 - `dev/desktop/build-librclone.sh`
+- `dev/ios/build-librclone-ios.sh` — the iOS / Mac App Store in-process engine
 
 **Two things this automation cannot do for you, before merging:**
 

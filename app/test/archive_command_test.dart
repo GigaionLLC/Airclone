@@ -1,4 +1,5 @@
 import 'package:airclone/src/state/archive_command.dart';
+import 'package:airclone/src/state/archive_service.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -151,5 +152,38 @@ void main() {
         expect(escapeRcloneGlob('normal-file.txt'), 'normal-file.txt');
       },
     );
+  });
+
+  /// The extract gate (rclone < 1.75.1 lets entries escape the destination)
+  /// must catch every extract and nothing else.
+  group('isArchiveExtract', () {
+    test('an extract is one', () {
+      final c = buildArchiveCommand(
+        op: ArchiveOp.extract,
+        source: 'gdrive:a.zip',
+        dest: '/home/me/out',
+      );
+      expect(isArchiveExtract(c), isTrue);
+    });
+
+    test('create and list are not', () {
+      expect(
+        isArchiveExtract(
+          buildArchiveCommand(
+            op: ArchiveOp.create,
+            source: 'gdrive:dir',
+            dest: 'gdrive:a.zip',
+            format: ArchiveFormat.values.first,
+          ),
+        ),
+        isFalse,
+      );
+      expect(
+        isArchiveExtract(
+          buildArchiveCommand(op: ArchiveOp.list, source: 'gdrive:a.zip'),
+        ),
+        isFalse,
+      );
+    });
   });
 }

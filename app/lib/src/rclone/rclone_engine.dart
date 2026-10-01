@@ -1,5 +1,7 @@
+import 'dart:async';
 import 'dart:io';
 
+import 'package:airclone_rc/airclone_rc.dart' show WindowsChildJob;
 import 'package:archive/archive.dart';
 import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart' show visibleForTesting;
@@ -23,11 +25,16 @@ class RcloneEngine {
   ///      see [bundledDesktopBinary]),
   ///   5. `rclone` on the system PATH.
   ///
-  /// The managed dir is checked *before* the bundled one on purpose: a fresh
-  /// install has only the bundled engine (so first run needs no download), but a
-  /// user-initiated "update engine" that lands in the managed dir then takes
-  /// precedence on the next launch. Whether an update is even *offered* is a
-  /// separate question — see [isStoreManaged] (the Store build never downloads).
+  /// Between the managed and the bundled engine, the NEWER one wins. The
+  /// managed dir used to win outright, so that a user-initiated "update engine"
+  /// took precedence over the engine the app shipped with. But the bundled
+  /// engine moves forward with every app update and the managed one does not:
+  /// a user who once pressed "update" to get 1.74.x kept running it forever,
+  /// past every later release that bundled a security fix (1.75.1's archive
+  /// zip-slip among them). Now both are asked for their version when both
+  /// exist; a tie, or a bundled engine that cannot say, keeps the managed one,
+  /// which is the old behaviour. See [pickNewerEngine]. Whether an update is
+  /// even *offered* is a separate question — see [isStoreManaged].
   static Future<String?> findExisting({String? overridePath}) async {
     if (overridePath != null && overridePath.isNotEmpty) {
       if (await File(overridePath).exists()) return overridePath;
@@ -40,10 +47,17 @@ class RcloneEngine {
     // whose review notes say it spawns no processes should not be reaching for
     // posix_spawn at startup, sandbox-denied or not.
     if (!subprocessAllowedHere) return null;
-    final managed = await _managedBinaryPath();
-    if (await File(managed).exists()) return managed;
-
+    final managedPath = await _managedBinaryPath();
+    final managed = await File(managedPath).exists() ? managedPath : null;
     final bundled = await bundledDesktopBinary();
+    if (managed != null && bundled != null) {
+      final chosen = pickNewerEngine(
+        managedVersion: await binaryVersion(managed),
+        bundledVersion: await binaryVersion(bundled),
+      );
+      return chosen == EngineSource.bundled ? bundled : managed;
+    }
+    if (managed != null) return managed;
     if (bundled != null) return bundled;
 
     final onPath = await _whichRclone();
@@ -451,6 +465,84 @@ class RcloneEngine {
     return null;
   }
 
+  /// Which of two present engines [findExisting] should run.
+  ///
+  /// The bundled one only when it is STRICTLY newer. A managed engine that
+  /// cannot report a version (a broken download) loses to a bundled one that
+  /// can; if neither can, nothing is known and the managed one keeps its old
+  /// precedence.
+  @visibleForTesting
+  static EngineSource pickNewerEngine({
+    required String? managedVersion,
+    required String? bundledVersion,
+  }) {
+    final m = managedVersion == null
+        ? null
+        : _parseVersionTriple(managedVersion);
+    final b = bundledVersion == null
+        ? null
+        : _parseVersionTriple(bundledVersion);
+    if (b == null) return EngineSource.managed;
+    if (m == null) return EngineSource.bundled;
+    return compareRcloneVersions(bundledVersion!, managedVersion!) > 0
+        ? EngineSource.bundled
+        : EngineSource.managed;
+  }
+
+  /// The version [path] reports (`rclone version`'s first line, e.g.
+  /// `rclone v1.75.1`), or null when it cannot be run or says nothing usable.
+  ///
+  /// Bounded: a binary that hangs is killed after [timeout] rather than
+  /// holding up engine start.
+  static Future<String?> binaryVersion(
+    String path, {
+    Duration timeout = const Duration(seconds: 10),
+  }) async {
+    try {
+      final proc = await Process.start(path, const [
+        'version',
+      ], runInShell: false);
+      WindowsChildJob.adopt(proc.pid);
+      unawaited(proc.stderr.drain<void>());
+      final out = proc.stdout
+          .transform(systemEncoding.decoder)
+          .join()
+          .timeout(timeout);
+      final String text;
+      try {
+        text = await out;
+      } on TimeoutException {
+        proc.kill();
+        return null;
+      }
+      await proc.exitCode.timeout(timeout, onTimeout: () => -1);
+      final line = text.split('\n').first.trim();
+      return _parseVersionTriple(line) == null ? null : line;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// The first rclone release whose `archive extract` cannot write outside the
+  /// destination (GHSA-66hp-wgxq-6f5q), and which also fixed the listing and
+  /// symlink escapes noted in `.github/workflows/release.yml`.
+  ///
+  /// NOT the hard floor: [minRcloneVersion] is still what the engine refuses
+  /// to start below. Raising that would strand anyone whose engine comes from
+  /// PATH or an older managed download - on a Store or Flatpak build there is
+  /// no in-app download to get them out. Instead the one feature the advisory
+  /// makes dangerous, extracting an archive, is refused below this version,
+  /// and Settings says why.
+  static const secureRcloneVersion = '1.75.1';
+
+  /// True when [reported] is at least [secureRcloneVersion]. Unparseable or
+  /// unknown counts as NOT secure, the same fail-closed stance as
+  /// [meetsMinRclone].
+  static bool meetsSecureRclone(String? reported) {
+    if (reported == null || _parseVersionTriple(reported) == null) return false;
+    return compareRcloneVersions(reported, secureRcloneVersion) >= 0;
+  }
+
   /// The minimum rclone version Airclone supports. Older engines miss RC methods
   /// we rely on and carry the published rclone RC CVEs called out in
   /// `dev/backlog/feature-backlog.md`. The min-version gate refuses to run below
@@ -525,3 +617,6 @@ class RcloneEngine {
   static String _basename(String path) =>
       path.replaceAll('\\', '/').split('/').last;
 }
+
+/// Where [RcloneEngine.findExisting] found the engine, when it had a choice.
+enum EngineSource { managed, bundled }

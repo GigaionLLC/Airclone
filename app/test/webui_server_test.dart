@@ -55,9 +55,14 @@ class _FakeClient implements RcloneClient {
   @override
   Future<EngineStatus> status() async =>
       const EngineStatus(EngineState.running, version: 'test');
+
+  /// Where object bytes come from. A dead port by default; a test that needs
+  /// real bytes points it at a stub.
+  String objectBase = 'http://127.0.0.1:1';
+
   @override
   ObjectRef objectRef(String fs, String remote) =>
-      ObjectRef('http://127.0.0.1:1/$fs/$remote', const {});
+      ObjectRef('$objectBase/$fs/$remote', const {});
 }
 
 void main() {
@@ -512,6 +517,30 @@ void main() {
       await res.drain<void>();
     });
 
+    test('an on-the-fly remote is refused for uploads too', () async {
+      final cookie = await signIn();
+      final res = await send(
+        'POST',
+        '/api/upload?fs=${Uri.encodeQueryComponent(':sftp,ssh=id:')}'
+            '&remote=a.txt',
+        cookie: cookie,
+      );
+      expect(res.statusCode, HttpStatus.forbidden);
+      await res.drain<void>();
+    });
+
+    test('and for object reads', () async {
+      final cookie = await signIn();
+      final res = await send(
+        'GET',
+        '/api/object?fs=${Uri.encodeQueryComponent('nas,ssh=id:')}'
+            '&remote=a.txt',
+        cookie: cookie,
+      );
+      expect(res.statusCode, HttpStatus.forbidden);
+      await res.drain<void>();
+    });
+
     test(
       'an engine that cannot upload says so, rather than failing oddly',
       () async {
@@ -720,12 +749,127 @@ void main() {
       expect(calls, isNot(contains('operations/copyurl')));
     });
 
+    test(
+      'an sftp remote with an ssh command never reaches the engine',
+      () async {
+        final (status, calls) = await rc('config/create', {
+          'name': 'x',
+          'type': 'sftp',
+          'parameters': {'host': 'h', 'ssh': 'touch /tmp/pwned'},
+        });
+        expect(status, HttpStatus.forbidden);
+        expect(calls, isNot(contains('config/create')));
+      },
+    );
+
+    test('an on-the-fly remote in fs never reaches the engine', () async {
+      final (status, calls) = await rc('operations/list', {
+        'fs': ":sftp,host=h,ssh='touch /tmp/pwned':",
+        'remote': '',
+      });
+      expect(status, HttpStatus.forbidden);
+      expect(calls, isNot(contains('operations/list')));
+    });
+
+    test('a local listing the app itself sends is forwarded', () async {
+      final (status, calls) = await rc('operations/list', {
+        'fs': ':local,copy_links=true:/',
+        'remote': '',
+      });
+      expect(status, isNot(HttpStatus.forbidden));
+      expect(calls, contains('operations/list'));
+    });
+
     /// Everything else is untouched: the guard must not become a second,
     /// accidental allowlist.
     test('an unrelated method is not inspected', () async {
       final (status, calls) = await rc('core/version', const {});
       expect(status, isNot(HttpStatus.forbidden));
       expect(calls, contains('core/version'));
+    });
+  });
+
+  /// Cloud content is untrusted and /api/object serves it on the Web UI's own
+  /// origin. An `.html` or `.svg` rendered there, or a `.js` included as a
+  /// script, would run with the session.
+  group('object responses cannot run as the Web UI', () {
+    late HttpServer upstream;
+    setUp(() async {
+      upstream = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      upstream.listen((req) {
+        final name = req.uri.pathSegments.last;
+        final type = switch (name.split('.').last) {
+          'html' => 'text/html; charset=utf-8',
+          'svg' => 'image/svg+xml',
+          'js' => 'text/javascript',
+          'png' => 'image/png',
+          _ => 'application/octet-stream',
+        };
+        // With a length, as rclone sends one: the proxy copies it and turns
+        // chunked encoding off, so a body without one would never end.
+        req.response
+          ..headers.set(HttpHeaders.contentTypeHeader, type)
+          ..contentLength = 1
+          ..write('x')
+          ..close();
+      });
+      engine.objectBase = 'http://127.0.0.1:${upstream.port}';
+    });
+    tearDown(() => upstream.close(force: true));
+
+    Future<HttpClientResponse> get(String remote) async => send(
+      'GET',
+      '$kObjectPath?fs=gdrive:&remote=$remote',
+      cookie: await signIn(),
+    );
+
+    for (final name in ['page.html', 'drawing.svg', 'app.js']) {
+      test('$name is sandboxed and only ever a download', () async {
+        final res = await get(name);
+        expect(res.statusCode, HttpStatus.ok);
+        expect(res.headers.value('Content-Security-Policy'), 'sandbox');
+        expect(
+          res.headers.value('Content-Disposition'),
+          startsWith('attachment'),
+        );
+        await res.drain<void>();
+      });
+    }
+
+    /// Previews must keep working: an image is still served inline.
+    test('an image is still served inline for previews', () async {
+      final res = await get('photo.png');
+      expect(res.statusCode, HttpStatus.ok);
+      expect(res.headers.contentType?.mimeType, 'image/png');
+      expect(res.headers.value('Content-Disposition'), isNull);
+      expect(res.headers.value('Content-Security-Policy'), 'sandbox');
+      await res.drain<void>();
+    });
+  });
+
+  group('isActiveContentType', () {
+    test('documents and scripts are active, media and data are not', () {
+      for (final t in [
+        'text/html',
+        'application/xhtml+xml',
+        'image/svg+xml',
+        'text/xml',
+        'text/javascript',
+        'application/javascript',
+      ]) {
+        expect(isActiveContentType(ContentType.parse(t)), isTrue, reason: t);
+      }
+      for (final t in [
+        'image/png',
+        'video/mp4',
+        'application/pdf',
+        'text/plain',
+        'application/json',
+        'application/octet-stream',
+      ]) {
+        expect(isActiveContentType(ContentType.parse(t)), isFalse, reason: t);
+      }
+      expect(isActiveContentType(null), isFalse);
     });
   });
 }

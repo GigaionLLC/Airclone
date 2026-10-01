@@ -13,6 +13,38 @@ happened": nothing was logged between 2026-07-02 and 2026-07-15, or between 2026
      it is: it used to say ABOVE, which pushed it further down the file with every entry until
      it sat hundreds of lines under the newest one and pointed writers at the wrong place. -->
 
+## [2026-09-29] - Security review fixes (2026-09 review)
+
+**Agent:** Claude Code (Claude Opus 5.5)
+**Files Modified:** `app/lib/src/webui/webui_param_guards.dart`, `webui_server.dart`, `webui_rc_policy.dart`,
+`app/lib/src/rclone/rclone_engine.dart`, `app/lib/src/state/archive_service.dart`, `serve_controller.dart`,
+`app_info.dart`, `app/lib/src/ui/serve_panel.dart`, `settings_screen.dart`, `app/lib/src/update/update_fetch.dart`,
+`packages/airclone_rc/lib/src/http_rclone_client.dart`, `.github/workflows/{release,ci,rclone-bump,publish-airclone-rc}.yml`,
+`.github/workflows/rclone-bump-body.md`, `.github/dependabot.yml`, `dev/ios/build-librclone-ios.sh`,
+`dev/linux/build-appimage.sh`, `app/pubspec.lock`, tests beside each, `docs/guide/{web-ui,mount-and-share,browsing}.md`,
+`wiki/core/{10-external-integrations,14-performance-standards}.md`, `dev/README.md`, this log
+**Database/API Changes:** Web UI `/api/rc` refuses more parameters (see below); no app API change.
+**Summary:** Web UI: every forwarded RC call now refuses options that make rclone run a program on the host
+(`ssh`, `bearer_token_command`, `password_command`, `metadata_mapper`, `name_transform command=`, anything else
+ending in `command` except sftp's remote-side `server_command`/`*sum_command`), in `parameters`, `_config` and
+flat top-level keys, plus on-the-fly/connection-string remotes and JSON-object `fs` in `fs`/`srcFs`/`dstFs`/bisync
+paths and wrapper `remote`/`upstreams` (only `:local` and `copy_links` pass - what `listFsFor` sends); an unchanged
+saved value passes so editing an ssh-configured remote still works; `/api/object` is `CSP: sandbox` and never renders
+HTML/SVG/JS inline. Engine: the newer of managed and bundled rclone runs; below 1.75.1 only archive extract is refused
+(Settings warns), the 1.73.5 start floor is unchanged. Serve: fresh loopback serves come with a visible random
+password (clear to opt out). iOS librclone 1.75.0 -> 1.75.1 and it is now in the drift check and bump PR. Reaper:
+verifies a PID is still an `rclone rcd` of ours before SIGKILL; Linux markers move to `$XDG_RUNTIME_DIR` (old /tmp
+markers still reaped under the old lock). CI: release.yml token read-only except `release` and `checksums`
+(platform jobs hand `release-<platform>` artifacts to `checksums`, which attaches them), no persisted credentials,
+AppImage tools SHA-256 pinned; rclone-bump's `\n` bug; pub.dev OIDC only on a tag-only publish job. Update check:
+signed-comment tag matched as a token, release URL restricted to this repo. `pubspec.lock`: 27 patch/minor bumps,
+pdfrx/pdfium, mobile_scanner and the major transitive ones deliberately held back. Deferred: Flutter 3.47.5 (repo rule
+wants a release.yml dispatch first), L2 Mark-of-the-Web (Office Protected View is a visible change), L3, L5, L6,
+L7 keystore/environments/artifact exposure, I3-I8. Verified: app analyze clean + 1907 tests, airclone_rc analyze + 127 tests, Windows release
+build, and a headless `--webui` smoke run of that build (engine 1.75.1 up, 18 remotes listed, local listing in both fs forms,
+three malicious payloads 403 with nothing created, loopback serve 401 without / 200 with creds, object CSP sandbox, no
+orphan rcd after a hard kill).
+
 ## [2026-09-28] - v0.22.1 live in all three stores
 
 **Agent:** Claude Code (Claude Opus 5.5)

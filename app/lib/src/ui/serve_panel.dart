@@ -32,8 +32,12 @@ class _ServeDialog extends ConsumerStatefulWidget {
 
 class _ServeDialogState extends ConsumerState<_ServeDialog> {
   final _subdir = TextEditingController();
-  final _user = TextEditingController();
-  final _pass = TextEditingController();
+  // Filled in by default, loopback included: see generateServePassword for
+  // why "this device only" is not a reason to serve without one. Clearing
+  // both fields is the explicit opt-out.
+  final _user = TextEditingController(text: kDefaultServeUser);
+  final _pass = TextEditingController(text: generateServePassword());
+  bool _showPass = true;
   String? _remote;
   String _type = 'http';
   bool _lan = false;
@@ -82,7 +86,14 @@ class _ServeDialogState extends ConsumerState<_ServeDialog> {
             readOnly: _readOnly,
             dlnaAcknowledged: _dlnaAck,
           );
-      if (mounted) setState(() => _starting = false);
+      if (mounted) {
+        setState(() {
+          _starting = false;
+          // The next server gets its own password; one password shared by
+          // every serve would make stopping one pointless.
+          if (_pass.text.isNotEmpty) _pass.text = generateServePassword();
+        });
+      }
     } catch (e) {
       if (mounted) {
         setState(() {
@@ -290,7 +301,7 @@ class _ServeDialogState extends ConsumerState<_ServeDialog> {
           ],
         ),
       ),
-      if (_lan && _type != 'dlna')
+      if (_authCapable)
         Row(
           children: [
             Expanded(
@@ -299,7 +310,10 @@ class _ServeDialogState extends ConsumerState<_ServeDialog> {
                 'Username',
                 TextField(
                   controller: _user,
-                  decoration: _dec(c, 'required for network'),
+                  decoration: _dec(
+                    c,
+                    _lan ? 'required for network' : 'recommended',
+                  ),
                   style: TextStyle(color: c.text, fontSize: 13),
                   onChanged: (_) => setState(() {}),
                 ),
@@ -312,14 +326,63 @@ class _ServeDialogState extends ConsumerState<_ServeDialog> {
                 'Password',
                 TextField(
                   controller: _pass,
-                  obscureText: true,
-                  decoration: _dec(c, 'required for network'),
+                  obscureText: !_showPass,
+                  decoration:
+                      _dec(
+                        c,
+                        _lan ? 'required for network' : 'recommended',
+                      ).copyWith(
+                        suffixIcon: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            IconButton(
+                              tooltip: _showPass ? 'Hide' : 'Show',
+                              onPressed: () =>
+                                  setState(() => _showPass = !_showPass),
+                              icon: Icon(
+                                _showPass
+                                    ? Icons.visibility_off_outlined
+                                    : Icons.visibility_outlined,
+                                size: 16,
+                              ),
+                              color: c.textMuted,
+                              visualDensity: VisualDensity.compact,
+                            ),
+                            IconButton(
+                              tooltip: 'New password',
+                              onPressed: () => setState(
+                                () => _pass.text = generateServePassword(),
+                              ),
+                              icon: const Icon(Icons.refresh, size: 16),
+                              color: c.textMuted,
+                              visualDensity: VisualDensity.compact,
+                            ),
+                          ],
+                        ),
+                      ),
                   style: TextStyle(color: c.text, fontSize: 13),
                   onChanged: (_) => setState(() {}),
                 ),
               ),
             ),
           ],
+        ),
+      if (_authCapable && !_lan)
+        Padding(
+          padding: const EdgeInsets.only(bottom: Space.x2),
+          child: Text(
+            _user.text.isEmpty || _pass.text.isEmpty
+                ? 'No password: any program or web page on this device can '
+                      'open this server.'
+                : 'Other programs and web pages on this device need this '
+                      'password too. Clear it to serve without one.',
+            style: TextStyle(
+              color: _user.text.isEmpty || _pass.text.isEmpty
+                  ? c.warning
+                  : c.textFaint,
+              fontSize: 11,
+            ),
+          ),
         ),
       Row(
         children: [
@@ -389,6 +452,7 @@ class _ServeDialogState extends ConsumerState<_ServeDialog> {
 
   List<Widget> _running(AircloneColors c) {
     final servers = ref.watch(serveControllerProvider);
+    final controller = ref.read(serveControllerProvider.notifier);
     final lanIp = ref.watch(lanIpProvider).valueOrNull;
     return [
       Row(
@@ -444,9 +508,25 @@ class _ServeDialogState extends ConsumerState<_ServeDialog> {
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
+                      if (controller.credentialsFor(s.id) case final creds?)
+                        Text(
+                          'User ${creds.user}  ·  password protected',
+                          style: TextStyle(color: c.textFaint, fontSize: 11),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
                     ],
                   ),
                 ),
+                if (controller.credentialsFor(s.id) case final creds?)
+                  IconButton(
+                    tooltip: 'Copy password',
+                    onPressed: () =>
+                        Clipboard.setData(ClipboardData(text: creds.pass)),
+                    icon: const Icon(Icons.key, size: 15),
+                    color: c.textMuted,
+                    visualDensity: VisualDensity.compact,
+                  ),
                 // Browsers speak http(s) — offered for HTTP + WebDAV serves.
                 if (s.scheme == 'http')
                   IconButton(

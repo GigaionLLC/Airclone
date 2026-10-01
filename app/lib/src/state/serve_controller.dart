@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:math';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -44,6 +45,26 @@ final lanIpProvider = FutureProvider<String?>((ref) async {
   return null;
 });
 
+/// The username the Serve panel fills in by default.
+const String kDefaultServeUser = 'airclone';
+
+/// A fresh random password for a serve, 20 characters from an alphabet with
+/// nothing that is easy to misread (`0`/`O`, `1`/`l`/`I`) or to mangle in a
+/// URL or a shell.
+///
+/// Why a loopback serve gets one by default: "this device only" keeps other
+/// MACHINES out, not other programs. rclone's serve does not check the Host
+/// header, so a web page can reach `127.0.0.1:8080` through DNS rebinding in a
+/// browser without local-network protection, and every other account or
+/// sandboxed process on this machine can connect to it directly. Without a
+/// password, either could read - and unless the serve is read-only, change or
+/// delete - everything on the remote.
+String generateServePassword([Random? random]) {
+  const alphabet = 'abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  final r = random ?? Random.secure();
+  return List.generate(20, (_) => alphabet[r.nextInt(alphabet.length)]).join();
+}
+
 /// Drives `rclone serve` instances. `serve/list` is the source of truth (polled
 /// every 2s, mirroring [StatsController]); Airclone keeps no authoritative list.
 ///
@@ -52,6 +73,16 @@ final lanIpProvider = FutureProvider<String?>((ref) async {
 /// protocols, and the DLNA acknowledgement.
 class ServeController extends Notifier<List<ServeServer>> {
   Timer? _timer;
+
+  /// The credentials each server was started with, by server id, so the panel
+  /// can show and copy them after the form has moved on. In memory only, and
+  /// only for servers started from this app session - `serve/list` is not
+  /// asked for them.
+  final Map<String, ({String user, String pass})> _credentials = {};
+
+  /// The username and password [id] was started with, or null when it has
+  /// none or was not started by this session.
+  ({String user, String pass})? credentialsFor(String id) => _credentials[id];
 
   @override
   List<ServeServer> build() {
@@ -72,6 +103,9 @@ class ServeController extends Notifier<List<ServeServer>> {
                 if (e is Map) ServeServer.fromList(e.cast<String, dynamic>()),
             ]
           : const [];
+      // Forget the credentials of servers that are gone.
+      final live = {for (final s in state) s.id};
+      _credentials.removeWhere((id, _) => !live.contains(id));
     } catch (_) {
       // Keep the last good snapshot on a transient error.
     }
@@ -127,6 +161,9 @@ class ServeController extends Notifier<List<ServeServer>> {
     );
     final id = (res['id'] as String?) ?? '';
     final boundAddr = (res['addr'] as String?) ?? addr;
+    if (authCapable && user.isNotEmpty && pass.isNotEmpty && id.isNotEmpty) {
+      _credentials[id] = (user: user, pass: pass);
+    }
     await _poll();
     return (id: id, addr: boundAddr);
   }
