@@ -13,6 +13,15 @@ happened": nothing was logged between 2026-07-02 and 2026-07-15, or between 2026
      it is: it used to say ABOVE, which pushed it further down the file with every entry until
      it sat hundreds of lines under the newest one and pointed writers at the wrong place. -->
 
+## [2026-10-02] - v0.22.2 live on Apple, in Microsoft certification
+
+**Agent:** Claude Code (Claude Opus 5.5)
+**Files Modified:** `dev/apple-handoff.md` (state table), `dev/releases/v0.22.2.md` (Where to get it), this log
+**Database/API Changes:** Store state only.
+**Summary:** Apple approved both platforms; `asc-release` dry runs read PENDING_DEVELOPER_RELEASE, `mode=release`
+published iOS and macOS first time (no 500 this round), follow-up dry runs read READY_FOR_SALE. Microsoft: submission
+1152921505702016058 (MSIX `0.22.2.0`) submitted by a human, now in Certification. Play production already 149 at 100%.
+
 ## [2026-10-01] - v0.22.2 sent to all three stores
 
 **Agent:** Claude Code (Claude Opus 5.5)
