@@ -426,3 +426,18 @@ String? preferenceFor(TrackChoice c) {
 
 /// The stored value meaning "subtitles off".
 const String kLanguageOff = 'off';
+
+/// The libmpv options a remembered language turns into, set before a file is
+/// opened so libmpv's own track selection does the work (plan Q4).
+///
+/// Nothing for no preference. Subtitles `off` is `sid=no`, not an empty
+/// `slang`: an empty list means "no preference" to mpv, which would still pick
+/// the file's default track.
+Map<String, String> languageOptions({String? audio, String? subtitle}) => {
+  if (audio != null && audio.isNotEmpty && audio != kLanguageOff)
+    'alang': mpvLanguageList(audio),
+  if (subtitle == kLanguageOff)
+    'sid': 'no'
+  else if (subtitle != null && subtitle.isNotEmpty)
+    'slang': mpvLanguageList(subtitle),
+};

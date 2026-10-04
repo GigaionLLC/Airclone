@@ -401,7 +401,12 @@ List<Sidecar> findSidecars(RcloneFile video, List<RcloneFile> siblings);
     overlay (`onTrackPicker`), not on the audio now-playing screen. The "media_preview widget
     test" is `track_picker_test.dart` on the button itself — `MediaPreviewBody` constructs libmpv
     and cannot be pumped. 12 new widget tests (7 picker, 5 TV).
-- `[ ]` A3 Language prefs (`media_prefs`) + `alang`/`slang` before open; re-apply on Retry.
+- `[x]` A3 Language prefs (`media_prefs`) + `alang`/`slang` before open; re-apply on Retry.
+  - `preferredAudioLanguageProvider` / `preferredSubtitleLanguageProvider` (SharedPreferences keys
+    `media_audio_language`, `media_subtitle_language`; ISO 639-2/B or `off`). `languageOptions()`
+    (pure) → `alang`/`slang` with all aliases, `sid=no` for off; set via
+    `NativePlayer.setProperty` before `open`. Picks are kept per preview (`_sessionPicks`) and
+    re-applied in `_afterStart` after a Retry's new player starts. 7 new tests.
 - `[ ]` A4 Subtitle rendering per A0.2 outcome (libass + font + style helper, or TV `SubtitleViewConfiguration`).
 - `[ ]` A5 `state/sidecar_subs.dart` + full-sibling plumbing + `sub-add … auto` after start.
 - `[ ]` A6 Extension tables, `kNoThumbVideoExts`, thumbnail timeout negative cache, `_mimeByExt`.

@@ -49,4 +49,40 @@ void main() {
     await pumpEventQueue();
     expect(c.read(repeatPlaybackProvider), isTrue);
   });
+
+  group('remembered languages (player format plan, Q4)', () {
+    test('no preference until a pick is made', () {
+      final c = make();
+      expect(c.read(preferredAudioLanguageProvider), isNull);
+      expect(c.read(preferredSubtitleLanguageProvider), isNull);
+    });
+
+    test('a language round-trips, lower-cased', () async {
+      final c = make();
+      await c.read(preferredAudioLanguageProvider.notifier).set('GER');
+      expect(c.read(preferredAudioLanguageProvider), 'ger');
+      final prefs = await SharedPreferences.getInstance();
+      expect(prefs.getString('media_audio_language'), 'ger');
+    });
+
+    test('subtitles off is remembered as off', () async {
+      final c = make();
+      await c.read(preferredSubtitleLanguageProvider.notifier).set('off');
+      final prefs = await SharedPreferences.getInstance();
+      expect(prefs.getString('media_subtitle_language'), 'off');
+    });
+
+    test('a previous session is restored, and null forgets it', () async {
+      SharedPreferences.setMockInitialValues({
+        'media_subtitle_language': 'eng',
+      });
+      final c = make();
+      c.read(preferredSubtitleLanguageProvider);
+      await pumpEventQueue();
+      expect(c.read(preferredSubtitleLanguageProvider), 'eng');
+      await c.read(preferredSubtitleLanguageProvider.notifier).set(null);
+      final prefs = await SharedPreferences.getInstance();
+      expect(prefs.getString('media_subtitle_language'), isNull);
+    });
+  });
 }

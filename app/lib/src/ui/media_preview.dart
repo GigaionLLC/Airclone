@@ -172,6 +172,13 @@ class _MediaPreviewBodyState extends ConsumerState<MediaPreviewBody> {
   /// bug than the black screen this class exists to fix.
   bool _started = false;
 
+  /// The tracks the person picked in THIS preview, by kind. They outlive a
+  /// Retry on purpose: Retry builds a new player, which would otherwise come
+  /// back on libmpv's default tracks, and someone who switched a film to
+  /// German before it stalled should not have to do it again. A new preview —
+  /// the next file in Quick Look — is a new State and starts clean.
+  final Map<TrackKind, TrackChoice> _sessionPicks = {};
+
   /// Bumped by [_teardown] so a callback from a REPLACED player (a
   /// `waitUntilFirstFrameRendered` future that resolves after Retry swapped the
   /// player out) can't clear the new attempt's loading/watchdog state.
@@ -228,7 +235,7 @@ class _MediaPreviewBodyState extends ConsumerState<MediaPreviewBody> {
         // arrows scrub.
         alwaysVisible: widget.audioOnly,
         tvKeysEnabled: tvPlayerEnabled,
-      );
+      )..onTrackPicked = _onTrackPicked;
       if (!widget.audioOnly) {
         controller = VideoController(player);
         _controller = controller;
@@ -284,6 +291,10 @@ class _MediaPreviewBodyState extends ConsumerState<MediaPreviewBody> {
       },
     );
 
+    // Before open, so libmpv's own track selection honours them.
+    await _applyLanguagePrefs(player);
+    if (generation != _generation || !mounted) return;
+
     final credentialledUrl = loopbackUrlWithCredentials(
       widget.url,
       widget.headers,
@@ -327,10 +338,59 @@ class _MediaPreviewBodyState extends ConsumerState<MediaPreviewBody> {
     );
   }
 
+  /// Sets mpv `alang` / `slang` (or `sid=no`) from the remembered languages
+  /// (plan Q4). Best-effort: a player that refuses an option still plays.
+  Future<void> _applyLanguagePrefs(Player player) async {
+    final native = player.platform;
+    if (native is! NativePlayer) return;
+    final options = languageOptions(
+      audio: ref.read(preferredAudioLanguageProvider),
+      subtitle: ref.read(preferredSubtitleLanguageProvider),
+    );
+    for (final e in options.entries) {
+      try {
+        await native.setProperty(e.key, e.value);
+      } catch (_) {
+        // Not fatal; libmpv's default selection stands.
+      }
+    }
+  }
+
+  /// A pick in any picker: remembered for this preview (re-applied after a
+  /// Retry) and, when the track says what language it is, for the next file.
+  void _onTrackPicked(TrackChoice choice) {
+    _sessionPicks[choice.kind] = choice;
+    final pref = preferenceFor(choice);
+    if (pref == null) return;
+    if (choice.kind == TrackKind.audio) {
+      ref.read(preferredAudioLanguageProvider.notifier).set(pref);
+    } else {
+      ref.read(preferredSubtitleLanguageProvider.notifier).set(pref);
+    }
+  }
+
+  /// Everything that needs a file actually loaded: the picks this preview
+  /// already made, re-applied to a player a Retry rebuilt. Never fatal.
+  Future<void> _afterStart(int generation) async {
+    final tv = _tv;
+    if (tv == null || generation != _generation) return;
+    for (final pick in _sessionPicks.values) {
+      if (generation != _generation) return;
+      if (pick.kind == TrackKind.audio) {
+        await tv.target.setAudio(AudioTrack(pick.id, null, null));
+      } else {
+        await tv.target.setSubtitle(
+          pick.isOff ? SubtitleTrack.no() : SubtitleTrack(pick.id, null, null),
+        );
+      }
+    }
+  }
+
   /// Playback is genuinely up: disarm the watchdog, drop the spinner, and stop
   /// treating [PlayerStream.error] as fatal. Ignored if [generation] is stale.
   void _markStarted(int generation) {
     if (generation != _generation) return;
+    if (!_started) unawaited(_afterStart(generation));
     _started = true;
     _watchdog?.cancel();
     if (mounted && _loading) setState(() => _loading = false);

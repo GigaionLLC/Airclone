@@ -291,4 +291,21 @@ void main() {
       expect(target.subtitleSets, isEmpty);
     });
   });
+
+  group('remembered languages become libmpv options', () {
+    test('nothing remembered sets nothing', () {
+      expect(languageOptions(), isEmpty);
+    });
+
+    test('a language sets alang / slang with every alias', () {
+      final o = languageOptions(audio: 'ger', subtitle: 'eng');
+      expect(o['alang']!.split(','), containsAll(['ger', 'deu', 'de']));
+      expect(o['slang'], 'eng,en');
+      expect(o.containsKey('sid'), isFalse);
+    });
+
+    test('subtitles off is sid=no, never an empty slang', () {
+      expect(languageOptions(subtitle: kLanguageOff), {'sid': 'no'});
+    });
+  });
 }
