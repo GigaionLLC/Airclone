@@ -55,7 +55,6 @@ import 'pane_drag.dart';
 import 'pane_split.dart';
 import 'paste_action.dart';
 import 'quick_look.dart';
-import 'search_dialog.dart';
 import 'serve_panel.dart';
 import 'settings_screen.dart';
 import 'shortcuts_dialog.dart';
@@ -171,7 +170,16 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           _openActiveSelection();
           return KeyEventResult.handled;
         case LogicalKeyboardKey.escape:
-          activePaneCtrl().clearSelection();
+          // A selection goes first; then one step out of the search box's
+          // state (results, then its text) without needing to focus it.
+          final pane = activePaneCtrl();
+          if (ref
+              .read(paneProvider(ref.read(activePaneProvider)))
+              .hasSelection) {
+            pane.clearSelection();
+          } else {
+            pane.stepOutOfSearch();
+          }
           return KeyEventResult.handled;
         case LogicalKeyboardKey.delete:
           _deleteActiveSelection();
@@ -184,6 +192,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     }
 
     if (!noMods) return KeyEventResult.ignored;
+    // Search results are not this folder's listing; jumping in them by name
+    // would select a row the flat selection cannot hold.
+    if (ref
+        .read(paneProvider(ref.read(activePaneProvider)))
+        .search
+        .inSubfolders) {
+      return KeyEventResult.ignored;
+    }
     // Type-to-navigate: printable keystrokes (not space/control chars)
     // jump-select the first entry starting with the typed prefix.
     final ch = event.character;
@@ -322,61 +338,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     await ref.read(paneProvider(idx).notifier).refresh();
   }
 
-  /// Ctrl+Shift+F: recursively search the active pane's current folder, then
-  /// reveal the chosen match (navigate into a folder, or open the file's parent
-  /// folder and select it).
+  /// Ctrl+Shift+F: the active pane's search box, reaching into subfolders.
+  /// The text already typed is kept, so a This-folder search that came up
+  /// short becomes a Subfolders one without retyping it.
   void _openSearch() {
     final idx = ref.read(activePaneProvider);
-    final st = ref.read(paneProvider(idx));
-    final remote = st.remote;
-    final client = ref.read(engineControllerProvider).client;
-    if (remote == null || client == null) return;
-    final basePath = st.path;
-    showSearchDialog(
-      context,
-      client: client,
-      fs: remote.fs,
-      label: basePath.isEmpty ? remote.name : '${remote.name}/$basePath',
-      basePath: basePath,
-      onOpen: (RcloneFile m) async {
-        final pane = ref.read(paneProvider(idx).notifier);
-        final abs = basePath.isEmpty ? m.path : '$basePath/${m.path}';
-        if (m.isDir) {
-          await pane.navigateTo(abs);
-          return;
-        }
-        final slash = abs.lastIndexOf('/');
-        final parent = slash < 0 ? '' : abs.substring(0, slash);
-        // Skip the reload when the match is already in the displayed folder.
-        if (parent != ref.read(paneProvider(idx)).path) {
-          await pane.navigateTo(parent);
-        }
-        pane.selectOnly(m.name);
-        // Scroll the revealed row into view once the (possibly new) listing
-        // has laid out — mirrors type-to-navigate.
-        WidgetsBinding.instance.addPostFrameCallback(
-          (_) => _scrollSelectedIntoView(idx),
-        );
-      },
-    );
-  }
-
-  /// Animate the active pane's list to the first selected row (list view only).
-  void _scrollSelectedIntoView(int idx) {
-    final st = ref.read(paneProvider(idx));
-    if (st.viewMode != ViewMode.list) return;
-    final entries = st.visibleEntries;
-    final i = entries.indexWhere((e) => st.selected.contains(e.name));
-    if (i < 0) return;
-    final sc = ref.read(paneScrollProvider(idx));
-    if (sc.hasClients) {
-      final target = (i * 36.0).clamp(0.0, sc.position.maxScrollExtent);
-      sc.animateTo(
-        target,
-        duration: const Duration(milliseconds: 150),
-        curve: Curves.easeOut,
-      );
-    }
+    if (ref.read(paneProvider(idx)).remote == null) return;
+    ref.read(paneProvider(idx).notifier).setSearchScope(SearchScope.subfolders);
+    ref.read(paneFilterFocusProvider(idx)).requestFocus();
   }
 
   /// Scan the active pane's folder for content-identical duplicate files and
@@ -454,7 +423,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         ),
       if (activeRemote != null)
         PaletteAction(
-          label: 'Search this folder…',
+          label: 'Search here and in subfolders…',
           icon: Icons.search,
           hint: 'Ctrl+Shift+F',
           keywords: 'find recursive subfolders',
@@ -1673,7 +1642,10 @@ class _StatusBar extends ConsumerWidget {
         : ref.watch(remoteAboutProvider(remote.fs)).valueOrNull;
 
     final parts = <String>[
-      if (remote != null) '${st.visibleEntries.length} items',
+      if (remote != null)
+        st.search.inSubfolders
+            ? '${st.search.hits.length} matches'
+            : '${st.visibleEntries.length} items',
       if (sel.isNotEmpty) '${sel.length} selected · ${humanSize(selBytes)}',
       if (about?.free != null && about?.total != null)
         '${humanSize(about!.free!)} free of ${humanSize(about.total!)}',

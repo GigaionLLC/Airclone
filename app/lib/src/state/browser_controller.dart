@@ -10,10 +10,12 @@ import '../ui/file_icon.dart' show isGalleryMedia;
 import '../ui/pane_drag.dart' show joinPath;
 import 'console/console_controller.dart';
 import 'engine_controller.dart';
+import 'pane_search.dart';
 import 'tree_state.dart';
 import 'undecryptable_names.dart';
 import 'view_memory.dart';
 
+export 'pane_search.dart';
 export 'tree_state.dart';
 
 /// How a pane renders its directory: classic detail list, icon/thumbnail grid,
@@ -66,6 +68,7 @@ class BrowserState {
     this.activeTab = 0,
     this.hiddenUndecryptable = 0,
     this.tree = TreeState.empty,
+    this.search = const PaneSearch(),
   });
 
   final Remote? remote;
@@ -99,8 +102,13 @@ class BrowserState {
   /// Names (within the current folder) that are multi-selected.
   final Set<String> selected;
 
-  /// Live client-side name filter (Ctrl+F box).
+  /// The pane search box's text (Ctrl+F). In [SearchScope.folder] it filters
+  /// the listing on screen; in [SearchScope.subfolders] it is the query over
+  /// the recursive scan in [search].
   final String filter;
+
+  /// Scope, scan state and results of the pane's search box.
+  final PaneSearch search;
 
   /// Open tabs in this pane (overlaid by the controller); the active one's
   /// location is reflected by the fields above.
@@ -144,7 +152,11 @@ class BrowserState {
   /// [tree.selected] as full paths and is reached through [selectedTreeRows],
   /// whose rows carry their own parent. Consumers that only know this getter
   /// see no selection in tree mode, which is the safe failure.
-  List<RcloneFile> get selectedEntries => viewMode == ViewMode.tree
+  ///
+  /// Empty while Subfolders results are shown, for the same reason: a result
+  /// lives in its own folder, not in [path].
+  List<RcloneFile> get selectedEntries =>
+      viewMode == ViewMode.tree || search.inSubfolders
       ? const []
       : entries.where((e) => selected.contains(e.name)).toList();
 
@@ -187,11 +199,12 @@ class BrowserState {
     return out;
   }
 
-  /// Entries after applying [filter] (what the list actually shows).
+  /// Entries after applying [filter] (what the list actually shows): every
+  /// word of it must appear in the name - the same rule a Subfolders search
+  /// applies to names, so the two scopes never disagree about one file.
   List<RcloneFile> get visibleEntries {
-    if (filter.isEmpty) return entries;
-    final q = filter.toLowerCase();
-    return entries.where((e) => e.name.toLowerCase().contains(q)).toList();
+    if (filter.trim().isEmpty) return entries;
+    return entries.where((e) => matchesName(e.name, filter)).toList();
   }
 
   BrowserState copyWith({
@@ -210,6 +223,7 @@ class BrowserState {
     int? activeTab,
     int? hiddenUndecryptable,
     TreeState? tree,
+    PaneSearch? search,
   }) => BrowserState(
     remote: remote ?? this.remote,
     path: path ?? this.path,
@@ -226,6 +240,7 @@ class BrowserState {
     activeTab: activeTab ?? this.activeTab,
     hiddenUndecryptable: hiddenUndecryptable ?? this.hiddenUndecryptable,
     tree: tree ?? this.tree,
+    search: search ?? this.search,
   );
 }
 
@@ -249,6 +264,29 @@ class _Session {
   /// number that matches again.
   int treeSeq = 0;
   final Map<String, int> treeGen = {};
+
+  /// The last finished recursive scan, kept while the query is refined and
+  /// briefly after (see [kSearchCacheTtl]), keyed by `fs|folder`.
+  List<SearchHit>? searchCache;
+  String? searchCacheKey;
+  DateTime? searchCacheAt;
+
+  /// Superseded guard for scans, as [treeSeq] is for tree listings.
+  int searchGen = 0;
+  SearchJob? searchJob;
+
+  /// Stop this session's scan, if one is running, and forget it.
+  void cancelScan() {
+    searchJob?.cancel();
+    searchJob = null;
+    searchGen++;
+  }
+
+  void dropSearchCache() {
+    searchCache = null;
+    searchCacheKey = null;
+    searchCacheAt = null;
+  }
 }
 
 /// Drives ONE browser pane with **tabs**: each tab is an independent session
@@ -330,7 +368,7 @@ class BrowserController extends Notifier<BrowserState> {
     // consoleControllerProvider is a non-autoDispose family keyed by a monotonic
     // id, so without this the subscription (and its ~2000-line scrollback) would
     // leak for the app's lifetime and orphan a running command.
-    final closing = _sessions[i];
+    final closing = _sessions[i]..cancelScan();
     if (closing.kind == PaneKind.console && closing.consoleId.isNotEmpty) {
       final p = consoleControllerProvider(closing.consoleId);
       ref.read(p.notifier).stop();
@@ -352,6 +390,9 @@ class BrowserController extends Notifier<BrowserState> {
     // A fresh BrowserState carries an empty tree; forgetting the generation
     // map as well strands any listing still in flight for the old remote.
     _s.treeGen.clear();
+    _s
+      ..cancelScan()
+      ..dropSearchCache();
     _set(BrowserState(viewMode: state.viewMode, gridSize: state.gridSize));
   }
 
@@ -360,6 +401,9 @@ class BrowserController extends Notifier<BrowserState> {
     _s.idx = 0;
     // Tree keys are paths on ONE remote — they mean nothing on another.
     _s.treeGen.clear();
+    _s
+      ..cancelScan()
+      ..dropSearchCache();
     // Restore how this remote was last viewed; otherwise keep the pane's
     // current view preference (list/grid + density + sort) across remotes.
     final saved = ref.read(viewMemoryProvider)[remote.name];
@@ -474,6 +518,9 @@ class BrowserController extends Notifier<BrowserState> {
     // The tree's cached listings and expansion are keyed by full path, so
     // they stay valid across navigation and are kept; its selection referred
     // to rows under the old root and goes the same way the flat one does.
+    // The search goes back to This folder on every navigation (plan 4.A): a
+    // scan describes the folder it started from, not the one arrived at.
+    _s.cancelScan();
     _set(
       state.copyWith(
         path: path,
@@ -482,6 +529,7 @@ class BrowserController extends Notifier<BrowserState> {
         selected: const {},
         filter: '',
         tree: state.tree.copyWith(selected: const {}, clearCursor: true),
+        search: const PaneSearch(),
       ),
     );
     await _load();
@@ -494,6 +542,10 @@ class BrowserController extends Notifier<BrowserState> {
   /// rows until its new listing lands, as the root does.
   Future<void> refresh() async {
     if (state.remote == null) return;
+    // Whatever made the pane re-list (an operation, a pull, F5) may have
+    // changed the tree a scan describes. Showing results: scan again.
+    _s.dropSearchCache();
+    if (state.search.inSubfolders) unawaited(_startScan());
     _set(state.copyWith(loading: true));
     if (state.viewMode == ViewMode.tree) {
       final visible = visibleExpandedFolders(state.path, state.tree);
@@ -518,7 +570,210 @@ class BrowserController extends Notifier<BrowserState> {
     await _load();
   }
 
-  void setFilter(String value) => _set(state.copyWith(filter: value));
+  void setFilter(String value) {
+    final search = state.search;
+    final cache = _s.searchCache;
+    _set(
+      state.copyWith(
+        filter: value,
+        search: search.inSubfolders && cache != null
+            ? search.copyWith(
+                hits: matchHits(cache, value),
+                clearSelected: true,
+              )
+            : null,
+      ),
+    );
+  }
+
+  // ── search ─────────────────────────────────────────────────────────────────
+
+  /// Show the search box in the phone/TV header.
+  void openSearchBox() =>
+      _set(state.copyWith(search: state.search.copyWith(open: true)));
+
+  /// Close the search entirely: text, scope, results, the phone box.
+  void closeSearch() {
+    _s.cancelScan();
+    _set(state.copyWith(filter: '', search: const PaneSearch()));
+  }
+
+  /// One step out of the search, for Esc and the system Back button: results
+  /// go back to This folder first, then the text clears, then the box closes.
+  /// Returns false when there was nothing to step out of.
+  bool stepOutOfSearch() {
+    final search = state.search;
+    if (search.inSubfolders) {
+      setSearchScope(SearchScope.folder);
+    } else if (state.filter.isNotEmpty) {
+      setFilter('');
+    } else if (search.open) {
+      closeSearch();
+    } else {
+      return false;
+    }
+    return true;
+  }
+
+  /// Switch the box between This folder and Subfolders. Subfolders reuses a
+  /// fresh scan of this same folder, otherwise starts one - at once, with or
+  /// without text, so a TV remote never needs a separate "now search" press.
+  /// Entering it drops the flat and tree selections: every bulk operation
+  /// builds its targets from them, and results are not in this folder.
+  void setSearchScope(SearchScope scope) {
+    final search = state.search;
+    if (scope == search.scope) return;
+    if (scope == SearchScope.folder) {
+      _s.cancelScan();
+      _set(state.copyWith(search: PaneSearch(open: search.open)));
+      return;
+    }
+    final remote = state.remote;
+    if (remote == null) return;
+    _set(
+      state.copyWith(
+        selected: const {},
+        tree: state.tree.copyWith(selected: const {}),
+        search: search.copyWith(scope: SearchScope.subfolders),
+      ),
+    );
+    final cache = _s.searchCache;
+    final at = _s.searchCacheAt;
+    if (cache != null &&
+        at != null &&
+        _s.searchCacheKey == _scanKey(remote, state.path) &&
+        DateTime.now().difference(at) < kSearchCacheTtl) {
+      _set(
+        state.copyWith(
+          search: state.search.copyWith(
+            status: SearchScanStatus.done,
+            hits: matchHits(cache, state.filter),
+            scanned: cache.length,
+          ),
+        ),
+      );
+      return;
+    }
+    unawaited(_startScan());
+  }
+
+  /// Stop a running scan; what it had not finished is simply not shown.
+  void cancelSearch() {
+    if (state.search.status != SearchScanStatus.scanning) return;
+    _s.cancelScan();
+    _set(
+      state.copyWith(
+        search: state.search.copyWith(status: SearchScanStatus.cancelled),
+      ),
+    );
+  }
+
+  /// Scan again (after an error or a cancel).
+  void retrySearch() {
+    if (!state.search.inSubfolders) return;
+    _s.dropSearchCache();
+    unawaited(_startScan());
+  }
+
+  /// Highlight one result (full path), or none.
+  void selectSearchHit(String? fullPath) => _set(
+    state.copyWith(
+      search: fullPath == null
+          ? state.search.copyWith(clearSelected: true)
+          : state.search.copyWith(selectedPath: fullPath),
+    ),
+  );
+
+  /// The finished scan's entries in [folder] - a result's folder-mates.
+  List<RcloneFile> searchSiblingsOf(String folder) {
+    final cache = _s.searchCache;
+    return cache == null ? const [] : siblingsIn(cache, folder);
+  }
+
+  static String _scanKey(Remote remote, String path) => '${remote.fs}|$path';
+
+  /// Commit a search change to [ses] - possibly no longer the active tab by
+  /// the time a scan lands. Keeps the root's error, as [_setTree] does.
+  void _setSearch(_Session ses, PaneSearch Function(PaneSearch) fn) {
+    final s = ses.state;
+    ses.state = s.copyWith(search: fn(s.search), error: s.error);
+    if (identical(ses, _s)) state = _emit();
+  }
+
+  /// One recursive scan of the pane's folder, committed to the tab that asked
+  /// for it, and only if nothing overtook it: a navigation, a scope change, a
+  /// newer scan, or the remote changing.
+  Future<void> _startScan() async {
+    final ses = _s;
+    final remote = ses.state.remote;
+    final base = ses.state.path;
+    if (remote == null) return;
+    final client = ref.read(engineControllerProvider).client;
+    ses.cancelScan();
+    final gen = ses.searchGen;
+    if (client == null) {
+      _setSearch(
+        ses,
+        (s) => s.copyWith(
+          status: SearchScanStatus.error,
+          error: 'Engine not ready',
+        ),
+      );
+      return;
+    }
+    final job = SearchJob();
+    ses.searchJob = job;
+    _setSearch(
+      ses,
+      (s) => PaneSearch(
+        scope: SearchScope.subfolders,
+        open: s.open,
+        status: SearchScanStatus.scanning,
+        startedAt: DateTime.now(),
+      ),
+    );
+    bool superseded() =>
+        ses.searchGen != gen ||
+        ses.state.remote != remote ||
+        ses.state.path != base ||
+        !ses.state.search.inSubfolders;
+    // Sampled across the scan, as _load does around a listing: a crypt remote
+    // with the wrong key skips names silently and still answers 200.
+    final skipsBefore = undecryptableNameCount;
+    try {
+      // remote.fs, NOT listFs: listFs follows symlinks on a local remote,
+      // which is right for one folder and a loop hazard for a whole tree.
+      final files = await scanRecursive(client, remote.fs, base, job: job);
+      if (files == null || superseded()) return;
+      final (hits, truncated) = hitsFromListing(files, base);
+      ses
+        ..searchCache = hits
+        ..searchCacheKey = _scanKey(remote, base)
+        ..searchCacheAt = DateTime.now()
+        ..searchJob = null;
+      _setSearch(
+        ses,
+        (s) => s.copyWith(
+          status: SearchScanStatus.done,
+          hits: matchHits(hits, ses.state.filter),
+          scanned: hits.length,
+          truncated: truncated,
+          hiddenNames: hiddenForBackend(
+            remote.type,
+            skipsBefore,
+            undecryptableNameCount,
+          ),
+        ),
+      );
+    } catch (e) {
+      if (superseded()) return;
+      ses.searchJob = null;
+      _setSearch(
+        ses,
+        (s) => s.copyWith(status: SearchScanStatus.error, error: '$e'),
+      );
+    }
+  }
 
   /// Toggle [name] (a root-level entry) in the selection. In the tree view the
   /// root's children are the top-level rows, so this lands in the tree
@@ -559,6 +814,9 @@ class BrowserController extends Notifier<BrowserState> {
   /// entry row on screen (expanded, and passing the filter), for the same
   /// reason: a collapsed folder's contents are not on screen.
   void selectAll() {
+    // Results are single-selection for now (plan Phase B); select-all must
+    // never reach rows that live in other folders.
+    if (state.search.inSubfolders) return;
     if (state.viewMode == ViewMode.tree) {
       final rows = flattenTree(
         rootPath: state.path,

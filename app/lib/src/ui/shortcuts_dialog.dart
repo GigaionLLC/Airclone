@@ -8,11 +8,11 @@ const _groups = <(String, List<(String, String)>)>[
     'Navigate',
     [
       ('Ctrl + K', 'Command palette'),
-      ('Ctrl + Shift + F', 'Search subfolders'),
+      ('Ctrl + Shift + F', 'Search here and in subfolders'),
       ('Alt + ←', 'Back'),
       ('Alt + →', 'Forward'),
       ('Alt + ↑', 'Up a folder'),
-      ('Ctrl + F', 'Filter the list'),
+      ('Ctrl + F', 'Search this folder'),
       ('type…', 'Jump to a name'),
     ],
   ),

@@ -2,7 +2,6 @@ import 'network_stream_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'package:airclone_rc/airclone_rc.dart';
 import '../rclone/models/remote.dart';
 import '../state/browser_controller.dart';
 import '../state/clipboard_controller.dart';
@@ -21,7 +20,6 @@ import 'file_op_dialogs.dart';
 import 'folder_tools.dart';
 import 'paste_action.dart';
 import 'scan_from_desktop_sheet.dart';
-import 'search_dialog.dart';
 import 'storage_breakdown.dart';
 import 'theme/tokens.dart';
 
@@ -239,9 +237,9 @@ Future<void> showMobileActionsSheet(
                   ctrl.refresh();
                 }),
                 if (compact)
-                  _tile(c, Icons.search, 'Search this folder', () {
+                  _tile(c, Icons.search, 'Search', () {
                     close();
-                    mobileFolderSearch(context, ref, index);
+                    ctrl.openSearchBox();
                   }),
                 _sectionLabel(c, 'Sort by'),
                 sortItem('Name', SortKey.name),
@@ -598,39 +596,7 @@ Future<void> _deleteRemote(
   ref.invalidate(remotesProvider);
 }
 
-// ── shared: folder search + split helpers (used by header + sheet) ───────────
-
-/// Recursive search rooted at pane [index]'s current folder; opening a match
-/// navigates to it (same behavior as the desktop Ctrl+Shift+F). Shared by the
-/// header's search icon and the compact actions sheet.
-void mobileFolderSearch(BuildContext context, WidgetRef ref, int index) {
-  final state = ref.read(paneProvider(index));
-  final remote = state.remote;
-  final client = ref.read(engineControllerProvider).client;
-  if (remote == null || client == null) return;
-  final basePath = state.path;
-  showSearchDialog(
-    context,
-    client: client,
-    fs: remote.fs,
-    label: basePath.isEmpty ? remote.name : '${remote.name}/$basePath',
-    basePath: basePath,
-    onOpen: (RcloneFile m) async {
-      final pane = ref.read(paneProvider(index).notifier);
-      final abs = basePath.isEmpty ? m.path : '$basePath/${m.path}';
-      if (m.isDir) {
-        await pane.navigateTo(abs);
-        return;
-      }
-      final slash = abs.lastIndexOf('/');
-      final parent = slash < 0 ? '' : abs.substring(0, slash);
-      if (parent != ref.read(paneProvider(index)).path) {
-        await pane.navigateTo(parent);
-      }
-      pane.selectOnly(m.name);
-    },
-  );
-}
+// ── shared: split helpers (used by header + sheet) ───────────────────────────
 
 void _toggleSplit(WidgetRef ref) {
   final on = ref.read(mobileSplitProvider);

@@ -8,6 +8,7 @@ import '../state/build_flavor.dart';
 /// Actions offered when right-clicking a file or folder row.
 enum FileMenuAction {
   select,
+  showInFolder,
   open,
   preview,
   openExternal,
@@ -88,6 +89,7 @@ Future<FileMenuAction?> showFileContextMenu(
   bool isArchive = false,
   bool onlineOnly = false,
   bool canSelect = false,
+  bool showInFolder = false,
   bool advanced = false,
   String syncSourceLabel = '',
 }) {
@@ -98,6 +100,14 @@ Future<FileMenuAction?> showFileContextMenu(
       _item(FileMenuAction.select, Icons.check_circle_outline, 'Select'),
       const _Entry.divider(),
     ],
+    // A search result lives somewhere under the pane's folder; this leaves the
+    // results for that folder with the entry selected.
+    if (showInFolder)
+      _item(
+        FileMenuAction.showInFolder,
+        Icons.drive_folder_upload_outlined,
+        'Show in folder',
+      ),
     if (isDir)
       _item(FileMenuAction.open, Icons.folder_open_outlined, 'Open')
     else ...[

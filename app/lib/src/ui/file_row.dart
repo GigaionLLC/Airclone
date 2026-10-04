@@ -36,9 +36,14 @@ class FileRow extends ConsumerStatefulWidget {
     this.tapOpensFolder = true,
     this.showDetails = true,
     this.onlineOnly = false,
+    this.subtitle,
   });
 
   final RcloneFile file;
+
+  /// A muted second label after the name — a search result's folder. Null in
+  /// the browser, where every row's folder is the pane's.
+  final String? subtitle;
 
   /// True when this is a cloud placeholder whose contents are not on this
   /// device. Shown with a cloud icon so the download prompt on opening it is
@@ -189,11 +194,37 @@ class _FileRowState extends ConsumerState<FileRow> {
                 ),
                 const SizedBox(width: Space.x2),
                 Expanded(
-                  child: Text(
-                    file.name,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(color: c.text, fontSize: t.bodySize),
-                  ),
+                  child: widget.subtitle == null
+                      ? Text(
+                          file.name,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(color: c.text, fontSize: t.bodySize),
+                        )
+                      : Row(
+                          children: [
+                            Flexible(
+                              child: Text(
+                                file.name,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  color: c.text,
+                                  fontSize: t.bodySize,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: Space.x2),
+                            Flexible(
+                              child: Text(
+                                widget.subtitle!,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  color: c.textFaint,
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
                 ),
                 if (widget.showDetails) ...[
                   const SizedBox(width: Space.x2),

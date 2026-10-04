@@ -236,6 +236,31 @@ class RcOperations extends _Namespace {
       extra: extra,
       options: options,
     );
+    return parseList(res);
+  }
+
+  /// Starts [list] as a background job (`_async`) and returns the raw answer:
+  /// normally `{jobid: n}`, to be polled with [RcApi.job].status.
+  ///
+  /// For a RECURSIVE listing, which on any real tree outlives the 30-second
+  /// rpc timeout the synchronous form is held to. An engine that answered
+  /// inline returns the listing itself instead of a job id; [parseList] reads
+  /// either that or the finished job's `output`.
+  Future<Map<String, dynamic>> listAsync(
+    String fs,
+    String remote, {
+    Map<String, Object?>? opt,
+    Map<String, dynamic>? extra,
+  }) => send(
+    'operations/list',
+    {'fs': fs, 'remote': remote, 'opt': ?opt},
+    extra: extra,
+    options: const RcOptions(async: true),
+  );
+
+  /// The entries of an `operations/list` answer, or null when it carried no
+  /// listing at all (see [listOrNull] for why that difference matters).
+  static List<RcloneFile>? parseList(Map<String, dynamic> res) {
     final raw = res['list'];
     if (raw is! List) return null;
     return raw

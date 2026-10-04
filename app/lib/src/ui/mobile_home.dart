@@ -14,6 +14,7 @@ import 'browser_pane.dart';
 import 'engine_gate.dart';
 import 'jobs_dock.dart';
 import 'mobile_action_sheets.dart';
+import 'pane_search_box.dart';
 import 'pane_split.dart';
 import 'recent_activity_panel.dart';
 import 'selection_actions.dart';
@@ -76,11 +77,25 @@ class _MobileHomeScreenState extends ConsumerState<MobileHomeScreen> {
         split &&
         ref.watch(paneProvider(1).select((s) => s.selected.isNotEmpty));
     final hasSelection = sel0 || sel1;
+    // An engaged search box (results, text, or just the open box) is the
+    // first thing Back undoes, on the pane Back acts on.
+    final backPane = split ? activePane : 0;
+    final searching =
+        _tab == 0 &&
+        ref.watch(
+          paneProvider(backPane).select(
+            (s) =>
+                s.search.inSubfolders || s.filter.isNotEmpty || s.search.open,
+          ),
+        );
     // System back: leave a folder, then leave the remote, then leave a non-Files
     // tab — only exit the app from the Files tab's locations list (never while a
     // split is up: back collapses that first).
     final canPop =
-        _tab == 0 && !hasSelection && (gated || (!browsing && !split));
+        _tab == 0 &&
+        !hasSelection &&
+        !searching &&
+        (gated || (!browsing && !split));
     // False on every phone and every other platform, so everything it gates
     // below is unreachable off a television.
     final tv = androidIsTelevision;
@@ -96,6 +111,10 @@ class _MobileHomeScreenState extends ConsumerState<MobileHomeScreen> {
         if (hasSelection) {
           if (sel0) ref.read(paneProvider(0).notifier).clearSelection();
           if (sel1) ref.read(paneProvider(1).notifier).clearSelection();
+          return;
+        }
+        if (searching &&
+            ref.read(paneProvider(backPane).notifier).stepOutOfSearch()) {
           return;
         }
         if (_tab != 0) {
@@ -481,6 +500,10 @@ class _MobilePaneHeader extends ConsumerWidget {
       return _selectionBar(context, ref, c, state);
     }
 
+    // The search box takes the title's place while it is open; Back/✕ (or
+    // the system Back button) steps out of it before anything else.
+    final searchOpen = hasRemote && !isConsole && state.search.open;
+
     final folder = !hasRemote
         ? 'Home'
         : (state.path.isEmpty ? remote.name : state.path.split('/').last);
@@ -507,6 +530,8 @@ class _MobilePaneHeader extends ConsumerWidget {
                     ? () => ctrl.closeTab(state.activeTab)
                     : !hasRemote
                     ? null
+                    : searchOpen
+                    ? ctrl.closeSearch
                     : () => state.path.isEmpty ? ctrl.clear() : ctrl.up(),
                 icon: Icon(
                   isConsole ? Icons.close : Icons.arrow_back,
@@ -515,64 +540,72 @@ class _MobilePaneHeader extends ConsumerWidget {
                 color: c.text,
                 tooltip: isConsole
                     ? 'Close console'
+                    : searchOpen
+                    ? 'Close search'
                     : (state.path.isEmpty ? 'All locations' : 'Up'),
               ),
-              Expanded(
-                // Console tab → a plain "Console" title. A remote is open → a
-                // clickable, scrollable breadcrumb so you can jump to any ancestor
-                // (or the remote root) in one tap. Otherwise → the Home title.
-                child: isConsole
-                    ? Row(
-                        children: [
-                          Icon(Icons.terminal, size: 18, color: c.textMuted),
-                          const SizedBox(width: Space.x2),
-                          Text(
-                            'Console',
-                            style: TextStyle(
-                              color: c.text,
-                              fontSize: 15,
-                              fontWeight: FontWeight.w600,
+              if (searchOpen)
+                Expanded(child: PaneSearchBox(index: index, touch: true))
+              else
+                Expanded(
+                  // Console tab → a plain "Console" title. A remote is open → a
+                  // clickable, scrollable breadcrumb so you can jump to any ancestor
+                  // (or the remote root) in one tap. Otherwise → the Home title.
+                  child: isConsole
+                      ? Row(
+                          children: [
+                            Icon(Icons.terminal, size: 18, color: c.textMuted),
+                            const SizedBox(width: Space.x2),
+                            Text(
+                              'Console',
+                              style: TextStyle(
+                                color: c.text,
+                                fontSize: 15,
+                                fontWeight: FontWeight.w600,
+                              ),
                             ),
-                          ),
-                        ],
-                      )
-                    : hasRemote
-                    ? _Breadcrumb(
-                        rootLabel: remote.name,
-                        segments: state.segments,
-                        onTap: ctrl.goToSegment,
-                      )
-                    : Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Text(
-                            folder,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              color: c.text,
-                              fontSize: 15,
-                              fontWeight: FontWeight.w600,
+                          ],
+                        )
+                      : hasRemote
+                      ? _Breadcrumb(
+                          rootLabel: remote.name,
+                          segments: state.segments,
+                          onTap: ctrl.goToSegment,
+                        )
+                      : Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Text(
+                              folder,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                color: c.text,
+                                fontSize: 15,
+                                fontWeight: FontWeight.w600,
+                              ),
                             ),
-                          ),
-                          Text(
-                            subtitle,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(color: c.textFaint, fontSize: 11),
-                          ),
-                        ],
-                      ),
-              ),
-              if (!compact && hasRemote)
+                            Text(
+                              subtitle,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                color: c.textFaint,
+                                fontSize: 11,
+                              ),
+                            ),
+                          ],
+                        ),
+                ),
+              if (!compact && hasRemote && !searchOpen)
                 IconButton(
-                  onPressed: () => mobileFolderSearch(context, ref, index),
+                  onPressed: ctrl.openSearchBox,
                   icon: const Icon(Icons.search, size: 20),
                   color: c.textMuted,
-                  tooltip: 'Search this folder',
+                  tooltip: 'Search',
                 ),
               // Inline quick view-mode toggle: tap to cycle List → Grid →
               // Gallery. The explicit chooser also lives in the ⋯ sheet.
-              if (!compact && hasRemote)
+              if (!compact && hasRemote && !searchOpen)
                 IconButton(
                   onPressed: () => ctrl.setViewMode(_nextView(state.viewMode)),
                   icon: Icon(_viewIcon(state.viewMode), size: 20),
