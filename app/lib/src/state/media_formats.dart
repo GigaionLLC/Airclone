@@ -60,8 +60,12 @@ const Set<String> kAudioExts = {
 ///
 ///   * they play through the video pipeline, because libmpv resolves and
 ///     fetches the segments itself (the shipped libmpv carries the `hls`
-///     demuxer, `mpegts`, and the `https`/`tls` protocols on every platform we
-///     build for — verified against the binaries, not assumed);
+///     demuxer, `mpegts`, and the `https`/`tls` protocols on Android and
+///     Windows by a string scan of the shipped libraries — a strong signal, not
+///     proof. The per-platform answer from libmpv itself (Settings →
+///     Diagnostics → Media capabilities) is recorded in
+///     `dev/media-support-matrix.md`, which is where to look before adding an
+///     extension to the tables below);
 ///   * they are NEVER thumbnailable. A manifest has no keyframe, a live one has
 ///     no duration to seek within, and the thumbnailer would hold a libmpv
 ///     instance open against a network origin for its full timeout. See

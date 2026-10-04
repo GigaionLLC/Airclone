@@ -167,21 +167,26 @@ macos_video/ios_video 1.1.4, linux 1.2.1 (system libmpv).
 
 * `[x]` Transcoding / ffmpeg? → **Answer (Jake):** no. Desktop users open unsupported files in VLC etc.
 * `[x]` Focus? → **Answer (Jake):** the built-in player natively supporting the formats.
-* `[ ]` **Q1. Turn libass on?** → **Default: yes, on every native platform**, if spike A0.2 passes
-  on a real Android TV. It is the only way PGS/VobSub (Blu-ray / DVD rips) display, and ASS keeps its
+* `[x]` **Q1. Turn libass on?** → **Answer (coordinator, 2026-10-04): not in this build.** A0.2
+  needs a real Android TV, which the build agent does not have, so libass stays OFF behind one
+  constant (`kLibassSubtitles` in `media_preview.dart`, default `false`) and the 4.B fallback ships:
+  a TV-sized `SubtitleViewConfiguration` plus the Q3 image-track rule. Flip the constant (and add
+  the Q2 font) only after A0.2 passes. Original default kept below for that decision:
+  **yes, on every native platform**, if spike A0.2 passes on a real Android TV. It is the only way PGS/VobSub (Blu-ray / DVD rips) display, and ASS keeps its
   styling. Cost: Flutter-styled subtitles are replaced by mpv's (we set size/outline via mpv
   `sub-font-size`, `sub-border-size`, `sub-margin-y`), and Android needs a bundled font.
-* `[ ]` **Q2. Android subtitle font.** → **Default: Noto Sans (Latin, Greek, Cyrillic; ~0.6 MB).**
+* `[x]` **Q2. Android subtitle font.** → **Answer (coordinator): plan default stands, but no font
+  asset is added in this build** (libass is off, and no downloads). Default when A0.2 passes: **Default: Noto Sans (Latin, Greek, Cyrillic; ~0.6 MB).**
   Full CJK coverage (Noto Sans CJK / Droid Sans Fallback) costs 4-16 MB of APK. Desktop/iOS use
   system fonts. If the customer base needs CJK on Android, decide then.
-* `[ ]` **Q3. Subtitle default.** → **Default: respect the file** — mpv picks the default/forced track
+* `[x]` **Q3. Subtitle default.** → **Answer (coordinator): the default below, as written.** **Default: respect the file** — mpv picks the default/forced track
   as today, but **if the auto-picked track is an image track and libass is unavailable** (web, or A0
   fails), select `no` and show `Image subtitles can't be shown here` in the picker. Once the user picks
   a language, remember it (Q4).
-* `[ ]` **Q4. Remember language choices?** → **Default: yes** — `preferredAudioLanguage` and
+* `[x]` **Q4. Remember language choices?** → **Answer (coordinator): the default below.** **Default: yes** — `preferredAudioLanguage` and
   `preferredSubtitleLanguage` (`off` allowed) in `state/media_prefs.dart`, applied as mpv
   `alang`/`slang` before `open`. Global, not per file.
-* `[ ]` **Q5. `.ts` files.** → **Default: stay code/text** (it is also TypeScript; Drive and Linux label
+* `[x]` **Q5. `.ts` files.** → **Answer (coordinator): the default below.** **Default: stay code/text** (it is also TypeScript; Drive and Linux label
   TypeScript `video/mp2t`). Only `.m2ts .mts .m2t` become video. Revisit with a size + MIME heuristic
   only if someone asks.
 
@@ -372,7 +377,15 @@ List<Sidecar> findSidecars(RcloneFile video, List<RcloneFile> siblings);
 * **Required Fixes:** None yet.
 
 ## 7️⃣ Phase 7: Implementation Checklist (Execution)
-- `[ ]` A0.1 capability dump action + `dev/media-support-matrix.md` (all platforms).
+- `[x]` A0.1 capability dump action + `dev/media-support-matrix.md` (all platforms).
+  - Built: Settings → Diagnostics → **Media capabilities** (Advanced mode, not web) →
+    `ui/media_capabilities_dialog.dart` reads `mpv-version`, `ffmpeg-version`, `hwdec`,
+    `hwdec-current`, `demuxer-lavf-list`, `decoder-list`, `protocol-list` via
+    `NativePlayer.getProperty`; parsing/report pure in `state/media_capabilities.dart` (+ test).
+    `hwdec-current` reads empty because no file is opened — said so in the report.
+    `dev/media-support-matrix.md` created from the Android+Windows scan, marked PROVISIONAL;
+    `media_formats.dart` header points at it. `tool/make-test-media.sh` written, NOT run.
+    **Still open: running the dump on all 5 platforms (needs devices).**
 - `[ ]` A0.2 libass spike on a real Google TV → answer Q1/Q2 here.
 - `[ ]` A0.3 `sub-add` over loopback on the three engine shapes.
 - `[ ]` A1 `state/media_tracks.dart` + tests; `TvPlaybackTarget` track members + `FakeTarget`.
