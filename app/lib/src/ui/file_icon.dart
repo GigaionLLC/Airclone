@@ -114,8 +114,14 @@ bool isImageThumbnailable(RcloneFile f) => kindOf(f) == FileKind.image;
 /// undecodable; and each attempt would hold a libmpv instance open against a
 /// network origin for the whole timeout, which is the starvation the video
 /// thumbnail semaphore exists to prevent.
-bool isVideoThumbnailable(RcloneFile f) =>
-    kindOf(f) == FileKind.video && !isPlaylistExt(_extOf(f.name));
+///
+/// The heavy containers in [kNoThumbVideoExts] are left out for the same
+/// reason at a smaller scale: a probe that can take the full timeout per tile.
+bool isVideoThumbnailable(RcloneFile f) {
+  if (kindOf(f) != FileKind.video) return false;
+  final ext = _extOf(f.name);
+  return !isPlaylistExt(ext) && !kNoThumbVideoExts.contains(ext);
+}
 
 /// True when [f] can produce a visual thumbnail (image or video).
 bool isThumbnailable(RcloneFile f) =>

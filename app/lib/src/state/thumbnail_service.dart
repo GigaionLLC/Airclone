@@ -80,6 +80,18 @@ bool isFlatRgba(Uint8List rgba, {int range = kBlankLumaRange}) {
   return true;
 }
 
+/// Whether a failed keyframe capture should be remembered for the session,
+/// like an undecodable file, rather than retried on the next scroll.
+///
+/// A TIMEOUT is. It is not a blip: a file that took the whole first-frame
+/// budget once (a 6 GB remux over a cloud remote, a container whose index sits
+/// at the end) will take it again, and each retry holds a libmpv instance and
+/// a stream of ranged reads for that long. Remembering it for the session
+/// costs only the thumbnail, which a forced rebuild still re-attempts. Any
+/// other failure (the engine restarting, a transient network error) is not
+/// remembered, so it gets its retry.
+bool rememberThumbFailure(Object error) => error is TimeoutException;
+
 /// Stable cache key: sha1 hex of `fs|path|modTime|size|px` (modTime ISO, or
 /// empty when unknown). A change to any component invalidates the cached thumb.
 String thumbCacheKey(
@@ -296,8 +308,10 @@ class ThumbnailService {
       if (raw == null) return null;
       // Awaited, not returned bare: an unawaited return escapes this catch.
       return await _downscale(raw, req.size);
-    } catch (_) {
-      // Includes the timeout: a remote too slow to yield a frame in budget.
+    } catch (e) {
+      // Includes the timeout: a remote too slow to yield a frame in budget,
+      // which is remembered so the next scroll does not pay it again.
+      if (rememberThumbFailure(e)) _undecodable.add(req.cacheKey);
       return null;
     }
   }
@@ -355,7 +369,9 @@ class ThumbnailService {
         }
       }
       return first;
-    } catch (_) {
+    } catch (e) {
+      // A timeout is remembered so the next scroll does not pay it again.
+      if (rememberThumbFailure(e)) _undecodable.add(req.cacheKey);
       return null;
     } finally {
       try {

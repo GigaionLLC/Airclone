@@ -425,7 +425,12 @@ List<Sidecar> findSidecars(RcloneFile video, List<RcloneFile> siblings);
     **Gap:** media_kit's `command` does not throw on an mpv error (it logs to `stream.log`, which
     Airclone does not read), so a failed `sub-add` is silently absent rather than logged. A0.3
     (does `sub-add` inherit auth on the bearer engine?) is unverified. 15 new tests.
-- `[ ]` A6 Extension tables, `kNoThumbVideoExts`, thumbnail timeout negative cache, `_mimeByExt`.
+- `[x]` A6 Extension tables, `kNoThumbVideoExts`, thumbnail timeout negative cache, `_mimeByExt`.
+  - `kVideoExts` +14 and `kAudioExts` +13 exactly per 4.D; **`mpc` left out** (the scan recorded
+    no `mpc`/`mpc8` demuxer either way). `kNoThumbVideoExts` honoured in `isVideoThumbnailable`.
+    `rememberThumbFailure` (TimeoutException) adds to the session `_undecodable` set on both the
+    libmpv and the Android capture paths. `_mimeByExt` covers every new extension (+ `flv`).
+    `.ts` unchanged (Q5). 40 new test cases across 5 files.
 - `[ ]` A7 `mountedOsPath` + desktop open-from-mount.
 - `[ ]` A8 Docs: feat-media-playback.md, browsing.md table, mount-and-share.md, platforms.md, dev/android-tv.md key/where-it-lives, tv-playback-plan.md out-of-scope note → link here, media_formats.dart header.
 - `[ ]` A9 Real-device pass (matrix) + changelog entry.
