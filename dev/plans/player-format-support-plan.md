@@ -407,7 +407,13 @@ List<Sidecar> findSidecars(RcloneFile video, List<RcloneFile> siblings);
     (pure) → `alang`/`slang` with all aliases, `sid=no` for off; set via
     `NativePlayer.setProperty` before `open`. Picks are kept per preview (`_sessionPicks`) and
     re-applied in `_afterStart` after a Retry's new player starts. 7 new tests.
-- `[ ]` A4 Subtitle rendering per A0.2 outcome (libass + font + style helper, or TV `SubtitleViewConfiguration`).
+- `[x]` A4 Subtitle rendering per A0.2 outcome (libass + font + style helper, or TV `SubtitleViewConfiguration`).
+  - A0.2 not run (no device) → fallback shipped. `kLibassSubtitles = false` in `media_preview.dart`
+    is the one switch (passed to `PlayerConfiguration.libass`, and to the controller as
+    `imageSubsRenderable`); its comment says not to flip it without the Q2 font. TV gets
+    `subtitleViewConfigurationFor(tv: true)` (28dp, no area scaling, above overscan); other
+    platforms keep media_kit's default explicitly. Q3: `_afterStart` switches subs to `no` when
+    mpv auto-selected an image track and the person has not picked. No font asset added.
 - `[ ]` A5 `state/sidecar_subs.dart` + full-sibling plumbing + `sub-add … auto` after start.
 - `[ ]` A6 Extension tables, `kNoThumbVideoExts`, thumbnail timeout negative cache, `_mimeByExt`.
 - `[ ]` A7 `mountedOsPath` + desktop open-from-mount.

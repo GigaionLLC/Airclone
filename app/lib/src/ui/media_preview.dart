@@ -1,4 +1,5 @@
 import '../state/diagnostics.dart';
+import '../state/host_platform.dart';
 import '../state/media_formats.dart';
 import 'package:airclone_rc/airclone_rc.dart';
 import 'dart:async';
@@ -29,6 +30,29 @@ const Duration _startTimeout = Duration(seconds: 45);
 /// local engine and tight for an HLS source on a slow link, so a stream gets
 /// its own, longer budget rather than inheriting one tuned for a different job.
 const Duration _networkStartTimeout = Duration(seconds: 120);
+
+/// Whether libmpv draws subtitles itself (libass) instead of media_kit's
+/// Flutter text overlay. **Off until plan spike A0.2 passes** — see
+/// `dev/plans/player-format-support-plan.md` §4.A0 and §4.B.
+///
+/// It is the only way image subtitles (Blu-ray PGS, DVD VobSub, DVB) appear at
+/// all, and the only way ASS keeps its styling: with it off, media_kit hides
+/// libmpv's subtitle output (`sub-visibility=no`) and shows only the plain
+/// text mpv extracts, which a bitmap does not have. What it costs is unknown
+/// until measured on a real Android TV: frame drops with heavy ASS on a TV
+/// SoC, and Android needs a bundled font (media_kit's `libassAndroidFont` and
+/// `libassAndroidFontName`, plan Q2) or libass finds no glyphs. **Do not flip
+/// this without adding that font**, or every subtitle on Android goes blank.
+///
+/// While it is false the player follows the plan's fallback: TV-sized text
+/// subtitles ([subtitleViewConfigurationFor]), image tracks listed but
+/// disabled as "can't be shown here", and an image track libmpv picked on its
+/// own switched off rather than left showing nothing (plan Q3).
+const bool kLibassSubtitles = false;
+
+/// Whether this player can show an image subtitle. Never on the web, whose
+/// `<video>` element has no libmpv renderer to turn on.
+bool get _imageSubsRenderable => kLibassSubtitles && !HostPlatform.isWeb;
 
 /// Why a LOCAL playlist so often cannot play, in words the error itself will
 /// never say.
@@ -223,6 +247,7 @@ class _MediaPreviewBodyState extends ConsumerState<MediaPreviewBody> {
           protocolWhitelist: widget.isNetworkStream
               ? kNetworkStreamProtocols
               : kPreviewProtocols,
+          libass: kLibassSubtitles,
         ),
       );
       _player = player;
@@ -235,6 +260,7 @@ class _MediaPreviewBodyState extends ConsumerState<MediaPreviewBody> {
         // arrows scrub.
         alwaysVisible: widget.audioOnly,
         tvKeysEnabled: tvPlayerEnabled,
+        imageSubsRenderable: _imageSubsRenderable,
       )..onTrackPicked = _onTrackPicked;
       if (!widget.audioOnly) {
         controller = VideoController(player);
@@ -370,7 +396,8 @@ class _MediaPreviewBodyState extends ConsumerState<MediaPreviewBody> {
   }
 
   /// Everything that needs a file actually loaded: the picks this preview
-  /// already made, re-applied to a player a Retry rebuilt. Never fatal.
+  /// already made, re-applied to a player a Retry rebuilt, and the image
+  /// subtitle rule. Never fatal.
   Future<void> _afterStart(int generation) async {
     final tv = _tv;
     if (tv == null || generation != _generation) return;
@@ -383,6 +410,23 @@ class _MediaPreviewBodyState extends ConsumerState<MediaPreviewBody> {
           pick.isOff ? SubtitleTrack.no() : SubtitleTrack(pick.id, null, null),
         );
       }
+    }
+    // Plan Q3: libmpv picks the file's default subtitle on its own. If that is
+    // an image track this player cannot draw, the person sees nothing and is
+    // told nothing — so switch subtitles off, and let the picker say why. A
+    // pick the person made wins; this only corrects libmpv's.
+    if (_sessionPicks.containsKey(TrackKind.subtitle) ||
+        tv.imageSubsRenderable) {
+      return;
+    }
+    final selected = await tv.target.selection();
+    if (generation != _generation) return;
+    if (shouldDropAutoSubtitle(
+      tracks: tv.target.tracks,
+      selectedId: selected.subtitle,
+      imageSubsRenderable: tv.imageSubsRenderable,
+    )) {
+      await tv.target.setSubtitle(SubtitleTrack.no());
     }
   }
 
@@ -512,6 +556,7 @@ class _MediaPreviewBodyState extends ConsumerState<MediaPreviewBody> {
       return Video(
         controller: controller,
         controls: (_) => TvVideoControls(controller: tv),
+        subtitleViewConfiguration: subtitleViewConfigurationFor(tv: true),
       );
     }
 
@@ -567,7 +612,11 @@ class _MediaPreviewBodyState extends ConsumerState<MediaPreviewBody> {
             touch,
           ],
         ),
-        child: Video(controller: controller, controls: AdaptiveVideoControls),
+        child: Video(
+          controller: controller,
+          controls: AdaptiveVideoControls,
+          subtitleViewConfiguration: subtitleViewConfigurationFor(tv: false),
+        ),
       ),
     );
   }
