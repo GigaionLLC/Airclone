@@ -244,8 +244,16 @@ class TvPlaybackController extends ChangeNotifier {
 
   /// How many sidecars the host found and is about to add. Non-zero shows the
   /// subtitle button straight away, rather than having it pop in a moment
-  /// after playback starts.
-  int expectedSidecars = 0;
+  /// after playback starts. Notifies, because it is learned from a listing
+  /// that can finish after the controls were built.
+  int get expectedSidecars => _expectedSidecars;
+  set expectedSidecars(int value) {
+    if (value == _expectedSidecars) return;
+    _expectedSidecars = value;
+    notifyListeners();
+  }
+
+  int _expectedSidecars = 0;
 
   /// Told about every pick, after it reached the player — the host remembers
   /// the language and re-applies the pick after a Retry.

@@ -16,6 +16,7 @@ import 'package:airclone_rc/airclone_rc.dart';
 import '../rclone/models/remote.dart';
 import '../state/engine_controller.dart';
 import '../state/open_external.dart';
+import '../state/sidecar_subs.dart';
 import 'format.dart';
 import 'media_preview.dart';
 import 'open_external_action.dart';
@@ -235,11 +236,18 @@ class PreviewContent extends ConsumerWidget {
     this.imageBackground,
     this.onPrevious,
     this.onNext,
+    this.siblings,
   });
 
   final Remote remote;
   final String parentPath;
   final RcloneFile file;
+
+  /// The FULL listing of [parentPath], when the host has it — Quick Look does.
+  /// A video looks here for subtitle files beside it (`state/sidecar_subs.dart`).
+  /// Null makes a video list the folder once instead, which is what the
+  /// preview dialog does: it has no listing of its own.
+  final List<RcloneFile>? siblings;
 
   /// Overrides the matte behind an image. Quick Look's fullscreen phone shape
   /// passes black so a photo doesn't sit in a light themed band; the dialog
@@ -341,6 +349,12 @@ class PreviewContent extends ConsumerWidget {
           url: ref0.url,
           headers: ref0.headers,
           audioOnly: kind == _PreviewKind.audio,
+          // Not on the web: media_kit's web player cannot add a subtitle file
+          // (a browser `<track>` takes WebVTT only), so there is nothing to
+          // look for.
+          loadSidecars: kind == _PreviewKind.video && !HostPlatform.isWeb
+              ? () => _findSidecars(ref)
+              : null,
           onOpenExternally: openExternally,
           onPrevious: onPrevious,
           onNext: onNext,
@@ -351,6 +365,40 @@ class PreviewContent extends ConsumerWidget {
       case _PreviewKind.unsupported:
         return _UnsupportedBody(file: file, onOpenExternally: openExternally);
     }
+  }
+}
+
+extension on PreviewContent {
+  /// The subtitle files beside this video, each with its object reference.
+  ///
+  /// From [PreviewContent.siblings] when the host passed them; otherwise one
+  /// listing of the parent folder (no modtimes, no MIME types — it only needs
+  /// names and sizes). Files whose read would hydrate a cloud placeholder are
+  /// skipped: a subtitle is not worth downloading an online-only file for
+  /// without being asked.
+  Future<List<SidecarSource>> _findSidecars(WidgetRef ref) async {
+    final client = ref.read(engineControllerProvider).client;
+    if (client == null) return const [];
+    final listing =
+        siblings ??
+        await RcApi(client).operations.list(
+          remote.listFs,
+          parentPath,
+          opt: const {'noModTime': true, 'noMimeType': true},
+        );
+    final found = findSidecars(
+      file,
+      listing,
+      skip: (f) =>
+          wouldHydrateOnRead(remote, _joinPath(parentPath, f.name), entry: f),
+    );
+    return [
+      for (final s in found)
+        SidecarSource(
+          s,
+          client.objectRef(remote.fs, _joinPath(parentPath, s.file.name)),
+        ),
+    ];
   }
 }
 

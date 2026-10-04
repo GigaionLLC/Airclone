@@ -414,7 +414,17 @@ List<Sidecar> findSidecars(RcloneFile video, List<RcloneFile> siblings);
     `subtitleViewConfigurationFor(tv: true)` (28dp, no area scaling, above overscan); other
     platforms keep media_kit's default explicitly. Q3: `_afterStart` switches subs to `no` when
     mpv auto-selected an image track and the person has not picked. No font asset added.
-- `[ ]` A5 `state/sidecar_subs.dart` + full-sibling plumbing + `sub-add … auto` after start.
+- `[x]` A5 `state/sidecar_subs.dart` + full-sibling plumbing + `sub-add … auto` after start.
+  - `findSidecars` (srt/ass/ssa/vtt, ≤ 2 MiB, unknown size skipped, tags = language / forced /
+    sdh / cc / hi — `hi` is SDH only beside another language tag), `sidecarToSelect`,
+    `sidecarUrl` (loopback http(s) only, Basic credential in userinfo, else null). Quick Look
+    gets `allSiblings` (`_EntryLoc.siblings`, `st.entries`); the preview dialog lists the parent
+    once (`noModTime`, `noMimeType`), video only, not web. `MediaPreviewBody.loadSidecars` runs
+    once per preview; `_afterStart` re-adds on every new player via `NativePlayer.command(['sub-add',
+    url, auto|select, <file name>, <639-2/B lang>])`. Hydrating placeholders skipped.
+    **Gap:** media_kit's `command` does not throw on an mpv error (it logs to `stream.log`, which
+    Airclone does not read), so a failed `sub-add` is silently absent rather than logged. A0.3
+    (does `sub-add` inherit auth on the bearer engine?) is unverified. 15 new tests.
 - `[ ]` A6 Extension tables, `kNoThumbVideoExts`, thumbnail timeout negative cache, `_mimeByExt`.
 - `[ ]` A7 `mountedOsPath` + desktop open-from-mount.
 - `[ ]` A8 Docs: feat-media-playback.md, browsing.md table, mount-and-share.md, platforms.md, dev/android-tv.md key/where-it-lives, tv-playback-plan.md out-of-scope note → link here, media_formats.dart header.

@@ -11,6 +11,7 @@ import 'package:media_kit_video/media_kit_video.dart';
 
 import '../state/media_prefs.dart';
 import '../state/media_tracks.dart';
+import '../state/sidecar_subs.dart';
 import 'theme/tokens.dart';
 import 'track_picker.dart';
 import 'tv_now_playing.dart';
@@ -123,6 +124,7 @@ class MediaPreviewBody extends ConsumerStatefulWidget {
     this.onPrevious,
     this.onNext,
     this.title = '',
+    this.loadSidecars,
   });
 
   /// Direct/streamable URL of the media to play.
@@ -160,6 +162,12 @@ class MediaPreviewBody extends ConsumerStatefulWidget {
   /// television now-playing screen. The pointer card and the video frame both
   /// sit under a host that already shows the name, so they ignore it.
   final String title;
+
+  /// Finds the subtitle files next to this video, with an object reference for
+  /// each (see `state/sidecar_subs.dart`). Called once per preview — a Retry
+  /// re-ADDS what it found to the new player but does not look again. Null when
+  /// the host has no folder to look in, and for audio.
+  final Future<List<SidecarSource>> Function()? loadSidecars;
 
   @override
   ConsumerState<MediaPreviewBody> createState() => _MediaPreviewBodyState();
@@ -202,6 +210,11 @@ class _MediaPreviewBodyState extends ConsumerState<MediaPreviewBody> {
   /// German before it stalled should not have to do it again. A new preview —
   /// the next file in Quick Look — is a new State and starts clean.
   final Map<TrackKind, TrackChoice> _sessionPicks = {};
+
+  /// The sidecar lookup, started once per preview (see
+  /// [MediaPreviewBody.loadSidecars]). Never fails: a lookup that throws is
+  /// simply no sidecars.
+  Future<List<SidecarSource>>? _sidecars;
 
   /// Bumped by [_teardown] so a callback from a REPLACED player (a
   /// `waitUntilFirstFrameRendered` future that resolves after Retry swapped the
@@ -317,6 +330,8 @@ class _MediaPreviewBodyState extends ConsumerState<MediaPreviewBody> {
       },
     );
 
+    _watchSidecars(generation);
+
     // Before open, so libmpv's own track selection honours them.
     await _applyLanguagePrefs(player);
     if (generation != _generation || !mounted) return;
@@ -382,6 +397,76 @@ class _MediaPreviewBodyState extends ConsumerState<MediaPreviewBody> {
     }
   }
 
+  /// Starts the sidecar lookup if this preview has not yet, and tells the
+  /// current controller how many are coming, so the subtitle button is there
+  /// before they are.
+  void _watchSidecars(int generation) {
+    final load = widget.loadSidecars;
+    if (load == null || widget.audioOnly) return;
+    _sidecars ??= () async {
+      try {
+        return await load();
+      } catch (_) {
+        return const <SidecarSource>[];
+      }
+    }();
+    _sidecars!.then((found) {
+      if (generation == _generation) _tv?.expectedSidecars = found.length;
+    });
+  }
+
+  /// Adds the sidecars to the player with mpv `sub-add`, after the file has
+  /// loaded (it fails before) — `auto`, so they appear in the picker and the
+  /// file's own choice stands, except the one [sidecarToSelect] picks when the
+  /// file has no subtitles of its own.
+  ///
+  /// The title is the sidecar's file name and the language is the one its
+  /// name declares; neither is ever the URL, which carries the engine's
+  /// credential. A failure is logged without either and skipped: playback
+  /// never fails because a subtitle file did.
+  Future<void> _addSidecars(int generation) async {
+    final pending = _sidecars;
+    final player = _player;
+    final tv = _tv;
+    if (pending == null || player == null || tv == null) return;
+    final sources = await pending;
+    if (sources.isEmpty || generation != _generation) return;
+    final native = player.platform;
+    if (native is! NativePlayer) return;
+    final select = sidecarToSelect(
+      [for (final s in sources) s.sidecar],
+      fileHasSubtitles: tv.target.tracks.subtitle.any(
+        (t) => t.id != 'auto' && t.id != 'no',
+      ),
+      preferred: ref.read(preferredSubtitleLanguageProvider),
+    );
+    for (var i = 0; i < sources.length; i++) {
+      if (generation != _generation) return;
+      final source = sources[i];
+      final url = sidecarUrl(source.object);
+      if (url == null) continue;
+      final title = source.sidecar.title;
+      final language = canonicalLanguage(source.sidecar.language);
+      tv.externalSubtitleTitles.add(title);
+      try {
+        await native.command([
+          'sub-add',
+          url,
+          i == select ? 'select' : 'auto',
+          title,
+          ?language,
+        ]);
+      } catch (e) {
+        logDiagnostic(
+          DiagLevel.warning,
+          'player',
+          'A subtitle file next to a video could not be loaded.',
+          detail: e,
+        );
+      }
+    }
+  }
+
   /// A pick in any picker: remembered for this preview (re-applied after a
   /// Retry) and, when the track says what language it is, for the next file.
   void _onTrackPicked(TrackChoice choice) {
@@ -399,6 +484,8 @@ class _MediaPreviewBodyState extends ConsumerState<MediaPreviewBody> {
   /// already made, re-applied to a player a Retry rebuilt, and the image
   /// subtitle rule. Never fatal.
   Future<void> _afterStart(int generation) async {
+    if (generation != _generation) return;
+    await _addSidecars(generation);
     final tv = _tv;
     if (tv == null || generation != _generation) return;
     for (final pick in _sessionPicks.values) {

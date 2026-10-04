@@ -145,6 +145,15 @@ class TrackPickerButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (isWeb) return const SizedBox.shrink();
+    // The controller too, not only the stream: it learns how many sidecars
+    // are coming from a listing that may finish after this was built.
+    return ListenableBuilder(
+      listenable: controller,
+      builder: (context, _) => _button(context),
+    );
+  }
+
+  Widget _button(BuildContext context) {
     return StreamBuilder<Tracks>(
       stream: controller.target.tracksStream,
       initialData: controller.target.tracks,
