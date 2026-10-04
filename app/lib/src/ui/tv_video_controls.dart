@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:media_kit/media_kit.dart' show Tracks;
 
+import '../state/media_tracks.dart';
 import 'theme/tokens.dart';
+import 'track_picker.dart';
 import 'tv.dart' show tvOverscan;
 import 'tv_player_keys.dart';
 
@@ -50,6 +53,14 @@ class _TvVideoControlsState extends State<TvVideoControls> {
   /// Focus lands here when the row appears, so OK is play/pause immediately.
   final FocusNode _playPause = FocusNode(debugLabel: 'tv play/pause');
 
+  /// The two track buttons. Owned here so focus can go BACK to the one that
+  /// opened the panel when it closes, rather than to play/pause or nowhere.
+  final FocusNode _audioButton = FocusNode(debugLabel: 'tv audio track');
+  final FocusNode _subtitleButton = FocusNode(debugLabel: 'tv subtitles');
+
+  /// The open track panel, or null.
+  TrackKind? _panel;
+
   TvControlsMode _last = TvControlsMode.hidden;
 
   @override
@@ -71,9 +82,30 @@ class _TvVideoControlsState extends State<TvVideoControls> {
   @override
   void dispose() {
     widget.controller.removeListener(_onControllerChanged);
+    if (_panel != null) widget.controller.releaseControls();
     _surface.dispose();
     _playPause.dispose();
+    _audioButton.dispose();
+    _subtitleButton.dispose();
     super.dispose();
+  }
+
+  void _openPanel(TrackKind kind) {
+    if (_panel != null) return;
+    widget.controller.holdControls();
+    setState(() => _panel = kind);
+  }
+
+  void _closePanel() {
+    final kind = _panel;
+    if (kind == null) return;
+    setState(() => _panel = null);
+    widget.controller.releaseControls();
+    // After the panel's FocusScope is gone, or the request lands inside it.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      (kind == TrackKind.audio ? _audioButton : _subtitleButton).requestFocus();
+    });
   }
 
   void _onControllerChanged() {
@@ -136,6 +168,9 @@ class _TvVideoControlsState extends State<TvVideoControls> {
                       TvTransportRow(
                         controller: controller,
                         playPauseFocus: _playPause,
+                        audioTrackFocus: _audioButton,
+                        subtitleTrackFocus: _subtitleButton,
+                        onTrackPicker: _openPanel,
                       ),
                     ],
                   ),
@@ -144,6 +179,14 @@ class _TvVideoControlsState extends State<TvVideoControls> {
             ),
           ),
         ),
+        if (_panel != null)
+          Positioned.fill(
+            child: TvTrackPanel(
+              controller: controller,
+              kind: _panel!,
+              onClose: _closePanel,
+            ),
+          ),
       ],
     );
   }
@@ -411,12 +454,28 @@ class TvTransportRow extends StatelessWidget {
     required this.controller,
     this.playPauseFocus,
     this.onSurface,
+    this.onTrackPicker,
+    this.audioTrackFocus,
+    this.subtitleTrackFocus,
   });
 
   final TvPlaybackController controller;
 
   /// The node the host focuses when this row appears.
   final FocusNode? playPauseFocus;
+
+  /// Opens the host's track panel. Null leaves the track buttons out, which
+  /// is what the audio screen wants: a song has one audio track and no
+  /// subtitles, and a button that only ever offers one row is noise.
+  ///
+  /// When set, the audio / subtitle buttons sit AFTER next, so the row a
+  /// person already knows keeps its shape and play/pause keeps its place. Each
+  /// appears only when it has a choice to offer (see `state/media_tracks.dart`).
+  final ValueChanged<TrackKind>? onTrackPicker;
+
+  /// The nodes focus returns to when the panel each one opened closes.
+  final FocusNode? audioTrackFocus;
+  final FocusNode? subtitleTrackFocus;
 
   /// Themed colours for the audio screen; null renders white-on-video.
   final AircloneColors? onSurface;
@@ -487,6 +546,31 @@ class TvTransportRow extends StatelessWidget {
                 onPressed: controller.onNext,
                 foreground: fg,
                 disabled: faint,
+              ),
+            if (onTrackPicker != null)
+              StreamBuilder<Tracks>(
+                stream: controller.target.tracksStream,
+                initialData: controller.target.tracks,
+                builder: (context, snap) {
+                  final tracks = snap.data ?? const Tracks();
+                  return Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      for (final kind in TrackKind.values)
+                        if (trackButtonVisible(controller, kind, tracks))
+                          _TvControlButton(
+                            icon: trackKindIcon(kind),
+                            tooltip: trackKindTitle(kind),
+                            onPressed: () => onTrackPicker!(kind),
+                            foreground: fg,
+                            disabled: faint,
+                            focusNode: kind == TrackKind.audio
+                                ? audioTrackFocus
+                                : subtitleTrackFocus,
+                          ),
+                    ],
+                  );
+                },
               ),
           ],
         );

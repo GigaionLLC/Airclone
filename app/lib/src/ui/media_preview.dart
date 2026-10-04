@@ -9,7 +9,9 @@ import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 
 import '../state/media_prefs.dart';
+import '../state/media_tracks.dart';
 import 'theme/tokens.dart';
+import 'track_picker.dart';
 import 'tv_now_playing.dart';
 import 'tv_player_keys.dart';
 import 'tv_video_controls.dart';
@@ -454,16 +456,30 @@ class _MediaPreviewBodyState extends ConsumerState<MediaPreviewBody> {
     }
 
     final touch = _MaterialRepeatButton(repeat: repeat, onPressed: toggle);
+    // The track pickers sit just before repeat in both bars. Each hides itself
+    // when there is no choice to make, and on the web, where media_kit lists
+    // no tracks at all (see track_picker.dart).
+    final touchTracks = [
+      if (tv != null)
+        for (final kind in TrackKind.values)
+          TrackPickerButton(controller: tv, kind: kind),
+    ];
+    final desktopTracks = [
+      if (tv != null)
+        for (final kind in TrackKind.values)
+          TrackPickerButton(controller: tv, kind: kind, desktop: true),
+    ];
 
-    // Touch bar is [position, Spacer, fullscreen], so appending puts the button
-    // to the right of fullscreen; the desktop bar gets it just before the
-    // trailing fullscreen button instead (see [_withDesktopRepeat]).
+    // Touch bar is [position, Spacer, fullscreen], so appending puts the
+    // buttons to the right of fullscreen; the desktop bar gets them just before
+    // the trailing fullscreen button instead (see [_withDesktopRepeat]).
     return MaterialDesktopVideoControlsTheme(
       normal: kDefaultMaterialDesktopVideoControlsThemeData.copyWith(
         bottomButtonBar: _withDesktopRepeat(
           kDefaultMaterialDesktopVideoControlsThemeData.bottomButtonBar,
           repeat,
           toggle,
+          desktopTracks,
         ),
       ),
       fullscreen: kDefaultMaterialDesktopVideoControlsThemeDataFullscreen
@@ -473,18 +489,21 @@ class _MediaPreviewBodyState extends ConsumerState<MediaPreviewBody> {
                   .bottomButtonBar,
               repeat,
               toggle,
+              desktopTracks,
             ),
           ),
       child: MaterialVideoControlsTheme(
         normal: kDefaultMaterialVideoControlsThemeData.copyWith(
           bottomButtonBar: [
             ...kDefaultMaterialVideoControlsThemeData.bottomButtonBar,
+            ...touchTracks,
             touch,
           ],
         ),
         fullscreen: kDefaultMaterialVideoControlsThemeDataFullscreen.copyWith(
           bottomButtonBar: [
             ...kDefaultMaterialVideoControlsThemeDataFullscreen.bottomButtonBar,
+            ...touchTracks,
             touch,
           ],
         ),
@@ -493,22 +512,23 @@ class _MediaPreviewBodyState extends ConsumerState<MediaPreviewBody> {
     );
   }
 
-  /// The desktop bottom bar with a repeat button added before the trailing
-  /// fullscreen button (identified by the [Spacer] that pushes it right). Falls
-  /// back to appending, so a package update that drops the Spacer still gets a
-  /// usable button instead of a crash.
+  /// The desktop bottom bar with [tracks] and a repeat button added before the
+  /// trailing fullscreen button (identified by the [Spacer] that pushes it
+  /// right). Falls back to appending, so a package update that drops the
+  /// Spacer still gets usable buttons instead of a crash.
   List<Widget> _withDesktopRepeat(
     List<Widget> bar,
     bool repeat,
     VoidCallback onPressed,
+    List<Widget> tracks,
   ) {
-    final button = _MaterialDesktopRepeatButton(
-      repeat: repeat,
-      onPressed: onPressed,
-    );
+    final buttons = [
+      ...tracks,
+      _MaterialDesktopRepeatButton(repeat: repeat, onPressed: onPressed),
+    ];
     final spacer = bar.indexWhere((w) => w is Spacer);
-    if (spacer < 0) return [...bar, button];
-    return [...bar.take(spacer), button, ...bar.skip(spacer)];
+    if (spacer < 0) return [...bar, ...buttons];
+    return [...bar.take(spacer), ...buttons, ...bar.skip(spacer)];
   }
 
   /// Centered audio card: art, previous/play/next, and a seek slider.

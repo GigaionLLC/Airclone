@@ -394,7 +394,13 @@ List<Sidecar> findSidecars(RcloneFile video, List<RcloneFile> siblings);
     Controller gained `selectTrack`, `onTrackPicked`, `holdControls`/`releaseControls`,
     `imageSubsRenderable`, `externalSubtitleTitles`, `expectedSidecars`. English language names
     (not endonyms); `mpvLanguageList` gives mpv every alias (`ger,deu,de`). 21 new tests.
-- `[ ]` A2 `ui/track_picker.dart`; desktop/touch buttons; TV buttons + side panel + `holdControls`.
+- `[x]` A2 `ui/track_picker.dart`; desktop/touch buttons; TV buttons + side panel + `holdControls`.
+  - `TrackPickerButton` (media_kit bars, before repeat; menu on desktop, bottom sheet on touch,
+    nothing on web), `TvTrackPanel` (right-edge `FocusScope`, BACK consumed, OK picks + closes,
+    focus returns to the opening button). TV buttons appear after `next` only in the video
+    overlay (`onTrackPicker`), not on the audio now-playing screen. The "media_preview widget
+    test" is `track_picker_test.dart` on the button itself — `MediaPreviewBody` constructs libmpv
+    and cannot be pumped. 12 new widget tests (7 picker, 5 TV).
 - `[ ]` A3 Language prefs (`media_prefs`) + `alang`/`slang` before open; re-apply on Retry.
 - `[ ]` A4 Subtitle rendering per A0.2 outcome (libass + font + style helper, or TV `SubtitleViewConfiguration`).
 - `[ ]` A5 `state/sidecar_subs.dart` + full-sibling plumbing + `sub-add … auto` after start.
