@@ -261,13 +261,24 @@ nothing. bisync re-uses the existing baseline confirm — an ad-hoc pair has no 
 - Navigation: editable path bar + breadcrumb, back/forward/up, per-tab history.
 - Views: four `ViewMode`s per pane tab — **list** (sortable Name/Size/Modified/Status columns),
   **icons** (grid/thumbnails), **gallery** (`ViewMode.media`) and **tree** (§6.2, desktop only —
-  the switcher hides it on a touch-primary shell). Plus a per-pane filter box, which narrows the
-  folder you are standing in and nothing else.
-- **Find (`Ctrl+Shift+F`) is not a backend search.** It is one `operations/list` with
-  `recurse: true` over everything below the pane's current folder, filtered in Dart by name and
-  path, keeping at most 500 matches while still counting the true total. No backend query API is
-  involved and there is no capability gate, so on a large remote this costs a full recursive
-  listing of the subtree — worth knowing before running it at the root of something enormous.
+  the switcher hides it on a touch-primary shell). Plus one per-pane **search box** (§6.1).
+- **Search (`Ctrl+F` / `Ctrl+Shift+F`) is not a backend search.** One box, one string
+  (`BrowserState.filter`), two scopes (`PaneSearch.scope` in
+  [`pane_search.dart`](../../app/lib/src/state/pane_search.dart)). *This folder* filters the listing
+  on screen (`visibleEntries`, every word in the name). *Subfolders* runs one `operations/list` with
+  `recurse: true` over the pane's folder **as an async job** (`_async` + `job/status`, `job/stop` on
+  Cancel / navigation / tab close) — the synchronous form hit the 30-second rpc timeout on exactly
+  the trees worth searching. The answer is cached per session (`fs|folder`, 2 minutes, dropped by
+  `refresh()`), so refining the query never re-lists; matches are ranked in Dart (`matchHits`). No
+  backend query API, no capability gate: on a large remote it costs a full recursive listing of the
+  subtree, capped at 250,000 entries. It lists `remote.fs`, not `listFs` — following symlinks is
+  right for one folder and a loop hazard for a tree.
+- **Results carry full paths, like tree rows.** A `SearchHit` resolves rclone's relative `Path`
+  against the search root once, at ingest; every row action builds its `_EntryLoc` from the hit
+  (`_hitLoc`), with the scan's own listing of that folder as siblings. While results show,
+  `selectedEntries` is empty and select-all is inert (the tree's "safe failure") — multi-select over
+  results is Phase B of [the search plan](../../dev/plans/search-scope-plan.md). Navigation of any
+  kind resets the scope to *This folder*.
 - Selection: multi-select (Ctrl/Cmd-click, Shift-range, Ctrl+A), keyboard ops (`F2` rename, `Del`
   delete, `Ctrl+C/X/V` across panes).
 - Preview: inline image/audio/video/PDF/text, streamed via the engine (no full download); pop-out

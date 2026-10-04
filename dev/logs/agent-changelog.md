@@ -13,6 +13,27 @@ happened": nothing was logged between 2026-07-02 and 2026-07-15, or between 2026
      it is: it used to say ABOVE, which pushed it further down the file with every entry until
      it sat hundreds of lines under the newest one and pointed writers at the wrong place. -->
 
+## [2026-10-04] - Pane search: this folder by default, subfolders one step away
+
+**Agent:** Claude Code (Claude Opus 5.5) — `feat/search-scope`
+**Files Modified:** `app/lib/src/state/{pane_search,browser_controller}.dart`,
+`app/lib/src/ui/{pane_search_box,browser_pane,home_screen,mobile_home,mobile_action_sheets,file_row,context_menu,shortcuts_dialog}.dart`,
+`packages/airclone_rc/lib/src/rc_api.dart`; removed `app/lib/src/ui/search_dialog.dart` + its test; tests
+`app/test/{pane_search,browser_search_controller,pane_search_box,mobile_search}_test.dart`,
+`packages/airclone_rc/test/rc_api_test.dart`; docs `docs/guide/browsing.md`, `wiki/features/feat-file-browser.md`,
+`wiki/core/{06-design-system,10-external-integrations}.md`, `dev/android-tv.md`, `dev/plans/search-scope-plan.md`.
+**Database/API Changes:** `RcOperations.listAsync` + `RcOperations.parseList` (same `operations/list`, `_async`).
+**Summary:** From a Google TV customer who did not find recursive search (it existed, behind a dialog labelled
+`Search this folder`). One search box per pane on every shell replaces the desktop Filter box and the Search
+dialog: `This folder` filters live (every word in the name), `Subfolders` (scope switch, a fixed
+`Search subfolders for "…"` row, or Ctrl+Shift+F) scans the folder once as an async job with Cancel — the old
+synchronous recursive list hit the 30 s rpc timeout on big remotes — and re-filters the cached scan as you type.
+Results show in the pane with their folder, every action resolves from the hit's full path, flat selection and
+select-all are inert on results, crypt skips are reported, navigation resets the scope, Back/Esc step out.
+Device pass on a real Google TV still open. 1932 app tests + 127 package tests pass, analyze clean.
+
+---
+
 ## [2026-10-02] - v0.22.2 live on Apple, in Microsoft certification
 
 **Agent:** Claude Code (Claude Opus 5.5)

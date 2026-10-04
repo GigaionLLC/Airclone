@@ -3,10 +3,10 @@
 ## 📊 State Dashboard
 | Metric | Value |
 | :--- | :--- |
-| **Status** | `PLANNED` — research done, design settled with Jake, no code written. Ready to build on the go-ahead. |
+| **Status** | `BUILT` (branch `feat/search-scope`) — A1-A9 done: analyze clean, all app + package tests pass. Open: A10 real Google TV pass and Web UI smoke; Phase B (multi-select over results) not started. |
 | **Version** | `v1.0.0` |
 | **Active Persona** | `Architect` |
-| **Last Updated** | 2026-10-04 |
+| **Last Updated** | 2026-10-04 (built) |
 
 Branch: `plan/search-scope-and-player-formats` (plan only). Sister plan, same customer email:
 [player-format-support-plan.md](player-format-support-plan.md).
@@ -20,7 +20,7 @@ Branch: `plan/search-scope-and-player-formats` (plan only). Sister plan, same cu
   > folder but the ability to search inside all sub-folders also."
 
 * **What the code says.** Recursive search **already exists** — `operations/list` with
-  `recurse: true` in [`search_dialog.dart`](../../app/lib/src/ui/search_dialog.dart). The customer did
+  `recurse: true` in `search_dialog.dart` (removed by this plan). The customer did
   not find it, or did not believe it: the phone/TV header button is labelled `Search this folder` and
   the dialog is titled `Search in <remote>/<folder>`. Meanwhile there are two different tools with two
   different rules — a live **Filter** box (desktop only, current folder, name substring) and a
@@ -94,7 +94,7 @@ Line numbers are at `97fd8fb` (v0.22.2); `~` means approximate. Paths relative t
     (select-all in selection bar), `ui/storage_breakdown.dart` L54, `selectAll` (browser_controller ~L559-585).
   - **Empty state** — `browser_pane.dart` L340-384: `'Empty folder'` vs `'No matches'`; hidden-undecryptable
     banner L556-557.
-  - **Search dialog** — [`ui/search_dialog.dart`](../../app/lib/src/ui/search_dialog.dart) (307 lines):
+  - **Search dialog** — `ui/search_dialog.dart` (removed by this plan) (307 lines):
     synchronous `operations.list(fs, basePath, opt: {'recurse': true, 'noModTime': true})` L78-84,
     tokens-AND over `'${name} ${path}'` L86-100, cap 500, sorts only the kept 500. Callers:
     desktop `_openSearch` [`ui/home_screen.dart`](../../app/lib/src/ui/home_screen.dart) L325-361
@@ -370,23 +370,33 @@ bool matchesName(String name, String query);   // This-folder rule
 ## 7️⃣ Phase 7: Implementation Checklist (Execution)
 
 **Phase A — v1 (this plan):**
-- `[ ]` A1 `state/pane_search.dart` (models + pure matcher) + tests.
-- `[ ]` A2 `BrowserState.search`, `_Session` cache/job, `setSearchScope` / `_startScan` / `cancelSearch`, resets + invalidation + tests.
-- `[ ]` A3 `visibleEntries` → tokens-AND (`matchesName`); keep tree filter consistent.
-- `[ ]` A4 `ui/search_scope_toggle.dart`, `ui/pane_search_box.dart`; swap into both desktop toolbars.
-- `[ ]` A5 `ui/search_results_list.dart` + `FileRow.subtitle`; `_body` branch; trailing row in all views and `No matches`.
-- `[ ]` A6 Phone/TV header box + `PopScope` step + compact sheet tile.
-- `[ ]` A7 Shortcuts (`Ctrl+Shift+F`), palette, status bar, type-ahead guard; `shortcuts_dialog.dart`.
-- `[ ]` A8 Delete `search_dialog.dart`, its test, `mobileFolderSearch`.
-- `[ ]` A9 Docs: browsing.md, feat-file-browser.md §6, 10-external-integrations.md L214 (+ async note), 06-design-system.md shortcut list, dev/android-tv.md search leg.
-- `[ ]` A10 TV probe leg + real Google TV pass; Web UI smoke.
+- `[x]` A1 `state/pane_search.dart` (models + pure matcher) + tests. → `pane_search_test.dart`; the test caught a `Media//a.txt` path for matches directly in the search root, fixed.
+- `[x]` A2 `BrowserState.search`, `_Session` cache/job, `setSearchScope` / `_startScan` / `cancelSearch`, resets + invalidation + tests. → `browser_search_controller_test.dart` (async job, inline answer, cancel + late answer dropped, navigation stops the job, cache reuse, refresh rescans, lands in its own tab, step-out order). Package gained `RcOperations.listAsync` + `parseList` (pinned in `rc_api_test.dart`).
+- `[x]` A3 `visibleEntries` → tokens-AND (`matchesName`). Tree filter left on its substring rule (it filters only what is loaded; one-word queries behave the same).
+- `[x]` A4 `ui/pane_search_box.dart` (`PaneSearchBox`, `SearchScopeToggle`, `SearchStrip`, `SearchSubfoldersRow`, `SearchResultsList`); `_FilterBox` deleted, both desktop toolbars use the box.
+- `[x]` A5 Results body + `FileRow.subtitle`; context menu `Show in folder`, no `Select` on results.
+- `[x]` A6 Phone/TV header box, `PopScope` first step, compact sheet tile `Search`. → `mobile_search_test.dart`.
+- `[x]` A7 `Ctrl+Shift+F` = focus box + Subfolders; palette `Search here and in subfolders…`; status bar `n matches`; type-ahead off on results; `Esc` steps out after clearing a selection; `shortcuts_dialog.dart`.
+- `[x]` A8 Deleted `search_dialog.dart`, `search_dialog_test.dart`, `mobileFolderSearch`.
+- `[x]` A9 Docs: browsing.md (§Searching, shortcuts, empty states), feat-file-browser.md §6, 10-external-integrations.md, 06-design-system.md, dev/android-tv.md.
+- `[ ]` A10 Real Google TV pass (IME, ring on the switch and the bottom row) and a Web UI smoke through the proxy.
+
+**Deviations from §4 (deliberate):**
+- The scope switch and status live in a strip at the top of the **pane body**, not the toolbar: the OS skins hoist their toolbar away from the pane, and the phone/TV header has no room. Same strip on every shell.
+- `Search subfolders for "…"` is a **fixed row at the bottom of the pane**, not the last list item: always on screen, and reachable with DOWN however long the list is. Shown in every view mode and under `No matches`.
+- `Enter` on a highlighted result does nothing yet (double-click / tap / menu open it).
+- Desktop Esc inside the box: results → text → unfocus. The global `Esc` (no field focused) clears a selection first, then steps out of the search.
 
 **Phase B — later, separate go-ahead:** multi-select over results (full-path selection set, like
 `tree.selected`), copy/cut/delete/drag from results via `groupByParent`; `selectedTreeRows`-style
 resolution that consults the result cache, not `childrenOf`.
 
 ## 8️⃣ Phase 8: Verification Dashboard
-* **Verification Status:** `PENDING`
+* **Verification Status:** `AUTOMATED PASS, DEVICE PENDING` (2026-10-04)
+* **Report:**
+  - `[x]` `flutter analyze` clean; full app suite and `airclone_rc` suite pass (counts in the changelog entry).
+  - `[x]` Code matches §4 except the deviations listed in Phase 7.
+  - `[ ]` Real Google TV pass; Web UI smoke.
 
 ## 9️⃣ Phase 9: User Verification
 * **Status:** `PENDING` — reply to the customer once a build with this is on Play.

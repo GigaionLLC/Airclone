@@ -139,6 +139,18 @@ Both are covered by `app/test/tv_dpad_test.dart`, and each has a paired test of
 the UN-wrapped widget that demonstrates the trap — a refactor that drops a
 wrapper fails there instead of in a living room.
 
+The pane search box (2026-10, [search-scope-plan](plans/search-scope-plan.md))
+is laid out around exactly these two rules. It is not a permanent traversal
+stop: the folder header shows the magnifier, and only selecting it opens the
+box (the IME rising then is expected — the user asked to type). The scope
+switch `This folder | Subfolders` sits BELOW the box, because LEFT/RIGHT belong
+to the caret and only DOWN leaves the field; DOWN again reaches the results,
+and `Search subfolders for "…"` is a fixed row at the bottom of the pane so it
+is reachable however long the list is. Back steps out of the search (results,
+then text, then the box) before it navigates. Covered by
+`app/test/pane_search_box_test.dart` (DOWN from the box lands on the switch)
+and `app/test/mobile_search_test.dart` (the Back order).
+
 ## Field reports from a Google TV user (2026-09-09)
 
 Three, from someone actually using it on a set. The first two are focus
