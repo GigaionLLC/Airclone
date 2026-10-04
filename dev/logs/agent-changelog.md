@@ -33,6 +33,7 @@ select-all are inert on results, crypt skips are reported, navigation resets the
 Device pass on a real Google TV still open. 1932 app tests + 127 package tests pass, analyze clean.
 
 ---
+
 ## [2026-10-04] - Player format support: track pickers, sidecar subtitles, wider formats (branch `feat/player-formats`)
 
 **Agent:** Claude Code (Claude Opus 5.5)
