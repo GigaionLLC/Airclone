@@ -365,6 +365,53 @@ void main() {
       await drain(tester);
     });
 
+    testWidgets('on the last file, RIGHT steps over the dead next button and '
+        'never lands on the video surface', (tester) async {
+      // long-truehd-default on the TV emulator: previous, back, play, forward,
+      // dead next, audio. On that six-button row the full-screen surface's
+      // centre sat just right of play/pause, and RIGHT (or UP) focused it.
+      controller.onPrevious = () {};
+      controller.onNext = null;
+      await pumpRow(tester);
+      target.setTracks(
+        const Tracks(
+          audio: [
+            AudioTrack('auto', null, null),
+            AudioTrack('no', null, null),
+            AudioTrack('1', null, 'eng', codec: 'truehd'),
+            AudioTrack('2', null, 'eng', codec: 'ac3'),
+          ],
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+      expect(find.byIcon(Icons.subtitles_outlined), findsNothing);
+      expect(focused(), 'tv play/pause');
+
+      await right(tester, 1);
+      expect(focused(), isNot('tv video surface'));
+      expect(controller.mode, TvControlsMode.browsing);
+      await right(tester, 1);
+      expect(focused(), 'tv audio track');
+
+      // Back along the row to play/pause, then UP: nothing above it in the
+      // row, and the surface must not catch it either.
+      for (var i = 0; i < 2; i++) {
+        await tester.sendKeyEvent(LogicalKeyboardKey.arrowLeft);
+        await tester.pump();
+      }
+      expect(focused(), 'tv play/pause');
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowUp);
+      await tester.pump();
+      expect(focused(), isNot('tv video surface'));
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+      await tester.pump();
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+      await tester.pump();
+      expect(focused(), isNot('tv video surface'));
+      await drain(tester);
+    });
+
     testWidgets('a file with no choice gets no buttons', (tester) async {
       await pumpRow(tester);
       target.setTracks(const Tracks());

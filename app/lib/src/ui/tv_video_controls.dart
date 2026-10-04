@@ -158,10 +158,14 @@ class _TvVideoControlsState extends State<TvVideoControls> {
       fit: StackFit.expand,
       children: [
         // Bottom layer: the focusable surface. Also the reason a film plays
-        // ring-free — see [_surface].
+        // ring-free — see [_surface]. Focused in code only: as a traversal
+        // candidate this full-screen node's centre sat just right of
+        // play/pause on a six-button row, and RIGHT (or UP) moved focus onto
+        // it — no ring anywhere, tested on the TV emulator.
         Focus(
           focusNode: _surface,
           autofocus: true,
+          skipTraversal: true,
           child: const SizedBox.expand(),
         ),
         if (controller.pendingTarget != null)
