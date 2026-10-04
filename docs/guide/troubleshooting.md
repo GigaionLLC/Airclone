@@ -225,7 +225,11 @@ Other reasons a thumbnail may never appear:
 - **The file is too large, or is a video that will not decode a frame.** A
   captured frame that comes back as one flat shade — the black leader many
   videos open on — is treated as a failure rather than cached, because a cached
-  black square looks permanently broken.
+  black square looks permanently broken. A video that took too long to give a
+  frame is not tried again for the rest of the session either.
+- **It is a disc rip or a broadcast recording.** `.vob`, `.m2ts`, `.mts`,
+  `.m2t`, `.mxf`, `.rm`, `.rmvb` and `.asf` files play, but always show the film
+  icon: finding a frame in them over a cloud remote takes too long.
 - **`Keep cache in memory only` is on.** In Settings → **Storage & updates** →
   `Preview cache`. With it on, nothing is written to disk, so every thumbnail is
   regenerated each session by design.
@@ -341,6 +345,25 @@ the relative paths inside it resolve against the server they came from.
 
 A playlist *will* play from a remote when everything it names is next to it -
 a whole folder you downloaded together, or one you produced yourself.
+
+---
+
+## Subtitles do not show, or a video will not play
+
+- **The subtitle says *can't be shown here*.** It is a picture subtitle (PGS
+  from a Blu-ray, VobSub from a DVD), and the player only draws text subtitles
+  so far. A film whose default subtitle is a picture starts with subtitles off.
+  A text `.srt` for the same film, saved next to the video with the same name,
+  is picked up automatically.
+- **A subtitle file next to the video is not listed.** It must share the
+  video's name (`Film.mkv` and `Film.srt`, or `Film.en.srt`), be `.srt`, `.ass`,
+  `.ssa` or `.vtt`, and be under 2 MB. Files that are only online placeholders
+  in a sync folder are skipped rather than downloaded.
+- **The video will not play at all.** Use `Open in another app` on the error
+  card. On a desktop where that remote is mounted, the other app opens it
+  straight from the mounted drive. To see exactly which formats this device's
+  player supports, turn on Advanced mode and open **Settings → Diagnostics →
+  `Media capabilities`**, then `Copy` the list into a bug report.
 
 ---
 

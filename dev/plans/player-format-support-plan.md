@@ -438,7 +438,12 @@ List<Sidecar> findSidecars(RcloneFile video, List<RcloneFile> siblings);
     `mount/listmounts` call (2 s) + `File.exists` (2 s), else the unchanged staging flow.
     **Deviation:** does not read `mountControllerProvider` — reading it would start its 2 s poll
     for the rest of the session. No tooltip added. 14 new tests.
-- `[ ]` A8 Docs: feat-media-playback.md, browsing.md table, mount-and-share.md, platforms.md, dev/android-tv.md key/where-it-lives, tv-playback-plan.md out-of-scope note → link here, media_formats.dart header.
+- `[x]` A8 Docs: feat-media-playback.md, browsing.md table, mount-and-share.md, platforms.md, dev/android-tv.md key/where-it-lives, tv-playback-plan.md out-of-scope note → link here, media_formats.dart header.
+  - All of those, plus `troubleshooting.md` (new section + thumbnail notes), `features-index.md`,
+    `20-explorer-design.md` (timeout cache, no-thumb containers), `dev/README.md` (matrix row).
+    platforms.md: two new rows (track/sidecar ✅ on every build; image subtitles ⏳ everywhere,
+    with a reason) and notes for open-from-mount and the Web UI. README's short list unchanged
+    (no headline limit changed). `check-docs.py`: 0 broken, 0 orphans.
 - `[ ]` A9 Real-device pass (matrix) + changelog entry.
 
 ## 8️⃣ Phase 8: Verification Dashboard

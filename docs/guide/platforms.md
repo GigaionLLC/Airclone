@@ -55,6 +55,8 @@ dragged narrow gets the phone layout. The ⚠️ marks for tablets below are abo
 | Drag and drop (between panes and to or from the OS) | | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ |
 | Keyboard shortcuts and the Ctrl+K command palette | | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ⚠️ tablets | ❌ | ⚠️ iPad |
 | Open a file in another app / share sheet | | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ⏳ |
+| Choose the audio track and subtitles; subtitle files beside a video | | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Image subtitles (Blu-ray PGS, DVD VobSub) | | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ |
 | Show in File Explorer / Finder / file manager | | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | ❌ | ❌ | ❌ |
 | Compress, extract and list archives | | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ | ❌ |
 | Window backdrop (Mica / Acrylic) | | ✅ Win 11 | ✅ Win 11 | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
@@ -62,6 +64,13 @@ dragged narrow gets the phone layout. The ⚠️ marks for tablets below are abo
 - **Tablets** (⚠️) get these only in the desktop layout, which needs a window at least 700 pixels
   wide. Android TV always uses the phone layout, with the tabs as a side rail, and you drive it with
   the remote.
+- **Open in another app** on a desktop opens a file straight from a drive you have already mounted
+  for that remote, with no download first. Without a mount, and on phones, it downloads a copy
+  first, as before. This follows wherever mounting works; see
+  [Mounting and sharing](mount-and-share.md#where-mounting-works).
+- **Audio tracks and subtitles** are chosen in the built-in player, and that player is not in the
+  Web UI, where the browser plays the file itself. Subtitle files next to a video (`.srt`, `.ass`,
+  `.ssa`, `.vtt`) are picked up on every build above.
 
 ## Copying, syncing and transfers
 
@@ -195,6 +204,12 @@ engines, because Flathub reviews and delivers what runs.
 **Android TV has no camera, and usually no file picker.** QR scanning and the camera-roll backup
 have nothing to work with on a television. A stock Android TV also has no file picker, so
 `Import File Config` works only on TVs whose maker added a file manager.
+
+**Image subtitles do not show yet, anywhere.** Blu-ray and DVD rips carry subtitles as pictures
+(PGS, VobSub), and the player draws subtitles as text. Showing pictures needs the player's own
+subtitle renderer turned on, which first has to be measured on a real television for speed and
+fonts. Until then those tracks are listed in the subtitle menu as *can't be shown here*, and a film
+whose default subtitle is a picture plays with subtitles off rather than showing nothing.
 
 **Drag and drop, and the tree view, are desktop features.** On a touch screen, long-pressing an item
 opens its menu, which is the same gesture a drag would need. A tree with indentation and three
