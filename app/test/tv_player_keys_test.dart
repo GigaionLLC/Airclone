@@ -351,6 +351,28 @@ void main() {
       expect(c.controlsVisible, isFalse);
     });
 
+    testWidgets('walking the row with LEFT / RIGHT keeps it up', (
+      tester,
+    ) async {
+      await tester.pumpWidget(const SizedBox());
+      c.showControls();
+      for (var i = 0; i < 3; i++) {
+        await tester.pump(
+          TvPlaybackController.autoHideDelay - const Duration(seconds: 1),
+        );
+        expect(
+          c.handleKey(down(LogicalKeyboardKey.arrowRight)),
+          KeyEventResult.ignored,
+          reason: 'the row traverses; the controller does not seek',
+        );
+      }
+      expect(c.controlsVisible, isTrue);
+      await tester.pump(
+        TvPlaybackController.autoHideDelay + const Duration(seconds: 1),
+      );
+      expect(c.controlsVisible, isFalse);
+    });
+
     testWidgets('never auto-hides mid-scrub', (tester) async {
       await tester.pumpWidget(const SizedBox());
       c.handleKey(down(LogicalKeyboardKey.arrowRight));

@@ -68,6 +68,17 @@ class _TvVideoControlsState extends State<TvVideoControls> {
     super.initState();
     widget.controller.addListener(_onControllerChanged);
     _last = widget.controller.mode;
+    // Previous / next swap the page under a focused button. When that page
+    // went, focus fell back to the top bar's back arrow (TV emulator), and
+    // OK there left the player. [autofocus] cannot help: something still had
+    // focus when this page was built. So the film on screen — the newest
+    // player owns the media keys — takes it, as a freshly opened film does.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !widget.controller.ownsMediaKeys) return;
+      if (widget.controller.mode == TvControlsMode.hidden) {
+        _surface.requestFocus();
+      }
+    });
   }
 
   @override

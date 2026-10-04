@@ -84,6 +84,104 @@ void main() {
     await tester.pumpAndSettle();
   }
 
+  String? focused() => FocusManager.instance.primaryFocus?.debugLabel;
+
+  /// A player under a focusable top bar — the shape of the real preview, whose
+  /// back arrow sits above the film.
+  late FocusNode bar;
+  setUp(() => bar = FocusNode(debugLabel: 'top bar back'));
+  tearDown(() => bar.dispose());
+
+  Future<void> pumpUnderBar(WidgetTester tester, Widget player) async {
+    tester.view.physicalSize = const Size(1920, 1080);
+    tester.view.devicePixelRatio = 2;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.light(),
+        home: Scaffold(
+          body: TvFocusOverlay(
+            child: Column(
+              children: [
+                IconButton(
+                  focusNode: bar,
+                  onPressed: () {},
+                  icon: const Icon(Icons.arrow_back),
+                ),
+                Expanded(child: player),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+  }
+
+  testWidgets('a film paged in by previous / next takes focus from the top '
+      'bar, where the old page left it', (tester) async {
+    await pumpUnderBar(tester, const SizedBox());
+    bar.requestFocus();
+    await tester.pump();
+    expect(focused(), 'top bar back');
+    await pumpUnderBar(
+      tester,
+      TvVideoControls(key: const ValueKey('next film'), controller: controller),
+    );
+    await tester.pump();
+    expect(focused(), 'tv video surface');
+  });
+
+  testWidgets('an older player does not take focus from the newest', (
+    tester,
+  ) async {
+    // During a swipe both pages exist; the newest owns the keys.
+    final newer = TvPlaybackController(target: target);
+    addTearDown(newer.dispose);
+    await pumpUnderBar(tester, const SizedBox());
+    bar.requestFocus();
+    await tester.pump();
+    await pumpUnderBar(tester, TvVideoControls(controller: controller));
+    await tester.pump();
+    expect(focused(), 'top bar back');
+  });
+
+  testWidgets('play/pause and the track buttons stay D-pad targets after the '
+      'row has hidden and come back', (tester) async {
+    // On the TV emulator RIGHT skipped the subtitle button (and LEFT/RIGHT
+    // skipped play/pause) after one hide: InkWell copies a passed-in node's
+    // computed skipTraversal onto the node, so any ancestor that turned
+    // traversal off while the row was hidden latched it for good. Nodes the
+    // row owns must come back from a hide exactly as they went in.
+    controller.onPrevious = () {};
+    controller.expectedSidecars = 2;
+    target.tracks = const Tracks(
+      audio: [
+        AudioTrack('auto', null, null),
+        AudioTrack('no', null, null),
+        AudioTrack('1', null, 'eng'),
+      ],
+      subtitle: [
+        SubtitleTrack('auto', null, null),
+        SubtitleTrack('no', null, null),
+      ],
+    );
+    await pumpUnderBar(tester, TvVideoControls(controller: controller));
+    for (var round = 0; round < 2; round++) {
+      controller.showControls();
+      await tester.pumpAndSettle();
+      expect(focused(), 'tv play/pause');
+      for (var i = 0; i < 3; i++) {
+        await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+        await tester.pump();
+      }
+      expect(focused(), 'tv subtitles', reason: 'round $round');
+      controller.hideControls();
+      await tester.pumpAndSettle();
+      expect(focused(), 'tv video surface');
+    }
+  });
+
   testWidgets('a playing film shows no controls at all', (tester) async {
     await pump(tester);
     expect(controller.mode, TvControlsMode.hidden);

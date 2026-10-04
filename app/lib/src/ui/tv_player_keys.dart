@@ -419,8 +419,13 @@ class TvPlaybackController extends ChangeNotifier {
     if (key == LogicalKeyboardKey.arrowLeft ||
         key == LogicalKeyboardKey.arrowRight) {
       // In browsing mode the arrows belong to the transport row's own focus
-      // traversal. Seeking from there is what ⏪/⏩ are for.
-      if (_mode == TvControlsMode.browsing) return KeyEventResult.ignored;
+      // traversal. Seeking from there is what ⏪/⏩ are for. Each one is the
+      // user still at the row, so the auto-hide starts over: it used to hide
+      // the row mid-walk, and the next RIGHT seeked instead (TV emulator).
+      if (_mode == TvControlsMode.browsing) {
+        _armAutoHide();
+        return KeyEventResult.ignored;
+      }
       nudge(key == LogicalKeyboardKey.arrowLeft ? -1 : 1);
       return KeyEventResult.handled;
     }
@@ -448,7 +453,10 @@ class TvPlaybackController extends ChangeNotifier {
       // ⏪/⏩ buttons see a hold before this does (see `_TvSeekHold` in tv_video_controls.dart).
       if (event is KeyRepeatEvent) return KeyEventResult.handled;
       // With the row up, OK belongs to whatever button holds focus.
-      if (_mode == TvControlsMode.browsing) return KeyEventResult.ignored;
+      if (_mode == TvControlsMode.browsing) {
+        _armAutoHide();
+        return KeyEventResult.ignored;
+      }
       commitPending();
       playPause();
       _show(TvControlsMode.browsing);
