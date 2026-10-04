@@ -9,6 +9,7 @@
 # Usage:
 #   ./tool/make-test-media.sh [OUTPUT_DIR]       (default: ./build/test-media)
 #   FFMPEG_IMAGE=<image> ./tool/make-test-media.sh
+#   FFMPEG_BIN=ffmpeg ./tool/make-test-media.sh   (a local ffmpeg instead of docker)
 #
 # FFMPEG_IMAGE must provide an `ffmpeg` entrypoint built with libx264, libx265,
 # libvpx, libaom (or libsvtav1), libtheora, libvorbis, libopus and libmp3lame.
@@ -27,7 +28,11 @@ mkdir -p "$OUT"
 OUT_ABS="$(cd "$OUT" && pwd)"
 
 ff() {
-  docker run --rm -v "$OUT_ABS:/out" -w /out "$IMAGE" -hide_banner -loglevel error -y "$@"
+  if [ -n "${FFMPEG_BIN:-}" ]; then
+    (cd "$OUT_ABS" && "$FFMPEG_BIN" -hide_banner -loglevel error -y "$@")
+  else
+    docker run --rm -v "$OUT_ABS:/out" -w /out "$IMAGE" -hide_banner -loglevel error -y "$@"
+  fi
 }
 
 say() { printf '%s\n' "$*"; }

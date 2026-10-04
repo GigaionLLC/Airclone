@@ -212,7 +212,15 @@ String? codecLabel(String? codec) {
 /// that is missing, from the channel count.
 String? channelLabel({String? layout, int? count}) {
   final l = layout?.trim();
-  if (l != null && l.isNotEmpty) {
+  // mpv names a layout it cannot identify `unknownN` (seen on a mono AC-3
+  // track in the TV emulator). That is not a label - fall back to the count,
+  // or to N itself.
+  final unknown = l == null ? null : RegExp(r'^unknown(\d+)$').firstMatch(l);
+  if (unknown != null) {
+    count = (count != null && count > 0)
+        ? count
+        : int.tryParse(unknown.group(1)!);
+  } else if (l != null && l.isNotEmpty) {
     final paren = l.indexOf('(');
     return paren > 0 ? l.substring(0, paren) : l;
   }
@@ -441,3 +449,39 @@ Map<String, String> languageOptions({String? audio, String? subtitle}) => {
   else if (subtitle != null && subtitle.isNotEmpty)
     'slang': mpvLanguageList(subtitle),
 };
+
+// ── a track the build cannot decode ──────────────────────────────────────────
+
+/// The codec named by libmpv's "Failed to initialize a decoder for codec
+/// 'truehd'." error, or null for any other message.
+String? undecodableCodecIn(String message) {
+  final m = RegExp(
+    r"decoder for codec '([^']+)'",
+    caseSensitive: false,
+  ).firstMatch(message);
+  return m?.group(1)?.toLowerCase();
+}
+
+/// What to do when the codec of [failed] could not be decoded: the first
+/// other audio track whose codec is not in [bad], or `AudioTrack.no()` to
+/// carry on without sound. Null when [failed] is not an audio codec of this
+/// file at all — a video decoder failure is fatal and stays an error.
+///
+/// Found on the Android TV emulator: the shipped Android libmpv has no TrueHD
+/// decoder, and a film whose DEFAULT track is TrueHD failed outright, although
+/// its AC-3 track and its picture were perfectly playable. A Blu-ray remux
+/// is exactly that file.
+AudioTrack? fallbackAudioTrack(
+  List<AudioTrack> tracks,
+  String failed, {
+  Set<String> bad = const {},
+}) {
+  bool real(AudioTrack t) => t.id != 'auto' && t.id != 'no';
+  final audio = tracks.where(real).toList();
+  if (!audio.any((t) => t.codec?.toLowerCase() == failed)) return null;
+  final skip = {...bad, failed};
+  for (final t in audio) {
+    if (!skip.contains(t.codec?.toLowerCase())) return t;
+  }
+  return AudioTrack.no();
+}

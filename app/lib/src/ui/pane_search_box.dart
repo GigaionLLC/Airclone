@@ -38,6 +38,22 @@ class _PaneSearchBoxState extends ConsumerState<PaneSearchBox> {
   );
 
   @override
+  void initState() {
+    super.initState();
+    // The header form opens from its magnifier, which this box replaces. The
+    // focus that leaves the removed icon lands on a neighbour (on the TV
+    // emulator, the ⋯ button) before `autofocus` gets a turn, so the field is
+    // focused explicitly once it is laid out.
+    if (widget.touch) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          ref.read(paneFilterFocusProvider(widget.index)).requestFocus();
+        }
+      });
+    }
+  }
+
+  @override
   void dispose() {
     _controller.dispose();
     super.dispose();

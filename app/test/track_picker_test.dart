@@ -164,12 +164,9 @@ void main() {
   });
 
   group('subtitle text while libass is off (plan 4.B fallback)', () {
-    test('a television gets a fixed, sofa-sized style above the overscan', () {
-      final tv = subtitleViewConfigurationFor(tv: true);
-      // media_kit would scale its 32px by sqrt(960x540 / 1920x1080) = 0.5.
-      expect(tv.textScaler, TextScaler.noScaling);
-      expect(tv.style.fontSize, greaterThanOrEqualTo(24));
-      expect(tv.padding.bottom, greaterThan(27), reason: 'clear of overscan');
+    test('on a television media_kit draws none: the overlay does '
+        '(TvSubtitleLine), so the line can clear the controls', () {
+      expect(subtitleViewConfigurationFor(tv: true).visible, isFalse);
     });
 
     test("everything else keeps media_kit's window-relative default", () {

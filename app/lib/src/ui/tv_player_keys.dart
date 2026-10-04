@@ -78,6 +78,12 @@ abstract interface class TvPlaybackTarget {
   Tracks get tracks;
   Stream<Tracks> get tracksStream;
 
+  /// The text subtitle lines on screen now (media_kit's `sub-text`). On a
+  /// television the overlay draws them itself, so the line can move above the
+  /// transport row while it is up — see `TvSubtitleLine`.
+  List<String> get subtitle;
+  Stream<List<String>> get subtitleStream;
+
   /// What mpv has ACTUALLY selected. media_kit's own `state.track` only
   /// echoes what was last set through it, so an automatic pick — which is
   /// what every file starts with — would read as `auto` forever.
@@ -144,6 +150,12 @@ class MediaKitPlaybackTarget implements TvPlaybackTarget {
 
   @override
   Stream<Tracks> get tracksStream => player.stream.tracks;
+
+  @override
+  List<String> get subtitle => player.state.subtitle;
+
+  @override
+  Stream<List<String>> get subtitleStream => player.stream.subtitle;
 
   @override
   Future<TrackSelection> selection() async {

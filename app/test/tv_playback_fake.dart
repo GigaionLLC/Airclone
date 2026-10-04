@@ -40,6 +40,19 @@ class FakeTarget implements TvPlaybackTarget {
   final _duration = StreamController<Duration>.broadcast();
   final _buffer = StreamController<Duration>.broadcast();
   final _tracks = StreamController<Tracks>.broadcast();
+  final _subtitle = StreamController<List<String>>.broadcast();
+
+  /// The subtitle lines on screen. Assign through [setSubtitleLines].
+  @override
+  List<String> subtitle = const [];
+
+  void setSubtitleLines(List<String> lines) {
+    subtitle = lines;
+    _subtitle.add(lines);
+  }
+
+  @override
+  Stream<List<String>> get subtitleStream => _subtitle.stream;
 
   /// The file's tracks. Assign through [setTracks] so the stream hears it too.
   @override
@@ -105,6 +118,7 @@ class FakeTarget implements TvPlaybackTarget {
     _duration.close();
     _buffer.close();
     _tracks.close();
+    _subtitle.close();
   }
 }
 

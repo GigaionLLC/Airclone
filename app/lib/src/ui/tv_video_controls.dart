@@ -133,6 +133,27 @@ class _TvVideoControlsState extends State<TvVideoControls> {
   @override
   Widget build(BuildContext context) {
     final controller = widget.controller;
+    // BACK, at the route. Android 16 delivers the remote's Back button as a
+    // route pop, never as a key event, so the key handlers below (and the
+    // panel's) never see it there: tested on the API 36 TV emulator, one BACK
+    // closed the whole player from an open track panel, and from a visible
+    // overlay. The order the key table promises — panel, then overlay, then
+    // the player — is enforced here instead, and holds on every Android.
+    return PopScope(
+      canPop: _panel == null && !controller.controlsVisible,
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop) return;
+        if (_panel != null) {
+          _closePanel();
+        } else {
+          controller.hideControls();
+        }
+      },
+      child: _body(controller),
+    );
+  }
+
+  Widget _body(TvPlaybackController controller) {
     return Stack(
       fit: StackFit.expand,
       children: [
@@ -145,6 +166,19 @@ class _TvVideoControlsState extends State<TvVideoControls> {
         ),
         if (controller.pendingTarget != null)
           Center(child: _PendingSeekBadge(controller: controller)),
+        // Text subtitles, drawn here rather than by media_kit so the line can
+        // clear the transport row while it is up (see TvSubtitleLine).
+        AnimatedPositioned(
+          duration: const Duration(milliseconds: 160),
+          left: tvOverscan.left,
+          right: tvOverscan.right,
+          bottom:
+              tvOverscan.bottom +
+              (controller.controlsVisible ? kTvControlsHeight : Space.x4),
+          child: IgnorePointer(
+            child: TvSubtitleLine(target: controller.target),
+          ),
+        ),
         Positioned(
           left: 0,
           right: 0,
@@ -689,4 +723,43 @@ String formatMediaClock(Duration d) {
   String two(int n) => n.toString().padLeft(2, '0');
   final body = h > 0 ? '$h:${two(m)}:${two(s)}' : '$m:${two(s)}';
   return negative ? '-$body' : body;
+}
+
+/// Roughly how tall the overlay (scrub bar + transport row) stands above the
+/// overscan margin — what a subtitle line has to clear while it is visible.
+const double kTvControlsHeight = 150;
+
+/// The text subtitle line on a television.
+///
+/// media_kit scales its own subtitle text by the frame's area against 1080p,
+/// clamped at 1, so on a TV's 960x540dp its 32px becomes about 16dp: legible
+/// at a desk, a smudge from a sofa. This draws at a fixed size instead. Image
+/// subtitles never reach it — they have no text (see `media_tracks.dart`).
+class TvSubtitleLine extends StatelessWidget {
+  const TvSubtitleLine({super.key, required this.target});
+  final TvPlaybackTarget target;
+
+  @override
+  Widget build(BuildContext context) => StreamBuilder<List<String>>(
+    stream: target.subtitleStream,
+    initialData: target.subtitle,
+    builder: (context, snap) {
+      final text = (snap.data ?? const <String>[])
+          .where((l) => l.trim().isNotEmpty)
+          .join('\n');
+      if (text.isEmpty) return const SizedBox.shrink();
+      return Text(
+        text,
+        textAlign: TextAlign.center,
+        textScaler: TextScaler.noScaling,
+        style: TextStyle(
+          height: 1.3,
+          fontSize: 28,
+          fontWeight: FontWeight.w500,
+          color: Colors.white,
+          backgroundColor: Colors.black.withValues(alpha: 0.67),
+        ),
+      );
+    },
+  );
 }

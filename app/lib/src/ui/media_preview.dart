@@ -287,6 +287,7 @@ class _MediaPreviewBodyState extends ConsumerState<MediaPreviewBody> {
     // libmpv surfaces decode/transport failures here, NOT by throwing.
     _errorSub = player.stream.error.listen((message) {
       if (_started) return; // see [_started] — non-fatal once it's playing
+      if (_recoverFromAudioDecoder(player, message)) return;
       if (mounted) setState(() => _fail(message));
     });
     _bufferingSub = player.stream.buffering.listen((buffering) {
@@ -573,6 +574,36 @@ class _MediaPreviewBodyState extends ConsumerState<MediaPreviewBody> {
     } catch (_) {
       // Already disposed, or never fully constructed.
     }
+  }
+
+  /// Audio codecs this build failed to decode in the current file.
+  final Set<String> _undecodableAudio = {};
+
+  /// A decoder that cannot start for ONE audio track is not a reason to lose
+  /// the film: switch to another audio track (or to none) and keep playing,
+  /// and say so. Returns false when [message] is anything else, which stays a
+  /// failure. See [fallbackAudioTrack].
+  bool _recoverFromAudioDecoder(Player player, String message) {
+    final codec = undecodableCodecIn(message);
+    if (codec == null) return false;
+    final next = fallbackAudioTrack(
+      player.state.tracks.audio,
+      codec,
+      bad: _undecodableAudio,
+    );
+    if (next == null) return false;
+    _undecodableAudio.add(codec);
+    unawaited(player.setAudioTrack(next));
+    final name = codecLabel(codec) ?? codec;
+    final note = next.id == 'no'
+        ? "This device can't play the $name sound in this file, so it plays "
+              'without sound.'
+        : "This device can't play the $name sound track, so another track "
+              'was chosen. Pick one with the audio button.';
+    ScaffoldMessenger.maybeOf(
+      context,
+    )?.showSnackBar(SnackBar(content: Text(note)));
+    return true;
   }
 
   Future<void> _retry() async {

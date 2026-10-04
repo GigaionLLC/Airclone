@@ -440,4 +440,64 @@ void main() {
       await drain(tester);
     });
   });
+
+  testWidgets('system Back (Android 16 sends it as a route pop, not a key) '
+      'hides the overlay first, then leaves the player', (tester) async {
+    tester.view.physicalSize = const Size(1920, 1080);
+    tester.view.devicePixelRatio = 2;
+    addTearDown(tester.view.reset);
+    final nav = GlobalKey<NavigatorState>();
+    await tester.pumpWidget(
+      MaterialApp(
+        navigatorKey: nav,
+        theme: AppTheme.light(),
+        home: const Scaffold(body: Text('browser')),
+      ),
+    );
+    nav.currentState!.push(
+      MaterialPageRoute<void>(
+        builder: (_) => Scaffold(
+          body: TvFocusOverlay(child: TvVideoControls(controller: controller)),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    controller.showControls();
+    await tester.pump();
+    expect(controller.controlsVisible, isTrue);
+
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    expect(controller.controlsVisible, isFalse);
+    expect(find.byType(TvVideoControls), findsOneWidget, reason: 'still here');
+
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    expect(find.byType(TvVideoControls), findsNothing);
+    expect(find.text('browser'), findsOneWidget);
+  });
+
+  testWidgets('the subtitle line is drawn by the overlay and clears the '
+      'transport row while it is up', (tester) async {
+    target.setSubtitleLines(['Hello from the film']);
+    await pump(tester);
+    expect(find.text('Hello from the film'), findsOneWidget);
+    target.setSubtitleLines(['Second line']);
+    await tester.pump();
+    await tester.pump();
+    expect(find.text('Second line'), findsOneWidget);
+    double bottom() => tester
+        .widget<AnimatedPositioned>(
+          find.ancestor(
+            of: find.byType(TvSubtitleLine),
+            matching: find.byType(AnimatedPositioned),
+          ),
+        )
+        .bottom!;
+    final low = bottom();
+    controller.showControls();
+    await tester.pump();
+    expect(bottom(), greaterThan(low + 100));
+    await drain(tester);
+  });
 }

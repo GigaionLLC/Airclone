@@ -492,34 +492,20 @@ class _TvTrackRow extends StatelessWidget {
   );
 }
 
-/// How text subtitles are drawn while libmpv's own renderer (libass) is off —
-/// which, until plan spike A0.2 passes on a real television, is everywhere.
+/// How media_kit draws text subtitles while libmpv's own renderer (libass) is
+/// off — which, until plan spike A0.2 passes on a real television, is
+/// everywhere.
 ///
-/// **Television.** media_kit scales subtitle text by the frame's area against
-/// 1080p, clamped at 1. A television lays out at 960x540dp, so its default
-/// 32px becomes about 16dp: legible at a desk, a smudge from a sofa. The TV
-/// gets a fixed size instead, about a twentieth of the screen height, above
-/// the overscan margin a television crops without telling anyone.
+/// **Television: not at all.** The TV overlay draws the line itself
+/// ([TvSubtitleLine] in `tv_video_controls.dart`) so it can sit above the
+/// transport row while that is up. Doing it here instead meant rebuilding
+/// `Video` on every overlay change, which re-created the controls and dropped
+/// their focus — found on the TV emulator, where the remote went dead one
+/// press after Play.
 ///
 /// **Everywhere else** keeps media_kit's default, which is sized for a window
 /// and follows it into fullscreen. A fixed size there would be wrong in one of
 /// the two, and the fullscreen route reuses whatever is passed here.
-SubtitleViewConfiguration subtitleViewConfigurationFor({required bool tv}) {
-  if (!tv) return const SubtitleViewConfiguration();
-  return SubtitleViewConfiguration(
-    style: TextStyle(
-      height: 1.3,
-      fontSize: 28,
-      fontWeight: FontWeight.w500,
-      color: Colors.white,
-      backgroundColor: Colors.black.withValues(alpha: 0.67),
-    ),
-    textScaler: TextScaler.noScaling,
-    padding: EdgeInsets.fromLTRB(
-      tvOverscan.left,
-      0,
-      tvOverscan.right,
-      tvOverscan.bottom + Space.x4,
-    ),
-  );
-}
+SubtitleViewConfiguration subtitleViewConfigurationFor({required bool tv}) => tv
+    ? const SubtitleViewConfiguration(visible: false)
+    : const SubtitleViewConfiguration();

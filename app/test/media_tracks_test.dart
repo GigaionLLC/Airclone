@@ -76,6 +76,13 @@ void main() {
   });
 
   group('labels', () {
+    test('an mpv "unknownN" layout becomes a channel count, never a label', () {
+      expect(channelLabel(layout: 'unknown1'), 'mono');
+      expect(channelLabel(layout: 'unknown2'), 'stereo');
+      expect(channelLabel(layout: 'unknown3', count: 6), '5.1');
+      expect(channelLabel(layout: '5.1(side)'), '5.1');
+    });
+
     test('audio rows carry language, channels, codec and default', () {
       final rows = audioChoices(filmTracks);
       expect(rows.map((r) => r.label), [
@@ -316,6 +323,44 @@ void main() {
 
     test('subtitles off is sid=no, never an empty slang', () {
       expect(languageOptions(subtitle: kLanguageOff), {'sid': 'no'});
+    });
+  });
+
+  group('a track this build cannot decode', () {
+    AudioTrack a(String id, String codec) =>
+        AudioTrack(id, null, 'eng', codec: codec);
+
+    test('reads the codec out of the libmpv error', () {
+      expect(
+        undecodableCodecIn(
+          "Failed to initialize a decoder for codec 'truehd'.",
+        ),
+        'truehd',
+      );
+      expect(undecodableCodecIn('Failed to open http://x'), isNull);
+    });
+
+    test('switches to the next audio track with a different codec', () {
+      final next = fallbackAudioTrack([
+        AudioTrack.auto(),
+        AudioTrack.no(),
+        a('1', 'truehd'),
+        a('2', 'ac3'),
+      ], 'truehd');
+      expect(next?.id, '2');
+    });
+
+    test('plays without sound when no other track can be decoded', () {
+      final next = fallbackAudioTrack(
+        [a('1', 'truehd'), a('2', 'dts')],
+        'truehd',
+        bad: {'dts'},
+      );
+      expect(next?.id, 'no');
+    });
+
+    test('a codec that is not an audio track of the file stays an error', () {
+      expect(fallbackAudioTrack([a('1', 'aac')], 'hevc'), isNull);
     });
   });
 }

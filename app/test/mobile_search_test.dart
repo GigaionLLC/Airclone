@@ -78,6 +78,8 @@ void main() {
     await tester.tap(find.byTooltip('Search'));
     await tester.pumpAndSettle();
     expect(find.byType(PaneSearchBox), findsOneWidget);
+    // Focus lands IN the field, not on a neighbour of the vanished icon.
+    expect(container.read(paneFilterFocusProvider(0)).hasFocus, isTrue);
 
     await tester.enterText(find.byType(TextField), 'holi');
     await tester.pumpAndSettle();
