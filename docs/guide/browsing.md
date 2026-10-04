@@ -265,11 +265,37 @@ Both render the same things:
 | Kind | Extensions recognised |
 |---|---|
 | Images | png, jpg, jpeg, gif, webp, bmp |
-| Video | mp4, mkv, webm, mov, avi, m4v, mpg, mpeg, wmv, flv |
+| Video | mp4, mkv, mk3d, webm, mov, avi, divx, m4v, mpg, mpeg, vob, m2ts, mts, m2t, wmv, asf, flv, f4v, ogv, 3gp, 3g2, rm, rmvb, mxf |
 | Streams | m3u8, m3u (HLS), mpd (MPEG-DASH) |
-| Audio | mp3, flac, wav, ogg, m4a, aac, opus, wma |
+| Audio | mp3, flac, wav, aiff, aif, ogg, oga, spx, m4a, m4b, aac, opus, wma, mka, ape, wv, tta, dsf, ac3, eac3, dts |
 | Documents | pdf, md, markdown |
 | Text and code | txt, log, json, yaml, yml, dart, js, ts, py, sh, c, cpp, h, xml, csv, ini, conf, toml |
+
+Disc rips and broadcast recordings (`vob`, `m2ts`, `mts`, `m2t`) and the older RealMedia, ASF and
+MXF containers play, but show the film icon rather than a thumbnail: taking a frame from a
+multi-gigabyte file on a cloud remote can take longer than the thumbnail is worth. A `.ts` file is
+treated as TypeScript code, not video, because in a file manager it almost always is. In the Web UI
+the browser plays the file itself, so most of these containers say plainly that the browser cannot
+play them.
+
+### Audio tracks and subtitles
+
+When a video has more than one audio track, or any subtitles, the player shows an **audio** and a
+**subtitles** button next to repeat. They list each track by language, with the channel layout and
+the format for audio (`English · 5.1 · AC-3 (default)`), and switch it while the video plays. On
+Android TV the same two buttons sit at the end of the control row: press **UP** to reach the row,
+**RIGHT** to the button, **OK** to open the list, and **BACK** to close it.
+
+- **Subtitle files beside the video are picked up.** `Film.srt`, `Film.en.srt` or
+  `Film.de.forced.srt` next to `Film.mkv` appear in the subtitle list, marked *external*. Airclone
+  reads `.srt`, `.ass`, `.ssa` and `.vtt` files up to 2 MB. If the video has no subtitles of its
+  own, a file in your preferred language (or the only one there is) is switched on.
+- **Your choice is remembered.** Pick a language once and the next video starts in it when it has
+  that language. Switching subtitles off is remembered too.
+- **Picture subtitles do not show yet.** Blu-ray and DVD rips carry subtitles as images (PGS,
+  VobSub). They are listed as *can't be shown here*, and a film whose default subtitle is an image
+  starts with subtitles off instead of showing nothing.
+- **Not in the Web UI**, where the browser plays the video and offers no track choice.
 
 ### Streams and network playback
 
@@ -286,7 +312,8 @@ engine is for a port on your own machine, and it never travels anywhere else.
 
 A file with no extension falls back to the type the remote reports. Anything else gets a
 `No preview available` card with an `Open in another app` button where handing the file to another
-app is possible. Text and markdown are capped at 512 KB and truncated past that, with a note, so a
+app is possible. On a desktop, if the remote is already mounted, `Open in another app` opens the
+file straight from the mounted drive, so a large video starts at once instead of downloading first. Text and markdown are capped at 512 KB and truncated past that, with a note, so a
 stray multi-megabyte log cannot lock up the window.
 
 ### Operations from the preview

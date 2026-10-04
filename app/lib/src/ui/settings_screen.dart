@@ -48,6 +48,7 @@ import 'photo_backup_section.dart';
 import 'config_import_dialog.dart';
 import 'dialog_body.dart';
 import 'external_backup_dialogs.dart';
+import 'media_capabilities_dialog.dart';
 import 'mount_options_editor.dart';
 import 'offline_qr_dialog.dart';
 import 'remove_all_remotes.dart';
@@ -2503,6 +2504,21 @@ class _DiagnosticsSectionState extends ConsumerState<_DiagnosticsSection> {
                 visualDensity: VisualDensity.compact,
               ),
             ),
+            // A maintainer's tool (player format plan, A0.1): what this
+            // build's libmpv can open, for dev/media-support-matrix.md. Behind
+            // Advanced mode so Settings stays readable, and absent on the web
+            // build, where the browser is the decoder and there is no libmpv.
+            if (ref.watch(advancedModeProvider) && !HostPlatform.isWeb)
+              OutlinedButton.icon(
+                onPressed: () => showMediaCapabilitiesDialog(context),
+                icon: const Icon(Icons.movie_filter_outlined, size: 16),
+                label: const Text('Media capabilities'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: c.text,
+                  side: BorderSide(color: c.borderStrong),
+                  visualDensity: VisualDensity.compact,
+                ),
+              ),
             if (entries.isNotEmpty)
               TextButton(
                 onPressed: () {

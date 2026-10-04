@@ -3,9 +3,9 @@
 ## 📊 State Dashboard
 | Metric | Value |
 | :--- | :--- |
-| **Status** | `PLANNED` — research done, direction set by Jake, no code written. Two empirical spikes (A0) gate the build. |
+| **Status** | `BUILT, NOT DEVICE-VERIFIED` — A0.1 tool and A1-A8 implemented on `feat/player-formats` with libass OFF (coordinator's call, see Q1). A0.1 dumps, A0.2, A0.3 and A9 need real devices; see Phase 8. Not pushed. |
 | **Version** | `v1.0.0` |
-| **Active Persona** | `Architect` |
+| **Active Persona** | `Builder` |
 | **Last Updated** | 2026-10-04 |
 
 Branch: `plan/search-scope-and-player-formats` (plan only). Sister plan, same customer email:
@@ -167,21 +167,26 @@ macos_video/ios_video 1.1.4, linux 1.2.1 (system libmpv).
 
 * `[x]` Transcoding / ffmpeg? → **Answer (Jake):** no. Desktop users open unsupported files in VLC etc.
 * `[x]` Focus? → **Answer (Jake):** the built-in player natively supporting the formats.
-* `[ ]` **Q1. Turn libass on?** → **Default: yes, on every native platform**, if spike A0.2 passes
-  on a real Android TV. It is the only way PGS/VobSub (Blu-ray / DVD rips) display, and ASS keeps its
+* `[x]` **Q1. Turn libass on?** → **Answer (coordinator, 2026-10-04): not in this build.** A0.2
+  needs a real Android TV, which the build agent does not have, so libass stays OFF behind one
+  constant (`kLibassSubtitles` in `media_preview.dart`, default `false`) and the 4.B fallback ships:
+  a TV-sized `SubtitleViewConfiguration` plus the Q3 image-track rule. Flip the constant (and add
+  the Q2 font) only after A0.2 passes. Original default kept below for that decision:
+  **yes, on every native platform**, if spike A0.2 passes on a real Android TV. It is the only way PGS/VobSub (Blu-ray / DVD rips) display, and ASS keeps its
   styling. Cost: Flutter-styled subtitles are replaced by mpv's (we set size/outline via mpv
   `sub-font-size`, `sub-border-size`, `sub-margin-y`), and Android needs a bundled font.
-* `[ ]` **Q2. Android subtitle font.** → **Default: Noto Sans (Latin, Greek, Cyrillic; ~0.6 MB).**
+* `[x]` **Q2. Android subtitle font.** → **Answer (coordinator): plan default stands, but no font
+  asset is added in this build** (libass is off, and no downloads). Default when A0.2 passes: **Default: Noto Sans (Latin, Greek, Cyrillic; ~0.6 MB).**
   Full CJK coverage (Noto Sans CJK / Droid Sans Fallback) costs 4-16 MB of APK. Desktop/iOS use
   system fonts. If the customer base needs CJK on Android, decide then.
-* `[ ]` **Q3. Subtitle default.** → **Default: respect the file** — mpv picks the default/forced track
+* `[x]` **Q3. Subtitle default.** → **Answer (coordinator): the default below, as written.** **Default: respect the file** — mpv picks the default/forced track
   as today, but **if the auto-picked track is an image track and libass is unavailable** (web, or A0
   fails), select `no` and show `Image subtitles can't be shown here` in the picker. Once the user picks
   a language, remember it (Q4).
-* `[ ]` **Q4. Remember language choices?** → **Default: yes** — `preferredAudioLanguage` and
+* `[x]` **Q4. Remember language choices?** → **Answer (coordinator): the default below.** **Default: yes** — `preferredAudioLanguage` and
   `preferredSubtitleLanguage` (`off` allowed) in `state/media_prefs.dart`, applied as mpv
   `alang`/`slang` before `open`. Global, not per file.
-* `[ ]` **Q5. `.ts` files.** → **Default: stay code/text** (it is also TypeScript; Drive and Linux label
+* `[x]` **Q5. `.ts` files.** → **Answer (coordinator): the default below.** **Default: stay code/text** (it is also TypeScript; Drive and Linux label
   TypeScript `video/mp2t`). Only `.m2ts .mts .m2t` become video. Revisit with a size + MIME heuristic
   only if someone asks.
 
@@ -372,21 +377,114 @@ List<Sidecar> findSidecars(RcloneFile video, List<RcloneFile> siblings);
 * **Required Fixes:** None yet.
 
 ## 7️⃣ Phase 7: Implementation Checklist (Execution)
-- `[ ]` A0.1 capability dump action + `dev/media-support-matrix.md` (all platforms).
+- `[x]` A0.1 capability dump action + `dev/media-support-matrix.md` (all platforms).
+  - Built: Settings → Diagnostics → **Media capabilities** (Advanced mode, not web) →
+    `ui/media_capabilities_dialog.dart` reads `mpv-version`, `ffmpeg-version`, `hwdec`,
+    `hwdec-current`, `demuxer-lavf-list`, `decoder-list`, `protocol-list` via
+    `NativePlayer.getProperty`; parsing/report pure in `state/media_capabilities.dart` (+ test).
+    `hwdec-current` reads empty because no file is opened — said so in the report.
+    `dev/media-support-matrix.md` created from the Android+Windows scan, marked PROVISIONAL;
+    `media_formats.dart` header points at it. `tool/make-test-media.sh` written, NOT run.
+    **Still open: running the dump on all 5 platforms (needs devices).**
 - `[ ]` A0.2 libass spike on a real Google TV → answer Q1/Q2 here.
 - `[ ]` A0.3 `sub-add` over loopback on the three engine shapes.
-- `[ ]` A1 `state/media_tracks.dart` + tests; `TvPlaybackTarget` track members + `FakeTarget`.
-- `[ ]` A2 `ui/track_picker.dart`; desktop/touch buttons; TV buttons + side panel + `holdControls`.
-- `[ ]` A3 Language prefs (`media_prefs`) + `alang`/`slang` before open; re-apply on Retry.
-- `[ ]` A4 Subtitle rendering per A0.2 outcome (libass + font + style helper, or TV `SubtitleViewConfiguration`).
-- `[ ]` A5 `state/sidecar_subs.dart` + full-sibling plumbing + `sub-add … auto` after start.
-- `[ ]` A6 Extension tables, `kNoThumbVideoExts`, thumbnail timeout negative cache, `_mimeByExt`.
-- `[ ]` A7 `mountedOsPath` + desktop open-from-mount.
-- `[ ]` A8 Docs: feat-media-playback.md, browsing.md table, mount-and-share.md, platforms.md, dev/android-tv.md key/where-it-lives, tv-playback-plan.md out-of-scope note → link here, media_formats.dart header.
-- `[ ]` A9 Real-device pass (matrix) + changelog entry.
+- `[x]` A1 `state/media_tracks.dart` + tests; `TvPlaybackTarget` track members + `FakeTarget`.
+  - `TvPlaybackTarget` gained `tracks`, `tracksStream`, `selection()` (reads mpv `aid`/`sid` —
+    media_kit's `state.track` only echoes what was set through it), `setAudio`, `setSubtitle`.
+    Controller gained `selectTrack`, `onTrackPicked`, `holdControls`/`releaseControls`,
+    `imageSubsRenderable`, `externalSubtitleTitles`, `expectedSidecars`. English language names
+    (not endonyms); `mpvLanguageList` gives mpv every alias (`ger,deu,de`). 21 new tests.
+- `[x]` A2 `ui/track_picker.dart`; desktop/touch buttons; TV buttons + side panel + `holdControls`.
+  - `TrackPickerButton` (media_kit bars, before repeat; menu on desktop, bottom sheet on touch,
+    nothing on web), `TvTrackPanel` (right-edge `FocusScope`, BACK consumed, OK picks + closes,
+    focus returns to the opening button). TV buttons appear after `next` only in the video
+    overlay (`onTrackPicker`), not on the audio now-playing screen. The "media_preview widget
+    test" is `track_picker_test.dart` on the button itself — `MediaPreviewBody` constructs libmpv
+    and cannot be pumped. 12 new widget tests (7 picker, 5 TV).
+- `[x]` A3 Language prefs (`media_prefs`) + `alang`/`slang` before open; re-apply on Retry.
+  - `preferredAudioLanguageProvider` / `preferredSubtitleLanguageProvider` (SharedPreferences keys
+    `media_audio_language`, `media_subtitle_language`; ISO 639-2/B or `off`). `languageOptions()`
+    (pure) → `alang`/`slang` with all aliases, `sid=no` for off; set via
+    `NativePlayer.setProperty` before `open`. Picks are kept per preview (`_sessionPicks`) and
+    re-applied in `_afterStart` after a Retry's new player starts. 7 new tests.
+- `[x]` A4 Subtitle rendering per A0.2 outcome (libass + font + style helper, or TV `SubtitleViewConfiguration`).
+  - A0.2 not run (no device) → fallback shipped. `kLibassSubtitles = false` in `media_preview.dart`
+    is the one switch (passed to `PlayerConfiguration.libass`, and to the controller as
+    `imageSubsRenderable`); its comment says not to flip it without the Q2 font. TV gets
+    `subtitleViewConfigurationFor(tv: true)` (28dp, no area scaling, above overscan); other
+    platforms keep media_kit's default explicitly. Q3: `_afterStart` switches subs to `no` when
+    mpv auto-selected an image track and the person has not picked. No font asset added.
+- `[x]` A5 `state/sidecar_subs.dart` + full-sibling plumbing + `sub-add … auto` after start.
+  - `findSidecars` (srt/ass/ssa/vtt, ≤ 2 MiB, unknown size skipped, tags = language / forced /
+    sdh / cc / hi — `hi` is SDH only beside another language tag), `sidecarToSelect`,
+    `sidecarUrl` (loopback http(s) only, Basic credential in userinfo, else null). Quick Look
+    gets `allSiblings` (`_EntryLoc.siblings`, `st.entries`); the preview dialog lists the parent
+    once (`noModTime`, `noMimeType`), video only, not web. `MediaPreviewBody.loadSidecars` runs
+    once per preview; `_afterStart` re-adds on every new player via `NativePlayer.command(['sub-add',
+    url, auto|select, <file name>, <639-2/B lang>])`. Hydrating placeholders skipped.
+    **Gap:** media_kit's `command` does not throw on an mpv error (it logs to `stream.log`, which
+    Airclone does not read), so a failed `sub-add` is silently absent rather than logged. A0.3
+    (does `sub-add` inherit auth on the bearer engine?) is unverified. 15 new tests.
+- `[x]` A6 Extension tables, `kNoThumbVideoExts`, thumbnail timeout negative cache, `_mimeByExt`.
+  - `kVideoExts` +14 and `kAudioExts` +13 exactly per 4.D; **`mpc` left out** (the scan recorded
+    no `mpc`/`mpc8` demuxer either way). `kNoThumbVideoExts` honoured in `isVideoThumbnailable`.
+    `rememberThumbFailure` (TimeoutException) adds to the session `_undecodable` set on both the
+    libmpv and the Android capture paths. `_mimeByExt` covers every new extension (+ `flv`).
+    `.ts` unchanged (Q5). 40 new test cases across 5 files.
+- `[x]` A7 `mountedOsPath` + desktop open-from-mount.
+  - Pure `mountedOsPath` in `state/open_external.dart` (deepest matching mount wins; any empty /
+    `.` / `..` segment — and on Windows any `\` or `:` — refuses the path). Wired into
+    `openFileInAnotherApp` on desktop when `mountEnabledProvider` is true: one
+    `mount/listmounts` call (2 s) + `File.exists` (2 s), else the unchanged staging flow.
+    **Deviation:** does not read `mountControllerProvider` — reading it would start its 2 s poll
+    for the rest of the session. No tooltip added. 14 new tests.
+- `[x]` A8 Docs: feat-media-playback.md, browsing.md table, mount-and-share.md, platforms.md, dev/android-tv.md key/where-it-lives, tv-playback-plan.md out-of-scope note → link here, media_formats.dart header.
+  - All of those, plus `troubleshooting.md` (new section + thumbnail notes), `features-index.md`,
+    `20-explorer-design.md` (timeout cache, no-thumb containers), `dev/README.md` (matrix row).
+    platforms.md: two new rows (track/sidecar ✅ on every build; image subtitles ⏳ everywhere,
+    with a reason) and notes for open-from-mount and the Web UI. README's short list unchanged
+    (no headline limit changed). `check-docs.py`: 0 broken, 0 orphans.
+- `[~]` A9 Real-device pass (matrix) + changelog entry.
+  - Changelog entry written (2026-10-04). The real-device pass is NOT done — see Phase 8.
 
 ## 8️⃣ Phase 8: Verification Dashboard
-* **Verification Status:** `PENDING`
+* **Verification Status:** `AUTOMATED CHECKS PASS — DEVICE VERIFICATION OUTSTANDING` (2026-10-04)
+* **Done on the build machine (Windows, Flutter 3.47.0):**
+  - `flutter analyze` (app): no issues. `dart format`: clean on every touched file.
+  - `flutter test` (app): **2007 passed, 1 skipped** (baseline at `d9e5f7c`: 1907 + 1 skipped;
+    +100 new tests in `media_capabilities_test`, `media_tracks_test`, `track_picker_test`,
+    `sidecar_subs_test`, `mounted_os_path_test`, and additions to `tv_video_controls_test`,
+    `media_prefs_test`, `media_formats_test`, `browser_playable_test`, `gallery_media_test`,
+    `open_external_test`, `video_thumbnail_blank_test`).
+  - `packages/airclone_rc`: **unchanged** (no `RcloneClient` member, no new import), so its tests
+    were not re-run.
+  - `python tool/check-docs.py`: 0 broken links, 0 orphans, 0 control-byte files.
+  - The app was **not run**: no playback, picker, sidecar or mount hand-off has been exercised
+    against a real libmpv. Everything below is untested on hardware.
+* **Needs a real device (nothing here was possible on the build machine):**
+  1. **A0.1 dumps** — run Settings → Diagnostics → *Media capabilities* on Windows, macOS DMG,
+     Linux AppImage + Flatpak, Android phone, Android TV, iPhone; replace every provisional /
+     `?` / `?*` cell in `dev/media-support-matrix.md`; drop the PROVISIONAL banner. If a dump shows
+     `missing` for a demuxer added in A6 (`ape`, `wv`, `tta`, `aiff`, raw `ac3`/`eac3`/`dts` are
+     the unconfirmed ones), remove that extension. If it shows `mpc`/`mpc8`, add `mpc`. Also
+     confirm the dump's property strings parse (`decoder-list` assumed JSON) and that
+     `hwdec-current` reads empty with no file open.
+  2. **A0.2 libass on a real Google TV** — decides Q1/Q2. Until it passes, `kLibassSubtitles`
+     stays false and no font is bundled.
+  3. **A0.3 `sub-add` over loopback** on spawned rcd (Basic in userinfo), in-process librclone
+     (Bearer via global `http-header-fields` — does `sub-add` inherit it?), Android jniLib rcd;
+     confirm the sidecar appears in `track-list` with our title/lang. A failed `sub-add` is
+     currently invisible (media_kit's `command` does not throw), so check on device.
+  4. **Matrix rows** — play `tool/make-test-media.sh` output (script written, never run) on each
+     platform.
+  5. **TV pass on hardware** — track buttons reachable after *next*, panel focus trap, BACK,
+     overlay hold, and the 28dp subtitle size readable from a sofa (all proven only on a fake
+     target in widget tests).
+  6. **Pointer/touch pass** — media_kit's menu/bottom sheet over the video controls, including
+     media_kit's own fullscreen route; `aid`/`sid` read-back; Q3 image-track drop on a PGS-default
+     MKV; preferred language applied on the next file; Retry re-applies picks.
+  7. **Open from mount** — Windows drive-letter mount and a Linux folder mount: the OS default app
+     opens the mounted path; a dead mount falls back to staging within ~4 s.
 
 ## 9️⃣ Phase 9: User Verification
 * **Status:** `PENDING` — reply to the customer (Google TV) once on Play.

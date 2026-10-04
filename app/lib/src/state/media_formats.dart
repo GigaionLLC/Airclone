@@ -26,6 +26,12 @@ import 'package:airclone_rc/airclone_rc.dart';
 export 'package:airclone_rc/airclone_rc.dart' show isPlaylistExt, kPlaylistExts;
 
 /// Container formats libmpv decodes directly — a real file with real media in it.
+///
+/// An extension belongs here only when the container's demuxer is in the
+/// libmpv we ship: see `dev/media-support-matrix.md`. Listing one libmpv cannot
+/// open turns a clear "No preview available" into a player that fails. That is
+/// why `.wtv`, `.ivf` and `.swf` are absent (no demuxer in the shipped builds),
+/// and `.ts` is absent for a different reason (see [isVideoLikeExt]).
 const Set<String> kVideoExts = {
   'mp4',
   'mov',
@@ -37,9 +43,27 @@ const Set<String> kVideoExts = {
   'flv',
   'mpg',
   'mpeg',
+  // Widened with the player format plan (4.D), from the matrix:
+  'ogv', // Theora; was browser-playable but in neither app list
+  '3gp',
+  '3g2',
+  'm2ts', // Blu-ray / AVCHD transport streams. Unambiguous, unlike .ts
+  'mts',
+  'm2t',
+  'vob',
+  'divx',
+  'asf',
+  'f4v',
+  'rm',
+  'rmvb',
+  'mxf',
+  'mk3d',
 };
 
-/// Audio containers libmpv decodes directly.
+/// Audio containers libmpv decodes directly. Same rule as [kVideoExts]:
+/// `.caf`, `.amr`, `.w64`, `.voc` and `.dff` are absent because the shipped
+/// builds have no demuxer for them, and `.mpc` because nobody has yet seen its
+/// demuxer in a capability dump.
 const Set<String> kAudioExts = {
   'mp3',
   'flac',
@@ -49,6 +73,40 @@ const Set<String> kAudioExts = {
   'm4a',
   'opus',
   'wma',
+  // Widened with the player format plan (4.D):
+  'mka',
+  'oga',
+  'spx',
+  'm4b',
+  'aiff',
+  'aif',
+  'ape',
+  'wv',
+  'tta',
+  'dsf',
+  'ac3',
+  'eac3',
+  'dts',
+};
+
+/// Video containers that play, but are never THUMBNAILED.
+///
+/// Every video extension joins the gallery and the thumbnailer, and on desktop
+/// and iOS a thumbnail is a whole libmpv instance probing the file for up to
+/// 12 seconds. These are the containers where that probe is slowest and least
+/// likely to find a frame worth showing: disc rips and broadcast captures
+/// (multi-gigabyte, often with no index near the start), and RealMedia / ASF /
+/// MXF, which are mostly old or professional. They get the film icon instead
+/// of a spinner that holds a decoder against a cloud remote per tile.
+const Set<String> kNoThumbVideoExts = {
+  'vob',
+  'm2ts',
+  'mts',
+  'm2t',
+  'mxf',
+  'rm',
+  'rmvb',
+  'asf',
 };
 
 /// Streaming MANIFESTS: HLS (`.m3u8`, `.m3u`) and MPEG-DASH (`.mpd`).
@@ -60,8 +118,12 @@ const Set<String> kAudioExts = {
 ///
 ///   * they play through the video pipeline, because libmpv resolves and
 ///     fetches the segments itself (the shipped libmpv carries the `hls`
-///     demuxer, `mpegts`, and the `https`/`tls` protocols on every platform we
-///     build for — verified against the binaries, not assumed);
+///     demuxer, `mpegts`, and the `https`/`tls` protocols on Android and
+///     Windows by a string scan of the shipped libraries — a strong signal, not
+///     proof. The per-platform answer from libmpv itself (Settings →
+///     Diagnostics → Media capabilities) is recorded in
+///     `dev/media-support-matrix.md`, which is where to look before adding an
+///     extension to the tables below);
 ///   * they are NEVER thumbnailable. A manifest has no keyframe, a live one has
 ///     no duration to seek within, and the thumbnailer would hold a libmpv
 ///     instance open against a network origin for its full timeout. See

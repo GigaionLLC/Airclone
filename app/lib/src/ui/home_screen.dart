@@ -253,7 +253,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     if (sel.isEmpty) return;
     final entries = st.visibleEntries;
     final start = entries.indexOf(sel.first);
-    showQuickLook(context, remote, st.path, entries, start < 0 ? 0 : start);
+    showQuickLook(
+      context,
+      remote,
+      st.path,
+      entries,
+      start < 0 ? 0 : start,
+      // Unfiltered, for the subtitle files beside a video.
+      allSiblings: st.entries,
+    );
   }
 
   /// Enter on the active pane: open the single selected folder, else Quick Look

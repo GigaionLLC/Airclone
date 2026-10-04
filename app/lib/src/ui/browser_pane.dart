@@ -1511,6 +1511,8 @@ Future<void> _preview(
     loc.parentPath,
     loc.visibleSiblings,
     loc.visibleSiblings.indexOf(loc.file),
+    // The unfiltered listing, for the subtitle files beside a video.
+    allSiblings: loc.siblings,
     onChanged: (ref != null && index != null)
         ? () => _reloadFolders(ref, index, [loc.parentPath])
         : null,

@@ -1,4 +1,5 @@
 import '../state/diagnostics.dart';
+import '../state/host_platform.dart';
 import '../state/media_formats.dart';
 import 'package:airclone_rc/airclone_rc.dart';
 import 'dart:async';
@@ -9,7 +10,10 @@ import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 
 import '../state/media_prefs.dart';
+import '../state/media_tracks.dart';
+import '../state/sidecar_subs.dart';
 import 'theme/tokens.dart';
+import 'track_picker.dart';
 import 'tv_now_playing.dart';
 import 'tv_player_keys.dart';
 import 'tv_video_controls.dart';
@@ -27,6 +31,29 @@ const Duration _startTimeout = Duration(seconds: 45);
 /// local engine and tight for an HLS source on a slow link, so a stream gets
 /// its own, longer budget rather than inheriting one tuned for a different job.
 const Duration _networkStartTimeout = Duration(seconds: 120);
+
+/// Whether libmpv draws subtitles itself (libass) instead of media_kit's
+/// Flutter text overlay. **Off until plan spike A0.2 passes** — see
+/// `dev/plans/player-format-support-plan.md` §4.A0 and §4.B.
+///
+/// It is the only way image subtitles (Blu-ray PGS, DVD VobSub, DVB) appear at
+/// all, and the only way ASS keeps its styling: with it off, media_kit hides
+/// libmpv's subtitle output (`sub-visibility=no`) and shows only the plain
+/// text mpv extracts, which a bitmap does not have. What it costs is unknown
+/// until measured on a real Android TV: frame drops with heavy ASS on a TV
+/// SoC, and Android needs a bundled font (media_kit's `libassAndroidFont` and
+/// `libassAndroidFontName`, plan Q2) or libass finds no glyphs. **Do not flip
+/// this without adding that font**, or every subtitle on Android goes blank.
+///
+/// While it is false the player follows the plan's fallback: TV-sized text
+/// subtitles ([subtitleViewConfigurationFor]), image tracks listed but
+/// disabled as "can't be shown here", and an image track libmpv picked on its
+/// own switched off rather than left showing nothing (plan Q3).
+const bool kLibassSubtitles = false;
+
+/// Whether this player can show an image subtitle. Never on the web, whose
+/// `<video>` element has no libmpv renderer to turn on.
+bool get _imageSubsRenderable => kLibassSubtitles && !HostPlatform.isWeb;
 
 /// Why a LOCAL playlist so often cannot play, in words the error itself will
 /// never say.
@@ -97,6 +124,7 @@ class MediaPreviewBody extends ConsumerStatefulWidget {
     this.onPrevious,
     this.onNext,
     this.title = '',
+    this.loadSidecars,
   });
 
   /// Direct/streamable URL of the media to play.
@@ -135,6 +163,12 @@ class MediaPreviewBody extends ConsumerStatefulWidget {
   /// sit under a host that already shows the name, so they ignore it.
   final String title;
 
+  /// Finds the subtitle files next to this video, with an object reference for
+  /// each (see `state/sidecar_subs.dart`). Called once per preview — a Retry
+  /// re-ADDS what it found to the new player but does not look again. Null when
+  /// the host has no folder to look in, and for audio.
+  final Future<List<SidecarSource>> Function()? loadSidecars;
+
   @override
   ConsumerState<MediaPreviewBody> createState() => _MediaPreviewBodyState();
 }
@@ -169,6 +203,18 @@ class _MediaPreviewBodyState extends ConsumerState<MediaPreviewBody> {
   /// there, and tearing a playing video down for one of those would be a worse
   /// bug than the black screen this class exists to fix.
   bool _started = false;
+
+  /// The tracks the person picked in THIS preview, by kind. They outlive a
+  /// Retry on purpose: Retry builds a new player, which would otherwise come
+  /// back on libmpv's default tracks, and someone who switched a film to
+  /// German before it stalled should not have to do it again. A new preview —
+  /// the next file in Quick Look — is a new State and starts clean.
+  final Map<TrackKind, TrackChoice> _sessionPicks = {};
+
+  /// The sidecar lookup, started once per preview (see
+  /// [MediaPreviewBody.loadSidecars]). Never fails: a lookup that throws is
+  /// simply no sidecars.
+  Future<List<SidecarSource>>? _sidecars;
 
   /// Bumped by [_teardown] so a callback from a REPLACED player (a
   /// `waitUntilFirstFrameRendered` future that resolves after Retry swapped the
@@ -214,6 +260,7 @@ class _MediaPreviewBodyState extends ConsumerState<MediaPreviewBody> {
           protocolWhitelist: widget.isNetworkStream
               ? kNetworkStreamProtocols
               : kPreviewProtocols,
+          libass: kLibassSubtitles,
         ),
       );
       _player = player;
@@ -226,7 +273,8 @@ class _MediaPreviewBodyState extends ConsumerState<MediaPreviewBody> {
         // arrows scrub.
         alwaysVisible: widget.audioOnly,
         tvKeysEnabled: tvPlayerEnabled,
-      );
+        imageSubsRenderable: _imageSubsRenderable,
+      )..onTrackPicked = _onTrackPicked;
       if (!widget.audioOnly) {
         controller = VideoController(player);
         _controller = controller;
@@ -282,6 +330,12 @@ class _MediaPreviewBodyState extends ConsumerState<MediaPreviewBody> {
       },
     );
 
+    _watchSidecars(generation);
+
+    // Before open, so libmpv's own track selection honours them.
+    await _applyLanguagePrefs(player);
+    if (generation != _generation || !mounted) return;
+
     final credentialledUrl = loopbackUrlWithCredentials(
       widget.url,
       widget.headers,
@@ -325,10 +379,149 @@ class _MediaPreviewBodyState extends ConsumerState<MediaPreviewBody> {
     );
   }
 
+  /// Sets mpv `alang` / `slang` (or `sid=no`) from the remembered languages
+  /// (plan Q4). Best-effort: a player that refuses an option still plays.
+  Future<void> _applyLanguagePrefs(Player player) async {
+    final native = player.platform;
+    if (native is! NativePlayer) return;
+    final options = languageOptions(
+      audio: ref.read(preferredAudioLanguageProvider),
+      subtitle: ref.read(preferredSubtitleLanguageProvider),
+    );
+    for (final e in options.entries) {
+      try {
+        await native.setProperty(e.key, e.value);
+      } catch (_) {
+        // Not fatal; libmpv's default selection stands.
+      }
+    }
+  }
+
+  /// Starts the sidecar lookup if this preview has not yet, and tells the
+  /// current controller how many are coming, so the subtitle button is there
+  /// before they are.
+  void _watchSidecars(int generation) {
+    final load = widget.loadSidecars;
+    if (load == null || widget.audioOnly) return;
+    _sidecars ??= () async {
+      try {
+        return await load();
+      } catch (_) {
+        return const <SidecarSource>[];
+      }
+    }();
+    _sidecars!.then((found) {
+      if (generation == _generation) _tv?.expectedSidecars = found.length;
+    });
+  }
+
+  /// Adds the sidecars to the player with mpv `sub-add`, after the file has
+  /// loaded (it fails before) — `auto`, so they appear in the picker and the
+  /// file's own choice stands, except the one [sidecarToSelect] picks when the
+  /// file has no subtitles of its own.
+  ///
+  /// The title is the sidecar's file name and the language is the one its
+  /// name declares; neither is ever the URL, which carries the engine's
+  /// credential. A failure is logged without either and skipped: playback
+  /// never fails because a subtitle file did.
+  Future<void> _addSidecars(int generation) async {
+    final pending = _sidecars;
+    final player = _player;
+    final tv = _tv;
+    if (pending == null || player == null || tv == null) return;
+    final sources = await pending;
+    if (sources.isEmpty || generation != _generation) return;
+    final native = player.platform;
+    if (native is! NativePlayer) return;
+    final select = sidecarToSelect(
+      [for (final s in sources) s.sidecar],
+      fileHasSubtitles: tv.target.tracks.subtitle.any(
+        (t) => t.id != 'auto' && t.id != 'no',
+      ),
+      preferred: ref.read(preferredSubtitleLanguageProvider),
+    );
+    for (var i = 0; i < sources.length; i++) {
+      if (generation != _generation) return;
+      final source = sources[i];
+      final url = sidecarUrl(source.object);
+      if (url == null) continue;
+      final title = source.sidecar.title;
+      final language = canonicalLanguage(source.sidecar.language);
+      tv.externalSubtitleTitles.add(title);
+      try {
+        await native.command([
+          'sub-add',
+          url,
+          i == select ? 'select' : 'auto',
+          title,
+          ?language,
+        ]);
+      } catch (e) {
+        logDiagnostic(
+          DiagLevel.warning,
+          'player',
+          'A subtitle file next to a video could not be loaded.',
+          detail: e,
+        );
+      }
+    }
+  }
+
+  /// A pick in any picker: remembered for this preview (re-applied after a
+  /// Retry) and, when the track says what language it is, for the next file.
+  void _onTrackPicked(TrackChoice choice) {
+    _sessionPicks[choice.kind] = choice;
+    final pref = preferenceFor(choice);
+    if (pref == null) return;
+    if (choice.kind == TrackKind.audio) {
+      ref.read(preferredAudioLanguageProvider.notifier).set(pref);
+    } else {
+      ref.read(preferredSubtitleLanguageProvider.notifier).set(pref);
+    }
+  }
+
+  /// Everything that needs a file actually loaded: the picks this preview
+  /// already made, re-applied to a player a Retry rebuilt, and the image
+  /// subtitle rule. Never fatal.
+  Future<void> _afterStart(int generation) async {
+    if (generation != _generation) return;
+    await _addSidecars(generation);
+    final tv = _tv;
+    if (tv == null || generation != _generation) return;
+    for (final pick in _sessionPicks.values) {
+      if (generation != _generation) return;
+      if (pick.kind == TrackKind.audio) {
+        await tv.target.setAudio(AudioTrack(pick.id, null, null));
+      } else {
+        await tv.target.setSubtitle(
+          pick.isOff ? SubtitleTrack.no() : SubtitleTrack(pick.id, null, null),
+        );
+      }
+    }
+    // Plan Q3: libmpv picks the file's default subtitle on its own. If that is
+    // an image track this player cannot draw, the person sees nothing and is
+    // told nothing — so switch subtitles off, and let the picker say why. A
+    // pick the person made wins; this only corrects libmpv's.
+    if (_sessionPicks.containsKey(TrackKind.subtitle) ||
+        tv.imageSubsRenderable) {
+      return;
+    }
+    final selected = await tv.target.selection();
+    if (generation != _generation) return;
+    if (shouldDropAutoSubtitle(
+      tracks: tv.target.tracks,
+      selectedId: selected.subtitle,
+      imageSubsRenderable: tv.imageSubsRenderable,
+    )) {
+      await tv.target.setSubtitle(SubtitleTrack.no());
+    }
+  }
+
   /// Playback is genuinely up: disarm the watchdog, drop the spinner, and stop
   /// treating [PlayerStream.error] as fatal. Ignored if [generation] is stale.
   void _markStarted(int generation) {
     if (generation != _generation) return;
+    if (!_started) unawaited(_afterStart(generation));
     _started = true;
     _watchdog?.cancel();
     if (mounted && _loading) setState(() => _loading = false);
@@ -450,20 +643,35 @@ class _MediaPreviewBodyState extends ConsumerState<MediaPreviewBody> {
       return Video(
         controller: controller,
         controls: (_) => TvVideoControls(controller: tv),
+        subtitleViewConfiguration: subtitleViewConfigurationFor(tv: true),
       );
     }
 
     final touch = _MaterialRepeatButton(repeat: repeat, onPressed: toggle);
+    // The track pickers sit just before repeat in both bars. Each hides itself
+    // when there is no choice to make, and on the web, where media_kit lists
+    // no tracks at all (see track_picker.dart).
+    final touchTracks = [
+      if (tv != null)
+        for (final kind in TrackKind.values)
+          TrackPickerButton(controller: tv, kind: kind),
+    ];
+    final desktopTracks = [
+      if (tv != null)
+        for (final kind in TrackKind.values)
+          TrackPickerButton(controller: tv, kind: kind, desktop: true),
+    ];
 
-    // Touch bar is [position, Spacer, fullscreen], so appending puts the button
-    // to the right of fullscreen; the desktop bar gets it just before the
-    // trailing fullscreen button instead (see [_withDesktopRepeat]).
+    // Touch bar is [position, Spacer, fullscreen], so appending puts the
+    // buttons to the right of fullscreen; the desktop bar gets them just before
+    // the trailing fullscreen button instead (see [_withDesktopRepeat]).
     return MaterialDesktopVideoControlsTheme(
       normal: kDefaultMaterialDesktopVideoControlsThemeData.copyWith(
         bottomButtonBar: _withDesktopRepeat(
           kDefaultMaterialDesktopVideoControlsThemeData.bottomButtonBar,
           repeat,
           toggle,
+          desktopTracks,
         ),
       ),
       fullscreen: kDefaultMaterialDesktopVideoControlsThemeDataFullscreen
@@ -473,42 +681,50 @@ class _MediaPreviewBodyState extends ConsumerState<MediaPreviewBody> {
                   .bottomButtonBar,
               repeat,
               toggle,
+              desktopTracks,
             ),
           ),
       child: MaterialVideoControlsTheme(
         normal: kDefaultMaterialVideoControlsThemeData.copyWith(
           bottomButtonBar: [
             ...kDefaultMaterialVideoControlsThemeData.bottomButtonBar,
+            ...touchTracks,
             touch,
           ],
         ),
         fullscreen: kDefaultMaterialVideoControlsThemeDataFullscreen.copyWith(
           bottomButtonBar: [
             ...kDefaultMaterialVideoControlsThemeDataFullscreen.bottomButtonBar,
+            ...touchTracks,
             touch,
           ],
         ),
-        child: Video(controller: controller, controls: AdaptiveVideoControls),
+        child: Video(
+          controller: controller,
+          controls: AdaptiveVideoControls,
+          subtitleViewConfiguration: subtitleViewConfigurationFor(tv: false),
+        ),
       ),
     );
   }
 
-  /// The desktop bottom bar with a repeat button added before the trailing
-  /// fullscreen button (identified by the [Spacer] that pushes it right). Falls
-  /// back to appending, so a package update that drops the Spacer still gets a
-  /// usable button instead of a crash.
+  /// The desktop bottom bar with [tracks] and a repeat button added before the
+  /// trailing fullscreen button (identified by the [Spacer] that pushes it
+  /// right). Falls back to appending, so a package update that drops the
+  /// Spacer still gets usable buttons instead of a crash.
   List<Widget> _withDesktopRepeat(
     List<Widget> bar,
     bool repeat,
     VoidCallback onPressed,
+    List<Widget> tracks,
   ) {
-    final button = _MaterialDesktopRepeatButton(
-      repeat: repeat,
-      onPressed: onPressed,
-    );
+    final buttons = [
+      ...tracks,
+      _MaterialDesktopRepeatButton(repeat: repeat, onPressed: onPressed),
+    ];
     final spacer = bar.indexWhere((w) => w is Spacer);
-    if (spacer < 0) return [...bar, button];
-    return [...bar.take(spacer), button, ...bar.skip(spacer)];
+    if (spacer < 0) return [...bar, ...buttons];
+    return [...bar.take(spacer), ...buttons, ...bar.skip(spacer)];
   }
 
   /// Centered audio card: art, previous/play/next, and a seek slider.

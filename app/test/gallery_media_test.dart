@@ -32,4 +32,9 @@ void main() {
       }
     });
   });
+
+  test('a disc rip is gallery media even though it is never thumbnailed', () {
+    expect(isGalleryMedia(file('VTS_01_1.vob')), isTrue);
+    expect(isVideoThumbnailable(file('VTS_01_1.vob')), isFalse);
+  });
 }

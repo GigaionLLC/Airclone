@@ -89,4 +89,95 @@ void main() {
       );
     });
   });
+
+  // The player format plan (4.D) widened the tables to what the shipped libmpv
+  // opens, per dev/media-support-matrix.md. These pin both directions: what
+  // now plays, and what must still not be claimed.
+  group('the widened tables', () {
+    test('disc, broadcast and legacy video containers are video', () {
+      for (final n in [
+        'film.m2ts',
+        'clip.mts',
+        'rec.m2t',
+        'VTS_01_1.VOB',
+        'old.divx',
+        'cam.3gp',
+        'cam.3g2',
+        'stream.asf',
+        'flash.f4v',
+        'real.rm',
+        'real.rmvb',
+        'pro.mxf',
+        'three.mk3d',
+        'theora.ogv',
+      ]) {
+        expect(kindOf(_file(n)), FileKind.video, reason: n);
+      }
+    });
+
+    test('lossless, surround and container audio is audio', () {
+      for (final n in [
+        'album.mka',
+        'a.oga',
+        'a.spx',
+        'book.m4b',
+        'a.aiff',
+        'a.aif',
+        'a.ape',
+        'a.wv',
+        'a.tta',
+        'a.dsf',
+        'a.ac3',
+        'a.eac3',
+        'a.dts',
+      ]) {
+        expect(kindOf(_file(n)), FileKind.audio, reason: n);
+      }
+    });
+
+    test('a container the shipped libmpv cannot open is not claimed', () {
+      for (final e in [
+        'caf',
+        'amr',
+        'w64',
+        'voc',
+        'wtv',
+        'ivf',
+        'dff',
+        'swf',
+      ]) {
+        expect(isVideoLikeExt(e) || isAudioExt(e), isFalse, reason: e);
+      }
+    });
+
+    test('.mpc waits for a capability dump that shows its demuxer', () {
+      expect(isAudioExt('mpc'), isFalse);
+    });
+
+    test('.ts is still code, .m2ts is video (plan Q5)', () {
+      expect(kindOf(_file('index.ts')), FileKind.code);
+      expect(kindOf(_file('index.ts', mime: 'video/mp2t')), FileKind.code);
+      expect(kindOf(_file('film.m2ts')), FileKind.video);
+    });
+  });
+
+  group('heavy containers are not thumbnailed', () {
+    // Each video thumbnail on desktop is a libmpv instance probing for up to
+    // 12 seconds; a disc rip over a cloud remote is where that probe is
+    // slowest and least likely to find a frame.
+    for (final e in kNoThumbVideoExts) {
+      test('.$e plays, but gets the film icon', () {
+        final f = _file('x.$e');
+        expect(kindOf(f), FileKind.video);
+        expect(isVideoThumbnailable(f), isFalse);
+        expect(isThumbnailable(f), isFalse);
+      });
+    }
+
+    test('the light new ones still are', () {
+      for (final e in ['ogv', '3gp', 'mk3d', 'f4v']) {
+        expect(isVideoThumbnailable(_file('x.$e')), isTrue, reason: e);
+      }
+    });
+  });
 }

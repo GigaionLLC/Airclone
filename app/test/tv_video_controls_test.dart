@@ -1,10 +1,12 @@
 import 'package:airclone/src/ui/theme/app_theme.dart';
 import 'package:airclone/src/ui/tv.dart';
 import 'package:airclone/src/ui/tv_player_keys.dart';
+import 'package:airclone/src/ui/track_picker.dart';
 import 'package:airclone/src/ui/tv_video_controls.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:media_kit/media_kit.dart';
 
 import 'tv_playback_fake.dart';
 
@@ -296,5 +298,146 @@ void main() {
     expect(find.text('Live'), findsOneWidget);
     expect(find.text('--:--'), findsOneWidget);
     await drain(tester);
+  });
+
+  /// The track pickers on a television (player format plan, A2). A picker is
+  /// where a TV UI most easily strands someone: focus wanders out of a half-
+  /// open panel, the overlay hides from under it, or BACK closes the film
+  /// instead of the list. Each of those is pinned here with real key events.
+  group('the track panel', () {
+    const film = Tracks(
+      audio: [
+        AudioTrack('auto', null, null),
+        AudioTrack('no', null, null),
+        AudioTrack('1', null, 'eng', isDefault: true),
+        AudioTrack('2', null, 'ger'),
+      ],
+      subtitle: [
+        SubtitleTrack('auto', null, null),
+        SubtitleTrack('no', null, null),
+        SubtitleTrack('3', null, 'eng', codec: 'subrip'),
+      ],
+    );
+
+    Future<void> pumpRow(WidgetTester tester) async {
+      target.tracks = film;
+      tester.view.physicalSize = const Size(1920, 1080);
+      tester.view.devicePixelRatio = 2;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: AppTheme.light(),
+          home: Scaffold(
+            body: TvFocusOverlay(
+              child: TvPlaybackKeys(
+                controller: controller,
+                child: TvVideoControls(controller: controller),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+      controller.showControls();
+      await tester.pumpAndSettle();
+    }
+
+    String? focused() => FocusManager.instance.primaryFocus?.debugLabel;
+
+    Future<void> right(WidgetTester tester, int times) async {
+      for (var i = 0; i < times; i++) {
+        await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+        await tester.pump();
+      }
+    }
+
+    testWidgets('both buttons sit after next, reachable with RIGHT', (
+      tester,
+    ) async {
+      await pumpRow(tester);
+      // play/pause -> forward -> next -> audio -> subtitles
+      await right(tester, 3);
+      expect(focused(), 'tv audio track');
+      await right(tester, 1);
+      expect(focused(), 'tv subtitles');
+      await drain(tester);
+    });
+
+    testWidgets('a file with no choice gets no buttons', (tester) async {
+      await pumpRow(tester);
+      target.setTracks(const Tracks());
+      // The stream delivers in a microtask, after the first frame.
+      await tester.pump();
+      await tester.pump();
+      expect(find.byIcon(Icons.audiotrack_outlined), findsNothing);
+      expect(find.byIcon(Icons.subtitles_outlined), findsNothing);
+      await drain(tester);
+    });
+
+    testWidgets('OK opens it, and the overlay stays up while it is open', (
+      tester,
+    ) async {
+      await pumpRow(tester);
+      await right(tester, 3);
+      await tester.sendKeyEvent(LogicalKeyboardKey.select);
+      await tester.pumpAndSettle();
+      expect(find.byType(TvTrackPanel), findsOneWidget);
+      expect(find.text('English (default)'), findsOneWidget);
+      expect(controller.controlsHeld, isTrue);
+
+      await tester.pump(TvPlaybackController.autoHideDelay * 3);
+      await tester.pumpAndSettle();
+      expect(opacity(tester), 1, reason: 'no auto-hide under an open picker');
+      expect(find.byType(TvTrackPanel), findsOneWidget);
+      expect(controller.mode, TvControlsMode.browsing);
+
+      // Focus is trapped: LEFT/RIGHT do not leave for the row behind.
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowLeft);
+      await tester.pump();
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+      await tester.pump();
+      expect(focused(), isNot('tv audio track'));
+      expect(focused(), isNot('tv play/pause'));
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await tester.pumpAndSettle();
+      await drain(tester);
+    });
+
+    testWidgets('BACK closes the panel only, and focus returns to its button', (
+      tester,
+    ) async {
+      await pumpRow(tester);
+      await right(tester, 3);
+      await tester.sendKeyEvent(LogicalKeyboardKey.select);
+      await tester.pumpAndSettle();
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await tester.pumpAndSettle();
+      expect(find.byType(TvTrackPanel), findsNothing);
+      expect(opacity(tester), 1, reason: 'BACK closed the list, not the row');
+      expect(focused(), 'tv audio track');
+      expect(controller.controlsHeld, isFalse);
+      expect(target.audioSets, isEmpty);
+      await drain(tester);
+    });
+
+    testWidgets('DOWN and OK pick a row, which closes the panel', (
+      tester,
+    ) async {
+      await pumpRow(tester);
+      await right(tester, 4);
+      expect(focused(), 'tv subtitles');
+      await tester.sendKeyEvent(LogicalKeyboardKey.select);
+      await tester.pumpAndSettle();
+      // Rows: Off, English. Nothing selected yet, so focus starts on Off.
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+      await tester.pump();
+      await tester.sendKeyEvent(LogicalKeyboardKey.select);
+      await tester.pumpAndSettle();
+      expect(target.subtitleSets.single.id, '3');
+      expect(find.byType(TvTrackPanel), findsNothing);
+      expect(focused(), 'tv subtitles');
+      await drain(tester);
+    });
   });
 }

@@ -33,6 +33,27 @@ select-all are inert on results, crypt skips are reported, navigation resets the
 Device pass on a real Google TV still open. 1932 app tests + 127 package tests pass, analyze clean.
 
 ---
+## [2026-10-04] - Player format support: track pickers, sidecar subtitles, wider formats (branch `feat/player-formats`)
+
+**Agent:** Claude Code (Claude Opus 5.5)
+**Files Modified:** `app/lib/src/state/{media_capabilities,media_tracks,sidecar_subs}.dart` (new),
+`app/lib/src/ui/{media_capabilities_dialog,track_picker}.dart` (new), `app/lib/src/ui/{media_preview,tv_player_keys,
+tv_video_controls,preview_dialog,quick_look,browser_pane,home_screen,settings_screen,file_icon,open_external_action}.dart`,
+`app/lib/src/state/{media_formats,media_prefs,open_external,thumbnail_service}.dart`, tests (5 new files + 7 extended,
+`tv_playback_fake.dart`), `dev/media-support-matrix.md` (new, provisional), `tool/make-test-media.sh` (new, not run),
+`dev/plans/player-format-support-plan.md`, `dev/plans/tv-playback-plan.md`, `dev/android-tv.md`, `dev/README.md`,
+`docs/guide/{browsing,mount-and-share,platforms,troubleshooting}.md`, `wiki/features/{feat-media-playback,features-index}.md`,
+`wiki/core/20-explorer-design.md`, this log
+**Database/API Changes:** None. New SharedPreferences keys `media_audio_language`, `media_subtitle_language`.
+`packages/airclone_rc` unchanged.
+**Summary:** Plan A0.1 + A1-A8 with libass OFF (A0.2 needs a real TV): audio/subtitle pickers on desktop (menu), touch
+(sheet) and TV (focus-trapping side panel that holds the overlay), hidden on web; remembered languages as mpv
+`alang`/`slang`/`sid=no`; picks re-applied after Retry; image subtitles listed as "can't be shown here" and an
+auto-selected one switched off; TV subtitle text 28dp; `.srt/.ass/.ssa/.vtt` sidecars (2 MiB cap, loopback URL only)
+`sub-add`ed after start; 14 video + 13 audio extensions (no `.mpc`, `.ts` stays code), heavy containers never
+thumbnailed, thumbnail timeouts remembered; desktop Open in another app opens from an active mount; Settings ->
+Diagnostics -> Media capabilities (Advanced) dumps libmpv's lists. Verified: analyze clean, 2007 tests pass (+100),
+check-docs clean. NOT verified on any device: A0.1 dumps, A0.2, A0.3, the matrix rows, the TV pass - plan Phase 8.
 
 ## [2026-10-02] - v0.22.2 live on Apple, in Microsoft certification
 
