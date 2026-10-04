@@ -3,9 +3,9 @@
 ## 📊 State Dashboard
 | Metric | Value |
 | :--- | :--- |
-| **Status** | `PLANNED` — research done, direction set by Jake, no code written. Two empirical spikes (A0) gate the build. |
+| **Status** | `BUILT, NOT DEVICE-VERIFIED` — A0.1 tool and A1-A8 implemented on `feat/player-formats` with libass OFF (coordinator's call, see Q1). A0.1 dumps, A0.2, A0.3 and A9 need real devices; see Phase 8. Not pushed. |
 | **Version** | `v1.0.0` |
-| **Active Persona** | `Architect` |
+| **Active Persona** | `Builder` |
 | **Last Updated** | 2026-10-04 |
 
 Branch: `plan/search-scope-and-player-formats` (plan only). Sister plan, same customer email:
@@ -444,10 +444,47 @@ List<Sidecar> findSidecars(RcloneFile video, List<RcloneFile> siblings);
     platforms.md: two new rows (track/sidecar ✅ on every build; image subtitles ⏳ everywhere,
     with a reason) and notes for open-from-mount and the Web UI. README's short list unchanged
     (no headline limit changed). `check-docs.py`: 0 broken, 0 orphans.
-- `[ ]` A9 Real-device pass (matrix) + changelog entry.
+- `[~]` A9 Real-device pass (matrix) + changelog entry.
+  - Changelog entry written (2026-10-04). The real-device pass is NOT done — see Phase 8.
 
 ## 8️⃣ Phase 8: Verification Dashboard
-* **Verification Status:** `PENDING`
+* **Verification Status:** `AUTOMATED CHECKS PASS — DEVICE VERIFICATION OUTSTANDING` (2026-10-04)
+* **Done on the build machine (Windows, Flutter 3.47.0):**
+  - `flutter analyze` (app): no issues. `dart format`: clean on every touched file.
+  - `flutter test` (app): **2007 passed, 1 skipped** (baseline at `d9e5f7c`: 1907 + 1 skipped;
+    +100 new tests in `media_capabilities_test`, `media_tracks_test`, `track_picker_test`,
+    `sidecar_subs_test`, `mounted_os_path_test`, and additions to `tv_video_controls_test`,
+    `media_prefs_test`, `media_formats_test`, `browser_playable_test`, `gallery_media_test`,
+    `open_external_test`, `video_thumbnail_blank_test`).
+  - `packages/airclone_rc`: **unchanged** (no `RcloneClient` member, no new import), so its tests
+    were not re-run.
+  - `python tool/check-docs.py`: 0 broken links, 0 orphans, 0 control-byte files.
+  - The app was **not run**: no playback, picker, sidecar or mount hand-off has been exercised
+    against a real libmpv. Everything below is untested on hardware.
+* **Needs a real device (nothing here was possible on the build machine):**
+  1. **A0.1 dumps** — run Settings → Diagnostics → *Media capabilities* on Windows, macOS DMG,
+     Linux AppImage + Flatpak, Android phone, Android TV, iPhone; replace every provisional /
+     `?` / `?*` cell in `dev/media-support-matrix.md`; drop the PROVISIONAL banner. If a dump shows
+     `missing` for a demuxer added in A6 (`ape`, `wv`, `tta`, `aiff`, raw `ac3`/`eac3`/`dts` are
+     the unconfirmed ones), remove that extension. If it shows `mpc`/`mpc8`, add `mpc`. Also
+     confirm the dump's property strings parse (`decoder-list` assumed JSON) and that
+     `hwdec-current` reads empty with no file open.
+  2. **A0.2 libass on a real Google TV** — decides Q1/Q2. Until it passes, `kLibassSubtitles`
+     stays false and no font is bundled.
+  3. **A0.3 `sub-add` over loopback** on spawned rcd (Basic in userinfo), in-process librclone
+     (Bearer via global `http-header-fields` — does `sub-add` inherit it?), Android jniLib rcd;
+     confirm the sidecar appears in `track-list` with our title/lang. A failed `sub-add` is
+     currently invisible (media_kit's `command` does not throw), so check on device.
+  4. **Matrix rows** — play `tool/make-test-media.sh` output (script written, never run) on each
+     platform.
+  5. **TV pass on hardware** — track buttons reachable after *next*, panel focus trap, BACK,
+     overlay hold, and the 28dp subtitle size readable from a sofa (all proven only on a fake
+     target in widget tests).
+  6. **Pointer/touch pass** — media_kit's menu/bottom sheet over the video controls, including
+     media_kit's own fullscreen route; `aid`/`sid` read-back; Q3 image-track drop on a PGS-default
+     MKV; preferred language applied on the next file; Retry re-applies picks.
+  7. **Open from mount** — Windows drive-letter mount and a Linux folder mount: the OS default app
+     opens the mounted path; a dead mount falls back to staging within ~4 s.
 
 ## 9️⃣ Phase 9: User Verification
 * **Status:** `PENDING` — reply to the customer (Google TV) once on Play.

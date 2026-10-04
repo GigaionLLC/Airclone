@@ -282,6 +282,16 @@ void main() {
       expect(picked, [audio, off]);
     });
 
+    test('a hold released after the controller is gone does nothing', () {
+      // The TV panel releases its hold when it is disposed, which on a Retry
+      // is after the controller was.
+      final t = FakeTarget();
+      final c = TvPlaybackController(target: t)..holdControls();
+      c.dispose();
+      expect(c.releaseControls, returnsNormally);
+      t.dispose();
+    });
+
     test('a disabled row does nothing', () async {
       final pgs = subtitleChoices(
         filmTracks,

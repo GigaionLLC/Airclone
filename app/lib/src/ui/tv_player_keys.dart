@@ -352,8 +352,14 @@ class TvPlaybackController extends ChangeNotifier {
   bool get ownsMediaKeys =>
       _mediaKeyOwners.isNotEmpty && _mediaKeyOwners.last == this;
 
+  /// Set by [dispose]. The track panel releases its hold when IT is disposed,
+  /// which on a Retry or a closing preview is after this controller already
+  /// was — and a hide timer armed then would notify a disposed notifier.
+  bool _disposed = false;
+
   @override
   void dispose() {
+    _disposed = true;
     _commitTimer?.cancel();
     _hideTimer?.cancel();
     _cancelHoldTimers();
@@ -682,7 +688,7 @@ class TvPlaybackController extends ChangeNotifier {
 
   /// Ends one [holdControls]; the auto-hide resumes when the last one ends.
   void releaseControls() {
-    if (_holds == 0) return;
+    if (_disposed || _holds == 0) return;
     _holds--;
     if (_holds == 0) _armAutoHide();
   }
