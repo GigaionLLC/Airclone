@@ -431,7 +431,13 @@ List<Sidecar> findSidecars(RcloneFile video, List<RcloneFile> siblings);
     `rememberThumbFailure` (TimeoutException) adds to the session `_undecodable` set on both the
     libmpv and the Android capture paths. `_mimeByExt` covers every new extension (+ `flv`).
     `.ts` unchanged (Q5). 40 new test cases across 5 files.
-- `[ ]` A7 `mountedOsPath` + desktop open-from-mount.
+- `[x]` A7 `mountedOsPath` + desktop open-from-mount.
+  - Pure `mountedOsPath` in `state/open_external.dart` (deepest matching mount wins; any empty /
+    `.` / `..` segment — and on Windows any `\` or `:` — refuses the path). Wired into
+    `openFileInAnotherApp` on desktop when `mountEnabledProvider` is true: one
+    `mount/listmounts` call (2 s) + `File.exists` (2 s), else the unchanged staging flow.
+    **Deviation:** does not read `mountControllerProvider` — reading it would start its 2 s poll
+    for the rest of the session. No tooltip added. 14 new tests.
 - `[ ]` A8 Docs: feat-media-playback.md, browsing.md table, mount-and-share.md, platforms.md, dev/android-tv.md key/where-it-lives, tv-playback-plan.md out-of-scope note → link here, media_formats.dart header.
 - `[ ]` A9 Real-device pass (matrix) + changelog entry.
 

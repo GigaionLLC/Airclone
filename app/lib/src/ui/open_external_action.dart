@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -5,6 +7,8 @@ import 'package:airclone_rc/airclone_rc.dart';
 import '../rclone/models/remote.dart';
 import '../state/diagnostics.dart';
 import '../state/engine_controller.dart';
+import '../state/host_platform.dart';
+import '../state/mount_policy.dart';
 import '../state/open_external.dart';
 import 'format.dart';
 import 'pane_drag.dart';
@@ -12,10 +16,13 @@ import 'theme/tokens.dart';
 
 /// Opens [file] (at [parentPath] within [remote]) in another app.
 ///
-/// A local remote hands its real OS path straight over. Anything else is staged
-/// first — the bytes stream into the app cache behind a cancellable progress
-/// dialog, because no external app can authenticate against the engine's
-/// loopback object URL. See [stageForExternalOpen].
+/// A local remote hands its real OS path straight over. So does a remote that
+/// is MOUNTED right now, on desktop: the file is at a real path inside the
+/// mount, and the other app streams it through rclone's VFS cache (see
+/// [mountedOsPath]). Anything else is staged first — the bytes stream into the
+/// app cache behind a cancellable progress dialog, because no external app can
+/// authenticate against the engine's loopback object URL. See
+/// [stageForExternalOpen].
 ///
 /// Never throws: engine/transport/chooser failures land in a SnackBar.
 Future<void> openFileInAnotherApp(
@@ -42,6 +49,18 @@ Future<void> openFileInAnotherApp(
     _toast(context, 'The rclone engine is not running.');
     return;
   }
+
+  // Mounted already? Then there is nothing to download: hand over the path
+  // inside the mount. Never mounts anything itself.
+  if (HostPlatform.isDesktop && ref.read(mountEnabledProvider)) {
+    final mounted = await _pathInActiveMount(client, remote.fs, within);
+    if (!context.mounted) return;
+    if (mounted != null) {
+      await _handOff(context, mounted, mime, mode);
+      return;
+    }
+  }
+
   final ObjectRef object;
   try {
     object = client.objectRef(remote.fs, within);
@@ -64,6 +83,34 @@ Future<void> openFileInAnotherApp(
     return;
   }
   await _handOff(context, staged.path!, mime, mode);
+}
+
+/// The file's path inside an active mount of its remote, or null.
+///
+/// Asks the engine once (`mount/listmounts`) rather than reading the mount
+/// panel's provider: reading that starts its two-second poll for the rest of
+/// the session, which opening one file should not do. Both the RC call and the
+/// existence check are bounded, because a mount whose backend has gone away
+/// can make a plain `stat` hang — and the staging fallback is always there.
+Future<String?> _pathInActiveMount(
+  RcloneClient client,
+  String fs,
+  String within,
+) async {
+  const budget = Duration(seconds: 2);
+  try {
+    final mounts = await RcApi(client).mount.listMounts().timeout(budget);
+    final path = mountedOsPath(
+      mounts: mounts,
+      fs: fs,
+      path: within,
+      windows: HostPlatform.isWindows,
+    );
+    if (path == null) return null;
+    return await File(path).exists().timeout(budget) ? path : null;
+  } catch (_) {
+    return null;
+  }
 }
 
 Future<void> _handOff(
