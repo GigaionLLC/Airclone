@@ -1,7 +1,9 @@
 import 'dart:async';
 
+import 'package:airclone/src/state/media_tracks.dart';
 import 'package:airclone/src/ui/tv_player_keys.dart';
 import 'package:flutter/services.dart';
+import 'package:media_kit/media_kit.dart';
 
 /// A player that is not a player.
 ///
@@ -37,6 +39,24 @@ class FakeTarget implements TvPlaybackTarget {
   final _position = StreamController<Duration>.broadcast();
   final _duration = StreamController<Duration>.broadcast();
   final _buffer = StreamController<Duration>.broadcast();
+  final _tracks = StreamController<Tracks>.broadcast();
+
+  /// The file's tracks. Assign through [setTracks] so the stream hears it too.
+  @override
+  Tracks tracks = const Tracks();
+
+  void setTracks(Tracks value) {
+    tracks = value;
+    _tracks.add(value);
+  }
+
+  /// What mpv would report as selected (`aid` / `sid`).
+  String selectedAudio = 'auto';
+  String selectedSubtitle = 'auto';
+
+  /// Every track the player was told to switch to, in order.
+  final List<AudioTrack> audioSets = [];
+  final List<SubtitleTrack> subtitleSets = [];
 
   @override
   void playOrPause() {
@@ -60,12 +80,31 @@ class FakeTarget implements TvPlaybackTarget {
   Stream<Duration> get durationStream => _duration.stream;
   @override
   Stream<Duration> get bufferStream => _buffer.stream;
+  @override
+  Stream<Tracks> get tracksStream => _tracks.stream;
+
+  @override
+  Future<TrackSelection> selection() async =>
+      (audio: selectedAudio, subtitle: selectedSubtitle);
+
+  @override
+  Future<void> setAudio(AudioTrack track) async {
+    audioSets.add(track);
+    selectedAudio = track.id;
+  }
+
+  @override
+  Future<void> setSubtitle(SubtitleTrack track) async {
+    subtitleSets.add(track);
+    selectedSubtitle = track.id;
+  }
 
   void dispose() {
     _playing.close();
     _position.close();
     _duration.close();
     _buffer.close();
+    _tracks.close();
   }
 }
 

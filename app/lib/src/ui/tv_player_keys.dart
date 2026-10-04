@@ -5,6 +5,7 @@ import 'package:flutter/widgets.dart';
 import 'package:media_kit/media_kit.dart';
 
 import '../state/android_native.dart' show androidIsTelevision;
+import '../state/media_tracks.dart';
 
 /// Turns a remote into transport controls.
 ///
@@ -66,6 +67,24 @@ abstract interface class TvPlaybackTarget {
   Stream<Duration> get positionStream;
   Stream<Duration> get durationStream;
   Stream<Duration> get bufferStream;
+
+  // The file's audio and subtitle tracks, for the track pickers. Here rather
+  // than on [Player] for the same reason as everything above: the pickers on
+  // a television, a desktop and a phone are then all provable on a fake, and
+  // there is one seam for the three of them instead of three.
+
+  /// The tracks libmpv found, media_kit's `auto` / `no` placeholders
+  /// included (see `state/media_tracks.dart`, which never lists those).
+  Tracks get tracks;
+  Stream<Tracks> get tracksStream;
+
+  /// What mpv has ACTUALLY selected. media_kit's own `state.track` only
+  /// echoes what was last set through it, so an automatic pick — which is
+  /// what every file starts with — would read as `auto` forever.
+  Future<TrackSelection> selection();
+
+  Future<void> setAudio(AudioTrack track);
+  Future<void> setSubtitle(SubtitleTrack track);
 }
 
 /// [TvPlaybackTarget] backed by media_kit.
@@ -119,6 +138,50 @@ class MediaKitPlaybackTarget implements TvPlaybackTarget {
       // Seeking past the end of a still-buffering stream can throw.
     }
   }
+
+  @override
+  Tracks get tracks => player.state.tracks;
+
+  @override
+  Stream<Tracks> get tracksStream => player.stream.tracks;
+
+  @override
+  Future<TrackSelection> selection() async {
+    final fallback = (
+      audio: player.state.track.audio.id,
+      subtitle: player.state.track.subtitle.id,
+    );
+    final native = player.platform;
+    if (native is! NativePlayer) return fallback;
+    try {
+      final aid = await native.getProperty('aid');
+      final sid = await native.getProperty('sid');
+      return (
+        audio: aid.isEmpty ? fallback.audio : aid,
+        subtitle: sid.isEmpty ? fallback.subtitle : sid,
+      );
+    } catch (_) {
+      return fallback;
+    }
+  }
+
+  @override
+  Future<void> setAudio(AudioTrack track) async {
+    try {
+      await player.setAudioTrack(track);
+    } catch (_) {
+      // A track that vanished between listing and picking; nothing to do.
+    }
+  }
+
+  @override
+  Future<void> setSubtitle(SubtitleTrack track) async {
+    try {
+      await player.setSubtitleTrack(track);
+    } catch (_) {
+      // As above.
+    }
+  }
 }
 
 /// Which controls a surface shows, and therefore what the arrows mean.
@@ -147,6 +210,7 @@ class TvPlaybackController extends ChangeNotifier {
     this.onNext,
     this.alwaysVisible = false,
     this.tvKeysEnabled = true,
+    this.imageSubsRenderable = false,
   }) : _mode = alwaysVisible ? TvControlsMode.browsing : TvControlsMode.hidden {
     _mediaKeyOwners.add(this);
   }
@@ -167,6 +231,25 @@ class TvPlaybackController extends ChangeNotifier {
   /// True for the audio surface, whose controls are the screen rather than an
   /// overlay. Keeps the mode in [TvControlsMode.browsing] for good.
   final bool alwaysVisible;
+
+  /// Whether an image subtitle (PGS, VobSub) can be drawn by this player. False
+  /// while libass rendering is off — see `kLibassSubtitles` in
+  /// `media_preview.dart` — which makes the pickers list those tracks as
+  /// "can't be shown here" instead of offering a choice that shows nothing.
+  final bool imageSubsRenderable;
+
+  /// Titles of the sidecar subtitle files the player added, so the picker can
+  /// label them `external`. Filled in by the host as it adds them.
+  final Set<String> externalSubtitleTitles = {};
+
+  /// How many sidecars the host found and is about to add. Non-zero shows the
+  /// subtitle button straight away, rather than having it pop in a moment
+  /// after playback starts.
+  int expectedSidecars = 0;
+
+  /// Told about every pick, after it reached the player — the host remembers
+  /// the language and re-applies the pick after a Retry.
+  void Function(TrackChoice choice)? onTrackPicked;
 
   /// False off a television. The MEDIA keys still work — a keyboard's transport
   /// keys and a Bluetooth remote paired to a phone are the same keys, and
@@ -578,6 +661,44 @@ class TvPlaybackController extends ChangeNotifier {
 
   void showControls() => _show(TvControlsMode.browsing);
 
+  /// Keeps the overlay up until [releaseControls], whatever is playing: a
+  /// track picker is open over it. The five-second auto-hide would otherwise
+  /// take the row away from under a person still reading a list of languages,
+  /// and leave focus on a panel that no longer has a reason to exist.
+  void holdControls() {
+    _holds++;
+    _hideTimer?.cancel();
+    _hideTimer = null;
+    if (!controlsVisible) _show(TvControlsMode.browsing);
+  }
+
+  /// Ends one [holdControls]; the auto-hide resumes when the last one ends.
+  void releaseControls() {
+    if (_holds == 0) return;
+    _holds--;
+    if (_holds == 0) _armAutoHide();
+  }
+
+  int _holds = 0;
+  bool get controlsHeld => _holds > 0;
+
+  /// Applies a picker row to the player, then tells [onTrackPicked]. A
+  /// disabled row does nothing: it is listed to explain, not to be chosen.
+  Future<void> selectTrack(TrackChoice choice) async {
+    if (!choice.enabled) return;
+    switch (choice.kind) {
+      case TrackKind.audio:
+        await target.setAudio(AudioTrack(choice.id, null, null));
+      case TrackKind.subtitle:
+        await target.setSubtitle(
+          choice.isOff
+              ? SubtitleTrack.no()
+              : SubtitleTrack(choice.id, null, null),
+        );
+    }
+    onTrackPicked?.call(choice);
+  }
+
   void hideControls() {
     if (alwaysVisible) return;
     _hideTimer?.cancel();
@@ -597,7 +718,7 @@ class TvPlaybackController extends ChangeNotifier {
   void _armAutoHide() {
     _hideTimer?.cancel();
     _hideTimer = null;
-    if (alwaysVisible) return;
+    if (alwaysVisible || _holds > 0) return;
     // A paused film keeps its controls, and so does a pending scrub — both are
     // states the user is in the middle of.
     if (!target.playing || _pending != null) return;

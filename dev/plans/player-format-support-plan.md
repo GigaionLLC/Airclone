@@ -388,7 +388,12 @@ List<Sidecar> findSidecars(RcloneFile video, List<RcloneFile> siblings);
     **Still open: running the dump on all 5 platforms (needs devices).**
 - `[ ]` A0.2 libass spike on a real Google TV → answer Q1/Q2 here.
 - `[ ]` A0.3 `sub-add` over loopback on the three engine shapes.
-- `[ ]` A1 `state/media_tracks.dart` + tests; `TvPlaybackTarget` track members + `FakeTarget`.
+- `[x]` A1 `state/media_tracks.dart` + tests; `TvPlaybackTarget` track members + `FakeTarget`.
+  - `TvPlaybackTarget` gained `tracks`, `tracksStream`, `selection()` (reads mpv `aid`/`sid` —
+    media_kit's `state.track` only echoes what was set through it), `setAudio`, `setSubtitle`.
+    Controller gained `selectTrack`, `onTrackPicked`, `holdControls`/`releaseControls`,
+    `imageSubsRenderable`, `externalSubtitleTitles`, `expectedSidecars`. English language names
+    (not endonyms); `mpvLanguageList` gives mpv every alias (`ger,deu,de`). 21 new tests.
 - `[ ]` A2 `ui/track_picker.dart`; desktop/touch buttons; TV buttons + side panel + `holdControls`.
 - `[ ]` A3 Language prefs (`media_prefs`) + `alang`/`slang` before open; re-apply on Retry.
 - `[ ]` A4 Subtitle rendering per A0.2 outcome (libass + font + style helper, or TV `SubtitleViewConfiguration`).
