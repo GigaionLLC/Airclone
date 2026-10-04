@@ -225,6 +225,23 @@ class TvPlaybackController extends ChangeNotifier {
     this.imageSubsRenderable = false,
   }) : _mode = alwaysVisible ? TvControlsMode.browsing : TvControlsMode.hidden {
     _mediaKeyOwners.add(this);
+    _playingSub = target.playingStream.listen(_onPlayingChanged);
+  }
+
+  late final StreamSubscription<bool> _playingSub;
+
+  /// The player reports a pause or a resume after the key that caused it, so
+  /// the auto-hide is re-decided here as well. Armed on the stale state, it
+  /// hid a just-paused film's controls on the TV emulator, and the next RIGHT
+  /// seeked instead of moving along the row.
+  void _onPlayingChanged(bool playing) {
+    if (_disposed || !controlsVisible) return;
+    if (playing) {
+      _armAutoHide();
+    } else {
+      _hideTimer?.cancel();
+      _hideTimer = null;
+    }
   }
 
   final TvPlaybackTarget target;
@@ -372,6 +389,7 @@ class TvPlaybackController extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
+    _playingSub.cancel();
     _commitTimer?.cancel();
     _hideTimer?.cancel();
     _cancelHoldTimers();
@@ -437,17 +455,13 @@ class TvPlaybackController extends ChangeNotifier {
       return KeyEventResult.handled;
     }
 
-    if (key == LogicalKeyboardKey.goBack ||
-        key == LogicalKeyboardKey.escape ||
-        key == LogicalKeyboardKey.browserBack) {
-      // Hide the overlay if it is up; otherwise let the route close, which is
-      // what BACK means everywhere else on a television.
-      if (!alwaysVisible && controlsVisible) {
-        commitPending();
-        hideControls();
-        return KeyEventResult.handled;
-      }
-      return KeyEventResult.ignored;
+    // Esc only. The remote's BACK is left to the route (TvVideoControls'
+    // PopScope calls [handleBack]): Android 16 delivers one press as a key
+    // event AND a route pop, so acting on the key here as well made one BACK
+    // do two things. An ignored BACK key still reaches the route on older
+    // Android, as the embedding hands it back to the activity.
+    if (key == LogicalKeyboardKey.escape) {
+      return handleBack() ? KeyEventResult.handled : KeyEventResult.ignored;
     }
 
     return KeyEventResult.ignored;
@@ -725,6 +739,15 @@ class TvPlaybackController extends ChangeNotifier {
     onTrackPicked?.call(choice);
   }
 
+  /// BACK: hides the overlay if it is up and returns true; false means there
+  /// is nothing left to dismiss and the route may close.
+  bool handleBack() {
+    if (alwaysVisible || !controlsVisible) return false;
+    commitPending();
+    hideControls();
+    return true;
+  }
+
   void hideControls() {
     if (alwaysVisible) return;
     _hideTimer?.cancel();
@@ -748,7 +771,9 @@ class TvPlaybackController extends ChangeNotifier {
     // A paused film keeps its controls, and so does a pending scrub — both are
     // states the user is in the middle of.
     if (!target.playing || _pending != null) return;
-    _hideTimer = Timer(autoHideDelay, hideControls);
+    _hideTimer = Timer(autoHideDelay, () {
+      if (target.playing && _pending == null && _holds == 0) hideControls();
+    });
   }
 
   Duration _clamp(Duration at) {

@@ -1,3 +1,5 @@
+import 'dart:ui' as ui;
+
 import 'package:airclone/src/ui/theme/app_theme.dart';
 import 'package:airclone/src/ui/tv.dart';
 import 'package:airclone/src/ui/tv_player_keys.dart';
@@ -418,6 +420,37 @@ void main() {
       expect(focused(), 'tv audio track');
       expect(controller.controlsHeld, isFalse);
       expect(target.audioSets, isEmpty);
+      await drain(tester);
+    });
+
+    testWidgets('one remote BACK — a key event and a route pop, as Android 16 '
+        'sends it — closes the panel and nothing else', (tester) async {
+      await pumpRow(tester);
+      await right(tester, 3);
+      await tester.sendKeyEvent(LogicalKeyboardKey.select);
+      await tester.pumpAndSettle();
+      expect(find.byType(TvTrackPanel), findsOneWidget);
+      // The key half, sent as key data (synthesized, so it is dispatched at
+      // once): the test key simulator has no Android scan code for BACK.
+      for (final type in [ui.KeyEventType.down, ui.KeyEventType.up]) {
+        // The only public way to feed the focus tree a key with no scan code.
+        // ignore: deprecated_member_use
+        tester.binding.keyEventManager.handleKeyData(
+          ui.KeyData(
+            type: type,
+            timeStamp: Duration.zero,
+            physical: PhysicalKeyboardKey.browserBack.usbHidUsage,
+            logical: LogicalKeyboardKey.goBack.keyId,
+            character: null,
+            synthesized: true,
+          ),
+        );
+      }
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      expect(find.byType(TvTrackPanel), findsNothing);
+      expect(controller.controlsVisible, isTrue, reason: 'overlay stays up');
+      expect(focused(), 'tv audio track');
       await drain(tester);
     });
 

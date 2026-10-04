@@ -71,11 +71,20 @@ class FakeTarget implements TvPlaybackTarget {
   final List<AudioTrack> audioSets = [];
   final List<SubtitleTrack> subtitleSets = [];
 
+  /// When true, [playOrPause] does not change [playing] until
+  /// [reportPlaying] — the order a real player reports it in.
+  bool lagPlayingState = false;
+
   @override
   void playOrPause() {
     playPauseCalls++;
-    playing = !playing;
-    _playing.add(playing);
+    if (lagPlayingState) return;
+    reportPlaying(!playing);
+  }
+
+  void reportPlaying(bool value) {
+    playing = value;
+    _playing.add(value);
   }
 
   @override

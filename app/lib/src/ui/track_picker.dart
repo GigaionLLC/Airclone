@@ -355,10 +355,11 @@ class _TvTrackPanelState extends State<TvTrackPanel> {
     _close();
   }
 
+  // Esc only: the remote's BACK reaches the panel through the player's
+  // PopScope (see TvVideoControls), never as a key here — Android 16 sends
+  // one press as both, and handling both made one BACK do two things.
   static bool _isBack(LogicalKeyboardKey key) =>
-      key == LogicalKeyboardKey.goBack ||
-      key == LogicalKeyboardKey.escape ||
-      key == LogicalKeyboardKey.browserBack;
+      key == LogicalKeyboardKey.escape;
 
   @override
   Widget build(BuildContext context) {

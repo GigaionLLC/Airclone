@@ -133,12 +133,12 @@ class _TvVideoControlsState extends State<TvVideoControls> {
   @override
   Widget build(BuildContext context) {
     final controller = widget.controller;
-    // BACK, at the route. Android 16 delivers the remote's Back button as a
-    // route pop, never as a key event, so the key handlers below (and the
-    // panel's) never see it there: tested on the API 36 TV emulator, one BACK
-    // closed the whole player from an open track panel, and from a visible
-    // overlay. The order the key table promises — panel, then overlay, then
-    // the player — is enforced here instead, and holds on every Android.
+    // BACK, at the route and only here. On the API 36 TV emulator one press of
+    // the remote's Back arrives as a key event AND a route pop: with a key
+    // handler acting too, one BACK closed the panel and then the player (or
+    // the panel and the overlay). The key handlers now leave BACK alone, and
+    // the order the key table promises — panel, then overlay, then the
+    // player — is enforced here, which holds on every Android.
     return PopScope(
       canPop: _panel == null && !controller.controlsVisible,
       onPopInvokedWithResult: (didPop, _) {
@@ -146,7 +146,7 @@ class _TvVideoControlsState extends State<TvVideoControls> {
         if (_panel != null) {
           _closePanel();
         } else {
-          controller.hideControls();
+          controller.handleBack();
         }
       },
       child: _body(controller),
