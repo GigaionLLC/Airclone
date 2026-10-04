@@ -265,18 +265,19 @@ Both render the same things:
 | Kind | Extensions recognised |
 |---|---|
 | Images | png, jpg, jpeg, gif, webp, bmp |
-| Video | mp4, mkv, mk3d, webm, mov, avi, divx, m4v, mpg, mpeg, vob, m2ts, mts, m2t, wmv, asf, flv, f4v, ogv, 3gp, 3g2, rm, rmvb, mxf |
+| Video | mp4, mkv, mk3d, webm, mov, avi, divx, m4v, mpg, mpeg, vob, m2ts, mts, m2t, wmv, asf, flv, f4v, ogv, 3gp, 3g2 |
 | Streams | m3u8, m3u (HLS), mpd (MPEG-DASH) |
-| Audio | mp3, flac, wav, aiff, aif, ogg, oga, spx, m4a, m4b, aac, opus, wma, mka, ape, wv, tta, dsf, ac3, eac3, dts |
+| Audio | mp3, flac, wav, aiff, aif, ogg, oga, spx, m4a, m4b, aac, opus, wma, mka, ape, wv, tta, dsf, ac3, dts, mpc |
 | Documents | pdf, md, markdown |
 | Text and code | txt, log, json, yaml, yml, dart, js, ts, py, sh, c, cpp, h, xml, csv, ini, conf, toml |
 
-Disc rips and broadcast recordings (`vob`, `m2ts`, `mts`, `m2t`) and the older RealMedia, ASF and
-MXF containers play, but show the film icon rather than a thumbnail: taking a frame from a
+Disc rips and broadcast recordings (`vob`, `m2ts`, `mts`, `m2t`) and the older ASF container play,
+but show the film icon rather than a thumbnail: taking a frame from a
 multi-gigabyte file on a cloud remote can take longer than the thumbnail is worth. A `.ts` file is
 treated as TypeScript code, not video, because in a file manager it almost always is. In the Web UI
 the browser plays the file itself, so most of these containers say plainly that the browser cannot
-play them.
+play them. RealMedia (`rm`, `rmvb`), MXF and bare E-AC-3 (`eac3`) files are not played in the app at
+all: the built-in player has no decoder for them, so they offer **Open in another app** instead.
 
 ### Audio tracks and subtitles
 

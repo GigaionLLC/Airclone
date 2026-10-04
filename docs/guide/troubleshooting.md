@@ -228,8 +228,7 @@ Other reasons a thumbnail may never appear:
   black square looks permanently broken. A video that took too long to give a
   frame is not tried again for the rest of the session either.
 - **It is a disc rip or a broadcast recording.** `.vob`, `.m2ts`, `.mts`,
-  `.m2t`, `.mxf`, `.rm`, `.rmvb` and `.asf` files play, but always show the film
-  icon: finding a frame in them over a cloud remote takes too long.
+  `.m2t` and `.asf` files play, but always show the film icon: finding a frame in them over a cloud remote takes too long.
 - **`Keep cache in memory only` is on.** In Settings → **Storage & updates** →
   `Preview cache`. With it on, nothing is written to disk, so every thumbnail is
   regenerated each session by design.

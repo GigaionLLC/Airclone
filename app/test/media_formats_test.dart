@@ -105,9 +105,6 @@ void main() {
         'cam.3g2',
         'stream.asf',
         'flash.f4v',
-        'real.rm',
-        'real.rmvb',
-        'pro.mxf',
         'three.mk3d',
         'theora.ogv',
       ]) {
@@ -128,8 +125,8 @@ void main() {
         'a.tta',
         'a.dsf',
         'a.ac3',
-        'a.eac3',
         'a.dts',
+        'a.mpc',
       ]) {
         expect(kindOf(_file(n)), FileKind.audio, reason: n);
       }
@@ -145,13 +142,13 @@ void main() {
         'ivf',
         'dff',
         'swf',
+        'mxf', // no demuxer (Android TV dump, 2026-10-04)
+        'eac3', // raw stream: no demuxer; E-AC-3 in MKV / MP4 still plays
+        'rm', // demuxer, but no RealVideo / Cook decoder
+        'rmvb',
       ]) {
         expect(isVideoLikeExt(e) || isAudioExt(e), isFalse, reason: e);
       }
-    });
-
-    test('.mpc waits for a capability dump that shows its demuxer', () {
-      expect(isAudioExt('mpc'), isFalse);
     });
 
     test('.ts is still code, .m2ts is video (plan Q5)', () {

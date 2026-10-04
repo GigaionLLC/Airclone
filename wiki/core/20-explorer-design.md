@@ -137,7 +137,7 @@ server; what shipped is
    that merely *failed* stays retryable — except a video capture that ran out its whole first-frame
    budget, which is remembered too, because it will time out again (`rememberThumbFailure`). A frame
    with no picture in it is treated as a failure and never cached. Disc rips and broadcast
-   containers (`kNoThumbVideoExts`: vob, m2ts, mxf, rm…) are never thumbnailed at all.
+   containers (`kNoThumbVideoExts`: vob, m2ts, mts, m2t, asf) are never thumbnailed at all.
 4. **Progressive UI** — kind-icon instant, thumbnail fades in on decode; pre-warm runs in bounded
    batches rather than one `Future.wait` over the listing.
 

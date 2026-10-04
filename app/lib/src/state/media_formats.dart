@@ -30,8 +30,10 @@ export 'package:airclone_rc/airclone_rc.dart' show isPlaylistExt, kPlaylistExts;
 /// An extension belongs here only when the container's demuxer is in the
 /// libmpv we ship: see `dev/media-support-matrix.md`. Listing one libmpv cannot
 /// open turns a clear "No preview available" into a player that fails. That is
-/// why `.wtv`, `.ivf` and `.swf` are absent (no demuxer in the shipped builds),
-/// and `.ts` is absent for a different reason (see [isVideoLikeExt]).
+/// why `.wtv`, `.ivf`, `.swf` and `.mxf` are absent (no demuxer in the shipped
+/// builds), `.rm` / `.rmvb` too (the demuxer is there, but no RealVideo or Cook
+/// decoder: Android TV capability dump, 2026-10-04), and `.ts` is absent for a
+/// different reason (see [isVideoLikeExt]).
 const Set<String> kVideoExts = {
   'mp4',
   'mov',
@@ -54,16 +56,14 @@ const Set<String> kVideoExts = {
   'divx',
   'asf',
   'f4v',
-  'rm',
-  'rmvb',
-  'mxf',
   'mk3d',
 };
 
 /// Audio containers libmpv decodes directly. Same rule as [kVideoExts]:
-/// `.caf`, `.amr`, `.w64`, `.voc` and `.dff` are absent because the shipped
-/// builds have no demuxer for them, and `.mpc` because nobody has yet seen its
-/// demuxer in a capability dump.
+/// `.caf`, `.amr`, `.w64`, `.voc`, `.dff` and raw `.eac3` are absent because
+/// the shipped builds have no demuxer for them (E-AC-3 inside MKV / MP4 plays;
+/// a bare `.eac3` stream does not). `.mpc` is in: the Android TV dump shows the
+/// `mpc` / `mpc8` demuxers and both Musepack decoders.
 const Set<String> kAudioExts = {
   'mp3',
   'flac',
@@ -85,8 +85,8 @@ const Set<String> kAudioExts = {
   'tta',
   'dsf',
   'ac3',
-  'eac3',
   'dts',
+  'mpc',
 };
 
 /// Video containers that play, but are never THUMBNAILED.
@@ -95,17 +95,14 @@ const Set<String> kAudioExts = {
 /// and iOS a thumbnail is a whole libmpv instance probing the file for up to
 /// 12 seconds. These are the containers where that probe is slowest and least
 /// likely to find a frame worth showing: disc rips and broadcast captures
-/// (multi-gigabyte, often with no index near the start), and RealMedia / ASF /
-/// MXF, which are mostly old or professional. They get the film icon instead
+/// (multi-gigabyte, often with no index near the start), and ASF, which is
+/// mostly old. They get the film icon instead
 /// of a spinner that holds a decoder against a cloud remote per tile.
 const Set<String> kNoThumbVideoExts = {
   'vob',
   'm2ts',
   'mts',
   'm2t',
-  'mxf',
-  'rm',
-  'rmvb',
   'asf',
 };
 

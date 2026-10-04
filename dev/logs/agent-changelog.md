@@ -13,6 +13,28 @@ happened": nothing was logged between 2026-07-02 and 2026-07-15, or between 2026
      it is: it used to say ABOVE, which pushed it further down the file with every entry until
      it sat hundreds of lines under the newest one and pointed writers at the wrong place. -->
 
+## [2026-10-04] - Android TV player: remote fixes and a real capability dump, from emulator testing
+
+**Agent:** Claude Code (Claude Opus 5.5) — `feat/search-and-player`
+**Files Modified:** `app/lib/src/ui/{tv_video_controls,tv_player_keys,track_picker,media_preview}.dart`,
+`app/lib/src/state/{media_tracks,media_capabilities,media_formats}.dart`; tests
+`app/test/{tv_video_controls,tv_player_keys,track_picker,media_tracks,media_capabilities,media_formats}_test.dart`,
+`app/test/tv_playback_fake.dart`; docs `dev/media-support-matrix.md`, `docs/guide/{browsing,troubleshooting}.md`,
+`wiki/core/20-explorer-design.md`.
+**Database/API Changes:** None.
+**Summary:** Drove the search + player branch on the API 36 Android TV emulator by remote only, with a generated test
+library. Fixed: one BACK did two things (Android 16 delivers it as a key event AND a route pop; BACK is now handled
+at the PopScope only); a TrueHD default track failed the whole film (no TrueHD decoder on Android; falls back to the
+next audio codec and says so); subtitles drawn under the controls (now drawn by the overlay, lifted above the row);
+OK-to-pause from a hidden overlay hid the row again (auto-hide armed on the stale playing state); the full-screen focus
+surface was a D-pad target (RIGHT/UP from play/pause went nowhere visible); previous/next left focus on the top bar;
+LEFT/RIGHT along the row did not restart the auto-hide. A regression test pins an InkWell trap met on the way (a
+passed-in FocusNode latches an ancestor's "not traversable" as its own `skipTraversal`). The Media capabilities dump
+replaced the Android column of the support matrix: no MXF or raw E-AC-3 demuxer and no RealVideo/Cook decoders, so
+`.mxf`, `.eac3`, `.rm`, `.rmvb` left the playable tables; Musepack is present, so `.mpc` joined. The dump no longer
+reports subtitle codecs as missing (mpv's decoder list never holds them) and notes that `hwdec` reads `no` on a bare
+player. Sidecar `.srt`, embedded subtitles and AC-3/DTS/E-AC-3 track switching verified live.
+
 ## [2026-10-04] - Pane search: this folder by default, subfolders one step away
 
 **Agent:** Claude Code (Claude Opus 5.5) — `feat/search-scope`

@@ -62,6 +62,14 @@ void main() {
       expect(report, contains('Platform: android (television)'));
     });
 
+    test('subtitle codecs get no verdict: mpv never lists them', () {
+      // The Android TV dump said "subrip: missing" while an .srt was on screen.
+      final report = buildMediaCapabilityReport(dump);
+      expect(report, isNot(contains('subrip: missing')));
+      expect(report, contains('check by playing a file'));
+      expect(report, contains('subrip'));
+    });
+
     test('says when hwdec-current has nothing to report', () {
       expect(
         buildMediaCapabilityReport(dump),

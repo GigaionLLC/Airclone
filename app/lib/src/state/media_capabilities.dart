@@ -77,6 +77,14 @@ const List<String> kProbeDecoders = [
   'opus',
   'ape',
   'wavpack',
+];
+
+/// Subtitle codecs the matrix asks about. mpv's `decoder-list` holds only
+/// what `--vd` / `--ad` accept, so these never appear in it, whatever the
+/// build can render: the Android TV dump said `subrip: missing` beside a film
+/// whose .srt was on screen. The report lists them without a verdict; only
+/// playing a file answers for them.
+const List<String> kProbeSubtitleCodecs = [
   'hdmv_pgs_subtitle',
   'dvd_subtitle',
   'dvb_subtitle',
@@ -184,7 +192,11 @@ String buildMediaCapabilityReport(MediaCapabilityDump d) {
     ..writeln('Platform: ${d.platform}')
     ..writeln('mpv: ${orUnknown(d.mpvVersion)}')
     ..writeln('ffmpeg: ${orUnknown(d.ffmpegVersion)}')
-    ..writeln('hwdec option: ${orUnknown(d.hwdec)}')
+    ..writeln(
+      'hwdec option: ${orUnknown(d.hwdec)} '
+      '(as a bare player reads it; the video output sets its own when a '
+      'film plays)',
+    )
     ..writeln(
       'hwdec-current: ${orUnknown(d.hwdecCurrent)} '
       '(only meaningful while a video is playing)',
@@ -200,6 +212,12 @@ String buildMediaCapabilityReport(MediaCapabilityDump d) {
   for (final name in kProbeDecoders) {
     b.writeln('  $name: ${mpvListHas(decoders, name) ? 'yes' : 'missing'}');
   }
+  b
+    ..writeln()
+    ..writeln(
+      "Subtitle codecs (not in mpv's decoder list; check by playing a file):",
+    )
+    ..writeln('  ${kProbeSubtitleCodecs.join(', ')}');
   b
     ..writeln()
     ..writeln('Demuxers (${demuxers.length}):')
