@@ -3,10 +3,10 @@
 ## 📊 State Dashboard
 | Metric | Value |
 | :--- | :--- |
-| **Status** | `BUILT, NOT DEVICE-VERIFIED` — A0.1 tool and A1-A8 implemented on `feat/player-formats` with libass OFF (coordinator's call, see Q1). A0.1 dumps, A0.2, A0.3 and A9 need real devices; see Phase 8. Not pushed. |
+| **Status** | `BUILT, EMULATOR-VERIFIED` — A0.1 tool and A1-A8 on `feat/search-and-player` with libass OFF (Q1). Android column of the matrix from a real dump; TV + phone emulator passes done 2026-10-04/05 (Phase 8). Real Google TV, libass (A0.2), other platforms' dumps and mount hand-off still open. |
 | **Version** | `v1.0.0` |
 | **Active Persona** | `Builder` |
-| **Last Updated** | 2026-10-04 |
+| **Last Updated** | 2026-10-05 |
 
 Branch: `plan/search-scope-and-player-formats` (plan only). Sister plan, same customer email:
 [search-scope-plan.md](search-scope-plan.md). Follows on from
@@ -485,6 +485,28 @@ List<Sidecar> findSidecars(RcloneFile video, List<RcloneFile> siblings);
      MKV; preferred language applied on the next file; Retry re-applies picks.
   7. **Open from mount** — Windows drive-letter mount and a Linux folder mount: the OS default app
      opens the mounted path; a dead mount falls back to staging within ~4 s.
+
+* **Emulator pass, 2026-10-04/05** (API 36 Android TV + API 35 phone emulators, release x86_64 builds,
+  test library from `tool/make-test-media.sh`, driven by remote / touch only):
+  - **1, Android only:** dump taken; matrix Android column replaced. Wrong in the scan: MXF demuxer, raw
+    E-AC-3 demuxer, TrueHD, ProRes, RealVideo/Cook, AMR are all MISSING; `mpc`/`mpc8` present. So `.mxf`,
+    `.eac3`, `.rm`, `.rmvb` left the tables and `.mpc` joined. `decoder-list` did parse as JSON;
+    `hwdec-current` reads empty with no file. The dump's subtitle rows were meaningless (mpv never
+    lists subtitle decoders) and now carry no verdict; `hwdec option: no` is a bare-player artifact.
+  - **2:** spiked only — Noto Sans + `libassAndroidFont` loads, but libass output is invisible on the
+    emulator (drawn into the black video frame). Still needs a real TV. Flipping also needs
+    `TvSubtitleLine` to stand down (noted at `kLibassSubtitles`).
+  - **3, Android jniLib rcd only:** sidecar `.srt` pairs appear in the picker as "German · …de.srt ·
+    external" / "English · …" and render when picked (TV and phone).
+  - **4, Android:** all 12 test videos and 7 audio files play; `.caf` / `.w64` are plain files.
+  - **5, on the emulator:** track buttons, panel focus and BACK all exercised by remote; seven
+    TV-remote bugs found and fixed (changelog 2026-10-04 "Android TV player"), each with a
+    regression test. TrueHD-default films fall back to the next audio codec. Subtitle line lifts
+    above the controls. Sofa readability still wants real hardware.
+  - **6, Android phone only:** media_kit's bottom-sheet picker over the touch controls works; picks apply.
+  - **7:** not done (desktop mount hand-off).
+  - Known, left as is: track buttons disappear once a film has ended (tracks cleared at EOF); RIGHT
+    from the last row button goes up to the top-bar menu.
 
 ## 9️⃣ Phase 9: User Verification
 * **Status:** `PENDING` — reply to the customer (Google TV) once on Play.

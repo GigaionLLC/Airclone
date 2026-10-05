@@ -392,10 +392,16 @@ bool matchesName(String name, String query);   // This-folder rule
 resolution that consults the result cache, not `childrenOf`.
 
 ## 8️⃣ Phase 8: Verification Dashboard
-* **Verification Status:** `AUTOMATED PASS, DEVICE PENDING` (2026-10-04)
+* **Verification Status:** `AUTOMATED PASS, EMULATOR PASS, HARDWARE PENDING` (2026-10-05)
 * **Report:**
   - `[x]` `flutter analyze` clean; full app suite and `airclone_rc` suite pass (counts in the changelog entry).
   - `[x]` Code matches §4 except the deviations listed in Phase 7.
+  - `[x]` API 36 Android TV emulator, remote only: box opens focused; This folder count + "No matches";
+    the fixed Subfolders row; a 2,741-item scan with ranked results and folder paths; Show in folder;
+    Back chain player → results → This folder. Fixed on the way: field not focused on open.
+  - `[x]` API 35 phone emulator: same flow by touch. Fixed on the way: results read "long-… Airclo…"
+    (name/folder split evenly, empty Modified column) — results now drop Modified, drop size below
+    600 px, and give the name its full width first.
   - `[ ]` Real Google TV pass; Web UI smoke.
 
 ## 9️⃣ Phase 9: User Verification

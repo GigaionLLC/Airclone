@@ -33,7 +33,10 @@ passed-in FocusNode latches an ancestor's "not traversable" as its own `skipTrav
 replaced the Android column of the support matrix: no MXF or raw E-AC-3 demuxer and no RealVideo/Cook decoders, so
 `.mxf`, `.eac3`, `.rm`, `.rmvb` left the playable tables; Musepack is present, so `.mpc` joined. The dump no longer
 reports subtitle codecs as missing (mpv's decoder list never holds them) and notes that `hwdec` reads `no` on a bare
-player. Sidecar `.srt`, embedded subtitles and AC-3/DTS/E-AC-3 track switching verified live.
+player. Sidecar `.srt`, embedded subtitles and AC-3/DTS/E-AC-3 track switching verified live. On 2026-10-05: all
+12 test videos and 7 audio files play on the TV emulator; a libass spike showed the bundled-font wiring loads but
+libass output cannot be judged on an emulator (reverted, notes at `kLibassSubtitles`); and the phone emulator pass
+fixed unreadable Subfolders results on a phone (`file_row.dart` `NameWithSubtitle`, `pane_search_box.dart`).
 
 ## [2026-10-04] - Pane search: this folder by default, subfolders one step away
 
