@@ -98,13 +98,7 @@ const Set<String> kAudioExts = {
 /// (multi-gigabyte, often with no index near the start), and ASF, which is
 /// mostly old. They get the film icon instead
 /// of a spinner that holds a decoder against a cloud remote per tile.
-const Set<String> kNoThumbVideoExts = {
-  'vob',
-  'm2ts',
-  'mts',
-  'm2t',
-  'asf',
-};
+const Set<String> kNoThumbVideoExts = {'vob', 'm2ts', 'mts', 'm2t', 'asf'};
 
 /// Streaming MANIFESTS: HLS (`.m3u8`, `.m3u`) and MPEG-DASH (`.mpd`).
 ///

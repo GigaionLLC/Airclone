@@ -37,6 +37,7 @@ class FileRow extends ConsumerStatefulWidget {
     this.showDetails = true,
     this.onlineOnly = false,
     this.subtitle,
+    this.showModified = true,
   });
 
   final RcloneFile file;
@@ -44,6 +45,10 @@ class FileRow extends ConsumerStatefulWidget {
   /// A muted second label after the name — a search result's folder. Null in
   /// the browser, where every row's folder is the pane's.
   final String? subtitle;
+
+  /// False drops the Modified column — search results, whose scan skips
+  /// modification times (`noModTime`) and would show an empty column.
+  final bool showModified;
 
   /// True when this is a cloud placeholder whose contents are not on this
   /// device. Shown with a cloud icon so the download prompt on opening it is
@@ -200,30 +205,17 @@ class _FileRowState extends ConsumerState<FileRow> {
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(color: c.text, fontSize: t.bodySize),
                         )
-                      : Row(
-                          children: [
-                            Flexible(
-                              child: Text(
-                                file.name,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                  color: c.text,
-                                  fontSize: t.bodySize,
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: Space.x2),
-                            Flexible(
-                              child: Text(
-                                widget.subtitle!,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                  color: c.textFaint,
-                                  fontSize: 12,
-                                ),
-                              ),
-                            ),
-                          ],
+                      : NameWithSubtitle(
+                          name: file.name,
+                          subtitle: widget.subtitle!,
+                          nameStyle: TextStyle(
+                            color: c.text,
+                            fontSize: t.bodySize,
+                          ),
+                          subtitleStyle: TextStyle(
+                            color: c.textFaint,
+                            fontSize: 12,
+                          ),
                         ),
                 ),
                 if (widget.showDetails) ...[
@@ -236,15 +228,17 @@ class _FileRowState extends ConsumerState<FileRow> {
                       style: TextStyle(color: c.textFaint, fontSize: 12),
                     ),
                   ),
-                  const SizedBox(width: Space.x2),
-                  SizedBox(
-                    width: widths.modified,
-                    child: Text(
-                      relativeTime(file.modTime),
-                      textAlign: TextAlign.right,
-                      style: TextStyle(color: c.textFaint, fontSize: 12),
+                  if (widget.showModified) ...[
+                    const SizedBox(width: Space.x2),
+                    SizedBox(
+                      width: widths.modified,
+                      child: Text(
+                        relativeTime(file.modTime),
+                        textAlign: TextAlign.right,
+                        style: TextStyle(color: c.textFaint, fontSize: 12),
+                      ),
                     ),
-                  ),
+                  ],
                 ],
                 SizedBox(
                   width: 28,
@@ -297,4 +291,74 @@ class _FileRowState extends ConsumerState<FileRow> {
       child: NativePaneDraggable(data: widget.dragData, child: row),
     );
   }
+}
+
+/// A name and a muted label after it on one line, the NAME first.
+///
+/// An even split of the width cut both to a few letters on a phone (search
+/// results read "long-…  Airclo…"). The name now gets its full width, and the
+/// label whatever is left; only a name too long for the row shares it, 70/30,
+/// so the label never vanishes entirely.
+@visibleForTesting
+class NameWithSubtitle extends StatelessWidget {
+  const NameWithSubtitle({
+    super.key,
+    required this.name,
+    required this.subtitle,
+    required this.nameStyle,
+    required this.subtitleStyle,
+  });
+
+  final String name;
+  final String subtitle;
+  final TextStyle nameStyle;
+  final TextStyle subtitleStyle;
+
+  static const double _gap = Space.x2;
+
+  @override
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, box) {
+      final painter = TextPainter(
+        // Measured in the style the Text will actually render with: without
+        // the inherited font, the name measured narrower than it drew and was
+        // cut while the folder had room to spare (phone emulator).
+        text: TextSpan(
+          text: name,
+          style: DefaultTextStyle.of(context).style.merge(nameStyle),
+        ),
+        textDirection: Directionality.of(context),
+        textScaler: MediaQuery.textScalerOf(context),
+        maxLines: 1,
+      )..layout();
+      final natural = painter.width.ceilToDouble();
+      painter.dispose();
+      final room = (box.maxWidth - _gap).clamp(0.0, double.infinity);
+      final nameWidth = natural <= room * 0.7 ? natural : room * 0.7;
+      return Row(
+        children: [
+          SizedBox(
+            width: nameWidth,
+            child: Text(
+              name,
+              maxLines: 1,
+              softWrap: false,
+              overflow: TextOverflow.ellipsis,
+              style: nameStyle,
+            ),
+          ),
+          const SizedBox(width: _gap),
+          Expanded(
+            child: Text(
+              subtitle,
+              maxLines: 1,
+              softWrap: false,
+              overflow: TextOverflow.ellipsis,
+              style: subtitleStyle,
+            ),
+          ),
+        ],
+      );
+    },
+  );
 }

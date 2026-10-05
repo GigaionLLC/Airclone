@@ -2,6 +2,7 @@ import 'package:airclone_rc/airclone_rc.dart';
 import 'package:airclone/src/rclone/models/remote.dart';
 import 'package:airclone/src/state/browser_controller.dart';
 import 'package:airclone/src/ui/browser_pane.dart';
+import 'package:airclone/src/ui/file_row.dart';
 import 'package:airclone/src/ui/pane_search_box.dart';
 import 'package:airclone/src/ui/theme/app_theme.dart';
 import 'package:airclone/src/ui/tv.dart';
@@ -41,8 +42,12 @@ SearchHit _hit(String abs, {bool dir = false}) {
   );
 }
 
-Future<_Pane> _pumpPane(WidgetTester tester, BrowserState state) async {
-  tester.view.physicalSize = const Size(1000, 700);
+Future<_Pane> _pumpPane(
+  WidgetTester tester,
+  BrowserState state, {
+  Size size = const Size(1000, 700),
+}) async {
+  tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1.0;
   addTearDown(tester.view.reset);
   late _Pane pane;
@@ -118,6 +123,35 @@ void main() {
     expect(find.byType(SearchSubfoldersRow), findsNothing);
     // The folder's own listing is not what is on screen.
     expect(find.text('work.txt'), findsNothing);
+  });
+
+  testWidgets('on a phone a result gives its row to the name and folder', (
+    tester,
+  ) async {
+    // Phone emulator, 2026-10-05: with the size and (always empty) modified
+    // columns kept, a result read "long-…  Airclo…".
+    final state = BrowserState(
+      remote: _remote,
+      entries: _entries,
+      filter: 'sidecar',
+      search: PaneSearch(
+        scope: SearchScope.subfolders,
+        status: SearchScanStatus.done,
+        scanned: 57,
+        hits: [_hit('AircloneTest/Long/long-sidecar.de.srt')],
+      ),
+    );
+    await _pumpPane(tester, state, size: const Size(580, 800));
+    var row = tester.widget<FileRow>(find.byType(FileRow));
+    expect(row.showDetails, isFalse);
+    expect(row.showModified, isFalse);
+    expect(find.text('long-sidecar.de.srt'), findsOneWidget);
+
+    tester.view.physicalSize = const Size(1000, 700);
+    await tester.pump();
+    row = tester.widget<FileRow>(find.byType(FileRow));
+    expect(row.showDetails, isTrue, reason: 'a wide pane keeps the size');
+    expect(row.showModified, isFalse, reason: 'the scan has no mod times');
   });
 
   testWidgets('a scan in progress says what it is scanning and offers Cancel', (

@@ -390,6 +390,10 @@ class SearchSubfoldersRow extends StatelessWidget {
   }
 }
 
+/// Below this width a search result shows no size column: the name and its
+/// folder need the room more than a size does.
+const double kSearchResultsDetailsMinWidth = 600;
+
 /// Subfolders results: one row per match with the folder it lives in. Every
 /// callback hands over the [SearchHit], whose path is already absolute — a
 /// result is never resolved against the pane's folder.
@@ -482,27 +486,34 @@ class SearchResultsList extends StatelessWidget {
       body = message('No matches in subfolders.');
     } else {
       final hits = search.hits;
-      body = ListView.builder(
-        physics: physics,
-        itemCount: hits.length,
-        itemBuilder: (_, i) {
-          final h = hits[i];
-          return FileRow(
-            key: ValueKey(h.absPath),
-            file: h.entry,
-            selected: search.selectedPath == h.absPath,
-            selectionMode: false,
-            subtitle: h.relParent.isEmpty ? _folderLabel(state) : h.relParent,
-            dragData: PaneDragData(remote, h.parentPath, [h.entry]),
-            onOpen: () => onOpen(h),
-            onToggle: () => onSelect(h),
-            onPreview: () => onPreview(h),
-            onContextMenu: (pos) => onContextMenu(h, pos),
-            // A drop onto a result folder is a copy into it; the pane offers
-            // the same through the row's menu, so here it is simply not taken.
-            onDropInto: (_) {},
-          );
-        },
+      body = LayoutBuilder(
+        builder: (context, box) => ListView.builder(
+          physics: physics,
+          itemCount: hits.length,
+          itemBuilder: (_, i) {
+            final h = hits[i];
+            return FileRow(
+              key: ValueKey(h.absPath),
+              file: h.entry,
+              selected: search.selectedPath == h.absPath,
+              selectionMode: false,
+              subtitle: h.relParent.isEmpty ? _folderLabel(state) : h.relParent,
+              // No header lines these up, and the scan skips modification
+              // times. On a phone the size column goes too: with both, a
+              // result read "long-…  Airclo…" (phone emulator, 2026-10-05).
+              showModified: false,
+              showDetails: box.maxWidth >= kSearchResultsDetailsMinWidth,
+              dragData: PaneDragData(remote, h.parentPath, [h.entry]),
+              onOpen: () => onOpen(h),
+              onToggle: () => onSelect(h),
+              onPreview: () => onPreview(h),
+              onContextMenu: (pos) => onContextMenu(h, pos),
+              // A drop onto a result folder is a copy into it; the pane offers
+              // the same through the row's menu, so here it is simply not taken.
+              onDropInto: (_) {},
+            );
+          },
+        ),
       );
     }
     if (notices.isEmpty) return body;
