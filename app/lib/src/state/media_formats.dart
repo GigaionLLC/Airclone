@@ -96,8 +96,8 @@ const Set<String> kAudioExts = {
 /// 12 seconds. These are the containers where that probe is slowest and least
 /// likely to find a frame worth showing: disc rips and broadcast captures
 /// (multi-gigabyte, often with no index near the start), and ASF, which is
-/// mostly old. They get the film icon instead
-/// of a spinner that holds a decoder against a cloud remote per tile.
+/// mostly old. They get the film icon instead of a spinner that holds a
+/// decoder against a cloud remote per tile.
 const Set<String> kNoThumbVideoExts = {'vob', 'm2ts', 'mts', 'm2t', 'asf'};
 
 /// Streaming MANIFESTS: HLS (`.m3u8`, `.m3u`) and MPEG-DASH (`.mpd`).
