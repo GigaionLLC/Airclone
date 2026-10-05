@@ -45,6 +45,14 @@ const Duration _networkStartTimeout = Duration(seconds: 120);
 /// `libassAndroidFontName`, plan Q2) or libass finds no glyphs. **Do not flip
 /// this without adding that font**, or every subtitle on Android goes blank.
 ///
+/// Spiked on the API 36 TV emulator, 2026-10-05: Noto Sans Regular (OFL) as an
+/// asset plus `libassAndroidFont: 'assets/fonts/NotoSans-Regular.ttf'` and
+/// `libassAndroidFontName: 'Noto Sans'` loads (media_kit copies it out and
+/// sets `sub-fonts-dir`). What libass then draws could not be judged there —
+/// it renders into the video frame, which the emulator leaves black — so the
+/// real-TV check stands. Flipping this also needs [TvSubtitleLine] (the TV
+/// overlay's own text line) to stand down, or the TV shows every line twice.
+///
 /// While it is false the player follows the plan's fallback: TV-sized text
 /// subtitles ([subtitleViewConfigurationFor]), image tracks listed but
 /// disabled as "can't be shown here", and an image track libmpv picked on its
