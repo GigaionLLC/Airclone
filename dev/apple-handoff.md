@@ -9,7 +9,7 @@ by design** — real IDs, key paths and account state live in the encrypted vaul
 (`python tool/vault.py unlock`, then
 `dev/vault/notes/apple-appstore-setup-record.md`).
 
-## State: last written 2026-10-05 — 0.23.1 IN REVIEW on both platforms (0.22.2 live)
+## State: last written 2026-10-06 — 0.23.1 LIVE on iOS, IN REVIEW on macOS
 
 Read back from App Store Connect by the workflows that changed it, so these rows are observed.
 
@@ -29,7 +29,7 @@ Read back from App Store Connect by the workflows that changed it, so these rows
 | **0.22.2** | **READY_FOR_SALE**, build 149, released 2026-10-02 | **READY_FOR_SALE**, build 149, released 2026-10-02 |
 | 0.22.2 `releaseType` | MANUAL | MANUAL |
 | 0.23.0 | ❌ no record — created, then renamed to 0.23.1 with `set_version` (the v0.23.0 tag's MAS build failed) | ❌ no record — renamed to 0.23.1; build 150 uploaded but never attached |
-| **0.23.1** | **WAITING_FOR_REVIEW**, build 151, submitted 2026-10-06 01:28 UTC | **WAITING_FOR_REVIEW**, build 151, submitted 2026-10-06 01:28 UTC |
+| **0.23.1** | **IN_REVIEW**, build 151, submitted 2026-10-06 01:28 UTC | **READY_FOR_SALE**, build 151, released 2026-10-06 |
 | 0.23.1 `releaseType` | MANUAL | MANUAL |
 
 **0.22.1's macOS release (2026-09-28) hit HTTP 500 on `/v1/appStoreVersionReleaseRequests`**
