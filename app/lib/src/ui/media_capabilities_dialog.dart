@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 import 'package:media_kit/media_kit.dart';
 
+import '../native/mpv_access.dart';
 import '../state/diagnostics.dart';
 import '../state/host_platform.dart';
 import '../state/media_capabilities.dart';
@@ -40,13 +41,12 @@ Future<MediaCapabilityDump> dumpMediaCapabilities() async {
     ),
   );
   try {
-    final native = player.platform;
-    if (native is! NativePlayer) {
+    if (!hasMpv(player)) {
       throw UnsupportedError('This build has no libmpv to ask.');
     }
     Future<String> read(String property) async {
       try {
-        return await native.getProperty(property);
+        return await mpvGetProperty(player, property) ?? '';
       } catch (_) {
         return '';
       }

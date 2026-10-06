@@ -1,3 +1,4 @@
+import '../native/mpv_access.dart';
 import '../state/diagnostics.dart';
 import '../state/host_platform.dart';
 import '../state/media_formats.dart';
@@ -391,15 +392,14 @@ class _MediaPreviewBodyState extends ConsumerState<MediaPreviewBody> {
   /// Sets mpv `alang` / `slang` (or `sid=no`) from the remembered languages
   /// (plan Q4). Best-effort: a player that refuses an option still plays.
   Future<void> _applyLanguagePrefs(Player player) async {
-    final native = player.platform;
-    if (native is! NativePlayer) return;
+    if (!hasMpv(player)) return;
     final options = languageOptions(
       audio: ref.read(preferredAudioLanguageProvider),
       subtitle: ref.read(preferredSubtitleLanguageProvider),
     );
     for (final e in options.entries) {
       try {
-        await native.setProperty(e.key, e.value);
+        await mpvSetProperty(player, e.key, e.value);
       } catch (_) {
         // Not fatal; libmpv's default selection stands.
       }
@@ -440,8 +440,7 @@ class _MediaPreviewBodyState extends ConsumerState<MediaPreviewBody> {
     if (pending == null || player == null || tv == null) return;
     final sources = await pending;
     if (sources.isEmpty || generation != _generation) return;
-    final native = player.platform;
-    if (native is! NativePlayer) return;
+    if (!hasMpv(player)) return;
     final select = sidecarToSelect(
       [for (final s in sources) s.sidecar],
       fileHasSubtitles: tv.target.tracks.subtitle.any(
@@ -458,7 +457,7 @@ class _MediaPreviewBodyState extends ConsumerState<MediaPreviewBody> {
       final language = canonicalLanguage(source.sidecar.language);
       tv.externalSubtitleTitles.add(title);
       try {
-        await native.command([
+        await mpvCommand(player, [
           'sub-add',
           url,
           i == select ? 'select' : 'auto',

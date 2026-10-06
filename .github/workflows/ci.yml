@@ -44,6 +44,13 @@ jobs:
         run: flutter analyze
       - name: Unit tests
         run: flutter test --coverage
+      # The Web UI is compiled only by the release lanes, so nothing on a PR
+      # proved shared code still builds for the web. v0.23.0's tag failed all
+      # three desktop builds and the Mac App Store build on NativePlayer calls
+      # that media_kit's web stub does not have, after a green PR. Same command
+      # as release.yml; the output is thrown away.
+      - name: Web UI compiles
+        run: flutter build web --release --no-web-resources-cdn
       - name: Upload coverage
         if: always()
         uses: actions/upload-artifact@v7

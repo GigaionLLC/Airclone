@@ -5,6 +5,7 @@ import 'package:flutter/widgets.dart';
 import 'package:media_kit/media_kit.dart';
 
 import '../state/android_native.dart' show androidIsTelevision;
+import '../native/mpv_access.dart';
 import '../state/media_tracks.dart';
 
 /// Turns a remote into transport controls.
@@ -163,14 +164,12 @@ class MediaKitPlaybackTarget implements TvPlaybackTarget {
       audio: player.state.track.audio.id,
       subtitle: player.state.track.subtitle.id,
     );
-    final native = player.platform;
-    if (native is! NativePlayer) return fallback;
     try {
-      final aid = await native.getProperty('aid');
-      final sid = await native.getProperty('sid');
+      final aid = await mpvGetProperty(player, 'aid');
+      final sid = await mpvGetProperty(player, 'sid');
       return (
-        audio: aid.isEmpty ? fallback.audio : aid,
-        subtitle: sid.isEmpty ? fallback.subtitle : sid,
+        audio: aid == null || aid.isEmpty ? fallback.audio : aid,
+        subtitle: sid == null || sid.isEmpty ? fallback.subtitle : sid,
       );
     } catch (_) {
       return fallback;
