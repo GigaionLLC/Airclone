@@ -13,6 +13,20 @@ happened": nothing was logged between 2026-07-02 and 2026-07-15, or between 2026
      it is: it used to say ABOVE, which pushed it further down the file with every entry until
      it sat hundreds of lines under the newest one and pointed writers at the wrong place. -->
 
+## [2026-10-05] - v0.23.0 desktop builds failed on the Web UI; fixed and re-released as v0.23.1
+
+**Agent:** Claude Code (Claude Opus 5.5) — `main`
+**Files Modified:** `app/lib/src/native/mpv_access{,_io,_web}.dart` (new),
+`app/lib/src/ui/{media_preview,media_capabilities_dialog,tv_player_keys}.dart`, `.github/workflows/ci.yml`,
+`app/pubspec.yaml`, `dev/releases/v0.23.{0,1}.md`.
+**Database/API Changes:** None.
+**Summary:** The v0.23.0 tag built Android only: Windows, macOS, Linux and the Mac App Store lane all compile the
+Web UI, and the player code merged in #25 called `NativePlayer.getProperty/setProperty/command`, which media_kit's
+web stub lacks. Nothing on the PR compiled for the web, so it went green. The three mpv calls now go through one
+conditional-import seam (`mpv_access.dart`, like `native_probes.dart`), and `ci.yml` builds the Web UI on every
+push/PR. v0.23.0 was marked pre-release (not Latest) so the update check would not offer a release with no
+desktop files; v0.23.1+151 ships the same content.
+
 ## [2026-10-04] - Android TV player: remote fixes and a real capability dump, from emulator testing
 
 **Agent:** Claude Code (Claude Opus 5.5) — `feat/search-and-player`
