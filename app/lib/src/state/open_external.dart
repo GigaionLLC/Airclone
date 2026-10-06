@@ -206,6 +206,94 @@ Future<String> _stageLocalCopy(String path) async {
   return target.path;
 }
 
+/// The OS path of a remote file inside an ACTIVE `rclone mount` of that
+/// remote, or null when no mount covers it.
+///
+/// **Why.** "Open in another app" used to stage every non-local object — a
+/// full download into the cache — before the other app saw a byte, even when
+/// the remote was already mounted and the file sat at a real path on this
+/// machine. Through the mount, VLC (or whatever the OS default is) streams it
+/// via rclone's VFS cache instead: instant, and only the parts it reads.
+///
+/// [fs] is the remote's rclone fs (`gdrive:`, or `gdrive:Films` for a
+/// remote rooted at a folder); [path] is the file within it. A mount matches
+/// when its fs names the same remote and its root is at or above the file —
+/// `gdrive:work` mounting `work/` serves `work/a.mkv` as `a.mkv`. The deepest
+/// matching mount wins. Trailing `:` and `/` are normalised on both sides.
+///
+/// **The result can only ever be inside the mount.** Every path segment comes
+/// from a remote listing, and a remote can name a file `..`, or (on a backend
+/// that allows it) put a `\` or a `:` in a name, which Windows would read as a
+/// separator or a drive. Any such segment, or an empty one, refuses the whole
+/// path rather than being cleaned up, and the joined result is checked to
+/// start with the mount point.
+String? mountedOsPath({
+  required List<MountInfo> mounts,
+  required String fs,
+  required String path,
+  required bool windows,
+}) {
+  (String, String)? split(String value) {
+    final v = value.trim();
+    final colon = v.indexOf(':');
+    if (colon <= 0) return null;
+    final name = v.substring(0, colon).toLowerCase();
+    final root = v
+        .substring(colon + 1)
+        .split('/')
+        .where((s) => s.isNotEmpty)
+        .join('/');
+    return (name, root);
+  }
+
+  final remote = split(fs);
+  if (remote == null) return null;
+  final full = [
+    if (remote.$2.isNotEmpty) remote.$2,
+    ...path.split('/'),
+  ].join('/');
+
+  String? best;
+  var bestDepth = -1;
+  for (final m in mounts) {
+    final point = m.mountPoint.trim();
+    final mount = split(m.fs);
+    if (point.isEmpty || mount == null || mount.$1 != remote.$1) continue;
+    final root = mount.$2;
+    final String rel;
+    if (root.isEmpty) {
+      rel = full;
+    } else if (full.startsWith('$root/')) {
+      rel = full.substring(root.length + 1);
+    } else {
+      continue;
+    }
+    final segments = rel.split('/');
+    final unsafe = segments.any(
+      (s) =>
+          s.isEmpty ||
+          s == '.' ||
+          s == '..' ||
+          (windows && (s.contains(r'\') || s.contains(':'))),
+    );
+    if (unsafe) continue;
+    final sep = windows ? r'\' : '/';
+    var base = point;
+    while (base.length > 1 && (base.endsWith('/') || base.endsWith(r'\'))) {
+      base = base.substring(0, base.length - 1);
+    }
+    final prefix = base.endsWith(sep) ? base : '$base$sep';
+    final candidate = '$prefix${segments.join(sep)}';
+    if (!candidate.startsWith(prefix)) continue;
+    final depth = root.isEmpty ? 0 : root.split('/').length;
+    if (depth > bestDepth) {
+      best = candidate;
+      bestDepth = depth;
+    }
+  }
+  return best;
+}
+
 /// Best-effort MIME type for [name], preferring rclone's own [fallback]
 /// (`RcloneFile.mimeType`) when it is meaningful.
 ///
@@ -250,6 +338,22 @@ const Map<String, String> _mimeByExt = {
   'mpeg': 'video/mpeg',
   'wmv': 'video/x-ms-wmv',
   '3gp': 'video/3gpp',
+  // The rest of kVideoExts, so Android's chooser is offered a player rather
+  // than every app on the device (`*/*`).
+  'flv': 'video/x-flv',
+  'ogv': 'video/ogg',
+  '3g2': 'video/3gpp2',
+  'm2ts': 'video/mp2t',
+  'mts': 'video/mp2t',
+  'm2t': 'video/mp2t',
+  'vob': 'video/mpeg',
+  'divx': 'video/x-msvideo',
+  'asf': 'video/x-ms-asf',
+  'f4v': 'video/mp4',
+  'rm': 'application/vnd.rn-realmedia',
+  'rmvb': 'application/vnd.rn-realmedia-vbr',
+  'mxf': 'application/mxf',
+  'mk3d': 'video/x-matroska',
   // audio
   'mp3': 'audio/mpeg',
   'flac': 'audio/flac',
@@ -259,6 +363,19 @@ const Map<String, String> _mimeByExt = {
   'm4a': 'audio/mp4',
   'aac': 'audio/aac',
   'wma': 'audio/x-ms-wma',
+  'mka': 'audio/x-matroska',
+  'oga': 'audio/ogg',
+  'spx': 'audio/ogg',
+  'm4b': 'audio/mp4',
+  'aiff': 'audio/aiff',
+  'aif': 'audio/aiff',
+  'ape': 'audio/x-ape',
+  'wv': 'audio/x-wavpack',
+  'tta': 'audio/x-tta',
+  'dsf': 'audio/x-dsf',
+  'ac3': 'audio/ac3',
+  'eac3': 'audio/eac3',
+  'dts': 'audio/vnd.dts',
   // documents / text
   'pdf': 'application/pdf',
   'txt': 'text/plain',

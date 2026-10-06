@@ -1,10 +1,14 @@
+import 'dart:ui' as ui;
+
 import 'package:airclone/src/ui/theme/app_theme.dart';
 import 'package:airclone/src/ui/tv.dart';
 import 'package:airclone/src/ui/tv_player_keys.dart';
+import 'package:airclone/src/ui/track_picker.dart';
 import 'package:airclone/src/ui/tv_video_controls.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:media_kit/media_kit.dart';
 
 import 'tv_playback_fake.dart';
 
@@ -79,6 +83,104 @@ void main() {
     );
     await tester.pumpAndSettle();
   }
+
+  String? focused() => FocusManager.instance.primaryFocus?.debugLabel;
+
+  /// A player under a focusable top bar — the shape of the real preview, whose
+  /// back arrow sits above the film.
+  late FocusNode bar;
+  setUp(() => bar = FocusNode(debugLabel: 'top bar back'));
+  tearDown(() => bar.dispose());
+
+  Future<void> pumpUnderBar(WidgetTester tester, Widget player) async {
+    tester.view.physicalSize = const Size(1920, 1080);
+    tester.view.devicePixelRatio = 2;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.light(),
+        home: Scaffold(
+          body: TvFocusOverlay(
+            child: Column(
+              children: [
+                IconButton(
+                  focusNode: bar,
+                  onPressed: () {},
+                  icon: const Icon(Icons.arrow_back),
+                ),
+                Expanded(child: player),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+  }
+
+  testWidgets('a film paged in by previous / next takes focus from the top '
+      'bar, where the old page left it', (tester) async {
+    await pumpUnderBar(tester, const SizedBox());
+    bar.requestFocus();
+    await tester.pump();
+    expect(focused(), 'top bar back');
+    await pumpUnderBar(
+      tester,
+      TvVideoControls(key: const ValueKey('next film'), controller: controller),
+    );
+    await tester.pump();
+    expect(focused(), 'tv video surface');
+  });
+
+  testWidgets('an older player does not take focus from the newest', (
+    tester,
+  ) async {
+    // During a swipe both pages exist; the newest owns the keys.
+    final newer = TvPlaybackController(target: target);
+    addTearDown(newer.dispose);
+    await pumpUnderBar(tester, const SizedBox());
+    bar.requestFocus();
+    await tester.pump();
+    await pumpUnderBar(tester, TvVideoControls(controller: controller));
+    await tester.pump();
+    expect(focused(), 'top bar back');
+  });
+
+  testWidgets('play/pause and the track buttons stay D-pad targets after the '
+      'row has hidden and come back', (tester) async {
+    // On the TV emulator RIGHT skipped the subtitle button (and LEFT/RIGHT
+    // skipped play/pause) after one hide: InkWell copies a passed-in node's
+    // computed skipTraversal onto the node, so any ancestor that turned
+    // traversal off while the row was hidden latched it for good. Nodes the
+    // row owns must come back from a hide exactly as they went in.
+    controller.onPrevious = () {};
+    controller.expectedSidecars = 2;
+    target.tracks = const Tracks(
+      audio: [
+        AudioTrack('auto', null, null),
+        AudioTrack('no', null, null),
+        AudioTrack('1', null, 'eng'),
+      ],
+      subtitle: [
+        SubtitleTrack('auto', null, null),
+        SubtitleTrack('no', null, null),
+      ],
+    );
+    await pumpUnderBar(tester, TvVideoControls(controller: controller));
+    for (var round = 0; round < 2; round++) {
+      controller.showControls();
+      await tester.pumpAndSettle();
+      expect(focused(), 'tv play/pause');
+      for (var i = 0; i < 3; i++) {
+        await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+        await tester.pump();
+      }
+      expect(focused(), 'tv subtitles', reason: 'round $round');
+      controller.hideControls();
+      await tester.pumpAndSettle();
+      expect(focused(), 'tv video surface');
+    }
+  });
 
   testWidgets('a playing film shows no controls at all', (tester) async {
     await pump(tester);
@@ -295,6 +397,285 @@ void main() {
     await tester.pump();
     expect(find.text('Live'), findsOneWidget);
     expect(find.text('--:--'), findsOneWidget);
+    await drain(tester);
+  });
+
+  /// The track pickers on a television (player format plan, A2). A picker is
+  /// where a TV UI most easily strands someone: focus wanders out of a half-
+  /// open panel, the overlay hides from under it, or BACK closes the film
+  /// instead of the list. Each of those is pinned here with real key events.
+  group('the track panel', () {
+    const film = Tracks(
+      audio: [
+        AudioTrack('auto', null, null),
+        AudioTrack('no', null, null),
+        AudioTrack('1', null, 'eng', isDefault: true),
+        AudioTrack('2', null, 'ger'),
+      ],
+      subtitle: [
+        SubtitleTrack('auto', null, null),
+        SubtitleTrack('no', null, null),
+        SubtitleTrack('3', null, 'eng', codec: 'subrip'),
+      ],
+    );
+
+    Future<void> pumpRow(WidgetTester tester) async {
+      target.tracks = film;
+      tester.view.physicalSize = const Size(1920, 1080);
+      tester.view.devicePixelRatio = 2;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: AppTheme.light(),
+          home: Scaffold(
+            body: TvFocusOverlay(
+              child: TvPlaybackKeys(
+                controller: controller,
+                child: TvVideoControls(controller: controller),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+      controller.showControls();
+      await tester.pumpAndSettle();
+    }
+
+    String? focused() => FocusManager.instance.primaryFocus?.debugLabel;
+
+    Future<void> right(WidgetTester tester, int times) async {
+      for (var i = 0; i < times; i++) {
+        await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+        await tester.pump();
+      }
+    }
+
+    testWidgets('both buttons sit after next, reachable with RIGHT', (
+      tester,
+    ) async {
+      await pumpRow(tester);
+      // play/pause -> forward -> next -> audio -> subtitles
+      await right(tester, 3);
+      expect(focused(), 'tv audio track');
+      await right(tester, 1);
+      expect(focused(), 'tv subtitles');
+      await drain(tester);
+    });
+
+    testWidgets('on the last file, RIGHT steps over the dead next button and '
+        'never lands on the video surface', (tester) async {
+      // long-truehd-default on the TV emulator: previous, back, play, forward,
+      // dead next, audio. On that six-button row the full-screen surface's
+      // centre sat just right of play/pause, and RIGHT (or UP) focused it.
+      controller.onPrevious = () {};
+      controller.onNext = null;
+      await pumpRow(tester);
+      target.setTracks(
+        const Tracks(
+          audio: [
+            AudioTrack('auto', null, null),
+            AudioTrack('no', null, null),
+            AudioTrack('1', null, 'eng', codec: 'truehd'),
+            AudioTrack('2', null, 'eng', codec: 'ac3'),
+          ],
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+      expect(find.byIcon(Icons.subtitles_outlined), findsNothing);
+      expect(focused(), 'tv play/pause');
+
+      await right(tester, 1);
+      expect(focused(), isNot('tv video surface'));
+      expect(controller.mode, TvControlsMode.browsing);
+      await right(tester, 1);
+      expect(focused(), 'tv audio track');
+
+      // Back along the row to play/pause, then UP: nothing above it in the
+      // row, and the surface must not catch it either.
+      for (var i = 0; i < 2; i++) {
+        await tester.sendKeyEvent(LogicalKeyboardKey.arrowLeft);
+        await tester.pump();
+      }
+      expect(focused(), 'tv play/pause');
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowUp);
+      await tester.pump();
+      expect(focused(), isNot('tv video surface'));
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+      await tester.pump();
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+      await tester.pump();
+      expect(focused(), isNot('tv video surface'));
+      await drain(tester);
+    });
+
+    testWidgets('a file with no choice gets no buttons', (tester) async {
+      await pumpRow(tester);
+      target.setTracks(const Tracks());
+      // The stream delivers in a microtask, after the first frame.
+      await tester.pump();
+      await tester.pump();
+      expect(find.byIcon(Icons.audiotrack_outlined), findsNothing);
+      expect(find.byIcon(Icons.subtitles_outlined), findsNothing);
+      await drain(tester);
+    });
+
+    testWidgets('OK opens it, and the overlay stays up while it is open', (
+      tester,
+    ) async {
+      await pumpRow(tester);
+      await right(tester, 3);
+      await tester.sendKeyEvent(LogicalKeyboardKey.select);
+      await tester.pumpAndSettle();
+      expect(find.byType(TvTrackPanel), findsOneWidget);
+      expect(find.text('English (default)'), findsOneWidget);
+      expect(controller.controlsHeld, isTrue);
+
+      await tester.pump(TvPlaybackController.autoHideDelay * 3);
+      await tester.pumpAndSettle();
+      expect(opacity(tester), 1, reason: 'no auto-hide under an open picker');
+      expect(find.byType(TvTrackPanel), findsOneWidget);
+      expect(controller.mode, TvControlsMode.browsing);
+
+      // Focus is trapped: LEFT/RIGHT do not leave for the row behind.
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowLeft);
+      await tester.pump();
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+      await tester.pump();
+      expect(focused(), isNot('tv audio track'));
+      expect(focused(), isNot('tv play/pause'));
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await tester.pumpAndSettle();
+      await drain(tester);
+    });
+
+    testWidgets('BACK closes the panel only, and focus returns to its button', (
+      tester,
+    ) async {
+      await pumpRow(tester);
+      await right(tester, 3);
+      await tester.sendKeyEvent(LogicalKeyboardKey.select);
+      await tester.pumpAndSettle();
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await tester.pumpAndSettle();
+      expect(find.byType(TvTrackPanel), findsNothing);
+      expect(opacity(tester), 1, reason: 'BACK closed the list, not the row');
+      expect(focused(), 'tv audio track');
+      expect(controller.controlsHeld, isFalse);
+      expect(target.audioSets, isEmpty);
+      await drain(tester);
+    });
+
+    testWidgets('one remote BACK — a key event and a route pop, as Android 16 '
+        'sends it — closes the panel and nothing else', (tester) async {
+      await pumpRow(tester);
+      await right(tester, 3);
+      await tester.sendKeyEvent(LogicalKeyboardKey.select);
+      await tester.pumpAndSettle();
+      expect(find.byType(TvTrackPanel), findsOneWidget);
+      // The key half, sent as key data (synthesized, so it is dispatched at
+      // once): the test key simulator has no Android scan code for BACK.
+      for (final type in [ui.KeyEventType.down, ui.KeyEventType.up]) {
+        // The only public way to feed the focus tree a key with no scan code.
+        // ignore: deprecated_member_use
+        tester.binding.keyEventManager.handleKeyData(
+          ui.KeyData(
+            type: type,
+            timeStamp: Duration.zero,
+            physical: PhysicalKeyboardKey.browserBack.usbHidUsage,
+            logical: LogicalKeyboardKey.goBack.keyId,
+            character: null,
+            synthesized: true,
+          ),
+        );
+      }
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      expect(find.byType(TvTrackPanel), findsNothing);
+      expect(controller.controlsVisible, isTrue, reason: 'overlay stays up');
+      expect(focused(), 'tv audio track');
+      await drain(tester);
+    });
+
+    testWidgets('DOWN and OK pick a row, which closes the panel', (
+      tester,
+    ) async {
+      await pumpRow(tester);
+      await right(tester, 4);
+      expect(focused(), 'tv subtitles');
+      await tester.sendKeyEvent(LogicalKeyboardKey.select);
+      await tester.pumpAndSettle();
+      // Rows: Off, English. Nothing selected yet, so focus starts on Off.
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+      await tester.pump();
+      await tester.sendKeyEvent(LogicalKeyboardKey.select);
+      await tester.pumpAndSettle();
+      expect(target.subtitleSets.single.id, '3');
+      expect(find.byType(TvTrackPanel), findsNothing);
+      expect(focused(), 'tv subtitles');
+      await drain(tester);
+    });
+  });
+
+  testWidgets('system Back (Android 16 sends it as a route pop, not a key) '
+      'hides the overlay first, then leaves the player', (tester) async {
+    tester.view.physicalSize = const Size(1920, 1080);
+    tester.view.devicePixelRatio = 2;
+    addTearDown(tester.view.reset);
+    final nav = GlobalKey<NavigatorState>();
+    await tester.pumpWidget(
+      MaterialApp(
+        navigatorKey: nav,
+        theme: AppTheme.light(),
+        home: const Scaffold(body: Text('browser')),
+      ),
+    );
+    nav.currentState!.push(
+      MaterialPageRoute<void>(
+        builder: (_) => Scaffold(
+          body: TvFocusOverlay(child: TvVideoControls(controller: controller)),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    controller.showControls();
+    await tester.pump();
+    expect(controller.controlsVisible, isTrue);
+
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    expect(controller.controlsVisible, isFalse);
+    expect(find.byType(TvVideoControls), findsOneWidget, reason: 'still here');
+
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    expect(find.byType(TvVideoControls), findsNothing);
+    expect(find.text('browser'), findsOneWidget);
+  });
+
+  testWidgets('the subtitle line is drawn by the overlay and clears the '
+      'transport row while it is up', (tester) async {
+    target.setSubtitleLines(['Hello from the film']);
+    await pump(tester);
+    expect(find.text('Hello from the film'), findsOneWidget);
+    target.setSubtitleLines(['Second line']);
+    await tester.pump();
+    await tester.pump();
+    expect(find.text('Second line'), findsOneWidget);
+    double bottom() => tester
+        .widget<AnimatedPositioned>(
+          find.ancestor(
+            of: find.byType(TvSubtitleLine),
+            matching: find.byType(AnimatedPositioned),
+          ),
+        )
+        .bottom!;
+    final low = bottom();
+    controller.showControls();
+    await tester.pump();
+    expect(bottom(), greaterThan(low + 100));
     await drain(tester);
   });
 }

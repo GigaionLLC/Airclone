@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:media_kit/media_kit.dart' show Tracks;
 
+import '../state/media_tracks.dart';
 import 'theme/tokens.dart';
+import 'track_picker.dart';
 import 'tv.dart' show tvOverscan;
 import 'tv_player_keys.dart';
 
@@ -50,6 +53,14 @@ class _TvVideoControlsState extends State<TvVideoControls> {
   /// Focus lands here when the row appears, so OK is play/pause immediately.
   final FocusNode _playPause = FocusNode(debugLabel: 'tv play/pause');
 
+  /// The two track buttons. Owned here so focus can go BACK to the one that
+  /// opened the panel when it closes, rather than to play/pause or nowhere.
+  final FocusNode _audioButton = FocusNode(debugLabel: 'tv audio track');
+  final FocusNode _subtitleButton = FocusNode(debugLabel: 'tv subtitles');
+
+  /// The open track panel, or null.
+  TrackKind? _panel;
+
   TvControlsMode _last = TvControlsMode.hidden;
 
   @override
@@ -57,6 +68,17 @@ class _TvVideoControlsState extends State<TvVideoControls> {
     super.initState();
     widget.controller.addListener(_onControllerChanged);
     _last = widget.controller.mode;
+    // Previous / next swap the page under a focused button. When that page
+    // went, focus fell back to the top bar's back arrow (TV emulator), and
+    // OK there left the player. [autofocus] cannot help: something still had
+    // focus when this page was built. So the film on screen — the newest
+    // player owns the media keys — takes it, as a freshly opened film does.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !widget.controller.ownsMediaKeys) return;
+      if (widget.controller.mode == TvControlsMode.hidden) {
+        _surface.requestFocus();
+      }
+    });
   }
 
   @override
@@ -71,9 +93,30 @@ class _TvVideoControlsState extends State<TvVideoControls> {
   @override
   void dispose() {
     widget.controller.removeListener(_onControllerChanged);
+    if (_panel != null) widget.controller.releaseControls();
     _surface.dispose();
     _playPause.dispose();
+    _audioButton.dispose();
+    _subtitleButton.dispose();
     super.dispose();
+  }
+
+  void _openPanel(TrackKind kind) {
+    if (_panel != null) return;
+    widget.controller.holdControls();
+    setState(() => _panel = kind);
+  }
+
+  void _closePanel() {
+    final kind = _panel;
+    if (kind == null) return;
+    setState(() => _panel = null);
+    widget.controller.releaseControls();
+    // After the panel's FocusScope is gone, or the request lands inside it.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      (kind == TrackKind.audio ? _audioButton : _subtitleButton).requestFocus();
+    });
   }
 
   void _onControllerChanged() {
@@ -101,18 +144,56 @@ class _TvVideoControlsState extends State<TvVideoControls> {
   @override
   Widget build(BuildContext context) {
     final controller = widget.controller;
+    // BACK, at the route and only here. On the API 36 TV emulator one press of
+    // the remote's Back arrives as a key event AND a route pop: with a key
+    // handler acting too, one BACK closed the panel and then the player (or
+    // the panel and the overlay). The key handlers now leave BACK alone, and
+    // the order the key table promises — panel, then overlay, then the
+    // player — is enforced here, which holds on every Android.
+    return PopScope(
+      canPop: _panel == null && !controller.controlsVisible,
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop) return;
+        if (_panel != null) {
+          _closePanel();
+        } else {
+          controller.handleBack();
+        }
+      },
+      child: _body(controller),
+    );
+  }
+
+  Widget _body(TvPlaybackController controller) {
     return Stack(
       fit: StackFit.expand,
       children: [
         // Bottom layer: the focusable surface. Also the reason a film plays
-        // ring-free — see [_surface].
+        // ring-free — see [_surface]. Focused in code only: as a traversal
+        // candidate this full-screen node's centre sat just right of
+        // play/pause on a six-button row, and RIGHT (or UP) moved focus onto
+        // it — no ring anywhere, tested on the TV emulator.
         Focus(
           focusNode: _surface,
           autofocus: true,
+          skipTraversal: true,
           child: const SizedBox.expand(),
         ),
         if (controller.pendingTarget != null)
           Center(child: _PendingSeekBadge(controller: controller)),
+        // Text subtitles, drawn here rather than by media_kit so the line can
+        // clear the transport row while it is up (see TvSubtitleLine).
+        AnimatedPositioned(
+          duration: const Duration(milliseconds: 160),
+          left: tvOverscan.left,
+          right: tvOverscan.right,
+          bottom:
+              tvOverscan.bottom +
+              (controller.controlsVisible ? kTvControlsHeight : Space.x4),
+          child: IgnorePointer(
+            child: TvSubtitleLine(target: controller.target),
+          ),
+        ),
         Positioned(
           left: 0,
           right: 0,
@@ -136,6 +217,9 @@ class _TvVideoControlsState extends State<TvVideoControls> {
                       TvTransportRow(
                         controller: controller,
                         playPauseFocus: _playPause,
+                        audioTrackFocus: _audioButton,
+                        subtitleTrackFocus: _subtitleButton,
+                        onTrackPicker: _openPanel,
                       ),
                     ],
                   ),
@@ -144,6 +228,14 @@ class _TvVideoControlsState extends State<TvVideoControls> {
             ),
           ),
         ),
+        if (_panel != null)
+          Positioned.fill(
+            child: TvTrackPanel(
+              controller: controller,
+              kind: _panel!,
+              onClose: _closePanel,
+            ),
+          ),
       ],
     );
   }
@@ -411,12 +503,28 @@ class TvTransportRow extends StatelessWidget {
     required this.controller,
     this.playPauseFocus,
     this.onSurface,
+    this.onTrackPicker,
+    this.audioTrackFocus,
+    this.subtitleTrackFocus,
   });
 
   final TvPlaybackController controller;
 
   /// The node the host focuses when this row appears.
   final FocusNode? playPauseFocus;
+
+  /// Opens the host's track panel. Null leaves the track buttons out, which
+  /// is what the audio screen wants: a song has one audio track and no
+  /// subtitles, and a button that only ever offers one row is noise.
+  ///
+  /// When set, the audio / subtitle buttons sit AFTER next, so the row a
+  /// person already knows keeps its shape and play/pause keeps its place. Each
+  /// appears only when it has a choice to offer (see `state/media_tracks.dart`).
+  final ValueChanged<TrackKind>? onTrackPicker;
+
+  /// The nodes focus returns to when the panel each one opened closes.
+  final FocusNode? audioTrackFocus;
+  final FocusNode? subtitleTrackFocus;
 
   /// Themed colours for the audio screen; null renders white-on-video.
   final AircloneColors? onSurface;
@@ -487,6 +595,31 @@ class TvTransportRow extends StatelessWidget {
                 onPressed: controller.onNext,
                 foreground: fg,
                 disabled: faint,
+              ),
+            if (onTrackPicker != null)
+              StreamBuilder<Tracks>(
+                stream: controller.target.tracksStream,
+                initialData: controller.target.tracks,
+                builder: (context, snap) {
+                  final tracks = snap.data ?? const Tracks();
+                  return Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      for (final kind in TrackKind.values)
+                        if (trackButtonVisible(controller, kind, tracks))
+                          _TvControlButton(
+                            icon: trackKindIcon(kind),
+                            tooltip: trackKindTitle(kind),
+                            onPressed: () => onTrackPicker!(kind),
+                            foreground: fg,
+                            disabled: faint,
+                            focusNode: kind == TrackKind.audio
+                                ? audioTrackFocus
+                                : subtitleTrackFocus,
+                          ),
+                    ],
+                  );
+                },
               ),
           ],
         );
@@ -605,4 +738,43 @@ String formatMediaClock(Duration d) {
   String two(int n) => n.toString().padLeft(2, '0');
   final body = h > 0 ? '$h:${two(m)}:${two(s)}' : '$m:${two(s)}';
   return negative ? '-$body' : body;
+}
+
+/// Roughly how tall the overlay (scrub bar + transport row) stands above the
+/// overscan margin — what a subtitle line has to clear while it is visible.
+const double kTvControlsHeight = 150;
+
+/// The text subtitle line on a television.
+///
+/// media_kit scales its own subtitle text by the frame's area against 1080p,
+/// clamped at 1, so on a TV's 960x540dp its 32px becomes about 16dp: legible
+/// at a desk, a smudge from a sofa. This draws at a fixed size instead. Image
+/// subtitles never reach it — they have no text (see `media_tracks.dart`).
+class TvSubtitleLine extends StatelessWidget {
+  const TvSubtitleLine({super.key, required this.target});
+  final TvPlaybackTarget target;
+
+  @override
+  Widget build(BuildContext context) => StreamBuilder<List<String>>(
+    stream: target.subtitleStream,
+    initialData: target.subtitle,
+    builder: (context, snap) {
+      final text = (snap.data ?? const <String>[])
+          .where((l) => l.trim().isNotEmpty)
+          .join('\n');
+      if (text.isEmpty) return const SizedBox.shrink();
+      return Text(
+        text,
+        textAlign: TextAlign.center,
+        textScaler: TextScaler.noScaling,
+        style: TextStyle(
+          height: 1.3,
+          fontSize: 28,
+          fontWeight: FontWeight.w500,
+          color: Colors.white,
+          backgroundColor: Colors.black.withValues(alpha: 0.67),
+        ),
+      );
+    },
+  );
 }

@@ -5,6 +5,7 @@ import 'package:flutter/widgets.dart';
 import 'package:media_kit/media_kit.dart';
 
 import '../state/android_native.dart' show androidIsTelevision;
+import '../state/media_tracks.dart';
 
 /// Turns a remote into transport controls.
 ///
@@ -66,6 +67,30 @@ abstract interface class TvPlaybackTarget {
   Stream<Duration> get positionStream;
   Stream<Duration> get durationStream;
   Stream<Duration> get bufferStream;
+
+  // The file's audio and subtitle tracks, for the track pickers. Here rather
+  // than on [Player] for the same reason as everything above: the pickers on
+  // a television, a desktop and a phone are then all provable on a fake, and
+  // there is one seam for the three of them instead of three.
+
+  /// The tracks libmpv found, media_kit's `auto` / `no` placeholders
+  /// included (see `state/media_tracks.dart`, which never lists those).
+  Tracks get tracks;
+  Stream<Tracks> get tracksStream;
+
+  /// The text subtitle lines on screen now (media_kit's `sub-text`). On a
+  /// television the overlay draws them itself, so the line can move above the
+  /// transport row while it is up — see `TvSubtitleLine`.
+  List<String> get subtitle;
+  Stream<List<String>> get subtitleStream;
+
+  /// What mpv has ACTUALLY selected. media_kit's own `state.track` only
+  /// echoes what was last set through it, so an automatic pick — which is
+  /// what every file starts with — would read as `auto` forever.
+  Future<TrackSelection> selection();
+
+  Future<void> setAudio(AudioTrack track);
+  Future<void> setSubtitle(SubtitleTrack track);
 }
 
 /// [TvPlaybackTarget] backed by media_kit.
@@ -119,6 +144,56 @@ class MediaKitPlaybackTarget implements TvPlaybackTarget {
       // Seeking past the end of a still-buffering stream can throw.
     }
   }
+
+  @override
+  Tracks get tracks => player.state.tracks;
+
+  @override
+  Stream<Tracks> get tracksStream => player.stream.tracks;
+
+  @override
+  List<String> get subtitle => player.state.subtitle;
+
+  @override
+  Stream<List<String>> get subtitleStream => player.stream.subtitle;
+
+  @override
+  Future<TrackSelection> selection() async {
+    final fallback = (
+      audio: player.state.track.audio.id,
+      subtitle: player.state.track.subtitle.id,
+    );
+    final native = player.platform;
+    if (native is! NativePlayer) return fallback;
+    try {
+      final aid = await native.getProperty('aid');
+      final sid = await native.getProperty('sid');
+      return (
+        audio: aid.isEmpty ? fallback.audio : aid,
+        subtitle: sid.isEmpty ? fallback.subtitle : sid,
+      );
+    } catch (_) {
+      return fallback;
+    }
+  }
+
+  @override
+  Future<void> setAudio(AudioTrack track) async {
+    try {
+      await player.setAudioTrack(track);
+    } catch (_) {
+      // A track that vanished between listing and picking; nothing to do.
+    }
+  }
+
+  @override
+  Future<void> setSubtitle(SubtitleTrack track) async {
+    try {
+      await player.setSubtitleTrack(track);
+    } catch (_) {
+      // As above.
+    }
+  }
 }
 
 /// Which controls a surface shows, and therefore what the arrows mean.
@@ -147,8 +222,26 @@ class TvPlaybackController extends ChangeNotifier {
     this.onNext,
     this.alwaysVisible = false,
     this.tvKeysEnabled = true,
+    this.imageSubsRenderable = false,
   }) : _mode = alwaysVisible ? TvControlsMode.browsing : TvControlsMode.hidden {
     _mediaKeyOwners.add(this);
+    _playingSub = target.playingStream.listen(_onPlayingChanged);
+  }
+
+  late final StreamSubscription<bool> _playingSub;
+
+  /// The player reports a pause or a resume after the key that caused it, so
+  /// the auto-hide is re-decided here as well. Armed on the stale state, it
+  /// hid a just-paused film's controls on the TV emulator, and the next RIGHT
+  /// seeked instead of moving along the row.
+  void _onPlayingChanged(bool playing) {
+    if (_disposed || !controlsVisible) return;
+    if (playing) {
+      _armAutoHide();
+    } else {
+      _hideTimer?.cancel();
+      _hideTimer = null;
+    }
   }
 
   final TvPlaybackTarget target;
@@ -167,6 +260,33 @@ class TvPlaybackController extends ChangeNotifier {
   /// True for the audio surface, whose controls are the screen rather than an
   /// overlay. Keeps the mode in [TvControlsMode.browsing] for good.
   final bool alwaysVisible;
+
+  /// Whether an image subtitle (PGS, VobSub) can be drawn by this player. False
+  /// while libass rendering is off — see `kLibassSubtitles` in
+  /// `media_preview.dart` — which makes the pickers list those tracks as
+  /// "can't be shown here" instead of offering a choice that shows nothing.
+  final bool imageSubsRenderable;
+
+  /// Titles of the sidecar subtitle files the player added, so the picker can
+  /// label them `external`. Filled in by the host as it adds them.
+  final Set<String> externalSubtitleTitles = {};
+
+  /// How many sidecars the host found and is about to add. Non-zero shows the
+  /// subtitle button straight away, rather than having it pop in a moment
+  /// after playback starts. Notifies, because it is learned from a listing
+  /// that can finish after the controls were built.
+  int get expectedSidecars => _expectedSidecars;
+  set expectedSidecars(int value) {
+    if (value == _expectedSidecars) return;
+    _expectedSidecars = value;
+    notifyListeners();
+  }
+
+  int _expectedSidecars = 0;
+
+  /// Told about every pick, after it reached the player — the host remembers
+  /// the language and re-applies the pick after a Retry.
+  void Function(TrackChoice choice)? onTrackPicked;
 
   /// False off a television. The MEDIA keys still work — a keyboard's transport
   /// keys and a Bluetooth remote paired to a phone are the same keys, and
@@ -261,8 +381,15 @@ class TvPlaybackController extends ChangeNotifier {
   bool get ownsMediaKeys =>
       _mediaKeyOwners.isNotEmpty && _mediaKeyOwners.last == this;
 
+  /// Set by [dispose]. The track panel releases its hold when IT is disposed,
+  /// which on a Retry or a closing preview is after this controller already
+  /// was — and a hide timer armed then would notify a disposed notifier.
+  bool _disposed = false;
+
   @override
   void dispose() {
+    _disposed = true;
+    _playingSub.cancel();
     _commitTimer?.cancel();
     _hideTimer?.cancel();
     _cancelHoldTimers();
@@ -292,8 +419,13 @@ class TvPlaybackController extends ChangeNotifier {
     if (key == LogicalKeyboardKey.arrowLeft ||
         key == LogicalKeyboardKey.arrowRight) {
       // In browsing mode the arrows belong to the transport row's own focus
-      // traversal. Seeking from there is what ⏪/⏩ are for.
-      if (_mode == TvControlsMode.browsing) return KeyEventResult.ignored;
+      // traversal. Seeking from there is what ⏪/⏩ are for. Each one is the
+      // user still at the row, so the auto-hide starts over: it used to hide
+      // the row mid-walk, and the next RIGHT seeked instead (TV emulator).
+      if (_mode == TvControlsMode.browsing) {
+        _armAutoHide();
+        return KeyEventResult.ignored;
+      }
       nudge(key == LogicalKeyboardKey.arrowLeft ? -1 : 1);
       return KeyEventResult.handled;
     }
@@ -321,24 +453,23 @@ class TvPlaybackController extends ChangeNotifier {
       // ⏪/⏩ buttons see a hold before this does (see `_TvSeekHold` in tv_video_controls.dart).
       if (event is KeyRepeatEvent) return KeyEventResult.handled;
       // With the row up, OK belongs to whatever button holds focus.
-      if (_mode == TvControlsMode.browsing) return KeyEventResult.ignored;
+      if (_mode == TvControlsMode.browsing) {
+        _armAutoHide();
+        return KeyEventResult.ignored;
+      }
       commitPending();
       playPause();
       _show(TvControlsMode.browsing);
       return KeyEventResult.handled;
     }
 
-    if (key == LogicalKeyboardKey.goBack ||
-        key == LogicalKeyboardKey.escape ||
-        key == LogicalKeyboardKey.browserBack) {
-      // Hide the overlay if it is up; otherwise let the route close, which is
-      // what BACK means everywhere else on a television.
-      if (!alwaysVisible && controlsVisible) {
-        commitPending();
-        hideControls();
-        return KeyEventResult.handled;
-      }
-      return KeyEventResult.ignored;
+    // Esc only. The remote's BACK is left to the route (TvVideoControls'
+    // PopScope calls [handleBack]): Android 16 delivers one press as a key
+    // event AND a route pop, so acting on the key here as well made one BACK
+    // do two things. An ignored BACK key still reaches the route on older
+    // Android, as the embedding hands it back to the activity.
+    if (key == LogicalKeyboardKey.escape) {
+      return handleBack() ? KeyEventResult.handled : KeyEventResult.ignored;
     }
 
     return KeyEventResult.ignored;
@@ -578,6 +709,53 @@ class TvPlaybackController extends ChangeNotifier {
 
   void showControls() => _show(TvControlsMode.browsing);
 
+  /// Keeps the overlay up until [releaseControls], whatever is playing: a
+  /// track picker is open over it. The five-second auto-hide would otherwise
+  /// take the row away from under a person still reading a list of languages,
+  /// and leave focus on a panel that no longer has a reason to exist.
+  void holdControls() {
+    _holds++;
+    _hideTimer?.cancel();
+    _hideTimer = null;
+    if (!controlsVisible) _show(TvControlsMode.browsing);
+  }
+
+  /// Ends one [holdControls]; the auto-hide resumes when the last one ends.
+  void releaseControls() {
+    if (_disposed || _holds == 0) return;
+    _holds--;
+    if (_holds == 0) _armAutoHide();
+  }
+
+  int _holds = 0;
+  bool get controlsHeld => _holds > 0;
+
+  /// Applies a picker row to the player, then tells [onTrackPicked]. A
+  /// disabled row does nothing: it is listed to explain, not to be chosen.
+  Future<void> selectTrack(TrackChoice choice) async {
+    if (!choice.enabled) return;
+    switch (choice.kind) {
+      case TrackKind.audio:
+        await target.setAudio(AudioTrack(choice.id, null, null));
+      case TrackKind.subtitle:
+        await target.setSubtitle(
+          choice.isOff
+              ? SubtitleTrack.no()
+              : SubtitleTrack(choice.id, null, null),
+        );
+    }
+    onTrackPicked?.call(choice);
+  }
+
+  /// BACK: hides the overlay if it is up and returns true; false means there
+  /// is nothing left to dismiss and the route may close.
+  bool handleBack() {
+    if (alwaysVisible || !controlsVisible) return false;
+    commitPending();
+    hideControls();
+    return true;
+  }
+
   void hideControls() {
     if (alwaysVisible) return;
     _hideTimer?.cancel();
@@ -597,11 +775,13 @@ class TvPlaybackController extends ChangeNotifier {
   void _armAutoHide() {
     _hideTimer?.cancel();
     _hideTimer = null;
-    if (alwaysVisible) return;
+    if (alwaysVisible || _holds > 0) return;
     // A paused film keeps its controls, and so does a pending scrub — both are
     // states the user is in the middle of.
     if (!target.playing || _pending != null) return;
-    _hideTimer = Timer(autoHideDelay, hideControls);
+    _hideTimer = Timer(autoHideDelay, () {
+      if (target.playing && _pending == null && _holds == 0) hideControls();
+    });
   }
 
   Duration _clamp(Duration at) {

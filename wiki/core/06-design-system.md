@@ -168,9 +168,9 @@ See the [Components Index](../components/components-index.md) for the full catal
 - **Contrast:** all text/bg pairs meet WCAG AA (4.5:1 body, 3:1 large). **Status is never
   color-only** — pair every dot/chip with an icon and text label.
 - **Keyboard (desktop):** what ships is `Alt+←/→/↑` and `Backspace` to navigate, `F5` refresh,
-  `Ctrl+L` / `Alt+D` to edit the path, `Ctrl+F` filter, `Ctrl+Shift+F` search, `Ctrl+K` palette,
+  `Ctrl+L` / `Alt+D` to edit the path, `Ctrl+F` search this folder, `Ctrl+Shift+F` search here and in subfolders, `Ctrl+K` palette,
   `Ctrl+T`/`Ctrl+W` tabs, `Ctrl+I` inspector, `F2` rename, `Del` delete, `Enter` open, `Space` Quick
-  Look, `Esc` clear, `Ctrl+A/C/X/V`, type-to-jump, and `F1` for the cheat sheet —
+  Look, `Esc` clear (then step out of the search), `Ctrl+A/C/X/V`, type-to-jump, and `F1` for the cheat sheet —
   [`shortcuts_dialog.dart`](../../app/lib/src/ui/shortcuts_dialog.dart) is the list to mirror, so
   extend it in the same change. **Not yet:** arrow-key row navigation outside the tree view
   ([`tree_view.dart`](../../app/lib/src/ui/tree_view.dart) is the only view with a cursor), `Tab` as a

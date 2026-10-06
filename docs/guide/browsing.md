@@ -69,7 +69,7 @@ showing files. That is covered in [the command console](console.md).
 ## The address bar and getting around
 
 The desktop address row, left to right: `Back (Alt+←)`, `Forward (Alt+→)`, `Up (Alt+↑)`, `Refresh`,
-`New tab (Ctrl+T)`, the breadcrumb path, a filter box, and `Close pane (deselect remote)`.
+`New tab (Ctrl+T)`, the breadcrumb path, the search box, and `Close pane (deselect remote)`.
 
 The breadcrumb shows the remote followed by each folder in the path. Click any crumb to jump
 straight there. When the trail is too long for the width, the middle collapses into a `…` chip whose
@@ -162,24 +162,45 @@ Two rules never change, whatever you sort by:
 In the List and Tree views the `Size` and `Modified` columns can be resized by dragging the thin
 divider on their left edge. The widths are remembered.
 
-## Filtering, and searching
+## Searching
 
-These are two different things and it is worth keeping them apart.
+Every pane has one search box. On the desktop it sits in the address row (`Ctrl+F` puts the cursor
+in it). On a phone or a TV, tap the magnifier in the folder header (or `⋯` → `Search` when the pane
+is narrow) and the box takes the folder title's place.
 
-**The filter box** (`Ctrl+F`, hint text `Filter`) narrows the folder you are looking at. It matches
-anywhere in the name, it is instant because it works on the listing already on screen, and it does
-not look inside subfolders. Navigating anywhere clears it. When a filter hides everything, the pane
-says `No matches` rather than `Empty folder`.
+**It starts with this folder.** The hint says `Search this folder`, and typing narrows the list as you
+type. It is instant because it works on the listing already on screen. Every word you type has to
+appear in the name, in any order, ignoring case. A line under the box says how many items in this
+folder match. When nothing does, the pane says `No matches` rather than `Empty folder`.
 
-**Search** (`Ctrl+Shift+F` on the desktop, the magnifier or `⋯` → `Search this folder` on the phone)
-opens a dialog titled `Search in <remote>/<folder>`. Type into `Name contains…` and press `Search`.
-It scans every file and folder beneath the current one — the dialog says so — so on a large remote
-it takes a while and it costs a listing request. Multiple words all have to match, in the name or in
-the path.
+**One step reaches every subfolder.** Two ways to get there, whichever is nearer:
 
-Results are capped at 500 on screen; beyond that you get
-`Showing first 500 of N matches — refine your search.` and the true total. Clicking a result opens
-the folder, or opens the file's parent folder and selects the file for you.
+- the switch under the box, `This folder | Subfolders`;
+- the row at the bottom of the pane, `Search subfolders for "<what you typed>"`. It shows whenever
+  the box has text, including under `No matches`, and on a TV it is where DOWN takes you.
+
+`Ctrl+Shift+F` on the desktop does the same and keeps what you typed.
+
+Subfolders scans the folder you are in and everything beneath it once, then searches that as you
+type, so refining a search costs nothing. The line under the box shows `Scanning <folder>…` with a
+clock and a `Cancel` button while it runs. On a large cloud remote that can take a while, and the
+scan is one listing request. The results replace the folder's list. Each row shows the folder the
+match lives in. A word can match the name or that folder path, so `2024 beach` finds
+`Photos/2024/beach.jpg`. Matches whose name starts with what you typed come first.
+
+Open a result the way you would open it in the folder: a folder opens, a file previews. Its
+right-click (long-press, or RIGHT on a remote) menu has the usual actions plus `Show in folder`,
+which goes to the file's folder and selects it there. Selecting several results at once is not
+supported yet.
+
+`Esc` (or Back on a phone or TV) steps out one level at a time: from the results back to this folder,
+then clears the text, then closes the box. Going to any other folder also resets the search to `This
+folder`, because a search describes the folder it started from.
+
+Two notes can appear above the results. On an encrypted (crypt) remote, `N names could not be
+decrypted — results may be incomplete.` means rclone skipped names it could not decrypt during the
+scan; see [When a folder looks empty](#when-a-folder-looks-empty). A scan stops after 250,000 items
+and says so. Start from a smaller folder to search the rest.
 
 ## Selecting files
 
@@ -244,11 +265,38 @@ Both render the same things:
 | Kind | Extensions recognised |
 |---|---|
 | Images | png, jpg, jpeg, gif, webp, bmp |
-| Video | mp4, mkv, webm, mov, avi, m4v, mpg, mpeg, wmv, flv |
+| Video | mp4, mkv, mk3d, webm, mov, avi, divx, m4v, mpg, mpeg, vob, m2ts, mts, m2t, wmv, asf, flv, f4v, ogv, 3gp, 3g2 |
 | Streams | m3u8, m3u (HLS), mpd (MPEG-DASH) |
-| Audio | mp3, flac, wav, ogg, m4a, aac, opus, wma |
+| Audio | mp3, flac, wav, aiff, aif, ogg, oga, spx, m4a, m4b, aac, opus, wma, mka, ape, wv, tta, dsf, ac3, dts, mpc |
 | Documents | pdf, md, markdown |
 | Text and code | txt, log, json, yaml, yml, dart, js, ts, py, sh, c, cpp, h, xml, csv, ini, conf, toml |
+
+Disc rips and broadcast recordings (`vob`, `m2ts`, `mts`, `m2t`) and the older ASF container play,
+but show the film icon rather than a thumbnail: taking a frame from a
+multi-gigabyte file on a cloud remote can take longer than the thumbnail is worth. A `.ts` file is
+treated as TypeScript code, not video, because in a file manager it almost always is. In the Web UI
+the browser plays the file itself, so most of these containers say plainly that the browser cannot
+play them. RealMedia (`rm`, `rmvb`), MXF and bare E-AC-3 (`eac3`) files are not played in the app at
+all: the built-in player has no decoder for them, so they offer **Open in another app** instead.
+
+### Audio tracks and subtitles
+
+When a video has more than one audio track, or any subtitles, the player shows an **audio** and a
+**subtitles** button next to repeat. They list each track by language, with the channel layout and
+the format for audio (`English · 5.1 · AC-3 (default)`), and switch it while the video plays. On
+Android TV the same two buttons sit at the end of the control row: press **UP** to reach the row,
+**RIGHT** to the button, **OK** to open the list, and **BACK** to close it.
+
+- **Subtitle files beside the video are picked up.** `Film.srt`, `Film.en.srt` or
+  `Film.de.forced.srt` next to `Film.mkv` appear in the subtitle list, marked *external*. Airclone
+  reads `.srt`, `.ass`, `.ssa` and `.vtt` files up to 2 MB. If the video has no subtitles of its
+  own, a file in your preferred language (or the only one there is) is switched on.
+- **Your choice is remembered.** Pick a language once and the next video starts in it when it has
+  that language. Switching subtitles off is remembered too.
+- **Picture subtitles do not show yet.** Blu-ray and DVD rips carry subtitles as images (PGS,
+  VobSub). They are listed as *can't be shown here*, and a film whose default subtitle is an image
+  starts with subtitles off instead of showing nothing.
+- **Not in the Web UI**, where the browser plays the video and offers no track choice.
 
 ### Streams and network playback
 
@@ -265,7 +313,8 @@ engine is for a port on your own machine, and it never travels anywhere else.
 
 A file with no extension falls back to the type the remote reports. Anything else gets a
 `No preview available` card with an `Open in another app` button where handing the file to another
-app is possible. Text and markdown are capped at 512 KB and truncated past that, with a note, so a
+app is possible. On a desktop, if the remote is already mounted, `Open in another app` opens the
+file straight from the mounted drive, so a large video starts at once instead of downloading first. Text and markdown are capped at 512 KB and truncated past that, with a note, so a
 stray multi-megabyte log cannot lock up the window.
 
 ### Operations from the preview
@@ -434,7 +483,8 @@ Copying, moving and syncing are covered in [moving files around](transferring.md
 Three different messages, three different meanings:
 
 - **`Empty folder`** — the remote listed the folder and there was nothing in it.
-- **`No matches`** — there are items, but your filter is hiding all of them. Clear the filter box.
+- **`No matches`** — there are items, but none matches what is in the search box. Clear it, or try
+  `Search subfolders`.
 - **`N items hidden`**, with a padlock — this appears on an encrypted (crypt) remote. rclone could
   not decrypt a single name, so it returned none of them, and the folder is **not** empty. Almost
   always the crypt remote's password or salt does not match the data it is wrapping. If only some
@@ -451,17 +501,17 @@ time to see the list in the app; this is the whole of it.
 | Keys | Does |
 |---|---|
 | `Ctrl + K` | Command palette |
-| `Ctrl + Shift + F` | Search subfolders |
+| `Ctrl + Shift + F` | Search here and in subfolders |
 | `Alt + ←` | Back |
 | `Alt + →` | Forward |
 | `Alt + ↑` | Up a folder |
-| `Ctrl + F` | Filter the list |
+| `Ctrl + F` | Search this folder |
 | type… | Jump to a name |
 | `Ctrl + T` | New tab |
 | `Ctrl + W` | Close tab |
 | `Ctrl + I` | Toggle details |
 | `Ctrl + A` | Select all |
-| `Esc` | Clear selection |
+| `Esc` | Clear selection, then step out of the search |
 | `Enter` | Open folder / preview file |
 | `Space` | Quick Look |
 | `F2` | Rename |
@@ -477,7 +527,8 @@ folder.
 Typing plain letters jumps to the first item whose name starts with what you typed; the buffer
 clears after about a second of not typing.
 
-None of these fire while you are typing in the filter box or the address bar. The keys belong to the
+None of these fire while you are typing in the search box or the address bar (except `Esc`, which
+steps out of the search there too). The keys belong to the
 field you are in.
 
 ## Where next

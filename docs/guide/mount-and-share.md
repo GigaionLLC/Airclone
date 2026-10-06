@@ -45,6 +45,11 @@ Mounting needs a filesystem driver that only a desktop operating system provides
 | macOS from the Mac App Store | No | Hidden entirely. The App Sandbox cannot run FUSE, so the button and the Settings → Mounts group do not appear rather than failing when pressed. |
 | Android, iOS | No | Not supported. |
 
+While a remote is mounted, **Open in another app** on one of its files opens it from the mounted
+drive instead of downloading a copy first. That is the quick way to watch something the built-in
+player cannot handle: your usual video player reads it through the mount and only fetches what it
+plays. Airclone never mounts anything for this on its own.
+
 ### Mounting from the Flatpak needs one permission
 
 A drive mounted inside the Flatpak sandbox would be visible **only to Airclone** — not to your file

@@ -15,6 +15,7 @@ import 'package:flutter/foundation.dart';
 
 import 'package:airclone_rc/airclone_rc.dart';
 import '../ui/pane_drag.dart' show joinPath;
+import 'pane_search.dart' show matchesName, queryTokens;
 
 /// Per-tab tree state, kept beside the flat listing in `BrowserState`.
 ///
@@ -171,7 +172,10 @@ List<TreeRow> flattenTree({
   String filter = '',
 }) {
   final out = <TreeRow>[];
-  final q = filter.toLowerCase();
+  // Every word must appear in the name — the rule the flat views and the
+  // search box use, so one query never shows different rows per view.
+  final tokens = queryTokens(filter);
+  final q = tokens.isEmpty ? '' : filter;
 
   // Returns whether anything under [entries] was emitted (drives the
   // keep-the-ancestor rule when filtering).
@@ -179,7 +183,7 @@ List<TreeRow> flattenTree({
     var emitted = false;
     for (final f in entries) {
       final path = joinPath(parentPath, f.name);
-      final matches = q.isEmpty || f.name.toLowerCase().contains(q);
+      final matches = q.isEmpty || matchesName(f.name, filter);
       if (f.isDir && tree.expanded.contains(path)) {
         final mark = out.length;
         out.add(TreeRow.entry(entry: f, parentPath: parentPath, depth: depth));

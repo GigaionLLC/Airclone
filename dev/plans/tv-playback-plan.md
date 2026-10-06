@@ -44,7 +44,8 @@
 * **Out of Scope:**
   - **Subtitle and audio-track pickers.** libmpv exposes both and a TV user watching films will ask
     for them next — deliberately the following iteration, not this one, so that the thing reported
-    lands sooner.
+    lands sooner. *(Built in that following iteration: see
+    [player-format-support-plan.md](player-format-support-plan.md) §4.A.)*
   - **MediaSession / system transport integration** (the Google TV "now playing" row, playback that
     survives leaving the app). That needs a platform channel and a foreground service — a separate
     piece of work, and the known Android production gap already tracked in the Android dev notes.

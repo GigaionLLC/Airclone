@@ -51,6 +51,30 @@ void main() {
       expect(files.single.name, 'a.pdf');
       expect(files.single.size, 12);
 
+      // The recursive search's form: same method, `_async` on, raw answer back.
+      client.answer = {'jobid': 41};
+      final started = await api.operations.listAsync(
+        'gdrive:',
+        'papers',
+        opt: {'recurse': true},
+      );
+      expectCall('operations/list', {
+        'fs': 'gdrive:',
+        'remote': 'papers',
+        'opt': {'recurse': true},
+        '_async': true,
+      });
+      expect(started['jobid'], 41);
+      expect(RcOperations.parseList(started), isNull);
+      expect(
+        RcOperations.parseList({
+          'list': [
+            {'Name': 'b', 'Path': 'x/b', 'IsDir': true},
+          ],
+        })!.single.isDir,
+        isTrue,
+      );
+
       await api.operations.copyFile(
         srcFs: 'gdrive:',
         srcRemote: 'a.pdf',

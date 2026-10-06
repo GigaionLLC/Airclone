@@ -43,4 +43,21 @@ void main() {
       expect(task.cancelled, isTrue);
     });
   });
+
+  group('the widened media tables have types too', () {
+    // Without one, Android's chooser is offered */* and lists every app on
+    // the device instead of the video players.
+    test('every new video extension maps to a real type', () {
+      expect(mimeForName('film.m2ts'), 'video/mp2t');
+      expect(mimeForName('clip.flv'), 'video/x-flv');
+      expect(mimeForName('a.ogv'), 'video/ogg');
+      expect(mimeForName('a.asf'), 'video/x-ms-asf');
+    });
+
+    test('and the new audio ones', () {
+      expect(mimeForName('a.mka'), 'audio/x-matroska');
+      expect(mimeForName('book.m4b'), 'audio/mp4');
+      expect(mimeForName('a.dts'), 'audio/vnd.dts');
+    });
+  });
 }

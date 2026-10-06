@@ -13,6 +13,74 @@ happened": nothing was logged between 2026-07-02 and 2026-07-15, or between 2026
      it is: it used to say ABOVE, which pushed it further down the file with every entry until
      it sat hundreds of lines under the newest one and pointed writers at the wrong place. -->
 
+## [2026-10-04] - Android TV player: remote fixes and a real capability dump, from emulator testing
+
+**Agent:** Claude Code (Claude Opus 5.5) — `feat/search-and-player`
+**Files Modified:** `app/lib/src/ui/{tv_video_controls,tv_player_keys,track_picker,media_preview}.dart`,
+`app/lib/src/state/{media_tracks,media_capabilities,media_formats}.dart`; tests
+`app/test/{tv_video_controls,tv_player_keys,track_picker,media_tracks,media_capabilities,media_formats}_test.dart`,
+`app/test/tv_playback_fake.dart`; docs `dev/media-support-matrix.md`, `docs/guide/{browsing,troubleshooting}.md`,
+`wiki/core/20-explorer-design.md`.
+**Database/API Changes:** None.
+**Summary:** Drove the search + player branch on the API 36 Android TV emulator by remote only, with a generated test
+library. Fixed: one BACK did two things (Android 16 delivers it as a key event AND a route pop; BACK is now handled
+at the PopScope only); a TrueHD default track failed the whole film (no TrueHD decoder on Android; falls back to the
+next audio codec and says so); subtitles drawn under the controls (now drawn by the overlay, lifted above the row);
+OK-to-pause from a hidden overlay hid the row again (auto-hide armed on the stale playing state); the full-screen focus
+surface was a D-pad target (RIGHT/UP from play/pause went nowhere visible); previous/next left focus on the top bar;
+LEFT/RIGHT along the row did not restart the auto-hide. A regression test pins an InkWell trap met on the way (a
+passed-in FocusNode latches an ancestor's "not traversable" as its own `skipTraversal`). The Media capabilities dump
+replaced the Android column of the support matrix: no MXF or raw E-AC-3 demuxer and no RealVideo/Cook decoders, so
+`.mxf`, `.eac3`, `.rm`, `.rmvb` left the playable tables; Musepack is present, so `.mpc` joined. The dump no longer
+reports subtitle codecs as missing (mpv's decoder list never holds them) and notes that `hwdec` reads `no` on a bare
+player. Sidecar `.srt`, embedded subtitles and AC-3/DTS/E-AC-3 track switching verified live. On 2026-10-05: all
+12 test videos and 7 audio files play on the TV emulator; a libass spike showed the bundled-font wiring loads but
+libass output cannot be judged on an emulator (reverted, notes at `kLibassSubtitles`); and the phone emulator pass
+fixed unreadable Subfolders results on a phone (`file_row.dart` `NameWithSubtitle`, `pane_search_box.dart`).
+
+## [2026-10-04] - Pane search: this folder by default, subfolders one step away
+
+**Agent:** Claude Code (Claude Opus 5.5) — `feat/search-scope`
+**Files Modified:** `app/lib/src/state/{pane_search,browser_controller}.dart`,
+`app/lib/src/ui/{pane_search_box,browser_pane,home_screen,mobile_home,mobile_action_sheets,file_row,context_menu,shortcuts_dialog}.dart`,
+`packages/airclone_rc/lib/src/rc_api.dart`; removed `app/lib/src/ui/search_dialog.dart` + its test; tests
+`app/test/{pane_search,browser_search_controller,pane_search_box,mobile_search}_test.dart`,
+`packages/airclone_rc/test/rc_api_test.dart`; docs `docs/guide/browsing.md`, `wiki/features/feat-file-browser.md`,
+`wiki/core/{06-design-system,10-external-integrations}.md`, `dev/android-tv.md`, `dev/plans/search-scope-plan.md`.
+**Database/API Changes:** `RcOperations.listAsync` + `RcOperations.parseList` (same `operations/list`, `_async`).
+**Summary:** From a Google TV customer who did not find recursive search (it existed, behind a dialog labelled
+`Search this folder`). One search box per pane on every shell replaces the desktop Filter box and the Search
+dialog: `This folder` filters live (every word in the name), `Subfolders` (scope switch, a fixed
+`Search subfolders for "…"` row, or Ctrl+Shift+F) scans the folder once as an async job with Cancel — the old
+synchronous recursive list hit the 30 s rpc timeout on big remotes — and re-filters the cached scan as you type.
+Results show in the pane with their folder, every action resolves from the hit's full path, flat selection and
+select-all are inert on results, crypt skips are reported, navigation resets the scope, Back/Esc step out.
+Device pass on a real Google TV still open. 1932 app tests + 127 package tests pass, analyze clean.
+
+---
+
+## [2026-10-04] - Player format support: track pickers, sidecar subtitles, wider formats (branch `feat/player-formats`)
+
+**Agent:** Claude Code (Claude Opus 5.5)
+**Files Modified:** `app/lib/src/state/{media_capabilities,media_tracks,sidecar_subs}.dart` (new),
+`app/lib/src/ui/{media_capabilities_dialog,track_picker}.dart` (new), `app/lib/src/ui/{media_preview,tv_player_keys,
+tv_video_controls,preview_dialog,quick_look,browser_pane,home_screen,settings_screen,file_icon,open_external_action}.dart`,
+`app/lib/src/state/{media_formats,media_prefs,open_external,thumbnail_service}.dart`, tests (5 new files + 7 extended,
+`tv_playback_fake.dart`), `dev/media-support-matrix.md` (new, provisional), `tool/make-test-media.sh` (new, not run),
+`dev/plans/player-format-support-plan.md`, `dev/plans/tv-playback-plan.md`, `dev/android-tv.md`, `dev/README.md`,
+`docs/guide/{browsing,mount-and-share,platforms,troubleshooting}.md`, `wiki/features/{feat-media-playback,features-index}.md`,
+`wiki/core/20-explorer-design.md`, this log
+**Database/API Changes:** None. New SharedPreferences keys `media_audio_language`, `media_subtitle_language`.
+`packages/airclone_rc` unchanged.
+**Summary:** Plan A0.1 + A1-A8 with libass OFF (A0.2 needs a real TV): audio/subtitle pickers on desktop (menu), touch
+(sheet) and TV (focus-trapping side panel that holds the overlay), hidden on web; remembered languages as mpv
+`alang`/`slang`/`sid=no`; picks re-applied after Retry; image subtitles listed as "can't be shown here" and an
+auto-selected one switched off; TV subtitle text 28dp; `.srt/.ass/.ssa/.vtt` sidecars (2 MiB cap, loopback URL only)
+`sub-add`ed after start; 14 video + 13 audio extensions (no `.mpc`, `.ts` stays code), heavy containers never
+thumbnailed, thumbnail timeouts remembered; desktop Open in another app opens from an active mount; Settings ->
+Diagnostics -> Media capabilities (Advanced) dumps libmpv's lists. Verified: analyze clean, 2007 tests pass (+100),
+check-docs clean. NOT verified on any device: A0.1 dumps, A0.2, A0.3, the matrix rows, the TV pass - plan Phase 8.
+
 ## [2026-10-02] - v0.22.2 live on Apple, in Microsoft certification
 
 **Agent:** Claude Code (Claude Opus 5.5)

@@ -44,6 +44,11 @@ Future<void> showQuickLook(
   /// pane cannot see an edit made inside an overlay, and a pop result would be
   /// lost when the barrier is tapped, so this fires the moment it happens.
   VoidCallback? onChanged,
+
+  /// The folder's FULL listing, when [entries] is a filtered view of it. A
+  /// video finds its subtitle files here, and a filter for `mkv` must not hide
+  /// the `.srt` beside it. Defaults to [entries].
+  List<RcloneFile>? allSiblings,
 }) {
   final files = entries.where((e) => !e.isDir).toList();
   if (files.isEmpty) return Future<void>.value();
@@ -86,6 +91,7 @@ Future<void> showQuickLook(
       initialIndex: initial,
       fullscreen: fullscreen,
       onChanged: onChanged,
+      allSiblings: allSiblings ?? entries,
     ),
     transitionBuilder: (ctx, anim, _, child) => FadeTransition(
       opacity: anim,
@@ -146,6 +152,7 @@ class _QuickLook extends ConsumerStatefulWidget {
     required this.initialIndex,
     required this.fullscreen,
     this.onChanged,
+    required this.allSiblings,
   });
 
   final Remote remote;
@@ -158,6 +165,9 @@ class _QuickLook extends ConsumerStatefulWidget {
 
   /// See showQuickLook.
   final VoidCallback? onChanged;
+
+  /// See showQuickLook. Only read for sidecar subtitles.
+  final List<RcloneFile> allSiblings;
 
   @override
   ConsumerState<_QuickLook> createState() => _QuickLookState();
@@ -579,6 +589,7 @@ class _QuickLookState extends ConsumerState<_QuickLook> {
         // and they move by KIND, so an album plays like an album.
         onPrevious: previous == null ? null : () => _goTo(previous),
         onNext: next == null ? null : () => _goTo(next),
+        siblings: widget.allSiblings,
       );
     },
   );

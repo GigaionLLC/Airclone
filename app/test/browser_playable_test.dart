@@ -46,4 +46,17 @@ void main() {
       expect(isVideoLikeExt(e), isTrue, reason: e);
     }
   });
+
+  group('the widened tables in a browser', () {
+    test('.ogv is now video in the app, and still plays in a browser', () {
+      expect(isVideoLikeExt('ogv'), isTrue);
+      expect(isUnplayableInBrowser('ogv'), isFalse);
+    });
+
+    test('the new disc and lossless formats are explained, not attempted', () {
+      for (final e in ['m2ts', 'vob', 'mka', 'ape', 'dts']) {
+        expect(isUnplayableInBrowser(e), isTrue, reason: e);
+      }
+    });
+  });
 }

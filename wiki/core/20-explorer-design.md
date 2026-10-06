@@ -134,8 +134,10 @@ server; what shipped is
    AES-GCM sealed via `CacheCrypto`; with memory-only mode on, nothing touches disk at all.
 3. **Failures are classified, not retried blindly** — bytes that download fine but will not decode are
    recorded in a session-scoped negative cache and only a forced rebuild clears them, while a capture
-   that merely *failed* stays retryable. A frame with no picture in it is treated as a failure and
-   never cached.
+   that merely *failed* stays retryable — except a video capture that ran out its whole first-frame
+   budget, which is remembered too, because it will time out again (`rememberThumbFailure`). A frame
+   with no picture in it is treated as a failure and never cached. Disc rips and broadcast
+   containers (`kNoThumbVideoExts`: vob, m2ts, mts, m2t, asf) are never thumbnailed at all.
 4. **Progressive UI** — kind-icon instant, thumbnail fades in on decode; pre-warm runs in bounded
    batches rather than one `Future.wait` over the listing.
 

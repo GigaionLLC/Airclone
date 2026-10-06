@@ -42,6 +42,7 @@ import 'media_gallery.dart';
 import 'native_drag.dart';
 import 'open_external_action.dart';
 import 'pane_drag.dart';
+import 'pane_search_box.dart';
 import 'paste_action.dart';
 import 'path_bar.dart';
 import 'public_link_dialog.dart';
@@ -321,6 +322,8 @@ class BrowserPane extends ConsumerWidget {
   }) {
     final c = AircloneTheme.of(context);
     final ctrl = ref.read(paneProvider(index).notifier);
+    final search = state.search;
+    final inResults = search.inSubfolders;
     // Pull-to-refresh (touch only): make the scrollables always-scrollable so a
     // short/empty listing still pulls, and turn the error/empty message into a
     // scrollable so it can be pulled to retry too. Desktop keeps its defaults.
@@ -348,7 +351,41 @@ class BrowserPane extends ConsumerWidget {
         ? treeRows.isEmpty
         : state.visibleEntries.isEmpty;
     Widget content;
-    if (initialLoad) {
+    if (inResults) {
+      content = SearchResultsList(
+        state: state,
+        physics: physics,
+        onOpen: (h) => h.entry.isDir
+            ? ctrl.navigateTo(h.absPath)
+            : _preview(
+                context,
+                state,
+                _hitLoc(ref, index, h),
+                ref: ref,
+                index: index,
+              ),
+        onPreview: (h) => h.entry.isDir
+            ? ctrl.navigateTo(h.absPath)
+            : _preview(
+                context,
+                state,
+                _hitLoc(ref, index, h),
+                ref: ref,
+                index: index,
+              ),
+        onSelect: (h) => ctrl.selectSearchHit(
+          search.selectedPath == h.absPath ? null : h.absPath,
+        ),
+        onContextMenu: (h, pos) => _showFileMenu(
+          context,
+          ref,
+          state,
+          _hitLoc(ref, index, h),
+          pos,
+          searchResult: true,
+        ),
+      );
+    } else if (initialLoad) {
       content = const Center(
         child: SizedBox(
           height: 22,
@@ -539,9 +576,13 @@ class BrowserPane extends ConsumerWidget {
     // On touch, wrap the listing in a pull-to-refresh — except while the initial
     // spinner is up (nothing to pull yet; a refresh over content stays wrapped so
     // its inline spinner shows).
-    final body = isTouchPrimary && !initialLoad
+    final body = isTouchPrimary && (inResults || !initialLoad)
         ? RefreshIndicator(onRefresh: ctrl.refresh, child: content)
         : content;
+    // The search line shows while the search is engaged in any way; the
+    // "Search subfolders for ..." row while This folder has a query.
+    final showStrip = inResults || search.open || state.filter.isNotEmpty;
+    final offerSubfolders = !inResults && state.filter.trim().isNotEmpty;
     return Container(
       decoration: highlight
           ? BoxDecoration(
@@ -551,7 +592,9 @@ class BrowserPane extends ConsumerWidget {
           : null,
       child: Column(
         children: [
-          if (!state.loading &&
+          if (showStrip) SearchStrip(index: index, state: state),
+          if (!inResults &&
+              !state.loading &&
               state.error == null &&
               (state.viewMode == ViewMode.list ||
                   state.viewMode == ViewMode.tree))
@@ -562,9 +605,16 @@ class BrowserPane extends ConsumerWidget {
             ),
           // Partial hiding is the quieter half of the same failure: the folder
           // lists, nothing looks wrong, and some entries are simply absent.
-          if (state.hiddenUndecryptable > 0 && state.visibleEntries.isNotEmpty)
+          if (!inResults &&
+              state.hiddenUndecryptable > 0 &&
+              state.visibleEntries.isNotEmpty)
             _hiddenNamesBanner(c, state.hiddenUndecryptable),
           Expanded(child: body),
+          if (offerSubfolders)
+            SearchSubfoldersRow(
+              query: state.filter,
+              onTap: () => ctrl.setSearchScope(SearchScope.subfolders),
+            ),
         ],
       ),
     );
@@ -669,14 +719,18 @@ class BrowserPane extends ConsumerWidget {
     orElse: () => groups.first,
   );
 
+  /// [searchResult] marks a Subfolders result: it cannot join the flat
+  /// selection (it is not in this folder), and it can be shown in its folder.
   Future<void> _showFileMenu(
     BuildContext context,
     WidgetRef ref,
     BrowserState state,
     _EntryLoc loc,
-    Offset pos,
-  ) async {
+    Offset pos, {
+    bool searchResult = false,
+  }) async {
     if (state.remote == null) return;
+    final rowHeight = AircloneTheme.tokensOf(context).rowHeight;
     final file = loc.file;
     final clip = ref.read(clipboardControllerProvider);
     final hasOther = ref.read(paneProvider(_other)).remote != null;
@@ -699,7 +753,8 @@ class BrowserPane extends ConsumerWidget {
           !file.isDir &&
           isThumbnailable(file) &&
           wouldHydrateOnRead(state.remote!, loc.path, entry: file),
-      canSelect: isTouchPrimary,
+      canSelect: isTouchPrimary && !searchResult,
+      showInFolder: searchResult,
       advanced: ref.read(advancedModeProvider),
       syncSourceLabel: ref.read(syncSourceProvider).isSet
           ? ref.read(syncSourceProvider).label
@@ -709,6 +764,8 @@ class BrowserPane extends ConsumerWidget {
     final groups = _targetGroups(state, loc);
     final ctrl = ref.read(paneProvider(index).notifier);
     switch (action) {
+      case FileMenuAction.showInFolder:
+        await _showInFolder(ref, index, loc, rowHeight: rowHeight);
       case FileMenuAction.select:
         // Enter multi-select on touch: pick this item; the phone selection bar
         // takes over and tapping other rows toggles them.
@@ -1368,6 +1425,49 @@ _EntryLoc _treeLoc(BrowserState state, TreeRow row) {
   );
 }
 
+/// A Subfolders result as an entry location. Its folder-mates come from the
+/// scan, which listed that folder along with everything else — so Rename can
+/// check for a taken name and Quick Look can walk the folder without a listing.
+_EntryLoc _hitLoc(WidgetRef ref, int index, SearchHit hit) {
+  final ctrl = ref.read(paneProvider(index).notifier);
+  final siblings = ctrl.searchSiblingsOf(hit.parentPath);
+  final files = siblings.isEmpty ? <RcloneFile>[hit.entry] : siblings;
+  final visible = [
+    for (final f in files)
+      if (!f.isDir) f,
+  ]..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+  return _EntryLoc(
+    parentPath: hit.parentPath,
+    file: visible.firstWhere(
+      (f) => f.name == hit.entry.name,
+      orElse: () => hit.entry,
+    ),
+    siblings: files,
+    visibleSiblings: visible.isEmpty ? [hit.entry] : visible,
+  );
+}
+
+/// Leave the results for [loc]'s folder with [loc] selected and on screen —
+/// what the old Search dialog did when a result was clicked.
+Future<void> _showInFolder(
+  WidgetRef ref,
+  int index,
+  _EntryLoc loc, {
+  required double rowHeight,
+}) async {
+  final ctrl = ref.read(paneProvider(index).notifier);
+  await ctrl.navigateTo(loc.parentPath);
+  ctrl.selectOnly(loc.file.name);
+  final st = ref.read(paneProvider(index));
+  final i = st.visibleEntries.indexWhere((e) => e.name == loc.file.name);
+  if (i < 0) return;
+  WidgetsBinding.instance.addPostFrameCallback((_) {
+    final sc = ref.read(paneScrollProvider(index));
+    if (!sc.hasClients) return;
+    sc.jumpTo((i * rowHeight).clamp(0.0, sc.position.maxScrollExtent));
+  });
+}
+
 /// Some entries that share ONE source folder — the unit every transfer and
 /// bulk operation takes. A selection spanning folders is a list of these.
 class _Group {
@@ -1411,6 +1511,8 @@ Future<void> _preview(
     loc.parentPath,
     loc.visibleSiblings,
     loc.visibleSiblings.indexOf(loc.file),
+    // The unfiltered listing, for the subtitle files beside a video.
+    allSiblings: loc.siblings,
     onChanged: (ref != null && index != null)
         ? () => _reloadFolders(ref, index, [loc.parentPath])
         : null,
@@ -1943,7 +2045,7 @@ class _PaneToolbar extends ConsumerWidget {
                 if (state.remote != null)
                   SizedBox(
                     width: searchW,
-                    child: _FilterBox(index: index),
+                    child: PaneSearchBox(index: index),
                   ),
                 if (state.remote != null)
                   IconButton(
@@ -2301,7 +2403,7 @@ class _PaneToolbar extends ConsumerWidget {
                 if (hasRemote)
                   SizedBox(
                     width: searchW,
-                    child: _FilterBox(index: index),
+                    child: PaneSearchBox(index: index),
                   ),
               ],
             ),
@@ -2863,76 +2965,5 @@ Future<void> runAdvancedTransfer(
       );
     }
     ref.read(paneProvider(index).notifier).clearSelection();
-  }
-}
-
-/// Compact client-side filter box (Ctrl+F focuses the active pane's box).
-class _FilterBox extends ConsumerStatefulWidget {
-  const _FilterBox({required this.index});
-  final int index;
-
-  @override
-  ConsumerState<_FilterBox> createState() => _FilterBoxState();
-}
-
-class _FilterBoxState extends ConsumerState<_FilterBox> {
-  final _controller = TextEditingController();
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final c = AircloneTheme.of(context);
-    final ctrl = ref.read(paneProvider(widget.index).notifier);
-    final focus = ref.watch(paneFilterFocusProvider(widget.index));
-    final filter = ref.watch(
-      paneProvider(widget.index).select((s) => s.filter),
-    );
-    // When navigation clears the filter, clear the text field too.
-    ref.listen(paneProvider(widget.index).select((s) => s.filter), (_, next) {
-      if (next.isEmpty && _controller.text.isNotEmpty) _controller.clear();
-    });
-    // Width is set by the caller (fixed for Airclone, responsive for the OS
-    // skins) so the search field shrinks gracefully in a narrow pane.
-    return SizedBox(
-      height: 28,
-      child: TextField(
-        controller: _controller,
-        focusNode: focus,
-        style: TextStyle(color: c.text, fontSize: 12),
-        decoration: InputDecoration(
-          isDense: true,
-          contentPadding: const EdgeInsets.symmetric(horizontal: Space.x2),
-          prefixIcon: Icon(Icons.search, size: 14, color: c.textFaint),
-          prefixIconConstraints: const BoxConstraints(
-            minWidth: 28,
-            minHeight: 28,
-          ),
-          hintText: 'Filter',
-          hintStyle: TextStyle(color: c.textFaint, fontSize: 12),
-          suffixIcon: filter.isEmpty
-              ? null
-              : InkWell(
-                  onTap: () {
-                    _controller.clear();
-                    ctrl.setFilter('');
-                  },
-                  child: Icon(Icons.close, size: 14, color: c.textFaint),
-                ),
-          suffixIconConstraints: const BoxConstraints(
-            minWidth: 24,
-            minHeight: 24,
-          ),
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(Radii.md),
-          ),
-        ),
-        onChanged: ctrl.setFilter,
-      ),
-    );
   }
 }

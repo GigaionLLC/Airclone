@@ -47,3 +47,74 @@ class RepeatPlayback extends Notifier<bool> {
 final repeatPlaybackProvider = NotifierProvider<RepeatPlayback, bool>(
   RepeatPlayback.new,
 );
+
+/// The language the player should prefer for audio or subtitles, remembered
+/// from the last pick (player format plan, Q4).
+///
+/// Global, not per file: "I watch films in English with German subtitles" is a
+/// fact about the person, and it is what makes the NEXT file open right. Null
+/// means no preference — libmpv's own default/forced-track choice stands.
+/// Stored as ISO 639-2/B (`ger`, see `canonicalLanguage`), or `off` for
+/// subtitles the person switched off.
+///
+/// Applied to libmpv as `alang` / `slang` (and `sid=no` for `off`) before a
+/// file opens — see `MediaPreviewBody`.
+abstract class _PreferredLanguage extends Notifier<String?> {
+  String get _key;
+
+  @override
+  String? build() {
+    _load();
+    return null;
+  }
+
+  Future<void> _load() async {
+    try {
+      final p = await SharedPreferences.getInstance();
+      final v = p.getString(_key);
+      if (v != null && v.isNotEmpty) state = v;
+    } catch (_) {
+      // keep the default
+    }
+  }
+
+  /// Remembers [value]; null forgets the preference.
+  Future<void> set(String? value) async {
+    final v = value?.trim().toLowerCase();
+    final next = v == null || v.isEmpty ? null : v;
+    if (next == state) return;
+    state = next;
+    try {
+      final p = await SharedPreferences.getInstance();
+      if (next == null) {
+        await p.remove(_key);
+      } else {
+        await p.setString(_key, next);
+      }
+    } catch (_) {
+      // best-effort
+    }
+  }
+}
+
+class PreferredAudioLanguage extends _PreferredLanguage {
+  @override
+  String get _key => 'media_audio_language';
+}
+
+class PreferredSubtitleLanguage extends _PreferredLanguage {
+  @override
+  String get _key => 'media_subtitle_language';
+}
+
+/// See [_PreferredLanguage]. Never `off`: there is no "no audio" pick.
+final preferredAudioLanguageProvider =
+    NotifierProvider<PreferredAudioLanguage, String?>(
+      PreferredAudioLanguage.new,
+    );
+
+/// See [_PreferredLanguage]. `off` when the person switched subtitles off.
+final preferredSubtitleLanguageProvider =
+    NotifierProvider<PreferredSubtitleLanguage, String?>(
+      PreferredSubtitleLanguage.new,
+    );

@@ -45,6 +45,47 @@ because a paused film with no controls cannot be resumed.
 Those transport-key bindings are honoured on **every** platform, not only a television: a keyboard's
 media keys and a Bluetooth remote paired to a phone are the same keys.
 
+## Subtitles and audio tracks
+
+The player plays what libmpv decodes — and the libmpv we ship decodes almost everything a film
+arrives in. Airclone does not transcode, and will not: a file the player cannot handle on a desktop
+goes to another app, and from a mounted remote that hand-off is instant. What was missing was ours,
+not the decoder's, and the player format plan
+([`player-format-support-plan.md`](../../dev/plans/player-format-support-plan.md)) added it:
+
+- **Track pickers.** One seam serves all three surfaces: `TvPlaybackTarget` lists the tracks and
+  switches them, and `state/media_tracks.dart` turns raw tracks into rows. A row is built from
+  title, language, channels and codec, **never from a track id** — a subtitle added from a URL
+  through media_kit carries that URL as its id, and an engine URL carries the engine's password.
+  Desktop gets a menu and touch a bottom sheet (`ui/track_picker.dart`, in media_kit's own bars
+  beside repeat). A television gets two buttons after *next* that open a focus-trapping side panel,
+  which holds the overlay up while it is open. Hidden on the web: media_kit's web player lists no
+  tracks.
+- **What mpv picked, not what media_kit remembers.** media_kit's `state.track` only echoes what was
+  set through it, so the seam reads mpv's own `aid` / `sid`.
+- **Remembered languages.** A pick is stored as ISO 639-2/B (or `off`) and applied as mpv
+  `alang` / `slang` / `sid=no` before the next file opens, listing every spelling of the code
+  because the shipped libmpv compares tags literally. Picks made in one preview are re-applied when
+  Retry rebuilds the player.
+- **Sidecar subtitles.** mpv only auto-loads subtitles from a local folder, and the player never
+  opens a local path, so Airclone finds them itself (`state/sidecar_subs.dart`): same stem, text
+  formats only, 2 MiB at most — the file is attacker-authored, since anyone a folder is shared with
+  can add one. Quick Look passes the **unfiltered** folder listing (a name filter must not hide the
+  `.srt`); the preview dialog lists the parent once. They are added with `sub-add … auto` after
+  the first frame (mpv refuses before), through the engine's loopback URL only — never `file://`,
+  which mpv opens past the protocol whitelist.
+- **Image subtitles.** With media_kit's default (`libass: false`) mpv's own subtitle output is
+  hidden and only the plain text it extracts is drawn, which a bitmap does not have. So PGS / VobSub
+  tracks are listed as *can't be shown here*, and when mpv auto-selects one the player switches
+  subtitles off. Turning libass on (`kLibassSubtitles`) waits for a measurement on a real
+  television and a bundled Android font.
+- **TV subtitle size.** media_kit scales subtitle text by frame area against 1080p, which makes it
+  ~16dp on a television's 960x540dp layout. The TV passes a fixed, larger style.
+
+What each platform's libmpv can open is recorded in
+[`dev/media-support-matrix.md`](../../dev/media-support-matrix.md), filled from the in-app
+capability dump (Settings → Diagnostics → *Media capabilities*, Advanced mode).
+
 ## Previous and next walk their own kind
 
 A folder of songs almost always holds a `cover.jpg`, and often a `.cue` as well. On a phone, a swipe
@@ -71,7 +112,8 @@ rectangle that never plays, which is indistinguishable from a hang. The player t
 of those paths *and* arms a start deadline (longer for a network stream, which has a manifest to
 resolve and segments to fetch), and every failure lands on one card that offers **Try again** and,
 where the host supports it, **Open in another app** — the codec libmpv cannot handle is often one the
-phone's own player can.
+phone's own player can. On a desktop with that remote mounted, the hand-off opens the file from the
+mount rather than downloading it first.
 
 Two failures get their own wording, because the generic message would mislead:
 

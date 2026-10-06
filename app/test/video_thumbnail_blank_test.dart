@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:airclone/src/state/thumbnail_service.dart';
@@ -78,5 +79,18 @@ void main() {
     img[0] = 255; // luma 76
     expect(isFlatRgba(img, range: 200), isTrue);
     expect(isFlatRgba(img, range: 1), isFalse);
+  });
+
+  group('a capture that timed out', () {
+    // A file that used the whole first-frame budget once will use it again,
+    // and each retry holds a libmpv instance against the remote for that long.
+    test('is remembered for the session, like a blank frame', () {
+      expect(rememberThumbFailure(TimeoutException('first frame')), isTrue);
+    });
+
+    test('while any other failure keeps its retry', () {
+      expect(rememberThumbFailure(Exception('engine restarting')), isFalse);
+      expect(rememberThumbFailure(StateError('disposed')), isFalse);
+    });
   });
 }

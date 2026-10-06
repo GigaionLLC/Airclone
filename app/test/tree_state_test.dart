@@ -98,6 +98,17 @@ void main() {
         expect(_names(rows), ['A', '  C', '    c1.txt']);
       });
 
+      test('every word must appear in the name, any order (the search box '
+          'rule)', () {
+        final rows = flattenTree(
+          rootPath: '',
+          rootEntries: _root,
+          tree: tree,
+          filter: 'TXT c1',
+        );
+        expect(_names(rows), ['A', '  C', '    c1.txt']);
+      });
+
       test('drops an expanded folder with nothing matching beneath it', () {
         final rows = flattenTree(
           rootPath: '',

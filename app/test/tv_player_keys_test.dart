@@ -149,15 +149,29 @@ void main() {
 
     test('BACK hides the overlay, then lets the route close', () {
       c.showControls();
-      expect(
-        c.handleKey(down(LogicalKeyboardKey.goBack)),
-        KeyEventResult.handled,
-      );
+      expect(c.handleBack(), isTrue);
       expect(c.controlsVisible, isFalse);
       // Nothing left to dismiss: BACK must reach the route, or the player
       // becomes a screen you cannot leave.
+      expect(c.handleBack(), isFalse);
+    });
+
+    test('Esc hides the overlay; the BACK key is left to the route', () {
+      c.showControls();
+      // Android 16 also delivers BACK as a route pop; acting on the key too
+      // made one press do two things.
       expect(
         c.handleKey(down(LogicalKeyboardKey.goBack)),
+        KeyEventResult.ignored,
+      );
+      expect(c.controlsVisible, isTrue);
+      expect(
+        c.handleKey(down(LogicalKeyboardKey.escape)),
+        KeyEventResult.handled,
+      );
+      expect(c.controlsVisible, isFalse);
+      expect(
+        c.handleKey(down(LogicalKeyboardKey.escape)),
         KeyEventResult.ignored,
       );
     });
@@ -311,6 +325,52 @@ void main() {
       c.showControls();
       await tester.pump(TvPlaybackController.autoHideDelay * 3);
       expect(c.controlsVisible, isTrue);
+    });
+
+    testWidgets('OK to pause keeps the row up, though the player reports the '
+        'pause late', (tester) async {
+      await tester.pumpWidget(const SizedBox());
+      // Built in the test's zone, so the playing stream is delivered by pump.
+      final c = TvPlaybackController(target: target);
+      addTearDown(c.dispose);
+      target.lagPlayingState = true;
+      // Hidden, playing: OK pauses and shows the row. The player still says
+      // "playing" at that moment, as media_kit does.
+      c.handleKey(down(LogicalKeyboardKey.select));
+      expect(c.controlsVisible, isTrue);
+      target.reportPlaying(false);
+      await tester.pump(TvPlaybackController.autoHideDelay * 2);
+      expect(c.controlsVisible, isTrue, reason: 'a paused film keeps its row');
+
+      // And a resume reported late still hides it in the end.
+      c.handleKey(down(LogicalKeyboardKey.select));
+      target.reportPlaying(true);
+      await tester.pump(
+        TvPlaybackController.autoHideDelay + const Duration(seconds: 1),
+      );
+      expect(c.controlsVisible, isFalse);
+    });
+
+    testWidgets('walking the row with LEFT / RIGHT keeps it up', (
+      tester,
+    ) async {
+      await tester.pumpWidget(const SizedBox());
+      c.showControls();
+      for (var i = 0; i < 3; i++) {
+        await tester.pump(
+          TvPlaybackController.autoHideDelay - const Duration(seconds: 1),
+        );
+        expect(
+          c.handleKey(down(LogicalKeyboardKey.arrowRight)),
+          KeyEventResult.ignored,
+          reason: 'the row traverses; the controller does not seek',
+        );
+      }
+      expect(c.controlsVisible, isTrue);
+      await tester.pump(
+        TvPlaybackController.autoHideDelay + const Duration(seconds: 1),
+      );
+      expect(c.controlsVisible, isFalse);
     });
 
     testWidgets('never auto-hides mid-scrub', (tester) async {
@@ -480,8 +540,9 @@ void main() {
       await tester.pump(TvPlaybackController.autoHideDelay * 3);
       expect(audio.controlsVisible, isTrue);
       // BACK has nothing to dismiss here, so it must reach the route.
+      expect(audio.handleBack(), isFalse);
       expect(
-        audio.handleKey(down(LogicalKeyboardKey.goBack)),
+        audio.handleKey(down(LogicalKeyboardKey.escape)),
         KeyEventResult.ignored,
       );
     });

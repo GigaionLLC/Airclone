@@ -139,6 +139,18 @@ Both are covered by `app/test/tv_dpad_test.dart`, and each has a paired test of
 the UN-wrapped widget that demonstrates the trap — a refactor that drops a
 wrapper fails there instead of in a living room.
 
+The pane search box (2026-10, [search-scope-plan](plans/search-scope-plan.md))
+is laid out around exactly these two rules. It is not a permanent traversal
+stop: the folder header shows the magnifier, and only selecting it opens the
+box (the IME rising then is expected — the user asked to type). The scope
+switch `This folder | Subfolders` sits BELOW the box, because LEFT/RIGHT belong
+to the caret and only DOWN leaves the field; DOWN again reaches the results,
+and `Search subfolders for "…"` is a fixed row at the bottom of the pane so it
+is reachable however long the list is. Back steps out of the search (results,
+then text, then the box) before it navigates. Covered by
+`app/test/pane_search_box_test.dart` (DOWN from the box lands on the switch)
+and `app/test/mobile_search_test.dart` (the Back order).
+
 ## Field reports from a Google TV user (2026-09-09)
 
 Three, from someone actually using it on a set. The first two are focus
@@ -274,6 +286,8 @@ written down twice. Implemented by `TvPlaybackController`
 | **OK held on the ⏪ / ⏩ button** | — | tap: seek 30s; hold: scan until released, focus stays on the button |
 | **Track next / previous** | the next file OF THE SAME KIND | same |
 | **Stop** | pause — never close | pause |
+| **OK on 🔊 / 💬** (after *next*, when the file has a choice) | — | open the audio / subtitle panel |
+| **In the track panel** | — | UP/DOWN move, OK picks and closes, BACK closes the panel only; LEFT/RIGHT cannot leave it |
 
 Three decisions in there are not defaults:
 
@@ -289,6 +303,13 @@ Three decisions in there are not defaults:
   fullscreen shape a TV renders never had key handling at all.
 - **The overlay never auto-hides while paused.** A paused film with no controls
   is a dead end with no way to resume.
+- **A track panel holds the overlay open, and BACK closes only the panel.** It
+  is a `FocusScope` on the right edge, so the D-pad cannot wander from a
+  half-read list into the row behind it; `holdControls()` suspends the 5s
+  auto-hide while it is open; and focus returns to the button that opened it.
+  The buttons appear only when there is a choice (more than one audio track;
+  any subtitle track or sidecar). See the player format plan,
+  [`player-format-support-plan.md`](plans/player-format-support-plan.md) §4.A.
 - **⏪/⏩ are a hold, not a click (v0.22.1).** A tap jumps 30s; held past 400ms
   the pending target scans, accelerating 10 → 30 → 60s per 250ms tick, and ONE
   seek commits on release. The scan runs on its own timer, not the remote's
@@ -348,10 +369,13 @@ Both are the same shape as everything else on this page: the evidence for
 | `ui/tv_player_keys.dart` | the key semantics, the seek arithmetic, both timers, and the `TvPlaybackTarget` seam that keeps all of it testable without libmpv |
 | `ui/tv_video_controls.dart` | our `Video(controls:)` overlay, plus the transport row and scrub bar the audio screen shares |
 | `ui/tv_now_playing.dart` | the audio screen that replaces the pointer card on a TV |
+| `ui/track_picker.dart` | `TvTrackPanel` (the TV track panel), the pointer/touch pickers, and the TV subtitle size |
+| `state/media_tracks.dart` | track rows, image-subtitle detection, language names and mpv `alang`/`slang` |
 | `ui/quick_look.dart` | `sameKindNeighbour` — previous/next walks its own kind, so an album with a `cover.jpg` is still playable end to end |
 
 Covered by `tv_player_keys_test.dart`, `tv_video_controls_test.dart`,
-`tv_now_playing_test.dart` and `same_kind_siblings_test.dart`. The mutations
+`tv_now_playing_test.dart`, `same_kind_siblings_test.dart`, `media_tracks_test.dart`
+and `track_picker_test.dart`. The mutations
 confirmed RED: removing the debounce cancel, removing the focus hand-back,
 letting the overlay auto-hide while paused, and reverting the sibling walk to a
 plain neighbour. Shrinking `commitDelay` is deliberately *not* one of them — the
