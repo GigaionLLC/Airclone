@@ -26,7 +26,16 @@ LABEL org.opencontainers.image.title="Airclone" \
 # even for --webui, which the first smoke-test run caught. There is no GPU in
 # here and none is needed. The ubuntu user is replaced by "airclone", which the
 # entrypoint gives PUID/PGID at start.
-RUN apt-get update  && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends       libgtk-3-0t64 libmpv2 libsecret-1-0 libasound2t64       libgles2 libegl1 libgl1-mesa-dri       xvfb xauth tini gosu curl ca-certificates tzdata fonts-dejavu-core  && rm -rf /var/lib/apt/lists/*  && (userdel -r ubuntu 2>/dev/null || true)  && groupadd -g 1000 airclone  && useradd -u 1000 -g 1000 -M -d /data -s /usr/sbin/nologin airclone  && mkdir -p /config /data /var/cache/airclone
+RUN apt-get update \
+ && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+      libgtk-3-0t64 libmpv2 libsecret-1-0 libasound2t64 \
+      libgles2 libegl1 libgl1-mesa-dri \
+      xvfb xauth tini gosu curl ca-certificates tzdata fonts-dejavu-core \
+ && rm -rf /var/lib/apt/lists/* \
+ && (userdel -r ubuntu 2>/dev/null || true) \
+ && groupadd -g 1000 airclone \
+ && useradd -u 1000 -g 1000 -M -d /data -s /usr/sbin/nologin airclone \
+ && mkdir -p /config /data /var/cache/airclone
 
 COPY bundle/ /opt/airclone/
 COPY entrypoint.sh /usr/local/bin/airclone-entrypoint
