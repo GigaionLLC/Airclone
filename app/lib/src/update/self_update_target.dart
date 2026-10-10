@@ -43,6 +43,15 @@ enum SelfUpdateTarget {
   /// Linux tar.gz: a directory tree, swapped.
   linuxTarball,
 
+  /// The ARM64 (aarch64) AppImage. Its own target, not a flag on
+  /// [linuxAppImage], so no path can hand an ARM machine the x86_64 file: an
+  /// AppImage replaced by the other architecture's is one that never starts
+  /// again.
+  linuxAppImageArm64,
+
+  /// The ARM64 tar.gz.
+  linuxTarballArm64,
+
   /// Everything else: a store owns updates, or the package cannot be replaced
   /// from inside itself. The app still says a new version exists; it just does
   /// not offer to install it (and says nothing at all for a store build).
@@ -64,8 +73,15 @@ extension SelfUpdateTargetX on SelfUpdateTarget {
     SelfUpdateTarget.macApp => 'airclone-macos.zip',
     SelfUpdateTarget.linuxAppImage => 'Airclone-x86_64.AppImage',
     SelfUpdateTarget.linuxTarball => 'airclone-linux-x64.tar.gz',
+    SelfUpdateTarget.linuxAppImageArm64 => 'Airclone-aarch64.AppImage',
+    SelfUpdateTarget.linuxTarballArm64 => 'airclone-linux-arm64.tar.gz',
     SelfUpdateTarget.unsupported => null,
   };
+
+  /// Either AppImage. Installing one is the same act whatever its architecture.
+  bool get isAppImage =>
+      this == SelfUpdateTarget.linuxAppImage ||
+      this == SelfUpdateTarget.linuxAppImageArm64;
 }
 
 /// Decides the target from facts a test can supply.
@@ -83,6 +99,10 @@ SelfUpdateTarget selfUpdateTargetFor({
   if (managedByStore) return SelfUpdateTarget.unsupported;
 
   final package = packageKind.split(' (').first.trim();
+  // The architecture rides in the suffix, e.g. "AppImage (linux_arm64)". Only
+  // ARM64 is matched: anything else on Linux is the x86_64 build, which is what
+  // every Linux package was before ARM64 builds existed.
+  final arm64 = packageKind.contains('linux_arm64');
   return switch (operatingSystem) {
     'windows' => switch (package) {
       'installer' => SelfUpdateTarget.windowsInstaller,
@@ -97,8 +117,14 @@ SelfUpdateTarget selfUpdateTargetFor({
       _ => SelfUpdateTarget.unsupported,
     },
     'linux' => switch (package) {
-      'AppImage' => SelfUpdateTarget.linuxAppImage,
-      'tar.gz' => SelfUpdateTarget.linuxTarball,
+      'AppImage' =>
+        arm64
+            ? SelfUpdateTarget.linuxAppImageArm64
+            : SelfUpdateTarget.linuxAppImage,
+      'tar.gz' =>
+        arm64
+            ? SelfUpdateTarget.linuxTarballArm64
+            : SelfUpdateTarget.linuxTarball,
       // A Flatpak or a Snap updates through its own store, and could not
       // replace itself from inside the sandbox even if it wanted to. The
       // release-bundle Flatpak has no updater at all - the app says so rather

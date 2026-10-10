@@ -33,8 +33,16 @@
 set -euo pipefail
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-BUNDLE="${1:-$REPO/app/build/linux/x64/release/bundle}"
-OUTPUT="${2:-$REPO/Airclone-x86_64.AppImage}"
+# Built for the HOST architecture: release.yml runs this natively on an x64 and
+# an arm64 runner. FLUTTER_ARCH is Flutter's name for it (its build directory),
+# ARCH is the AppImage world's (tool and file names).
+case "$(uname -m)" in
+  x86_64) ARCH=x86_64; FLUTTER_ARCH=x64 ;;
+  aarch64|arm64) ARCH=aarch64; FLUTTER_ARCH=arm64 ;;
+  *) echo "unsupported architecture: $(uname -m)" >&2; exit 1 ;;
+esac
+BUNDLE="${1:-$REPO/app/build/linux/$FLUTTER_ARCH/release/bundle}"
+OUTPUT="${2:-$REPO/Airclone-$ARCH.AppImage}"
 PKG="$REPO/app/linux/packaging"
 WORK="${APPIMAGE_WORK:-$(mktemp -d)}"
 TOOLS="${APPIMAGE_TOOLS:-$HOME/.cache/airclone-appimage-tools}"
@@ -42,15 +50,25 @@ TOOLS="${APPIMAGE_TOOLS:-$HOME/.cache/airclone-appimage-tools}"
 # Pinned rather than "continuous": an AppImage that silently changes its runtime
 # between releases is the kind of thing that breaks on one distro and nowhere a
 # maintainer can see.
-LINUXDEPLOY_URL="https://github.com/linuxdeploy/linuxdeploy/releases/download/1-alpha-20240109-1/linuxdeploy-x86_64.AppImage"
-APPIMAGETOOL_URL="https://github.com/AppImage/appimagetool/releases/download/1.9.0/appimagetool-x86_64.AppImage"
+LINUXDEPLOY_URL="https://github.com/linuxdeploy/linuxdeploy/releases/download/1-alpha-20240109-1/linuxdeploy-$ARCH.AppImage"
+APPIMAGETOOL_URL="https://github.com/AppImage/appimagetool/releases/download/1.9.0/appimagetool-$ARCH.AppImage"
 # ...and pinned by CONTENT, not just by tag. A release asset on someone else's
 # repository can be replaced without the tag moving, and both tools run with
 # whatever the release job holds - then build the AppImage users download.
 # Hashes taken on 2026-09-29 from the assets at the URLs above (GitHub's API
 # publishes no digest for assets this old). Bumping a URL means bumping its hash.
-LINUXDEPLOY_SHA256="c86d6540f1df31061f02f539a2d3445f8d7f85cc3994eee1e74cd1ac97b76df0"
-APPIMAGETOOL_SHA256="46fdd785094c7f6e545b61afcfb0f3d98d8eab243f644b4b17698c01d06083d1"
+# The aarch64 pair was hashed on 2026-10-10 the same way (the x86_64 linuxdeploy
+# was re-hashed alongside as a control and matched the value already here).
+case "$ARCH" in
+  x86_64)
+    LINUXDEPLOY_SHA256="c86d6540f1df31061f02f539a2d3445f8d7f85cc3994eee1e74cd1ac97b76df0"
+    APPIMAGETOOL_SHA256="46fdd785094c7f6e545b61afcfb0f3d98d8eab243f644b4b17698c01d06083d1"
+    ;;
+  aarch64)
+    LINUXDEPLOY_SHA256="77d4d5918b5c9c7620dd74465c717ea59e8655eb83410cd86ebd24cec38c4679"
+    APPIMAGETOOL_SHA256="04f45ea45b5aa07bb2b071aed9dbf7a5185d3953b11b47358c1311f11ea94a96"
+    ;;
+esac
 
 say() { printf '\n== %s\n' "$*"; }
 
@@ -98,7 +116,7 @@ fetch "$APPIMAGETOOL_URL" "$TOOLS/appimagetool" "$APPIMAGETOOL_SHA256"
 # FUSE, and mounting would fail with a message that reads like a build error, so
 # always self-extract instead.
 export APPIMAGE_EXTRACT_AND_RUN=1
-export ARCH=x86_64
+export ARCH  # set from uname -m above
 
 APPDIR="$WORK/AppDir"
 rm -rf "$APPDIR"

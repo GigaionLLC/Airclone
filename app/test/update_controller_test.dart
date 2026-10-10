@@ -170,9 +170,10 @@ void main() {
     /// both mean replacing a locked directory tree from inside it, which needs
     /// a helper process - and a half-finished swap of either costs somebody
     /// their install.
-    test('the AppImage and the Windows installer, and nothing else yet', () {
+    test('the AppImages and the Windows installer, and nothing else yet', () {
       expect(installableTargets, {
         SelfUpdateTarget.linuxAppImage,
+        SelfUpdateTarget.linuxAppImageArm64,
         SelfUpdateTarget.windowsInstaller,
       });
       for (final t in SelfUpdateTarget.values) {

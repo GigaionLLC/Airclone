@@ -35,6 +35,7 @@ on:
 
 permissions:
   contents: write
+  packages: write   # move the Docker image's :latest
 
 jobs:
   promote:
@@ -60,11 +61,11 @@ jobs:
 
           info=$(gh release view "$TAG" --repo "$REPO" --json isPrerelease,assets)
           if [ "$(jq -r .isPrerelease <<<"$info")" != "true" ]; then
-            echo "$TAG is already a normal release. Nothing to do."
-            exit 0
+            echo "::error::$TAG is already a normal release. Nothing to promote."
+            exit 1
           fi
 
-          # Every file a full release ships (v0.23.1's set). Update this list in
+          # Every file a full release ships (v0.23.1's set, plus Linux ARM64 from v0.24.0). Update this list in
           # the same change that adds or drops a platform artifact.
           expected="SHA256SUMS
           airclone-setup-x64.exe
@@ -75,6 +76,9 @@ jobs:
           airclone-linux-x64.tar.gz
           Airclone-x86_64.AppImage
           airclone.flatpak
+          airclone-linux-arm64.tar.gz
+          Airclone-aarch64.AppImage
+          airclone-aarch64.flatpak
           airclone-android-universal.apk
           airclone-android-arm64-v8a.apk
           airclone-android-armeabi-v7a.apk
@@ -98,9 +102,50 @@ jobs:
             exit 1
           fi
 
-          if [ "$MODE" != "promote" ]; then
-            echo "All files present. Rerun with mode=promote to make $TAG Latest."
-            exit 0
+          echo "All release files present."
+
+      # The Docker image is part of a release from v0.24.0 (docker/, #29): the
+      # multi-arch :X.Y.Z that release.yml's docker-manifest job published. A
+      # release from before the image existed names "docker" in allow_missing.
+      - name: Check the Docker image
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ inputs.tag }}
+          ALLOW: ${{ inputs.allow_missing }}
+        run: |
+          set -euo pipefail
+          image="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/airclone:${TAG#v}"
+          echo "$GH_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          if docker buildx imagetools inspect "$image" > manifest.txt 2>&1 \
+             && grep -q 'linux/amd64' manifest.txt && grep -q 'linux/arm64' manifest.txt; then
+            echo "  ok       $image (linux/amd64 + linux/arm64)"
+          elif [[ " $ALLOW " == *" docker "* ]]; then
+            echo "  allowed  $image (missing, allowed by input)"
+          else
+            cat manifest.txt
+            echo "::error::$image is missing or lacks an architecture"
+            echo "Not promoting: name \"docker\" in allow_missing for a release without an image."
+            exit 1
           fi
+
+      - name: Promote
+        if: inputs.mode == 'promote'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          TAG: ${{ inputs.tag }}
+          ALLOW: ${{ inputs.allow_missing }}
+        run: |
+          set -euo pipefail
           gh release edit "$TAG" --repo "$REPO" --prerelease=false --latest
           echo "$TAG is now the Latest release."
+          if [[ " $ALLOW " != *" docker "* ]]; then
+            image="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/airclone"
+            docker buildx imagetools create -t "$image:latest" "$image:${TAG#v}"
+            echo "$image:latest now points at ${TAG#v}."
+          fi
+          docker logout ghcr.io
+
+      - name: Check-only note
+        if: inputs.mode != 'promote'
+        run: echo "Everything is present. Rerun with mode=promote to make ${{ inputs.tag }} Latest."

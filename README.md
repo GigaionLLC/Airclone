@@ -261,10 +261,12 @@ Direct links always resolve to the **newest release**, so they stay correct as v
 | :--- | :--- | :--- | :--- |
 | **Windows 10/11** | [Microsoft Store](https://apps.microsoft.com/detail/9PJ6LRTS2B8X) | [Installer `.exe`](https://github.com/GigaionLLC/Airclone/releases/latest/download/airclone-setup-x64.exe) · [Portable `.zip`](https://github.com/GigaionLLC/Airclone/releases/latest/download/airclone-windows-x64.zip) · [`.msix`](https://github.com/GigaionLLC/Airclone/releases/latest/download/airclone.msix) | Code-signed. rclone engine included. |
 | **macOS 10.15+** | [App Store](https://apps.apple.com/app/id6790176897) | [`.dmg`](https://github.com/GigaionLLC/Airclone/releases/latest/download/airclone-macos.dmg) · [`.zip`](https://github.com/GigaionLLC/Airclone/releases/latest/download/airclone-macos.zip) | Signed **and notarized** — no Gatekeeper warning. |
-| **Linux** | — | [`.AppImage`](https://github.com/GigaionLLC/Airclone/releases/latest/download/Airclone-x86_64.AppImage) · [`.flatpak`](https://github.com/GigaionLLC/Airclone/releases/latest/download/airclone.flatpak) · [`.tar.gz`](https://github.com/GigaionLLC/Airclone/releases/latest/download/airclone-linux-x64.tar.gz) | Start with the AppImage. See [which Linux build](#-on-linux). |
+| **Linux (x86_64)** | — | [`.AppImage`](https://github.com/GigaionLLC/Airclone/releases/latest/download/Airclone-x86_64.AppImage) · [`.flatpak`](https://github.com/GigaionLLC/Airclone/releases/latest/download/airclone.flatpak) · [`.tar.gz`](https://github.com/GigaionLLC/Airclone/releases/latest/download/airclone-linux-x64.tar.gz) | Start with the AppImage. See [which Linux build](#-on-linux). |
+| **Linux (ARM64)** | — | [`.AppImage`](https://github.com/GigaionLLC/Airclone/releases/latest/download/Airclone-aarch64.AppImage) · [`.flatpak`](https://github.com/GigaionLLC/Airclone/releases/latest/download/airclone-aarch64.flatpak) · [`.tar.gz`](https://github.com/GigaionLLC/Airclone/releases/latest/download/airclone-linux-arm64.tar.gz) | Raspberry Pi 4/5 (64-bit OS), ARM servers and ARM laptops. From v0.24.0. |
 | **Android** | [Google Play](https://play.google.com/store/apps/details?id=com.gigaionllc.airclone) | [Universal `.apk`](https://github.com/GigaionLLC/Airclone/releases/latest/download/airclone-android-universal.apk) · [arm64](https://github.com/GigaionLLC/Airclone/releases/latest/download/airclone-android-arm64-v8a.apk) · [arm32](https://github.com/GigaionLLC/Airclone/releases/latest/download/airclone-android-armeabi-v7a.apk) · [x86_64](https://github.com/GigaionLLC/Airclone/releases/latest/download/airclone-android-x86_64.apk) | Phone, tablet **and Android TV**. rclone engine included. Take the universal APK if unsure. |
 | **iPhone / iPad** | [App Store](https://apps.apple.com/app/id6790176897) | — | iOS has no sideload route. One purchase also covers the Mac app. |
 | **In a browser** | — | — | Not a download — the **[Web UI](docs/guide/web-ui.md)** is built into the desktop builds above. |
+| **Docker** (server) | — | `ghcr.io/gigaionllc/airclone` | The Web UI on a server, x86_64 and ARM64. **[Docker guide](docs/guide/docker.md)**. From v0.24.0. |
 
 **All releases, with notes and checksums:** [github.com/GigaionLLC/Airclone/releases](https://github.com/GigaionLLC/Airclone/releases)
 · [latest](https://github.com/GigaionLLC/Airclone/releases/latest)
@@ -308,6 +310,8 @@ side by side in [Downloads](#-downloads).
 ### 🐧 On Linux
 
 Three ways, all on the Releases page. Pick by how your desktop likes to install things:
+
+Each comes for **x86_64** (most PCs) and **ARM64** (Raspberry Pi 4/5 on a 64-bit OS, ARM servers and laptops; file names with `aarch64` / `arm64`). Run `uname -m` if unsure: `x86_64` or `aarch64`.
 
 | Download | What it is |
 | :--- | :--- |

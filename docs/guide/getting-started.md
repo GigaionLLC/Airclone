@@ -16,7 +16,7 @@ first cloud connection, and checking that it works.
 | :--- | :--- |
 | Windows 10/11 | Microsoft Store, or a direct download |
 | macOS | App Store, or a direct download (signed and notarised) |
-| Linux | Direct download — an AppImage, a Flatpak, or a tarball |
+| Linux | Direct download — an AppImage, a Flatpak, or a tarball, each for x86_64 and ARM64 (`uname -m` tells you which) |
 | Android (phone, tablet, TV) | Google Play, or a direct download |
 | iPhone / iPad | App Store only |
 

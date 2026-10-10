@@ -72,6 +72,22 @@ void main() {
       expect(t, SelfUpdateTarget.linuxTarball);
       expect(t.assetName, 'airclone-linux-x64.tar.gz');
     });
+
+    // An ARM64 machine handed the x86_64 file would replace a working app with
+    // one that never starts again.
+    test('an ARM64 AppImage updates to the ARM64 AppImage', () {
+      final t = target(os: 'linux', package: 'AppImage (linux_arm64)');
+      expect(t, SelfUpdateTarget.linuxAppImageArm64);
+      expect(t.assetName, 'Airclone-aarch64.AppImage');
+      expect(t.isAppImage, isTrue);
+    });
+
+    test('an ARM64 tar.gz updates to the ARM64 tar.gz', () {
+      final t = target(os: 'linux', package: 'tar.gz (linux_arm64)');
+      expect(t, SelfUpdateTarget.linuxTarballArm64);
+      expect(t.assetName, 'airclone-linux-arm64.tar.gz');
+      expect(t.isAppImage, isFalse);
+    });
   });
 
   group('direct downloads that cannot', () {
