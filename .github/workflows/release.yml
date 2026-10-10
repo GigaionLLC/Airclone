@@ -772,6 +772,90 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+  # The Docker image: the Linux bundle this run just built and verified, plus
+  # the runtime libraries and Xvfb, serving the Web UI (docker/Dockerfile).
+  # Built per architecture on its native runner, smoke-tested by RUNNING it
+  # (docker/smoke-test.sh), and only then pushed - on a tag, as :X.Y.Z-<arch>.
+  # docker-manifest joins those into :X.Y.Z and :X.Y. :latest moves only when the
+  # release is promoted (promote-release.yml), like the GitHub Release itself.
+  docker:
+    needs: [release, linux]
+    if: ${{ !cancelled() && needs.linux.result == 'success' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { runner: ubuntu-latest, arch: x64, platform: amd64, tarball: airclone-linux-x64.tar.gz }
+          - { runner: ubuntu-24.04-arm, arch: arm64, platform: arm64, tarball: airclone-linux-arm64.tar.gz }
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+      packages: write
+    defaults:
+      run:
+        working-directory: .
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v8
+        with:
+          name: airclone-linux-${{ matrix.arch }}
+          path: ${{ runner.temp }}/linux
+      - name: Build the image
+        env:
+          TARBALL: ${{ matrix.tarball }}
+        run: |
+          set -euo pipefail
+          mkdir -p docker/bundle
+          tar -xzf "$RUNNER_TEMP/linux/$TARBALL" -C docker/bundle
+          test -x docker/bundle/airclone
+          ver="${GITHUB_REF_NAME#v}"
+          case "$GITHUB_REF" in refs/tags/*) ;; *) ver="dev-${GITHUB_SHA::7}";; esac
+          docker build --build-arg AIRCLONE_VERSION="$ver" -t airclone:built docker
+      - name: Smoke test (run it, sign in)
+        run: bash docker/smoke-test.sh airclone:built
+      - name: Push to GHCR
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PLATFORM: ${{ matrix.platform }}
+        run: |
+          set -euo pipefail
+          image="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/airclone"
+          tag="${image}:${GITHUB_REF_NAME#v}-${PLATFORM}"
+          echo "$GH_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          docker tag airclone:built "$tag"
+          docker push "$tag"
+          docker logout ghcr.io
+
+  docker-manifest:
+    needs: docker
+    if: ${{ startsWith(github.ref, 'refs/tags/') && needs.docker.result == 'success' }}
+    runs-on: ubuntu-latest
+    permissions:
+      packages: write
+    defaults:
+      run:
+        working-directory: .
+    steps:
+      - name: Join the architectures into :X.Y.Z and :X.Y
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          image="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/airclone"
+          ver="${GITHUB_REF_NAME#v}"
+          minor="${ver%.*}"
+          echo "$GH_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          docker buildx imagetools create -t "$image:$ver" -t "$image:$minor" \
+            "$image:$ver-amd64" "$image:$ver-arm64"
+          # Assert the published result, not the command's exit code.
+          docker buildx imagetools inspect "$image:$ver" | tee manifest.txt
+          grep -q 'linux/amd64' manifest.txt && grep -q 'linux/arm64' manifest.txt \
+            || { echo "::error::$image:$ver is missing an architecture"; exit 1; }
+          docker logout ghcr.io
+
   macos:
     runs-on: macos-latest
     needs: [release, librclone]

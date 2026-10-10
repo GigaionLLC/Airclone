@@ -266,6 +266,7 @@ Direct links always resolve to the **newest release**, so they stay correct as v
 | **Android** | [Google Play](https://play.google.com/store/apps/details?id=com.gigaionllc.airclone) | [Universal `.apk`](https://github.com/GigaionLLC/Airclone/releases/latest/download/airclone-android-universal.apk) · [arm64](https://github.com/GigaionLLC/Airclone/releases/latest/download/airclone-android-arm64-v8a.apk) · [arm32](https://github.com/GigaionLLC/Airclone/releases/latest/download/airclone-android-armeabi-v7a.apk) · [x86_64](https://github.com/GigaionLLC/Airclone/releases/latest/download/airclone-android-x86_64.apk) | Phone, tablet **and Android TV**. rclone engine included. Take the universal APK if unsure. |
 | **iPhone / iPad** | [App Store](https://apps.apple.com/app/id6790176897) | — | iOS has no sideload route. One purchase also covers the Mac app. |
 | **In a browser** | — | — | Not a download — the **[Web UI](docs/guide/web-ui.md)** is built into the desktop builds above. |
+| **Docker** (server) | — | `ghcr.io/gigaionllc/airclone` | The Web UI on a server, x86_64 and ARM64. **[Docker guide](docs/guide/docker.md)**. From v0.24.0. |
 
 **All releases, with notes and checksums:** [github.com/GigaionLLC/Airclone/releases](https://github.com/GigaionLLC/Airclone/releases)
 · [latest](https://github.com/GigaionLLC/Airclone/releases/latest)

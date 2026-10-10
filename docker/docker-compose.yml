@@ -1,0 +1,29 @@
+# Airclone: rclone in your browser.
+#
+#   1. Change /path/on/your/server below to the folder(s) you want Airclone to see.
+#   2. docker compose up -d
+#   3. Open https://<your-server>:5799 and accept the certificate warning once
+#      (Airclone made its own certificate; the warning is expected).
+#   4. Sign in as "airclone". The password is in:  docker logs airclone
+#      ...or set your own below.
+#
+# Full guide: https://github.com/GigaionLLC/Airclone/blob/main/docs/guide/docker.md
+
+services:
+  airclone:
+    image: ghcr.io/gigaionllc/airclone:latest   # or pin a version, e.g. :0.24.0
+    container_name: airclone
+    restart: unless-stopped
+    ports:
+      - "5799:5799"   # Web UI. To use another port, change the LEFT number only.
+    environment:
+      # Your own login (optional). Leave these commented out and a strong
+      # password is generated on first start: read it with `docker logs airclone`.
+      # AIRCLONE_WEBUI_USER: airclone
+      # AIRCLONE_WEBUI_PASSWORD: choose-a-long-password
+      PUID: 1000      # files Airclone writes to your folders belong to this user...
+      PGID: 1000      # ...and group. Run `id` on the server to see yours.
+      TZ: Etc/UTC     # your time zone, for scheduled backups (e.g. America/New_York)
+    volumes:
+      - ./config:/config                # Airclone's settings, remotes and login. Back this up.
+      - /path/on/your/server:/data      # what shows as "Home" in Airclone

@@ -106,3 +106,4 @@ __pycache__/
 # integration_test screenshot output (ios-screenshots.yml collects them into
 # artifacts; the store-ready ones are committed under docs/store/apple/ios/).
 app/screenshots/
+docker/bundle/

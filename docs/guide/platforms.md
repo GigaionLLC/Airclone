@@ -124,6 +124,9 @@ dragged narrow gets the phone layout. The ⚠️ marks for tablets below are abo
 - **Hosting the Web UI does not need Advanced mode.** It is in Settings → Remote access, or run
   `airclone --webui` on a desktop build. Any device with a browser can open it, phones included. You
   then see and control the *host's* files, disks and transfers; see [The Web UI](web-ui.md).
+- **Docker** (from v0.24.0) is the Linux build serving the Web UI, for x86_64 and ARM64, so it has
+  the Linux column's features with one exception: **mounting is off**, because FUSE needs extra
+  container privileges. See [Running Airclone in Docker](docker.md).
 
 ## Your remotes, security and the console
 

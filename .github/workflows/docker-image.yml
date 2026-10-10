@@ -1,0 +1,54 @@
+name: Docker image (build + smoke test)
+
+# Builds the image from docker/ and runs it, on pull requests that touch it.
+# The app inside comes from the LATEST PUBLISHED release's Linux tarball, so this
+# tests the image recipe without a full release build. release.yml builds the
+# real images from the tag's own bundle and runs the same smoke test before
+# pushing anything. Nothing here pushes.
+
+on:
+  pull_request:
+    paths:
+      - 'docker/**'
+      - '.github/workflows/docker-image.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  image:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { runner: ubuntu-latest, tarball: airclone-linux-x64.tar.gz }
+          - { runner: ubuntu-24.04-arm, tarball: airclone-linux-arm64.tar.gz }
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Fetch the latest release's Linux bundle
+        id: bundle
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TARBALL: ${{ matrix.tarball }}
+        run: |
+          set -euo pipefail
+          # The ARM64 tarball exists from v0.24.0. Before that release is out
+          # the arm64 leg has nothing to test, and says so rather than failing.
+          if ! gh release download --repo "$GITHUB_REPOSITORY" --pattern "$TARBALL" --dir "$RUNNER_TEMP"; then
+            echo "::warning::the latest release has no $TARBALL; skipping this architecture"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          mkdir -p docker/bundle
+          tar -xzf "$RUNNER_TEMP/$TARBALL" -C docker/bundle
+          test -x docker/bundle/airclone
+      - name: Build the image
+        if: steps.bundle.outputs.skip != 'true'
+        run: docker build -t airclone:test docker
+      - name: Smoke test
+        if: steps.bundle.outputs.skip != 'true'
+        run: bash docker/smoke-test.sh airclone:test
