@@ -205,6 +205,7 @@ Future<int> runUpdateCli(
 
   switch (env.target) {
     case SelfUpdateTarget.linuxAppImage:
+    case SelfUpdateTarget.linuxAppImageArm64:
       final result = await installAppImage(
         verified: verified.file,
         environment: env.processEnvironment,

@@ -177,6 +177,7 @@ jobs:
           - { os: windows-latest, out: app/windows/librclone/librclone.dll, artifact: librclone-windows }
           - { os: macos-latest, out: app/macos/librclone/librclone.dylib, artifact: librclone-macos }
           - { os: ubuntu-latest, out: app/linux/librclone/librclone.so, artifact: librclone-linux }
+          - { os: ubuntu-24.04-arm, out: app/linux/librclone/librclone.so, artifact: librclone-linux-arm64 }
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7
@@ -500,9 +501,24 @@ jobs:
       # what that workflow submits.
 
   linux:
-    runs-on: ubuntu-latest
+    # Two architectures, each built NATIVELY on its own runner (x64 on
+    # ubuntu-latest, arm64 on GitHub's ARM runner) rather than cross-compiled:
+    # Flutter, the Rust crate, librclone and the AppImage/Flatpak tooling all
+    # then run the same way on both, and every "does it start" check below runs
+    # on the architecture it is checking. The x64 file names are unchanged, so
+    # existing download links and the AppImage self-updater keep working.
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { runner: ubuntu-latest, arch: x64, rclone_arch: amd64, librclone: librclone-linux, tarball: airclone-linux-x64.tar.gz, appimage: Airclone-x86_64.AppImage, flatpak: airclone.flatpak, suffix: '' }
+          - { runner: ubuntu-24.04-arm, arch: arm64, rclone_arch: arm64, librclone: librclone-linux-arm64, tarball: airclone-linux-arm64.tar.gz, appimage: Airclone-aarch64.AppImage, flatpak: airclone-aarch64.flatpak, suffix: '-arm64' }
+    runs-on: ${{ matrix.runner }}
     needs: [release, librclone]
     if: ${{ !cancelled() && (needs.release.result == 'success' || github.event_name == 'workflow_dispatch') }}
+    env:
+      # Relative to app/ (the default working directory).
+      BUNDLE: build/linux/${{ matrix.arch }}/release/bundle
     steps:
       - uses: actions/checkout@v7
         with:
@@ -517,8 +533,20 @@ jobs:
         # desktop-file-validate and refuses to package without it, having already
         # done the slow work first.
         run: sudo apt-get update && sudo apt-get install -y ninja-build libgtk-3-dev libmpv-dev mpv libsecret-1-dev desktop-file-utils
-      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2  # v2.23.0
+      - if: matrix.arch == 'x64'
+        uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2  # v2.23.0
         with: { channel: stable, flutter-version: 3.47.0, cache: true }
+      # Flutter publishes no Linux arm64 SDK archive (releases_linux.json lists
+      # x64 only), which is all the action above can install. A git checkout of
+      # the same tag works on arm64: its first run downloads the arm64 Dart SDK
+      # and engine. Same version pin as everywhere else.
+      - name: Set up Flutter 3.47.0 (arm64, from the tagged source)
+        if: matrix.arch == 'arm64'
+        run: |
+          set -euo pipefail
+          git clone --depth 1 --branch 3.47.0 https://github.com/flutter/flutter.git "$RUNNER_TEMP/flutter"
+          echo "$RUNNER_TEMP/flutter/bin" >> "$GITHUB_PATH"
+          "$RUNNER_TEMP/flutter/bin/flutter" --version
       # super_native_extensions (drag-out) builds a Rust crate via cargokit.
       - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87  # stable branch
         with: { toolchain: stable }
@@ -532,7 +560,7 @@ jobs:
         continue-on-error: true
         uses: actions/download-artifact@v8
         with:
-          name: librclone-linux
+          name: ${{ matrix.librclone }}
           path: app/linux/librclone
       - run: flutter build linux --release
       # Bundle the rclone BINARY, the way the Windows and Android jobs do.
@@ -558,7 +586,7 @@ jobs:
         run: |
           set -euo pipefail
           ver="${RCLONE_VERSION}"
-          zip="rclone-${ver}-linux-amd64.zip"
+          zip="rclone-${ver}-linux-${{ matrix.rclone_arch }}.zip"
           base="https://downloads.rclone.org/${ver}"
           curl -fsSL --retry 3 -o "$zip" "$base/$zip"
           curl -fsSL --retry 3 -o SHA256SUMS.txt "$base/SHA256SUMS"
@@ -567,8 +595,8 @@ jobs:
           actual="$(sha256sum "$zip" | awk '{print $1}')"
           [ "$actual" = "$expected" ] || { echo "rclone checksum mismatch (expected $expected, got $actual)"; exit 1; }
           unzip -q "$zip" -d rclone-extract
-          dest="build/linux/x64/release/bundle"
-          install -Dm755 "rclone-extract/rclone-${ver}-linux-amd64/rclone" "$dest/rclone"
+          dest="$BUNDLE"
+          install -Dm755 "rclone-extract/rclone-${ver}-linux-${{ matrix.rclone_arch }}/rclone" "$dest/rclone"
           # Assert the packaged output, and that it actually runs on this arch.
           #
           # `env -u RCLONE_VERSION` is load-bearing. rclone maps every --flag to
@@ -597,7 +625,7 @@ jobs:
       - name: Bundle the Web UI beside the app
         run: |
           set -euo pipefail
-          dest="build/linux/x64/release/bundle/webui"
+          dest="$BUNDLE/webui"
           rm -rf "$dest"
           cp -r build/web "$dest"
           find "$dest" -name '*.symbols' -delete
@@ -610,13 +638,13 @@ jobs:
           echo "Web UI bundled OK ($(du -sh "$dest" | cut -f1))"
       - name: Note whether librclone bundled
         run: |
-          if [ -f build/linux/x64/release/bundle/librclone.so ]; then
+          if [ -f $BUNDLE/librclone.so ]; then
             echo "in-process engine bundled OK"
           else
             echo "::warning::librclone.so not bundled - this build ships the binary engine only."
           fi
       - name: Package
-        run: tar -czf airclone-linux-x64.tar.gz -C build/linux/x64/release/bundle .
+        run: tar -czf ${{ matrix.tarball }} -C $BUNDLE .
       # The tarball is the raw bundle and links against libraries a desktop may
       # not have — on a stock Ubuntu 24.04 it fails to start, missing
       # libsecret-1, libmpv and libasound. The AppImage carries those with it and
@@ -630,16 +658,16 @@ jobs:
         # "passed"; only the run-it check below noticed.
         run: test -s ../dev/linux/build-appimage.sh &&
           bash ../dev/linux/build-appimage.sh
-          build/linux/x64/release/bundle
-          "$GITHUB_WORKSPACE/app/Airclone-x86_64.AppImage"
+          $BUNDLE
+          "$GITHUB_WORKSPACE/app/${{ matrix.appimage }}"
       - name: Verify the AppImage actually starts
         # Build-and-upload is not proof. Run it headless under a virtual display:
         # a missing library, a broken AppRun or a bad bundle layout all fail here,
         # in the run that produced the artifact, rather than on a user's machine.
         run: |
           sudo apt-get install -y xvfb
-          chmod +x Airclone-x86_64.AppImage
-          ./Airclone-x86_64.AppImage --appimage-extract >/dev/null
+          chmod +x ${{ matrix.appimage }}
+          ./${{ matrix.appimage }} --appimage-extract >/dev/null
           test -x squashfs-root/AppRun || { echo "no AppRun in the AppImage"; exit 1; }
           test -f squashfs-root/usr/bin/data/flutter_assets/AssetManifest.bin \
             || { echo "Flutter assets are not beside the executable"; exit 1; }
@@ -690,10 +718,10 @@ jobs:
       # down with it.
       - uses: actions/upload-artifact@v7
         with:
-          name: airclone-linux-x64
+          name: airclone-linux-${{ matrix.arch }}
           path: |
-            app/airclone-linux-x64.tar.gz
-            app/Airclone-x86_64.AppImage
+            app/${{ matrix.tarball }}
+            app/${{ matrix.appimage }}
       # An AppImage is a file you run; a Flatpak is an app the desktop installs,
       # updates and shows in its software centre. They are not redundant — which
       # one a Linux user wants is a matter of how their distribution works.
@@ -702,14 +730,14 @@ jobs:
       - name: Build Flatpak
         run: test -s ../dev/linux/build-flatpak.sh &&
           bash ../dev/linux/build-flatpak.sh
-          build/linux/x64/release/bundle
-          "$GITHUB_WORKSPACE/app/airclone.flatpak"
+          $BUNDLE
+          "$GITHUB_WORKSPACE/app/${{ matrix.flatpak }}"
       - name: Verify the Flatpak installs and starts
         # Same standard as the AppImage: install the bundle exactly as a user
         # would and run it. This is also the only check that the sandbox
         # permissions in the manifest are enough to reach a window at all.
         run: |
-          flatpak install --user --noninteractive ./airclone.flatpak
+          flatpak install --user --noninteractive ./${{ matrix.flatpak }}
           flatpak info --user com.gigaionllc.airclone
           xvfb-run -a timeout 20 flatpak run com.gigaionllc.airclone > flatpak-run.log 2>&1 &
           pid=$!
@@ -727,19 +755,19 @@ jobs:
           fi
       - uses: actions/upload-artifact@v7
         with:
-          name: airclone-linux-flatpak
-          path: app/airclone.flatpak
+          name: airclone-linux-flatpak${{ matrix.suffix }}
+          path: app/${{ matrix.flatpak }}
       - name: Stage for the release
         if: startsWith(github.ref, 'refs/tags/')
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/release-assets"
-          cp airclone-linux-x64.tar.gz Airclone-x86_64.AppImage airclone.flatpak "$RUNNER_TEMP/release-assets/"
+          cp ${{ matrix.tarball }} ${{ matrix.appimage }} ${{ matrix.flatpak }} "$RUNNER_TEMP/release-assets/"
       - name: Hand the release files to the checksums job
         if: startsWith(github.ref, 'refs/tags/')
         uses: actions/upload-artifact@v7
         with:
-          name: release-linux
+          name: release-linux${{ matrix.suffix }}
           path: ${{ runner.temp }}/release-assets/
           if-no-files-found: error
           retention-days: 7

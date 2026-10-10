@@ -71,6 +71,7 @@ class UpdateReady extends UpdateJob {
 /// process, and a half-finished swap of those costs somebody their install.
 const Set<SelfUpdateTarget> installableTargets = {
   SelfUpdateTarget.linuxAppImage,
+  SelfUpdateTarget.linuxAppImageArm64,
   SelfUpdateTarget.windowsInstaller,
 };
 

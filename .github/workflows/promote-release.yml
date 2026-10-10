@@ -64,7 +64,7 @@ jobs:
             exit 0
           fi
 
-          # Every file a full release ships (v0.23.1's set). Update this list in
+          # Every file a full release ships (v0.23.1's set, plus Linux ARM64 from v0.24.0). Update this list in
           # the same change that adds or drops a platform artifact.
           expected="SHA256SUMS
           airclone-setup-x64.exe
@@ -75,6 +75,9 @@ jobs:
           airclone-linux-x64.tar.gz
           Airclone-x86_64.AppImage
           airclone.flatpak
+          airclone-linux-arm64.tar.gz
+          Airclone-aarch64.AppImage
+          airclone-aarch64.flatpak
           airclone-android-universal.apk
           airclone-android-arm64-v8a.apk
           airclone-android-armeabi-v7a.apk

@@ -29,8 +29,14 @@
 set -euo pipefail
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-BUNDLE="${1:-$REPO/app/build/linux/x64/release/bundle}"
-OUTPUT="${2:-$REPO/airclone.flatpak}"
+# flatpak-builder builds for the host architecture; only the defaults below
+# need to know it. release.yml passes both paths explicitly, per architecture.
+case "$(uname -m)" in
+  aarch64|arm64) FLUTTER_ARCH=arm64; DEFAULT_OUT=airclone-aarch64.flatpak ;;
+  *) FLUTTER_ARCH=x64; DEFAULT_OUT=airclone.flatpak ;;
+esac
+BUNDLE="${1:-$REPO/app/build/linux/$FLUTTER_ARCH/release/bundle}"
+OUTPUT="${2:-$REPO/$DEFAULT_OUT}"
 PKG="$REPO/app/linux/packaging"
 APP_ID="com.gigaionllc.airclone"
 # The MANIFEST is the source of truth for which runtime this builds against.

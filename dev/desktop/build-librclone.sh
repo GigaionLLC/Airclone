@@ -63,8 +63,16 @@ case "$OS" in
     : "${OUT_DIR:=${REPO_ROOT}/app/linux/librclone}"
     mkdir -p "$OUT_DIR"
     export GOOS=linux
-    echo "== building librclone.so (${RCLONE_VERSION}) =="
-    build_one amd64 gcc "${OUT_DIR}/librclone.so"
+    # The HOST architecture, built natively with its own gcc: release.yml runs
+    # this once on an x64 runner and once on an arm64 one. Cross-compiling cgo
+    # would need a cross toolchain and buys nothing when both runners exist.
+    case "$(uname -m)" in
+      x86_64) GOARCH_HOST=amd64 ;;
+      aarch64|arm64) GOARCH_HOST=arm64 ;;
+      *) echo "unsupported Linux architecture: $(uname -m)" >&2; exit 1 ;;
+    esac
+    echo "== building librclone.so (${GOARCH_HOST}, ${RCLONE_VERSION}) =="
+    build_one "$GOARCH_HOST" gcc "${OUT_DIR}/librclone.so"
     OUT="${OUT_DIR}/librclone.so"
     ;;
   *)
