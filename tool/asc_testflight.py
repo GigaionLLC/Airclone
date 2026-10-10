@@ -281,11 +281,20 @@ def ensure_submitted(build):
     if d:
         print("  beta review: %s" % d["attributes"].get("betaReviewState"))
         return
-    write("submit build to Beta App Review", "POST",
-          "/v1/betaAppReviewSubmissions",
-          {"data": {"type": "betaAppReviewSubmissions",
-                    "relationships": {"build": {"data": {
-                        "type": "builds", "id": build["id"]}}}}})
+    body = {"data": {"type": "betaAppReviewSubmissions",
+                     "relationships": {"build": {"data": {
+                         "type": "builds", "id": build["id"]}}}}}
+    if not APPLY:
+        print("  would submit build to Beta App Review")
+        return
+    print("  submit build to Beta App Review")
+    if call("POST", "/v1/betaAppReviewSubmissions", body) is None:
+        # Apple closes a version to external testing once it is live on the
+        # App Store (HTTP 422 "closed for beta review submission"). Not fatal:
+        # the group and link are still set up, and the next upload with a
+        # higher version number is the build testers get.
+        print("  NOT SUBMITTED. If Apple says the version is closed, upload a "
+              "build with a higher version and rerun.")
 
 
 def ensure_public_link(group):
