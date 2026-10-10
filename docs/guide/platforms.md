@@ -33,7 +33,8 @@ builds with different limits:
 - **macOS** is the signed download from GitHub. **macOS (App Store)** is the Mac App Store build,
   which runs inside Apple's App Sandbox and has real limits (see below).
 - **Linux** is the AppImage or the tar.gz. **Linux (Flatpak)** is the Flatpak, from Flathub or from
-  the Releases page.
+  the Releases page. Both columns cover **x86_64 and ARM64** (from v0.24.0): the ARM64 builds are
+  the same app, built natively, and every row below applies to them unchanged.
 - **Android** is the same build whether it comes from **Google Play** or the **APK** on the Releases
   page. Only updates differ: Play updates itself, and the APK tells you when a new version is out.
   **Android TV** is that same build on a television.
