@@ -9,6 +9,7 @@ import 'package:airclone_rc/airclone_rc.dart';
 import '../state/android_native.dart';
 import '../state/diagnostics.dart';
 import '../state/engine_controller.dart';
+import '../state/interface_scale.dart';
 import '../state/mount_controller.dart';
 import '../state/settings_controller.dart';
 import '../state/skin.dart';
@@ -177,6 +178,7 @@ class _AircloneAppState extends ConsumerState<AircloneApp> {
     );
     final skin = ref.watch(skinProvider);
     final backdrop = ref.watch(windowBackdropProvider);
+    final interfaceScale = ref.watch(interfaceScaleProvider);
     // A translucent backdrop (Mica/Acrylic) only shows if the app paints behind
     // it transparently — drop the scaffold/canvas fill so the OS material reads.
     final translucent =
@@ -205,7 +207,14 @@ class _AircloneAppState extends ConsumerState<AircloneApp> {
       // other platform sees any of this.
       builder: (context, child) {
         final app = child ?? const SizedBox.shrink();
-        return androidIsTelevision ? TvShell(child: app) : app;
+        // Interface size (issue #32): the binding already lays the window out
+        // at this scale; MediaQuery has to agree, because MediaQuery.fromView
+        // reads the raw window. 1.0 everywhere the scaled binding is not in use.
+        final scaled = MediaQuery(
+          data: scaleMediaQuery(MediaQuery.of(context), interfaceScale),
+          child: app,
+        );
+        return androidIsTelevision ? TvShell(child: scaled) : scaled;
       },
       home: const HomeScreen(),
     );

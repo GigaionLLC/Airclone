@@ -28,6 +28,7 @@ import '../state/engine_mode.dart';
 import '../state/external_config_backup.dart';
 import '../state/host_platform.dart';
 import '../state/install_source.dart';
+import '../state/interface_scale.dart';
 import '../state/jobs_controller.dart';
 import '../state/local_locations.dart';
 import '../state/open_external.dart';
@@ -120,6 +121,10 @@ class SettingsContent extends ConsumerWidget {
         _ThemeSection(),
         const SizedBox(height: Space.x4),
         _SkinSection(),
+        if (desktop) ...[
+          const SizedBox(height: Space.x4),
+          _InterfaceSizeSection(),
+        ],
         if (desktop) ...[const SizedBox(height: Space.x4), _BackdropSection()],
         if (desktop || advanced) ...[
           const SizedBox(height: Space.x5),
@@ -1430,6 +1435,61 @@ class _SkinSection extends ConsumerWidget {
             },
           ),
         ),
+      ],
+    );
+  }
+}
+
+/// Airclone's own zoom (issue #32), on top of the OS's display scale. Desktop
+/// only: phones follow the system display size, the browser has its own zoom.
+class _InterfaceSizeSection extends ConsumerWidget {
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final c = AircloneTheme.of(context);
+    final scale = ref.watch(interfaceScaleProvider);
+    final fromEnv = interfaceScaleFromEnvironment();
+    // The saved value is always one of these, but AIRCLONE_SCALE can be any
+    // number in range: show it as its own entry rather than a wrong one.
+    final options = {...kInterfaceScales, scale}.toList()..sort();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const _SectionLabel(
+          'Interface size',
+          help:
+              'Makes everything in Airclone larger or smaller, on top of your '
+              "display's own scaling. The mouse pointer and other apps are not "
+              'affected.',
+        ),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: DropdownButton<double>(
+            key: const ValueKey('interface-size'),
+            value: scale,
+            dropdownColor: c.surfaceRaised,
+            underline: const SizedBox.shrink(),
+            borderRadius: BorderRadius.circular(Radii.md),
+            items: [
+              for (final s in options)
+                DropdownMenuItem(
+                  value: s,
+                  child: Text('${(s * 100).round()}%'),
+                ),
+            ],
+            onChanged: (v) {
+              if (v != null) ref.read(interfaceScaleProvider.notifier).set(v);
+            },
+          ),
+        ),
+        if (fromEnv)
+          Padding(
+            padding: const EdgeInsets.only(top: Space.x1),
+            child: Text(
+              '$kInterfaceScaleEnv is set, so Airclone starts at that size '
+              'every time. A change here lasts until you close it.',
+              style: TextStyle(color: c.textMuted, fontSize: 12),
+            ),
+          ),
       ],
     );
   }
