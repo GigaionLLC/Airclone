@@ -13,6 +13,20 @@ happened": nothing was logged between 2026-07-02 and 2026-07-15, or between 2026
      it is: it used to say ABOVE, which pushed it further down the file with every entry until
      it sat hundreds of lines under the newest one and pointed writers at the wrong place. -->
 
+## [2026-10-10] - v0.23.2 sent to all stores; public TestFlight beta kept intact
+
+**Agent:** Claude Code (Claude Opus 5.5)
+**Files Modified:** `dev/apple-handoff.md` (state table + TestFlight rule), this log
+**Database/API Changes:** Store state only.
+**Summary:** Release run 38022344836 green, first tag created as a pre-release; `promote-release.yml` check found
+14/14 assets, then promoted v0.23.2 to Latest. rclone v1.75.2 in every platform's build log. Google Play: `publish-play`
+upload -> beta 152 confirmed, `promote-play` dry run -> `rollout=100` committed, production serves 152 at 100%.
+Microsoft: dry run -> `mode=stage` created **1152921505702090863** (MSIX `0.23.2.0`, pricing preserved) - NOT
+submitted; press Submit in Partner Center. Apple: iOS 0.23.2 created, listing text, build 152 attached, audit "No
+gaps", submitted 05:15Z; macOS build 152 uploaded (VALID in ~6 min), same steps, submitted 05:33Z; both MANUAL. The
+public TestFlight beta (build 152) was re-read after the iOS submission and was still WAITING_FOR_REVIEW, so the two
+reviews are independent; iOS must not be released until the beta is approved (see apple-handoff.md).
+
 ## [2026-10-09] - Releases start as pre-releases; promote-release.yml makes them Latest
 
 **Agent:** Claude Code (Claude Opus 5.5) — `feat/reconnect-remote`
