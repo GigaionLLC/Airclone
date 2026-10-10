@@ -55,6 +55,20 @@ env:
   # Store MSIX (windows job), built into librclone, and built as the Android
   # jniLib (android job). Keep in sync with dev/android/build-rclone.ps1 +
   # dev/desktop/build-librclone.sh — ci.yml greps this line and enforces it.
+  # v1.75.2 (2026-10-09). Another SECURITY release (go1.26.9 + x/net CVEs;
+  # local `.rclonelink` root escape; header leaks on redirect/downgrade in
+  # fshttp and webdav; pcloud OAuth callback state). Also ours: `oauthutil:
+  # Renew.Shutdown nil timer panic`, a VFS reads-return-zeros fix, accounting
+  # speed fixes, and `lib/rest` bounding response bodies.
+  # ONE CHANGE TO WATCH: `rc: make job/status and job/list require
+  # authentication`. Airclone polls job/status for every `_async` call. That
+  # is safe because the rcserver only refuses it when the server runs WITHOUT
+  # auth, and our rcd always has --rc-user + RCLONE_RC_PASS; librclone's RPC
+  # bypasses the HTTP server entirely (checked in fs/rc/rcserver/rcserver.go).
+  # Verified against a v1.75.2 binary built from the tagged source: the
+  # "Sign in again" flow (config/update + config_refresh_token) and
+  # config/create still requiring `parameters` behave as on v1.75.1.
+  # What follows is the reasoning for v1.75.1, still in force:
   # v1.75.1 (2026-09-04). A SECURITY release, and several advisories land on
   # surfaces Airclone actually ships:
   #   * archive: zip-slip path traversal in untrusted zips, plus entries that
@@ -85,7 +99,7 @@ env:
   # cost a Store certification cycle — see AddRemoteController.answer); and the
   # v0.7.2 mount options still reshape — every one read back off vfs/stats
   # unchanged, which matters because 1.75.1 touched the VFS heavily.
-  RCLONE_VERSION: v1.75.1
+  RCLONE_VERSION: v1.75.2
 
 # ── The Flutter version is PINNED everywhere below. Bump it deliberately. ─────
 # `channel: stable` is a moving target. On 2026-08-15 it moved to 3.47.0 in the
