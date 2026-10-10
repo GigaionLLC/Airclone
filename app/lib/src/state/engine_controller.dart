@@ -621,11 +621,15 @@ class EngineController extends Notifier<EngineUi> {
       // a "ready" engine wired to a corpse — surface it with a restart path.
       http.onDied = () {
         if (state.client == http) {
-          state = const EngineUi(
+          // The OS closing a backgrounded engine is routine on Android; say so,
+          // so it is not mistaken for a crash worth reporting (#36).
+          state = EngineUi(
             phase: EnginePhase.error,
-            message:
-                'The engine stopped unexpectedly. Start it again to '
-                'continue.',
+            message: http.lastExit?.closedByOs ?? false
+                ? 'Android closed the engine while Airclone was in the '
+                      'background. Start it again to continue.'
+                : 'The engine stopped unexpectedly. Start it again to '
+                      'continue.',
           );
         }
       };

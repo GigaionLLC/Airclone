@@ -13,6 +13,24 @@ happened": nothing was logged between 2026-07-02 and 2026-07-15, or between 2026
      it is: it used to say ABOVE, which pushed it further down the file with every entry until
      it sat hundreds of lines under the newest one and pointed writers at the wrong place. -->
 
+## [2026-10-10] - Problem report: four levels, engine exit recorded, size-aware copy (#36)
+
+**Agent:** Claude Code (Claude Opus 5.5)
+**Files Modified:** `packages/airclone_rc/lib/src/{engine_exit,http_rclone_client,rclone_log}.dart` (+ export, test),
+`app/lib/src/state/{diagnostics,engine_controller,engine_log_bridge}.dart`, `app/lib/src/ui/{app,settings_screen,media_capabilities_dialog}.dart`,
+`app/lib/src/{update/update_controller,webui/webui_controller}.dart`, `app/test/{diagnostics,engine_log_bridge}_test.dart`,
+`docs/guide/troubleshooting.md`.
+**Database/API Changes:** `DiagLevel`/`RcloneLogLevel` are now `notice, warning, error, fatal` (`info` renamed `notice`);
+`buildDiagnosticsReport` returns a `DiagnosticsReport` (`.text`, `.summary`) and takes `minLevel`/`maxChars`.
+**Summary:** A field report from Android 0.23.1 held one WARN, `no answer from the engine for core/version` /
+Connection refused: the rcd child was already gone, almost certainly Android's background killer, but nothing
+recorded the exit, so it read like a bug. The client now logs every unexpected exit with its exit code or signal and
+uptime (`engine_exit.dart`): Android + SIGKILL is a NOTICE saying it is normal, anything else FATAL; the engine
+screen words the restart prompt to match. A non-recovered transport failure waits up to 2 s on the child's exit and is
+dropped if the exit explains it. Uncaught framework errors are FATAL. `Copy report` copies everything up to 60,000
+chars (GitHub's issue body cap is 65,536), otherwise drops notices, then warnings, then the oldest, and states it in an
+`Included:` line and the status text; a menu offers errors-and-fatal or fatal only. Save/Share stay complete.
+
 ## [2026-10-10] - v0.24.1 pre-release: unsigned IPA for sideloading (#34)
 
 **Agent:** Claude Code (Claude Opus 5.5)

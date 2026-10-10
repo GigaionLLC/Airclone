@@ -177,7 +177,7 @@ class UpdateJobController extends Notifier<UpdateJob> {
     }
     ref
         .read(diagnosticsProvider.notifier)
-        .info('update', 'verified $tag (${outcome.update!.sha256})');
+        .notice('update', 'verified $tag (${outcome.update!.sha256})');
     state = UpdateReady(outcome.update!.file, target: target);
   }
 

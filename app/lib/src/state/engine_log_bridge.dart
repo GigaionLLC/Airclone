@@ -21,7 +21,8 @@ void logEngineEvent(
 }
 
 DiagLevel _level(RcloneLogLevel level) => switch (level) {
-  RcloneLogLevel.info => DiagLevel.info,
+  RcloneLogLevel.notice => DiagLevel.notice,
   RcloneLogLevel.warning => DiagLevel.warning,
   RcloneLogLevel.error => DiagLevel.error,
+  RcloneLogLevel.fatal => DiagLevel.fatal,
 };

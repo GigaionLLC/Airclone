@@ -2436,7 +2436,12 @@ class _DiagnosticsSectionState extends ConsumerState<_DiagnosticsSection> {
   /// goes into a copied/saved report; this only keeps Settings scrollable.
   static const int _visibleLimit = 40;
 
-  Future<String> _report() async {
+  /// The full report by default. Copying passes a [scope] and a size budget;
+  /// a saved or shared file passes neither and holds everything.
+  Future<DiagnosticsReport> _report({
+    ReportScope scope = ReportScope.all,
+    int? maxChars,
+  }) async {
     // Read before the first await: the widget may be disposed by the time the
     // version providers answer, and a disposed State has no MediaQuery.
     final size = mounted ? MediaQuery.sizeOf(context) : null;
@@ -2452,13 +2457,27 @@ class _DiagnosticsSectionState extends ConsumerState<_DiagnosticsSection> {
         engineMode: ref.read(settingsControllerProvider).engineMode.name,
       ),
       ref.read(diagnosticsProvider),
+      minLevel: scope.minLevel,
+      maxChars: maxChars,
     );
   }
 
-  Future<void> _copy() async {
-    final text = await _report();
-    await Clipboard.setData(ClipboardData(text: text));
-    if (mounted) setState(() => _status = 'Copied to the clipboard.');
+  /// Copies everything when it fits in a GitHub issue; otherwise the most
+  /// useful part that does, and says which (#36). The user should never have
+  /// to choose a level to file a usable report; the menu is there for when
+  /// they want less.
+  Future<void> _copy([ReportScope scope = ReportScope.all]) async {
+    final report = await _report(
+      scope: scope,
+      maxChars: kClipboardReportBudget,
+    );
+    await Clipboard.setData(ClipboardData(text: report.text));
+    if (!mounted) return;
+    final hint = report.complete || scope != ReportScope.all
+        ? ''
+        : ' Use ${HostPlatform.isAndroid || HostPlatform.isIOS ? 'Share' : 'Save'}'
+              ' report for everything.';
+    setState(() => _status = '${report.summary}$hint');
   }
 
   /// Desktop writes wherever the user chooses. Mobile has no save dialog worth
@@ -2467,7 +2486,7 @@ class _DiagnosticsSectionState extends ConsumerState<_DiagnosticsSection> {
   /// way to get a file into an email or an issue tracker.
   Future<void> _saveOrShare() async {
     try {
-      final text = await _report();
+      final text = (await _report()).text;
       if (HostPlatform.isAndroid || HostPlatform.isIOS) {
         final path = await writeSharableTextFile(
           'airclone-diagnostics.txt',
@@ -2496,7 +2515,11 @@ class _DiagnosticsSectionState extends ConsumerState<_DiagnosticsSection> {
   Widget build(BuildContext context) {
     final c = AircloneTheme.of(context);
     final entries = ref.watch(diagnosticsProvider);
-    final errors = entries.where((e) => e.level == DiagLevel.error).length;
+    final errors = entries
+        .where((e) => e.level.index >= DiagLevel.error.index)
+        .length;
+    final fatal = entries.where((e) => e.level == DiagLevel.fatal).length;
+    final onlyNotices = entries.every((e) => e.level == DiagLevel.notice);
     final visible = entries.reversed.take(_visibleLimit).toList();
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -2515,16 +2538,27 @@ class _DiagnosticsSectionState extends ConsumerState<_DiagnosticsSection> {
                   ? Icons.report_problem_outlined
                   : Icons.check_circle_outline,
               size: 16,
-              color: errors > 0 ? c.warning : c.success,
+              color: fatal > 0
+                  ? c.error
+                  : errors > 0
+                  ? c.warning
+                  : c.success,
             ),
             const SizedBox(width: Space.x2),
             Expanded(
               child: Text(
                 entries.isEmpty
                     ? 'Nothing recorded this session.'
+                    // Notices are expected events, not problems. Saying so
+                    // keeps a routine Android background kill from being
+                    // reported as a bug (#36).
+                    : onlyNotices
+                    ? '${entries.length} notice${entries.length == 1 ? '' : 's'}'
+                          ', no problems.'
                     : '${entries.length} event${entries.length == 1 ? '' : 's'} '
                           'recorded'
-                          '${errors > 0 ? ', $errors error${errors == 1 ? '' : 's'}' : ''}.',
+                          '${fatal > 0 ? ', $fatal fatal' : ''}'
+                          '${errors - fatal > 0 ? ', ${errors - fatal} error${errors - fatal == 1 ? '' : 's'}' : ''}.',
                 style: TextStyle(color: c.textMuted, fontSize: 13),
               ),
             ),
@@ -2535,15 +2569,29 @@ class _DiagnosticsSectionState extends ConsumerState<_DiagnosticsSection> {
           spacing: Space.x2,
           runSpacing: Space.x2,
           children: [
-            OutlinedButton.icon(
-              onPressed: _copy,
-              icon: const Icon(Icons.copy_all_outlined, size: 16),
-              label: const Text('Copy report'),
-              style: OutlinedButton.styleFrom(
-                foregroundColor: c.text,
-                side: BorderSide(color: c.borderStrong),
-                visualDensity: VisualDensity.compact,
-              ),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                OutlinedButton.icon(
+                  onPressed: _copy,
+                  icon: const Icon(Icons.copy_all_outlined, size: 16),
+                  label: const Text('Copy report'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: c.text,
+                    side: BorderSide(color: c.borderStrong),
+                    visualDensity: VisualDensity.compact,
+                  ),
+                ),
+                PopupMenuButton<ReportScope>(
+                  tooltip: 'Copy only part of the report',
+                  icon: Icon(Icons.arrow_drop_down, color: c.textMuted),
+                  onSelected: _copy,
+                  itemBuilder: (_) => [
+                    for (final scope in ReportScope.values)
+                      PopupMenuItem(value: scope, child: Text(scope.label)),
+                  ],
+                ),
+              ],
             ),
             OutlinedButton.icon(
               onPressed: _saveOrShare,
@@ -2633,9 +2681,11 @@ class _DiagnosticsSectionState extends ConsumerState<_DiagnosticsSection> {
                   child: SelectableText(
                     visible[i].format(),
                     style: TextStyle(
-                      color: visible[i].level == DiagLevel.error
-                          ? c.error
-                          : c.textMuted,
+                      color: switch (visible[i].level) {
+                        DiagLevel.fatal || DiagLevel.error => c.error,
+                        DiagLevel.warning => c.warning,
+                        DiagLevel.notice => c.textMuted,
+                      },
                       fontSize: 11,
                       fontFamily: 'monospace',
                     ),

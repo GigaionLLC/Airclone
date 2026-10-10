@@ -263,7 +263,7 @@ class WebUiController extends Notifier<WebUiUi> {
             'A new password was generated. Everyone signed in was signed '
             'out.',
       );
-      diag.info(kWebUiDiagArea, 'Web UI credentials regenerated.');
+      diag.notice(kWebUiDiagArea, 'Web UI credentials regenerated.');
     } catch (e) {
       diag.error(
         kWebUiDiagArea,
@@ -282,7 +282,7 @@ class WebUiController extends Notifier<WebUiUi> {
   ) {
     switch (level) {
       case WebUiLogLevel.info:
-        diag.info(kWebUiDiagArea, message, detail: detail);
+        diag.notice(kWebUiDiagArea, message, detail: detail);
       case WebUiLogLevel.warning:
         diag.warn(kWebUiDiagArea, message, detail: detail);
       case WebUiLogLevel.error:

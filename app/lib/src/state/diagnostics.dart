@@ -25,10 +25,29 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'host_platform.dart';
 
-/// How bad an entry is. [error] is what a bug report is usually about; [warning]
-/// is a recovered problem; [info] is context that makes the errors readable
-/// (engine started, config switched).
-enum DiagLevel { info, warning, error }
+/// How bad an entry is, least to most severe (#36).
+///
+///  * [notice]: expected, and not a bug by itself. Context that makes the
+///    rest readable (an update verified, a dropped connection the retry
+///    recovered), and things the OS does that look alarming but are not
+///    Airclone's fault (Android closing the engine in the background).
+///  * [warning]: a problem that may matter, or that something degraded.
+///  * [error]: an operation failed. What a bug report is usually about.
+///  * [fatal]: something stopped working and the user has to act: the engine
+///    crashed, or the interface hit an uncaught error.
+///
+/// The order is load-bearing: a report filters with `index >=`.
+enum DiagLevel {
+  notice('NOTICE'),
+  warning('WARN'),
+  error('ERROR'),
+  fatal('FATAL');
+
+  const DiagLevel(this.tag);
+
+  /// What a report line shows. Upper case so a level stands out when skimming.
+  final String tag;
+}
 
 /// One recorded event.
 @immutable
@@ -59,12 +78,7 @@ class DiagEntry {
     final t = time.toLocal();
     String two(int n) => n.toString().padLeft(2, '0');
     final stamp = '${two(t.hour)}:${two(t.minute)}:${two(t.second)}';
-    final tag = switch (level) {
-      DiagLevel.error => 'ERROR',
-      DiagLevel.warning => 'WARN ',
-      DiagLevel.info => 'INFO ',
-    };
-    final head = '$stamp  $tag  $area  $message';
+    final head = '$stamp  ${level.tag.padRight(6)}  $area  $message';
     final d = detail;
     if (d == null || d.isEmpty) return head;
     // Indent continuation lines so multi-line details stay visually attached.
@@ -218,8 +232,11 @@ class DiagnosticsLog extends Notifier<List<DiagEntry>> {
   void warn(String area, String message, {Object? detail}) =>
       record(DiagLevel.warning, area, message, detail: detail);
 
-  void info(String area, String message, {Object? detail}) =>
-      record(DiagLevel.info, area, message, detail: detail);
+  void notice(String area, String message, {Object? detail}) =>
+      record(DiagLevel.notice, area, message, detail: detail);
+
+  void fatal(String area, String message, {Object? detail}) =>
+      record(DiagLevel.fatal, area, message, detail: detail);
 
   void clear() {
     _entries.clear();
@@ -304,12 +321,136 @@ DiagnosticsEnvironment describeEnvironment({
   engineMode: engineMode,
 );
 
+/// The most a copied report holds, in characters. A GitHub issue body is
+/// capped at 65,536; this leaves room for the reporter's own description. A
+/// saved or shared file has no cap and always holds everything.
+const int kClipboardReportBudget = 60000;
+
+/// Which entries a report holds, as the user picks it from the copy menu.
+enum ReportScope {
+  /// Everything recorded. The default, and what a file always holds.
+  all(DiagLevel.notice, 'Copy everything'),
+
+  /// What a bug report is about, without the context around it.
+  errors(DiagLevel.error, 'Copy errors and fatal only'),
+
+  /// Only what stopped Airclone working.
+  fatal(DiagLevel.fatal, 'Copy fatal only');
+
+  const ReportScope(this.minLevel, this.label);
+  final DiagLevel minLevel;
+  final String label;
+}
+
+/// A rendered report, and what was left out of it to fit.
+@immutable
+class DiagnosticsReport {
+  const DiagnosticsReport({
+    required this.text,
+    required this.recorded,
+    required this.included,
+    required this.minLevel,
+    required this.leftOutOldest,
+  });
+
+  final String text;
+
+  /// Everything in the log when the report was made.
+  final int recorded;
+
+  /// How many of those are in [text].
+  final int included;
+
+  /// The least severe level included.
+  final DiagLevel minLevel;
+
+  /// Entries at or above [minLevel] that still did not fit: the oldest go.
+  final int leftOutOldest;
+
+  bool get complete => included == recorded;
+
+  /// One line for the user after a copy: what went to the clipboard.
+  String get summary {
+    if (recorded == 0) return 'Copied. Nothing was recorded this session.';
+    if (complete) {
+      return 'Copied all $recorded entr${recorded == 1 ? 'y' : 'ies'}.';
+    }
+    return 'Copied $included of $recorded entries: ${levelsFrom(minLevel)}'
+        '${leftOutOldest > 0 ? ', newest first' : ''}.';
+  }
+}
+
+/// `fatal, error and warning`: the levels from [min] up, most severe first.
+String levelsFrom(DiagLevel min) {
+  final words = DiagLevel.values.reversed
+      .where((l) => l.index >= min.index)
+      .map((l) => l.name)
+      .toList();
+  if (words.length == 1) return words.single;
+  return '${words.sublist(0, words.length - 1).join(', ')} and ${words.last}';
+}
+
 /// Renders the copyable/savable report: a short header, then the log oldest
 /// first. Everything in [entries] was redacted at ingest; the header is built
 /// from version strings only. Pure so its exact shape is unit-tested.
-String buildDiagnosticsReport(
+///
+/// [minLevel] is the user's choice (see [ReportScope]). With [maxChars], the
+/// report is made to fit by leaving out what helps least first: notices, then
+/// warnings, then the OLDEST of what remains. Fatal and error entries are never
+/// dropped in favour of a less severe one. Whatever is left out is stated in
+/// the report itself, so whoever reads it knows it is partial.
+DiagnosticsReport buildDiagnosticsReport(
   DiagnosticsEnvironment env,
-  List<DiagEntry> entries,
+  List<DiagEntry> entries, {
+  DiagLevel minLevel = DiagLevel.notice,
+  int? maxChars,
+}) {
+  var min = minLevel;
+  List<DiagEntry> atLeast(DiagLevel l) =>
+      entries.where((e) => e.level.index >= l.index).toList();
+  var kept = atLeast(min);
+  var text = _render(env, entries, kept, min, 0);
+  // Raise the floor one level at a time, but never above error: making room
+  // among errors is the oldest-first step below, not this one.
+  while (maxChars != null &&
+      text.length > maxChars &&
+      min.index < DiagLevel.error.index) {
+    min = DiagLevel.values[min.index + 1];
+    kept = atLeast(min);
+    text = _render(env, entries, kept, min, 0);
+  }
+  var oldest = 0;
+  if (maxChars != null && text.length > maxChars) {
+    // Keep the newest that fit. Measured, not estimated: an entry's size
+    // depends on its detail. The header is rendered with a non-zero count so
+    // its "left out" line is part of what is measured.
+    var budget = maxChars - _render(env, entries, const [], min, 1).length;
+    final fitted = <DiagEntry>[];
+    for (final e in kept.reversed) {
+      final size = e.format().length + 1;
+      if (size > budget) break;
+      budget -= size;
+      fitted.add(e);
+    }
+    oldest = kept.length - fitted.length;
+    kept = fitted.reversed.toList();
+    text = _render(env, entries, kept, min, oldest);
+  }
+  return DiagnosticsReport(
+    text: text,
+    recorded: entries.length,
+    included: kept.length,
+    minLevel: min,
+    leftOutOldest: oldest,
+  );
+}
+
+String _render(
+  DiagnosticsEnvironment env,
+  List<DiagEntry> all,
+  List<DiagEntry> kept,
+  DiagLevel min,
+  int leftOutOldest,
 ) {
   final b = StringBuffer()
     ..writeln('Airclone diagnostics report')
@@ -320,20 +461,42 @@ String buildDiagnosticsReport(
     ..writeln('Build:    ${env.buildKind}');
   if (env.engineVersion != null) b.writeln('Engine:   ${env.engineVersion}');
   if (env.engineMode != null) b.writeln('Mode:     ${env.engineMode}');
+  b.writeln('Entries:  ${all.length}${_counts(all)}');
+  final byLevel = all.where((e) => e.level.index < min.index).length;
+  if (byLevel > 0 || leftOutOldest > 0) {
+    final notes = [
+      if (byLevel > 0)
+        '$byLevel less severe entr${byLevel == 1 ? 'y' : 'ies'} left out',
+      if (leftOutOldest > 0) 'the oldest $leftOutOldest left out to fit',
+    ];
+    b.writeln('Included: ${levelsFrom(min)}; ${notes.join('; ')}.');
+  }
   b
-    ..writeln('Entries:  ${entries.length}')
     ..writeln()
     ..writeln(
       'Secrets, emails and home-directory names are removed automatically. '
       'Please still skim this before sharing it.',
     )
     ..writeln();
-  if (entries.isEmpty) {
+  if (all.isEmpty) {
     b.writeln('(nothing recorded this session)');
+  } else if (kept.isEmpty) {
+    b.writeln('(nothing at this level)');
   } else {
-    for (final e in entries) {
+    for (final e in kept) {
       b.writeln(e.format());
     }
   }
   return b.toString();
+}
+
+/// ` (1 fatal, 2 error, 3 notice)`: most severe first, absent levels skipped.
+String _counts(List<DiagEntry> entries) {
+  if (entries.isEmpty) return '';
+  final parts = [
+    for (final l in DiagLevel.values.reversed)
+      if (entries.any((e) => e.level == l))
+        '${entries.where((e) => e.level == l).length} ${l.name}',
+  ];
+  return ' (${parts.join(', ')})';
 }
