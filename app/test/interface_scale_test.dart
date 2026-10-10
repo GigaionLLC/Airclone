@@ -142,6 +142,15 @@ void main() {
     });
   });
 
+  // The integration tests install their own binding and then run main(). A
+  // second binding fails Flutter's one-binding assertion; the scaled one has to
+  // stand aside instead, which the first CI run of this feature caught.
+  test('stands aside when another binding is already installed', () {
+    TestWidgetsFlutterBinding.ensureInitialized();
+    expect(ScaledFlutterBinding.ensureInitialized(), isNull);
+    expect(ScaledFlutterBinding.currentScale, 1.0);
+  });
+
   test('every offered size is in range and 100% is one of them', () {
     expect(kInterfaceScales, contains(1.0));
     for (final s in kInterfaceScales) {

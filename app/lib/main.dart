@@ -60,9 +60,15 @@ Future<void> main(List<String> args) async {
       (HostPlatform.isWindows ||
           HostPlatform.isMacOS ||
           HostPlatform.isLinux)) {
-    // Binding first: reading the saved size needs the plugin channels.
+    // Binding first: reading the saved size needs the plugin channels. Null
+    // when a test harness installed its own binding before main() ran: then
+    // that one is used, unscaled.
     final binding = ScaledFlutterBinding.ensureInitialized();
-    binding.scale = await loadInitialInterfaceScale();
+    if (binding != null) {
+      binding.scale = await loadInitialInterfaceScale();
+    } else {
+      WidgetsFlutterBinding.ensureInitialized();
+    }
   } else {
     WidgetsFlutterBinding.ensureInitialized();
   }

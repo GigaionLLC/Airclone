@@ -94,11 +94,27 @@ class ScaledFlutterBinding extends WidgetsFlutterBinding {
 
   static ScaledFlutterBinding? _instance;
 
-  /// Installs this binding (once) and returns it. Must be the FIRST binding
-  /// initialisation in the process, which is why main() calls it where it
-  /// used to call [WidgetsFlutterBinding.ensureInitialized].
-  static ScaledFlutterBinding ensureInitialized() =>
-      _instance ??= ScaledFlutterBinding._();
+  /// Installs this binding (once) and returns it, or returns null when some
+  /// other binding got there first, in which case the caller must not scale.
+  ///
+  /// There can only be one binding per process. The integration tests install
+  /// their own test binding and then run main(), and a second binding fails
+  /// Flutter's `_debugInitializedType == null` assertion; that is exactly how
+  /// the first CI run of this caught it.
+  static ScaledFlutterBinding? ensureInitialized() {
+    if (_instance != null) return _instance;
+    if (_someBindingExists()) return null;
+    return _instance = ScaledFlutterBinding._();
+  }
+
+  static bool _someBindingExists() {
+    try {
+      WidgetsBinding.instance;
+      return true;
+    } catch (_) {
+      return false; // checkInstance throws while there is none
+    }
+  }
 
   /// The active scale, or 1.0 when this binding is not the one installed
   /// (tests, the web build, phones).
