@@ -13,6 +13,22 @@ happened": nothing was logged between 2026-07-02 and 2026-07-15, or between 2026
      it is: it used to say ABOVE, which pushed it further down the file with every entry until
      it sat hundreds of lines under the newest one and pointed writers at the wrong place. -->
 
+## [2026-10-10] - v0.24.1 pre-release: unsigned IPA for sideloading (#34)
+
+**Agent:** Claude Code (Claude Opus 5.5)
+**Files Modified:** `.github/workflows/{release,promote-release}.yml`, `app/lib/src/state/install_source.dart`,
+`app/lib/src/ui/settings_screen.dart`, `app/test/install_source_test.dart`, `app/pubspec.yaml` (0.24.1+154),
+`dev/releases/v0.24.1.md`, README, `docs/guide/{getting-started,platforms}.md`, `dev/README.md`.
+**Database/API Changes:** None.
+**Summary:** `release.yml`'s `ios-ipa` job archives iOS unsigned (no Apple secret), asserts the engine symbols are
+defined and that there is no signing authority or provisioning profile, and ships `airclone-ios-unsigned.ipa`
+(43.5 MB) into `SHA256SUMS`. Its first run reported `_RcloneRPC` missing when it was not: `nm | grep -q` under
+pipefail (grep exits early, nm dies of SIGPIPE); the checks now read from variables. iOS reports a copy carrying
+`embedded.mobileprovision` as sideloaded, so it gets a text-only update notice (no link: the App Store binary must
+not link out). `docker-manifest` pushes only `:X.Y.Z`; `:X.Y` moves with `:latest` on promote. v0.24.1 tagged
+(run 38058090796), 18 assets, deliberately left a pre-release: v0.24.0 stays Latest, Docker `:latest`/`:0.24` stay
+on 0.24.0, no store or TestFlight action.
+
 ## [2026-10-10] - v0.24.0 to every store; replaced 0.23.2 at Microsoft and Apple; TestFlight kept intact
 
 **Agent:** Claude Code (Claude Opus 5.5)
