@@ -30,6 +30,7 @@ answers on the user's behalf.
 | **+ Add a cloud** (sidebar, Home, browser empty state, mobile `+` sheet) | The picker: ten tiles, then everything |
 | **Advanced** — on each tile, in the guided step header, and on the failure screen | The full option form, values carried across |
 | **Edit remote** (a remote's ⋯ menu) | Always the Advanced form. Editing is unchanged. |
+| **Sign in again** (a remote's ⋯ menu, OAuth backends only; also a button on a browse or Test connection error that [`looksLikeExpiredSignIn`](../../app/lib/src/state/reconnect.dart)) | `SignInStart` without a name field. `startReconnect` → `config/update` with `config_refresh_token=true` plus the sign-in method's `config_*` answers and **nothing else**, so only the token changes. That is rclone's own `config reconnect` (which re-runs the backend's config flow), so follow-up questions (Drive Shared Drive, OneDrive drive type) appear on the normal question screens. It is an edit (`isEdit`): cancel deletes nothing, and it goes back to the reconnect start screen, not the picker. Issue #27. |
 
 Code: [`ui/add_remote_dialog.dart`](../../app/lib/src/ui/add_remote_dialog.dart) is a thin router;
 the screens are in [`ui/add_remote/`](../../app/lib/src/ui/add_remote/); the driver is

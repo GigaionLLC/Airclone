@@ -8,6 +8,7 @@ import '../state/clipboard_controller.dart';
 import '../state/engine_controller.dart';
 import '../state/file_ops.dart';
 import '../state/pane_layout.dart';
+import '../state/reconnect.dart';
 import '../state/remotes_provider.dart';
 import '../state/thumbnail_prefs.dart';
 import '../state/thumbnail_reload.dart';
@@ -539,6 +540,11 @@ Future<void> showMobileRemoteSheet(
         close();
         showEditRemoteDialog(context, remote);
       }),
+      if (ref.read(remoteUsesSignInProvider(remote.type)))
+        _tile(c, Icons.login, 'Sign in again', () {
+          close();
+          showReconnectRemoteDialog(context, remote);
+        }),
       _tile(c, Icons.delete_outline, 'Delete remote', () {
         close();
         _deleteRemote(context, ref, remote);

@@ -144,7 +144,7 @@ risky, confirmed.
 | `config` | Mutates your config file and can print secrets. | Use the `+` next to `CLOUD` in the sidebar (`Add or encrypt a remote`); import and export live in Settings → Config. |
 | `obscure` | Its argument is a plaintext password. | Passwords are obscured for you when you add or edit a remote. |
 | `reveal` | Prints a stored password back. | Airclone never prints stored secrets. Edit the remote if you need to change one. |
-| `authorize`, `reconnect` | Interactive provider sign-in. | Add or edit the remote; Airclone runs the sign-in for you. |
+| `authorize`, `reconnect` | Interactive provider sign-in. | `authorize`: add the remote. `reconnect`: **Sign in again** in the remote's menu. Airclone runs the sign-in for you. |
 | `mount` | Would start a mount outside Airclone's own tracking, so nothing would clean it up. | `Mount as a drive` — see [Mounting and sharing](mount-and-share.md). |
 | `serve` | Same reason: a long-lived server nothing would stop. | `Serve / Share on LAN`. |
 | `rc`, `rcd` | Would talk to, or start, another rclone control server. | Airclone already runs and drives the engine. |

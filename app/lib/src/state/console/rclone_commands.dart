@@ -187,8 +187,9 @@ const Map<String, String> _inAppAlternative = {
       'Add the remote with the + next to CLOUD — Airclone runs the provider '
       'sign-in for you.',
   'reconnect':
-      'Re-run the provider sign-in by editing the remote from the + next to '
-      'CLOUD.',
+      'Use "Sign in again" in the remote\'s menu, next to its name under '
+      'CLOUD — Airclone re-runs the provider sign-in and keeps its other '
+      'settings.',
   'mount': 'Use "Mount as a drive" in the toolbar.',
   'serve': 'Use "Serve / Share on LAN" in the toolbar.',
   'rc': 'Airclone already runs and drives the rclone engine for you.',

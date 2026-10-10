@@ -29,6 +29,7 @@ import '../state/mac_bookmarks.dart';
 import '../state/mount_policy.dart';
 import '../state/pane_layout.dart';
 import '../state/recent_locations.dart';
+import '../state/reconnect.dart';
 import '../state/remote_about.dart';
 import '../state/remotes_provider.dart';
 import '../state/scheduler_controller.dart';
@@ -993,6 +994,7 @@ class _Sidebar extends ConsumerWidget {
       VoidCallback? onDelete,
       VoidCallback? onEdit,
       VoidCallback? onDuplicate,
+      VoidCallback? onReconnect,
       VoidCallback? onTest,
       String deleteLabel = 'Remove',
       Color? iconColor,
@@ -1009,6 +1011,7 @@ class _Sidebar extends ConsumerWidget {
         onDelete: onDelete,
         onEdit: onEdit,
         onDuplicate: onDuplicate,
+        onReconnect: onReconnect,
         onTest: onTest,
         deleteLabel: deleteLabel,
       ),
@@ -1115,6 +1118,9 @@ class _Sidebar extends ConsumerWidget {
                       Icons.cloud_outlined,
                       onTest: () => _testRemoteConnection(context, ref, r),
                       onEdit: () => showEditRemoteDialog(context, r),
+                      onReconnect: ref.watch(remoteUsesSignInProvider(r.type))
+                          ? () => showReconnectRemoteDialog(context, r)
+                          : null,
                       onDuplicate: () => _duplicateRemote(context, ref, r),
                       onDelete: () => _confirmDeleteRemote(context, ref, r),
                       deleteLabel: 'Delete remote',
@@ -1336,6 +1342,7 @@ class _RemoteTile extends StatelessWidget {
     this.onDelete,
     this.onEdit,
     this.onDuplicate,
+    this.onReconnect,
     this.onTest,
     this.leadingIcon,
     this.leadingIconColor,
@@ -1347,6 +1354,9 @@ class _RemoteTile extends StatelessWidget {
   final VoidCallback? onDelete;
   final VoidCallback? onEdit;
   final VoidCallback? onDuplicate;
+
+  /// "Sign in again" — set only for a remote whose backend uses a sign-in.
+  final VoidCallback? onReconnect;
   final VoidCallback? onTest;
 
   /// Overrides the default cloud/computer icon (used for local locations).
@@ -1454,6 +1464,11 @@ class _RemoteTile extends StatelessWidget {
                       value: 'edit',
                       child: Text('Edit remote…'),
                     ),
+                  if (onReconnect != null)
+                    const PopupMenuItem(
+                      value: 'reconnect',
+                      child: Text('Sign in again…'),
+                    ),
                   if (onDuplicate != null)
                     const PopupMenuItem(
                       value: 'duplicate',
@@ -1470,6 +1485,7 @@ class _RemoteTile extends StatelessWidget {
                 onSelected: (v) {
                   if (v == 'test') onTest?.call();
                   if (v == 'edit') onEdit?.call();
+                  if (v == 'reconnect') onReconnect?.call();
                   if (v == 'duplicate') onDuplicate?.call();
                   if (v == 'delete') onDelete?.call();
                 },

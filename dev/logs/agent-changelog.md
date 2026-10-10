@@ -13,6 +13,25 @@ happened": nothing was logged between 2026-07-02 and 2026-07-15, or between 2026
      it is: it used to say ABOVE, which pushed it further down the file with every entry until
      it sat hundreds of lines under the newest one and pointed writers at the wrong place. -->
 
+## [2026-10-09] - "Sign in again": reauthorize an OAuth remote (#27)
+
+**Agent:** Claude Code (Claude Opus 5.5) — `feat/reconnect-remote`
+**Files Modified:** `app/lib/src/state/reconnect.dart` (new), `app/lib/src/state/add_remote_controller.dart`,
+`app/lib/src/state/console/rclone_commands.dart`,
+`app/lib/src/ui/{add_remote_dialog,browser_pane,connection_test_dialog,home_screen,mobile_action_sheets}.dart`,
+`app/lib/src/ui/add_remote/{guided_steps,sign_in_step}.dart`; test `app/test/reconnect_remote_test.dart`;
+docs `docs/guide/{getting-started,troubleshooting,platforms,console}.md`,
+`wiki/features/{feat-add-a-cloud,feat-config-management}.md`.
+**Database/API Changes:** None (uses existing `config/update`).
+**Summary:** From an iOS user on r/rclone who asked how to reauthorize a token. Edit remote saves non-interactively
+and the console refuses `reconnect`, so the only way was to delete and re-add the remote. **Sign in again** (remote ⋯ menu
+on desktop and phone, OAuth backends only, plus a button on a browse error or failed Test connection that reads like an
+expired sign-in) drives `config/update` with `config_refresh_token=true` and the sign-in method's `config_*` answers and
+nothing else, which is what `rclone config reconnect` does. Checked against rclone v1.75.1 with `rc --loopback`: without
+the answer, Drive asks "Token already configured - replace it?"; with it the flow goes straight to the auth webserver.
+It is an edit, so cancel deletes nothing and returns to the reconnect screen. Follow-up questions (Drive Shared Drive,
+OneDrive drive type) use the existing question screens. Not yet tested on a device against a live provider.
+
 ## [2026-10-05] - v0.23.0 desktop builds failed on the Web UI; fixed and re-released as v0.23.1
 
 **Agent:** Claude Code (Claude Opus 5.5) — `main`

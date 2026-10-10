@@ -33,11 +33,22 @@ Future<void> showEditRemoteDialog(BuildContext context, Remote remote) =>
       builder: (_) => AddRemoteDialog(editRemote: remote),
     );
 
+/// Opens the same dialog to sign in to an existing OAuth remote again,
+/// replacing only its token.
+Future<void> showReconnectRemoteDialog(BuildContext context, Remote remote) =>
+    showDialog(
+      context: context,
+      builder: (_) => AddRemoteDialog(editRemote: remote, reconnect: true),
+    );
+
 class AddRemoteDialog extends ConsumerStatefulWidget {
-  const AddRemoteDialog({super.key, this.editRemote});
+  const AddRemoteDialog({super.key, this.editRemote, this.reconnect = false});
 
   /// When set, the dialog edits this remote instead of creating a new one.
   final Remote? editRemote;
+
+  /// With [editRemote]: sign in again rather than edit the settings.
+  final bool reconnect;
 
   @override
   ConsumerState<AddRemoteDialog> createState() => _AddRemoteDialogState();
@@ -56,7 +67,9 @@ class _AddRemoteDialogState extends ConsumerState<AddRemoteDialog> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (widget.editRemote != null) {
+      if (widget.editRemote != null && widget.reconnect) {
+        _ctrl.startReconnect(widget.editRemote!);
+      } else if (widget.editRemote != null) {
         _ctrl.startEdit(widget.editRemote!);
       } else {
         _ctrl.reset();
@@ -85,12 +98,22 @@ class _AddRemoteDialogState extends ConsumerState<AddRemoteDialog> {
   Widget build(BuildContext context) {
     final c = AircloneTheme.of(context);
     final state = ref.watch(addRemoteControllerProvider);
-    _needsCleanup = !state.isEdit && state.createdName != null;
+    // A reconnect deletes nothing on cancel (it is an edit), but a sign-in it
+    // walks away from still holds port 53682 until it is released.
+    _needsCleanup =
+        (!state.isEdit && state.createdName != null) ||
+        (state.reconnect &&
+            (state.phase == AddPhase.busy ||
+                state.phase == AddPhase.signingIn ||
+                state.phase == AddPhase.question));
 
     // An edit finishes silently, the way it always has. A create earns its
-    // success screen.
+    // success screen, and so does a reconnect: "did it work?" is the point.
     ref.listen(addRemoteControllerProvider, (prev, next) {
-      if (next.phase == AddPhase.done && next.isEdit && mounted) {
+      if (next.phase == AddPhase.done &&
+          next.isEdit &&
+          !next.reconnect &&
+          mounted) {
         Navigator.of(context).pop();
       }
     });
@@ -153,9 +176,12 @@ class _AddRemoteDialogState extends ConsumerState<AddRemoteDialog> {
           const SizedBox(width: Space.x1),
           Expanded(
             child: Text(
-              state.isEdit
-                  ? 'Edit ${state.providerLabel}'
-                  : state.providerLabel,
+              switch (state) {
+                AddRemoteState(reconnect: true) =>
+                  'Sign in again · ${state.editName ?? state.providerLabel}',
+                AddRemoteState(isEdit: true) => 'Edit ${state.providerLabel}',
+                _ => state.providerLabel,
+              },
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
                 color: c.text,
@@ -205,6 +231,7 @@ class _AddRemoteDialogState extends ConsumerState<AddRemoteDialog> {
         return GuidedQuestion(key: ValueKey(state.questionState), question: q);
 
       case AddPhase.setup:
+        if (state.reconnect) return const SignInStart();
         if (state.mode == AddMode.advanced) {
           return AdvancedForm(onSubmit: () => _onSubmit(state));
         }
@@ -285,14 +312,28 @@ class _AddRemoteDialogState extends ConsumerState<AddRemoteDialog> {
           spacing: Space.x2,
           runSpacing: Space.x2,
           children: [
-            TextButton(
-              onPressed: _ctrl.backToProviders,
-              child: const Text('Start over'),
-            ),
+            // A reconnect has nowhere to start over to, and its manual path is
+            // Edit remote — which must not carry the token refresh with it.
+            if (state.reconnect) ...[
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('Close'),
+              ),
+              if (state.provider != null &&
+                  !(state.error ?? '').contains('$kOAuthPort'))
+                FilledButton(
+                  onPressed: _ctrl.submit,
+                  child: const Text('Try again'),
+                ),
+            ] else
+              TextButton(
+                onPressed: _ctrl.backToProviders,
+                child: const Text('Start over'),
+              ),
             // Carries the values across, so nothing is retyped — the third
             // entrance to the manual path, offered exactly when the guided one
             // has just failed somebody.
-            if (state.provider != null)
+            if (state.provider != null && !state.reconnect)
               TextButton(
                 onPressed: _ctrl.switchToAdvanced,
                 child: const Text('Enter details myself'),

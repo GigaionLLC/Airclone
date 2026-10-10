@@ -128,6 +128,7 @@ dragged narrow gets the phone layout. The ⚠️ marks for tablets below are abo
 
 | Feature | Advanced | Windows | Windows (MS Store) | macOS | macOS (App Store) | Linux | Linux (Flatpak) | Android | Android TV | iPhone / iPad |
 | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| Sign in to a remote again (replace an expired sign-in) | | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Command console | 🔧 | ✅ | ✅ | ✅ | ⚠️ subset | ✅ | ✅ | ✅ | ✅ | ⚠️ subset |
 | Encrypt the config with a password | | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Remember the config password in the OS vault | | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
