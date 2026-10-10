@@ -11,6 +11,7 @@ import '../ui/connection_test_dialog.dart' show testRemoteConnection;
 import 'diagnostics.dart';
 import 'engine_controller.dart';
 import 'providers_provider.dart';
+import 'reconnect.dart';
 import 'remote_setup_recipes.dart';
 import 'remotes_provider.dart';
 
@@ -74,6 +75,7 @@ class AddRemoteState {
     this.optionFilter = '',
     this.isEdit = false,
     this.editName,
+    this.reconnect = false,
     this.question,
     this.questionState,
     this.signInMethod = SignInMethod.thisDevice,
@@ -120,6 +122,11 @@ class AddRemoteState {
 
   /// The remote being edited (its name is immutable in edit mode).
   final String? editName;
+
+  /// True for "Sign in again" on an existing remote: an edit that replaces only
+  /// the token. Always paired with [isEdit], so everything that protects an
+  /// edit applies — above all, cancelling deletes nothing.
+  final bool reconnect;
 
   /// The current interactive question, if any.
   final ProviderOption? question;
@@ -178,6 +185,7 @@ class AddRemoteState {
     String? optionFilter,
     bool? isEdit,
     String? editName,
+    bool? reconnect,
     ProviderOption? question,
     String? questionState,
     SignInMethod? signInMethod,
@@ -206,6 +214,7 @@ class AddRemoteState {
     optionFilter: optionFilter ?? this.optionFilter,
     isEdit: isEdit ?? this.isEdit,
     editName: editName ?? this.editName,
+    reconnect: reconnect ?? this.reconnect,
     question: question,
     questionState: questionState,
     signInMethod: signInMethod ?? this.signInMethod,
@@ -426,6 +435,9 @@ class AddRemoteController extends Notifier<AddRemoteState> {
   }
 
   Future<void> submit() async {
+    // Every route into a sign-in — the button, "Other ways", Try again — ends
+    // here, and a reconnect must never fall through to config/create.
+    if (state.reconnect) return _submitReconnect();
     final p = state.provider;
     if (p == null) return;
     final wanted = state.name.trim();
@@ -787,7 +799,13 @@ class AddRemoteController extends Notifier<AddRemoteState> {
       );
     }
     state = state.copyWith(
-      phase: cleanupError == null ? AddPhase.pickProvider : AddPhase.error,
+      // A cancelled reconnect goes back to its own start screen; the
+      // provider picker would turn it into adding a new cloud.
+      phase: cleanupError != null
+          ? AddPhase.error
+          : state.reconnect
+          ? AddPhase.setup
+          : AddPhase.pickProvider,
       error: cleanupError,
       question: null,
       questionState: null,
@@ -974,6 +992,101 @@ class AddRemoteController extends Notifier<AddRemoteState> {
       body: {
         'name': editName,
         'parameters': _parameters(),
+        'opt': {'nonInteractive': true, 'obscure': true},
+      },
+    );
+  }
+
+  // --- signing in again ------------------------------------------------------
+
+  /// Loads an existing OAuth remote for "Sign in again".
+  ///
+  /// This is what `rclone config reconnect` does — re-run the backend's config
+  /// flow — driven through `config/update` with "Token already configured -
+  /// replace it?" answered yes up front. The saved values are loaded only so
+  /// the screens can name the cloud; they are never sent, so nothing but the
+  /// token changes. Anything the backend asks after the sign-in (a Shared
+  /// Drive, a OneDrive drive type) is put to the user on the same question
+  /// screens as when adding.
+  Future<void> startReconnect(Remote remote) async {
+    _stopWaiting();
+    // Every failure stays a reconnect, so its error screen offers Close rather
+    // than "Start over", which would lead into adding a new cloud.
+    void fail(String message) => state = AddRemoteState(
+      phase: AddPhase.error,
+      isEdit: true,
+      editName: remote.name,
+      reconnect: true,
+      error: redactSensitive(message),
+    );
+    state = const AddRemoteState(phase: AddPhase.busy);
+    try {
+      final providers = await ref.read(providersProvider.future);
+      RcloneProvider? p;
+      for (final x in providers) {
+        if (x.name == remote.type) {
+          p = x;
+          break;
+        }
+      }
+      if (p == null || !providerUsesSignIn(p)) {
+        fail(
+          '"${remote.name}" does not use a sign-in, so there is nothing to '
+          'sign in to again. Use Edit remote to change its settings.',
+        );
+        return;
+      }
+      final client = ref.read(engineControllerProvider).client;
+      if (client == null) {
+        fail('Engine not ready');
+        return;
+      }
+      final cfg = await RcApi(client).config.get(remote.name);
+      final values = <String, String>{
+        for (final e in cfg.entries)
+          if (e.key != 'type' && e.key != 'token') e.key: '${e.value ?? ''}',
+      };
+      state = AddRemoteState(
+        phase: AddPhase.setup,
+        mode: AddMode.guided,
+        provider: p,
+        choice: cloudChoiceFor(p.name, values: values),
+        name: remote.name,
+        isEdit: true,
+        editName: remote.name,
+        reconnect: true,
+        values: values,
+        sticky: const {kRefreshTokenAnswer: 'true'},
+      );
+    } on RcloneException catch (e) {
+      fail(e.message);
+    } catch (e) {
+      fail('$e');
+    }
+  }
+
+  /// Starts the sign-in for [startReconnect]. Sends ONLY the sticky `config_*`
+  /// answers: the saved values are already in the config, and re-sending them
+  /// is how a screen that promised to change nothing but the token would
+  /// change something else.
+  Future<void> _submitReconnect() async {
+    final name = state.editName;
+    if (name == null) return;
+    state = state.copyWith(
+      phase: AddPhase.busy,
+      sticky: {...state.sticky, kRefreshTokenAnswer: 'true'},
+      error: null,
+      question: null,
+      questionState: null,
+      authUrl: null,
+      authUrlUnavailable: false,
+      signInSlow: false,
+    );
+    await _call(
+      method: 'config/update',
+      body: {
+        'name': name,
+        'parameters': <String, dynamic>{...state.sticky},
         'opt': {'nonInteractive': true, 'obscure': true},
       },
     );

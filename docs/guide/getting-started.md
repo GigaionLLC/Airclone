@@ -176,6 +176,7 @@ The same **⋯** menu carries the rest:
 | :--- | :--- | :--- | :--- |
 | **Test connection** | yes | yes | As above. |
 | **Edit remote** | yes | yes | Reopens the same form with the current values filled in. |
+| **Sign in again** | yes | yes | Runs the provider sign-in again and replaces only the saved sign-in. Shown for clouds you sign in to (Google Drive, OneDrive, Dropbox, Box…). |
 | **Duplicate remote…** | yes | no | Copies the remote's settings under a new name. |
 | **Delete remote** | yes | yes | Removes the saved connection. |
 
@@ -183,6 +184,23 @@ Two behaviours in **Edit remote** are worth knowing. The name is fixed while edi
 plain text — rename by duplicating instead. And password fields are always left **blank**: blank
 means *keep the current password*, so you only type in one if you are changing it. The help text
 under the field says so.
+
+### Signing in again
+
+A cloud you signed in to keeps working on a saved sign-in (a token). The provider can stop accepting
+it: you changed your password, revoked access, it expired, or it belongs to the wrong account. Then
+browsing fails with an error about a token, `invalid_grant`, or *401 Unauthorized*.
+
+Choose **Sign in again** from the remote's **⋯** menu. The screen is headed
+`Sign in to <name> again`. Press **Sign in with &lt;provider&gt;**, finish in the browser, and Airclone
+checks the remote answers. **Other ways to sign in** works exactly as it does when adding a cloud.
+Only the sign-in is replaced: the name, folders, Shared Drive and every other setting stay as they
+are. Some providers ask a follow-up question after the sign-in (Google Drive: *Configure this as a
+Shared Drive?*, OneDrive: which drive). Answer it the way the remote was set up. Cancelling leaves
+the remote exactly as it was.
+
+You do not have to find the menu first. When a folder fails to open, or **Test connection** fails,
+because the sign-in stopped working, the error carries a **Sign in again** button.
 
 Editing a **crypt** remote's password is guarded by its own confirmation, headed
 **Change encryption password?**, because everything already uploaded under the old password becomes

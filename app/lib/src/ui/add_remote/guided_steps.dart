@@ -9,18 +9,15 @@ import 'package:airclone_rc/airclone_rc.dart';
 
 import '../../rclone/models/remote.dart';
 import '../../state/add_remote_controller.dart';
+import '../../state/reconnect.dart';
 import '../../state/remote_setup_recipes.dart';
 import '../../state/remotes_provider.dart';
 import '../theme/tokens.dart';
 import 'fields.dart';
 
-/// Whether rclone will run an OAuth sign-in for this backend.
-///
-/// Detected from the backend's own options — every OAuth backend carries a
-/// `token` — rather than from a list of provider names we would have to keep
-/// in step with rclone.
-bool usesOAuth(RcloneProvider? p) =>
-    p != null && p.options.any((o) => o.name == 'token');
+/// Whether rclone will run an OAuth sign-in for this backend. The rule lives
+/// in `state/reconnect.dart`, which "Sign in again" shares.
+bool usesOAuth(RcloneProvider? p) => providerUsesSignIn(p);
 
 /// The fields the guided screen shows for [state], paired with rclone's own
 /// description of each.
@@ -330,9 +327,12 @@ class SuccessStep extends ConsumerWidget {
                   const SizedBox(width: Space.x3),
                   Expanded(
                     child: Text(
-                      failed
-                          ? 'Added, but it did not answer'
-                          : '$name is ready',
+                      switch ((failed, state.reconnect)) {
+                        (true, true) => 'Signed in, but it did not answer',
+                        (true, false) => 'Added, but it did not answer',
+                        (false, true) => 'Signed in to $name again',
+                        (false, false) => '$name is ready',
+                      },
                       style: TextStyle(
                         color: c.text,
                         fontSize: 16,
@@ -350,7 +350,15 @@ class SuccessStep extends ConsumerWidget {
                   fontSize: 13,
                 ),
               ),
-              if (failed) ...[
+              if (failed && state.reconnect) ...[
+                const SizedBox(height: Space.x3),
+                Text(
+                  'The new sign-in was saved and nothing else changed. If the '
+                  'cloud is reachable, try signing in again with another '
+                  'account or method.',
+                  style: TextStyle(color: c.textMuted, fontSize: 12),
+                ),
+              ] else if (failed) ...[
                 const SizedBox(height: Space.x3),
                 Text(
                   'The settings were saved. You can correct them now, or keep '
@@ -366,7 +374,22 @@ class SuccessStep extends ConsumerWidget {
           alignment: WrapAlignment.end,
           spacing: Space.x2,
           runSpacing: Space.x2,
-          children: failed
+          // A reconnect has no "Fix settings" (it promised to change only the
+          // token) and no "Add another" (nothing was added).
+          children: state.reconnect
+              ? [
+                  if (failed)
+                    TextButton(
+                      onPressed: ctrl.submit,
+                      child: const Text('Sign in again'),
+                    ),
+                  TextButton(onPressed: onDone, child: const Text('Done')),
+                  FilledButton(
+                    onPressed: () => onOpen(name),
+                    child: const Text('Open it'),
+                  ),
+                ]
+              : failed
               ? [
                   TextButton(
                     onPressed: ctrl.switchToAdvanced,

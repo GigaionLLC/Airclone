@@ -1,0 +1,106 @@
+name: Promote release to Latest
+
+# release.yml creates every GitHub Release as a PRE-RELEASE, so nobody is sent
+# to one whose builds are still running: not a visitor on the Releases page, and
+# not the app's update check, which reads releases/latest and never sees a
+# pre-release. This makes it a normal release and Latest.
+#
+# It refuses unless every file a release ships is attached and non-empty. That
+# is the check that matters (AGENT.md rule 9): three Windows releases once went
+# out with no bundled rclone behind a green run. When a platform is knowingly
+# missing, name it in allow_missing; that is a decision, so it is typed, not
+# defaulted.
+#
+# Store rollout is separate and is not checked here. Promote when the download
+# files are right; the stores follow on their own schedule.
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag to promote, e.g. v0.23.2'
+        required: true
+        type: string
+      allow_missing:
+        description: 'Space-separated file names allowed to be missing (blank = none)'
+        required: false
+        default: ''
+        type: string
+      mode:
+        description: 'check = report only | promote = make it Latest'
+        required: true
+        default: check
+        type: choice
+        options: [check, promote]
+
+permissions:
+  contents: write
+
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check the files, then promote
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          TAG: ${{ inputs.tag }}
+          ALLOW: ${{ inputs.allow_missing }}
+          MODE: ${{ inputs.mode }}
+        run: |
+          set -euo pipefail
+          case "$TAG" in
+            v[0-9]*.[0-9]*.[0-9]*) ;;
+            *) echo "::error::tag must look like v1.2.3, got '$TAG'"; exit 1;;
+          esac
+          case "$TAG" in
+            *alpha*|*beta*|*rc*)
+              echo "::error::$TAG is a test tag; it stays a pre-release"; exit 1;;
+          esac
+
+          info=$(gh release view "$TAG" --repo "$REPO" --json isPrerelease,assets)
+          if [ "$(jq -r .isPrerelease <<<"$info")" != "true" ]; then
+            echo "$TAG is already a normal release. Nothing to do."
+            exit 0
+          fi
+
+          # Every file a full release ships (v0.23.1's set). Update this list in
+          # the same change that adds or drops a platform artifact.
+          expected="SHA256SUMS
+          airclone-setup-x64.exe
+          airclone-windows-x64.zip
+          airclone.msix
+          airclone-macos.dmg
+          airclone-macos.zip
+          airclone-linux-x64.tar.gz
+          Airclone-x86_64.AppImage
+          airclone.flatpak
+          airclone-android-universal.apk
+          airclone-android-arm64-v8a.apk
+          airclone-android-armeabi-v7a.apk
+          airclone-android-x86_64.apk
+          airclone-playstore.aab"
+
+          missing=0
+          for f in $expected; do
+            size=$(jq -r --arg n "$f" '.assets[] | select(.name == $n) | .size' <<<"$info")
+            if [ -n "$size" ] && [ "$size" -gt 0 ]; then
+              echo "  ok       $f ($size bytes)"
+            elif [[ " $ALLOW " == *" $f "* ]]; then
+              echo "  allowed  $f (missing, allowed by input)"
+            else
+              echo "::error::missing or empty: $f"
+              missing=1
+            fi
+          done
+          if [ "$missing" -ne 0 ]; then
+            echo "Not promoting: wait for release.yml to finish, or name the file in allow_missing."
+            exit 1
+          fi
+
+          if [ "$MODE" != "promote" ]; then
+            echo "All files present. Rerun with mode=promote to make $TAG Latest."
+            exit 0
+          fi
+          gh release edit "$TAG" --repo "$REPO" --prerelease=false --latest
+          echo "$TAG is now the Latest release."

@@ -34,7 +34,9 @@ class SignInStart extends ConsumerWidget {
           child: ListView(
             children: [
               Text(
-                'Connect $label',
+                state.reconnect
+                    ? 'Sign in to ${state.editName} again'
+                    : 'Connect $label',
                 style: TextStyle(
                   color: c.text,
                   fontSize: 16,
@@ -43,20 +45,29 @@ class SignInStart extends ConsumerWidget {
               ),
               const SizedBox(height: Space.x1),
               Text(
-                'You will sign in with $label. Airclone never sees your '
-                'password — the sign-in happens in your browser.',
+                state.reconnect
+                    ? 'Use this when $label has stopped letting Airclone in — '
+                          'a sign-in that expired, was revoked, or belongs to '
+                          'the wrong account. Only the sign-in is replaced; '
+                          'every other setting stays as it is.'
+                    : 'You will sign in with $label. Airclone never sees '
+                          'your password — the sign-in happens in your '
+                          'browser.',
                 style: TextStyle(color: c.textMuted, fontSize: 13),
               ),
-              const SizedBox(height: Space.x5),
-              LabeledField(
-                label: 'Name',
-                help: 'What this cloud is called in Airclone.',
-                child: TextEntry(
-                  initial: state.name,
-                  hint: 'my-cloud',
-                  onChanged: ctrl.setName,
+              // A reconnect keeps its name: it is the same remote.
+              if (!state.reconnect) ...[
+                const SizedBox(height: Space.x5),
+                LabeledField(
+                  label: 'Name',
+                  help: 'What this cloud is called in Airclone.',
+                  child: TextEntry(
+                    initial: state.name,
+                    hint: 'my-cloud',
+                    onChanged: ctrl.setName,
+                  ),
                 ),
-              ),
+              ],
               if (state.error != null) ...[
                 const SizedBox(height: Space.x2),
                 Text(

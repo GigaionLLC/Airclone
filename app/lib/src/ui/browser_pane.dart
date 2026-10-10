@@ -17,6 +17,7 @@ import '../state/engine_controller.dart';
 import '../state/file_ops.dart';
 import '../state/host_platform.dart';
 import '../state/os_integration.dart';
+import '../state/reconnect.dart';
 import '../state/remote_features.dart';
 import '../state/remotes_provider.dart';
 import '../state/sync_source.dart';
@@ -394,14 +395,34 @@ class BrowserPane extends ConsumerWidget {
         ),
       );
     } else if (state.error != null) {
+      final remote = state.remote;
+      // A sign-in that stopped working is the one listing error with a
+      // one-press fix, so offer it where the failure is seen.
+      final offerSignIn =
+          remote != null &&
+          looksLikeExpiredSignIn(state.error) &&
+          ref.watch(remoteUsesSignInProvider(remote.type));
       content = _pullableMessage(
         physics,
         Padding(
           padding: const EdgeInsets.all(Space.x6),
-          child: Text(
-            state.error!,
-            textAlign: TextAlign.center,
-            style: TextStyle(color: c.error, fontSize: 13),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                state.error!,
+                textAlign: TextAlign.center,
+                style: TextStyle(color: c.error, fontSize: 13),
+              ),
+              if (offerSignIn) ...[
+                const SizedBox(height: Space.x4),
+                FilledButton.icon(
+                  onPressed: () => showReconnectRemoteDialog(context, remote),
+                  icon: const Icon(Icons.login, size: 18),
+                  label: const Text('Sign in again'),
+                ),
+              ],
+            ],
           ),
         ),
       );

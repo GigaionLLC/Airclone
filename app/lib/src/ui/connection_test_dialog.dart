@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../state/reconnect.dart';
+import 'add_remote_dialog.dart' show showReconnectRemoteDialog;
 import 'dialog_body.dart';
 import '../rclone/models/remote.dart';
 import 'package:airclone_rc/airclone_rc.dart';
@@ -62,16 +65,17 @@ Future<void> showConnectionTest(
   builder: (_) => _ConnectionTestDialog(client: client, remote: remote),
 );
 
-class _ConnectionTestDialog extends StatefulWidget {
+class _ConnectionTestDialog extends ConsumerStatefulWidget {
   const _ConnectionTestDialog({required this.client, required this.remote});
   final RcloneClient client;
   final Remote remote;
 
   @override
-  State<_ConnectionTestDialog> createState() => _ConnectionTestDialogState();
+  ConsumerState<_ConnectionTestDialog> createState() =>
+      _ConnectionTestDialogState();
 }
 
-class _ConnectionTestDialogState extends State<_ConnectionTestDialog> {
+class _ConnectionTestDialogState extends ConsumerState<_ConnectionTestDialog> {
   ConnectionResult? _result;
 
   @override
@@ -128,6 +132,19 @@ class _ConnectionTestDialogState extends State<_ConnectionTestDialog> {
           TextButton(
             onPressed: _run,
             child: Text('Retry', style: TextStyle(color: c.textMuted)),
+          ),
+        if (result != null &&
+            !result.ok &&
+            looksLikeExpiredSignIn(result.message) &&
+            ref.watch(remoteUsesSignInProvider(widget.remote.type)))
+          TextButton(
+            onPressed: () {
+              final remote = widget.remote;
+              final nav = Navigator.of(context);
+              nav.pop();
+              showReconnectRemoteDialog(nav.context, remote);
+            },
+            child: const Text('Sign in again'),
           ),
         FilledButton(
           onPressed: () => Navigator.of(context).pop(),

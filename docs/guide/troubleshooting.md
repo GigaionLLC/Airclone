@@ -241,6 +241,19 @@ The same `Preview cache` section shows how much is on disk and has a
 
 ---
 
+## A cloud stopped working: token, `invalid_grant` or 401
+
+A cloud you signed in to (Google Drive, OneDrive, Dropbox, Box…) stops opening with an error that
+mentions a token, `invalid_grant`, *expired or revoked*, or *401 Unauthorized*. The provider no
+longer accepts the saved sign-in: you changed your password, removed Airclone's access, or it
+expired.
+
+Press **Sign in again**. It is on the error itself, on a failed **Test connection**, and in the
+remote's **⋯** menu. It replaces only the sign-in and keeps every other setting. You do not need to
+delete and re-add the remote. See [Signing in again](getting-started.md#signing-in-again).
+
+---
+
 ## A crypt folder says it is empty, or is missing files
 
 This one is worth understanding, because rclone reports success while doing it.
