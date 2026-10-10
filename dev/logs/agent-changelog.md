@@ -13,6 +13,24 @@ happened": nothing was logged between 2026-07-02 and 2026-07-15, or between 2026
      it is: it used to say ABOVE, which pushed it further down the file with every entry until
      it sat hundreds of lines under the newest one and pointed writers at the wrong place. -->
 
+## [2026-10-10] - Interface size setting and AIRCLONE_SCALE (#32); Linux ARM64 (#30) and Docker image (#29)
+
+**Agent:** Claude Code (Claude Opus 5.5)
+**Files Modified:** #32: `app/lib/src/state/interface_scale.dart` (new), `app/lib/main.dart`,
+`app/lib/src/ui/{app,settings_screen}.dart`, `app/test/interface_scale_test.dart`,
+`.github/workflows/linux-screenshot.yml`, `docs/guide/{getting-started,troubleshooting,platforms}.md`.
+#29/#30 (PR #31): `.github/workflows/{release,promote-release,docker-image}.yml`, `docker/*`,
+`dev/desktop/build-librclone.sh`, `dev/linux/build-{appimage,flatpak}.sh`, `app/lib/src/update/*`, docs.
+**Database/API Changes:** None.
+**Summary:** #32, from r/rclone: tiny UI on a 4K niri (Wayland) desktop, only fixable through XWayland with
+`GDK_SCALE=2`, which doubled the cursor. Desktop builds now install `ScaledFlutterBinding` (scaled view
+configuration + pointer packets converted with the scaled ratio) and `MaterialApp.builder` rescales MediaQuery; the
+size comes from `AIRCLONE_SCALE` or Settings > Appearance > Interface size (80-250%), read before the first frame.
+Proven on the Linux runner via `linux-screenshot.yml`: 100% and 200% screenshots, and a click at the 200% position of
+the Settings tab opened Settings. #30/#29 were merged earlier the same day as PR #31: native arm64 Linux builds
+(AppImage and Flatpak started on ubuntu-24.04-arm) and a GHCR image smoke-tested on both architectures, whose first
+run caught a missing libGLESv2 in the image.
+
 ## [2026-10-10] - v0.23.2 sent to all stores; public TestFlight beta kept intact
 
 **Agent:** Claude Code (Claude Opus 5.5)

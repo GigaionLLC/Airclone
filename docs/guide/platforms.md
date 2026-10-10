@@ -52,6 +52,7 @@ dragged narrow gets the phone layout. The ⚠️ marks for tablets below are abo
 | Browse every remote, previews, thumbnails, video and audio | | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Search, find duplicates, get a public link | | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Desktop layout (sidebar, two panes, top bar) | | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ⚠️ tablets | ❌ | ⚠️ iPad |
+| Interface size (80–250%, and `AIRCLONE_SCALE`) | | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ |
 | Tree view | | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ |
 | Drag and drop (between panes and to or from the OS) | | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ |
 | Keyboard shortcuts and the Ctrl+K command palette | | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ⚠️ tablets | ❌ | ⚠️ iPad |
@@ -72,6 +73,9 @@ dragged narrow gets the phone layout. The ⚠️ marks for tablets below are abo
 - **Audio tracks and subtitles** are chosen in the built-in player, and that player is not in the
   Web UI, where the browser plays the file itself. Subtitle files next to a video (`.srt`, `.ass`,
   `.ssa`, `.vtt`) are picked up on every build above.
+- **Interface size** is a desktop setting. Phones, tablets and TVs follow the system's own display
+  and font size instead, and the Web UI has the browser's zoom, so they have nothing to add (❌ is
+  "not needed", not "not built").
 
 ## Copying, syncing and transfers
 

@@ -71,6 +71,25 @@ the three tabs shown as a side rail on the left instead of along the bottom.
 
 This guide says "on the desktop" to mean the wide layout and "on the phone" to mean the narrow one.
 
+### Making everything bigger or smaller
+
+On Windows, macOS and Linux, **Settings → Appearance → Interface size** makes everything in Airclone
+larger or smaller, from 80% to 250%, on top of your display's own scaling. It changes at once and is
+remembered. The mouse pointer and other apps are not affected, and it works the same under Wayland
+and X11.
+
+To start at a size without opening Settings, set `AIRCLONE_SCALE` before launching, as a number or a
+percentage:
+
+```bash
+AIRCLONE_SCALE=2 ./Airclone-x86_64.AppImage
+AIRCLONE_SCALE=150% airclone
+```
+
+It wins over the saved setting every time it is set. A larger size leaves fewer logical pixels, so a
+window under 700 of them switches to the phone layout described above; widen or maximise the window
+to get the desktop layout back.
+
 ## What a remote is
 
 A **remote** is a name you give to one storage location, together with the details needed to reach

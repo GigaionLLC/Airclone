@@ -241,6 +241,19 @@ The same `Preview cache` section shows how much is on disk and has a
 
 ---
 
+## Everything is too small (or too big), for example on a 4K Linux screen
+
+Airclone follows your display's scaling. On some Linux desktops, notably Wayland compositors set to a
+fractional or automatic scale, that reaches the app as 100% and everything is drawn tiny on a 4K
+panel.
+
+Set **Settings → Appearance → Interface size** (for example 200%), or start it with
+`AIRCLONE_SCALE=2`. This works natively under Wayland and leaves the mouse pointer alone, unlike the
+XWayland workaround `GDK_BACKEND=x11 GDK_SCALE=2`, which also enlarges the cursor. See
+[Making everything bigger or smaller](getting-started.md#making-everything-bigger-or-smaller).
+
+---
+
 ## A cloud stopped working: token, `invalid_grant` or 401
 
 A cloud you signed in to (Google Drive, OneDrive, Dropbox, Box…) stops opening with an error that

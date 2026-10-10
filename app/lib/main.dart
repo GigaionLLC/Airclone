@@ -6,6 +6,7 @@ import 'src/headless/cli_info.dart';
 import 'src/headless/headless_runner.dart';
 import 'src/state/android_native.dart';
 import 'src/state/host_platform.dart';
+import 'src/state/interface_scale.dart';
 import 'src/state/local_locations.dart';
 import 'src/state/window_backdrop.dart';
 import 'src/ui/app.dart';
@@ -50,7 +51,27 @@ Future<void> main(List<String> args) async {
   if (!HostPlatform.isWeb && isWebUiInvocation(args)) {
     return runWebUi(args);
   }
-  WidgetsFlutterBinding.ensureInitialized();
+  // Desktop gets Airclone's own Interface size (issue #32): a binding that can
+  // scale the whole window. It has to be the FIRST binding, so it replaces the
+  // plain one here rather than wrapping it. The size is read before anything
+  // paints, so the window never shows at the wrong size first. Phones follow
+  // the system display size; the browser has its own zoom.
+  if (!HostPlatform.isWeb &&
+      (HostPlatform.isWindows ||
+          HostPlatform.isMacOS ||
+          HostPlatform.isLinux)) {
+    // Binding first: reading the saved size needs the plugin channels. Null
+    // when a test harness installed its own binding before main() ran: then
+    // that one is used, unscaled.
+    final binding = ScaledFlutterBinding.ensureInitialized();
+    if (binding != null) {
+      binding.scale = await loadInitialInterfaceScale();
+    } else {
+      WidgetsFlutterBinding.ensureInitialized();
+    }
+  } else {
+    WidgetsFlutterBinding.ensureInitialized();
+  }
   installVisibleErrorWidget();
   // Pop-out image sub-window (desktop only). desktop_multi_window spins up a
   // SECOND FlutterEngine in THIS process for each popped-out image; that engine
