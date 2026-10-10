@@ -885,29 +885,54 @@ jobs:
       - name: Archive, unsigned
         run: |
           set -euo pipefail
-          xcodebuild -workspace ios/Runner.xcworkspace             -scheme Runner -configuration Release             -destination 'generic/platform=iOS'             -archivePath "$RUNNER_TEMP/Airclone.xcarchive"             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY=""             archive
+          xcodebuild -workspace ios/Runner.xcworkspace \
+            -scheme Runner -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -archivePath "$RUNNER_TEMP/Airclone.xcarchive" \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
+            archive
       - name: Package the .ipa and check what is in it
+        # Every check reads a command's output from a VARIABLE, never through
+        # `| grep -q`: under pipefail, grep -q exits at the first match, the
+        # writer dies of SIGPIPE, and the pipeline reports failure on exactly
+        # the line it found. That is how this step's first run "lost" a
+        # _RcloneRPC that was there - and the same trap would have let a
+        # signing authority slip through the check below it.
         run: |
           set -euo pipefail
           app="$(find "$RUNNER_TEMP/Airclone.xcarchive/Products/Applications" -maxdepth 1 -name '*.app' | head -1)"
           test -d "$app" || { echo "::error::no .app in the archive"; exit 1; }
           bin="$app/$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$app/Info.plist")"
+
           # The engine is linked in statically; an IPA without it would install
-          # and then never get past "starting the engine".
-          nm -gU "$bin" | grep -q ' _RcloneRPC$'             || { echo "::error::_RcloneRPC is not in the app binary"; exit 1; }
+          # and then never get past "starting the engine". Same test as
+          # ios-release.yml: defined (type not U), whatever the type letter.
+          syms="$(nm -g "$bin" 2>/dev/null || true)"
+          for s in RcloneInitialize RcloneRPC RcloneFreeString; do
+            awk -v s="_$s" '$NF==s && $(NF-1)!="U" {f=1} END{exit !f}' <<<"$syms" \
+              || { echo "::error::_$s is not defined in $(basename "$bin")"; exit 1; }
+            echo "  _$s defined"
+          done
+
           # Unsigned means no identity of ours: no signing authority (an ad-hoc
           # signature has none and is harmless) and no provisioning profile.
-          if codesign -dvv "$app" 2>&1 | grep -q '^Authority='; then
+          sig="$(codesign -dvv "$app" 2>&1 || true)"
+          if grep '^Authority=' <<<"$sig"; then
             echo "::error::the app is signed with an identity; this file must be unsigned"
-            codesign -dvv "$app" 2>&1 | grep '^Authority=' ; exit 1
+            exit 1
           fi
-          test ! -e "$app/embedded.mobileprovision"             || { echo "::error::a provisioning profile is inside the app"; exit 1; }
+          test ! -e "$app/embedded.mobileprovision" \
+            || { echo "::error::a provisioning profile is inside the app"; exit 1; }
+          echo "  no signing authority, no provisioning profile"
+
           ver="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$app/Info.plist")"
           echo "packaging $(basename "$app") version $ver"
           work="$RUNNER_TEMP/ipa"; rm -rf "$work"; mkdir -p "$work/Payload"
           cp -R "$app" "$work/Payload/"
           (cd "$work" && zip -qry "$GITHUB_WORKSPACE/airclone-ios-unsigned.ipa" Payload)
-          unzip -l "$GITHUB_WORKSPACE/airclone-ios-unsigned.ipa" | grep -q 'Payload/.*\.app/Info.plist'             || { echo "::error::the .ipa has no Payload/*.app"; exit 1; }
+          listing="$(unzip -l "$GITHUB_WORKSPACE/airclone-ios-unsigned.ipa")"
+          grep -qE 'Payload/[^/]+\.app/Info\.plist' <<<"$listing" \
+            || { echo "::error::the .ipa has no Payload/*.app"; exit 1; }
           ls -l "$GITHUB_WORKSPACE/airclone-ios-unsigned.ipa"
       - uses: actions/upload-artifact@v7
         with:
