@@ -221,6 +221,19 @@ bool macAppStoreReceiptPresent(
   return exists('$contents/_MASReceipt/receipt');
 }
 
+/// True when this iOS app was SIDELOADED (AltStore, SideStore, Sideloadly, or
+/// anything else that signed `airclone-ios-unsigned.ipa` with someone's own
+/// Apple ID). Such a bundle always carries the `embedded.mobileprovision` it was
+/// signed with; an App Store or TestFlight install never does, because Apple
+/// strips it. [executable] is `Platform.resolvedExecutable`
+/// (`Runner.app/Runner`), so the profile sits beside it. Pure, like
+/// [macAppStoreReceiptPresent], so it is testable off-iOS.
+bool iosSideloaded(String executable, bool Function(String path) exists) {
+  final i = executable.lastIndexOf('/');
+  if (i <= 0) return false;
+  return exists('${executable.substring(0, i)}/embedded.mobileprovision');
+}
+
 /// Resolves how this copy was installed. Cheap and side-effect-free; cached by
 /// the provider below because packaging cannot change within a run.
 Future<InstallSource> detectInstallSource() async {
@@ -247,13 +260,20 @@ Future<InstallSource> detectInstallSource() async {
     return androidInstallSource(installer, pkg);
   }
   if (HostPlatform.isIOS) {
-    // iOS has no other distribution channel: App Store or TestFlight, and both
-    // deliver their own updates. There is no App Store id to deep-link to until
-    // Airclone actually ships there, so the UI explains without a button.
-    return const InstallSource(
-      channel: InstallChannel.appStore,
-      storeName: 'the App Store',
+    // App Store and TestFlight deliver their own updates. A sideloaded copy
+    // (the unsigned IPA from GitHub, issue #34) does not, so it is a direct
+    // download and hears about new versions - as text only on iOS: the App
+    // Store binary must never link out to another way of getting the app.
+    final sideloaded = iosSideloaded(
+      Platform.resolvedExecutable,
+      (p) => File(p).existsSync(),
     );
+    return sideloaded
+        ? _direct
+        : const InstallSource(
+            channel: InstallChannel.appStore,
+            storeName: 'the App Store',
+          );
   }
   if (HostPlatform.isMacOS) {
     final fromStore = macAppStoreReceiptPresent(

@@ -38,7 +38,10 @@ builds with different limits:
 - **Android** is the same build whether it comes from **Google Play** or the **APK** on the Releases
   page. Only updates differ: Play updates itself, and the APK tells you when a new version is out.
   **Android TV** is that same build on a television.
-- **iPhone / iPad** comes from the App Store only.
+- **iPhone / iPad** comes from the App Store, the free TestFlight beta, or (from v0.24.1) the unsigned
+  `airclone-ios-unsigned.ipa` on the Releases page, which a sideloading tool such as AltStore, SideStore
+  or Sideloadly signs with your own Apple ID. All three are the same app; only updates differ: the
+  App Store and TestFlight update it, and a sideloaded copy tells you when a new version is out.
 
 **The layout follows the screen, not the device.** A window narrower than 700 pixels gets the phone
 layout, with three tabs along the bottom. A wider one gets the desktop layout, with a sidebar, two

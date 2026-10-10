@@ -776,7 +776,7 @@ jobs:
   # the runtime libraries and Xvfb, serving the Web UI (docker/Dockerfile).
   # Built per architecture on its native runner, smoke-tested by RUNNING it
   # (docker/smoke-test.sh), and only then pushed - on a tag, as :X.Y.Z-<arch>.
-  # docker-manifest joins those into :X.Y.Z and :X.Y. :latest moves only when the
+  # docker-manifest joins those into :X.Y.Z. :X.Y and :latest move only when the
   # release is promoted (promote-release.yml), like the GitHub Release itself.
   docker:
     needs: [release, linux]
@@ -839,22 +839,94 @@ jobs:
       run:
         working-directory: .
     steps:
-      - name: Join the architectures into :X.Y.Z and :X.Y
+      - name: Join the architectures into :X.Y.Z
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
           image="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/airclone"
           ver="${GITHUB_REF_NAME#v}"
-          minor="${ver%.*}"
           echo "$GH_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
-          docker buildx imagetools create -t "$image:$ver" -t "$image:$minor" \
+          # Only the exact version. :X.Y and :latest mean "the current release"
+          # and move in promote-release.yml, so a pre-release never takes them.
+          docker buildx imagetools create -t "$image:$ver" \
             "$image:$ver-amd64" "$image:$ver-arm64"
           # Assert the published result, not the command's exit code.
           docker buildx imagetools inspect "$image:$ver" | tee manifest.txt
           grep -q 'linux/amd64' manifest.txt && grep -q 'linux/arm64' manifest.txt \
             || { echo "::error::$image:$ver is missing an architecture"; exit 1; }
           docker logout ghcr.io
+
+  # The UNSIGNED iOS app, for sideloading (issue #34): AltStore, SideStore,
+  # Sideloadly and the like sign it with the user's own Apple ID. It must never
+  # be signed with our App Store distribution identity - Apple's terms forbid
+  # distributing that outside the store - so this job has no Apple secret at
+  # all. It is the unsigned archive ios-release.yml's dry-run already proves
+  # links, packaged as an .ipa (Payload/Runner.app, zipped).
+  ios-ipa:
+    needs: release
+    if: ${{ !cancelled() && (needs.release.result == 'success' || github.event_name == 'workflow_dispatch') }}
+    runs-on: macos-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2  # v2.23.0
+        with: { channel: stable, flutter-version: 3.47.0, cache: true }
+      - uses: actions/setup-go@v7
+        with: { go-version: 'stable', cache: false }
+      - name: Build librclone for iOS
+        working-directory: .
+        run: bash dev/ios/build-librclone-ios.sh
+      - run: flutter pub get
+      - name: Generate the Flutter build inputs
+        run: flutter build ios --release --no-codesign
+      - name: Archive, unsigned
+        run: |
+          set -euo pipefail
+          xcodebuild -workspace ios/Runner.xcworkspace             -scheme Runner -configuration Release             -destination 'generic/platform=iOS'             -archivePath "$RUNNER_TEMP/Airclone.xcarchive"             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY=""             archive
+      - name: Package the .ipa and check what is in it
+        run: |
+          set -euo pipefail
+          app="$(find "$RUNNER_TEMP/Airclone.xcarchive/Products/Applications" -maxdepth 1 -name '*.app' | head -1)"
+          test -d "$app" || { echo "::error::no .app in the archive"; exit 1; }
+          bin="$app/$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$app/Info.plist")"
+          # The engine is linked in statically; an IPA without it would install
+          # and then never get past "starting the engine".
+          nm -gU "$bin" | grep -q ' _RcloneRPC$'             || { echo "::error::_RcloneRPC is not in the app binary"; exit 1; }
+          # Unsigned means no identity of ours: no signing authority (an ad-hoc
+          # signature has none and is harmless) and no provisioning profile.
+          if codesign -dvv "$app" 2>&1 | grep -q '^Authority='; then
+            echo "::error::the app is signed with an identity; this file must be unsigned"
+            codesign -dvv "$app" 2>&1 | grep '^Authority=' ; exit 1
+          fi
+          test ! -e "$app/embedded.mobileprovision"             || { echo "::error::a provisioning profile is inside the app"; exit 1; }
+          ver="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$app/Info.plist")"
+          echo "packaging $(basename "$app") version $ver"
+          work="$RUNNER_TEMP/ipa"; rm -rf "$work"; mkdir -p "$work/Payload"
+          cp -R "$app" "$work/Payload/"
+          (cd "$work" && zip -qry "$GITHUB_WORKSPACE/airclone-ios-unsigned.ipa" Payload)
+          unzip -l "$GITHUB_WORKSPACE/airclone-ios-unsigned.ipa" | grep -q 'Payload/.*\.app/Info.plist'             || { echo "::error::the .ipa has no Payload/*.app"; exit 1; }
+          ls -l "$GITHUB_WORKSPACE/airclone-ios-unsigned.ipa"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: airclone-ios-unsigned
+          path: airclone-ios-unsigned.ipa
+          if-no-files-found: error
+      - name: Stage for the release
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          mkdir -p "$RUNNER_TEMP/release-assets"
+          cp "$GITHUB_WORKSPACE/airclone-ios-unsigned.ipa" "$RUNNER_TEMP/release-assets/"
+      - name: Hand the release file to the checksums job
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-ios
+          path: ${{ runner.temp }}/release-assets/
+          if-no-files-found: error
+          retention-days: 7
 
   macos:
     runs-on: macos-latest
@@ -1284,7 +1356,7 @@ jobs:
   # hand - and the app simply will not offer to install an update, because it
   # would have nothing to verify against. That is the safe half of the failure.
   checksums:
-    needs: [windows, linux, macos, android]
+    needs: [windows, linux, macos, android, ios-ipa]
     # This job checks nothing out, so the workflow-wide `working-directory: app`
     # would point at a directory that does not exist - which is exactly how its
     # first run failed, before it hashed anything.
