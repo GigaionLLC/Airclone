@@ -13,6 +13,17 @@ happened": nothing was logged between 2026-07-02 and 2026-07-15, or between 2026
      it is: it used to say ABOVE, which pushed it further down the file with every entry until
      it sat hundreds of lines under the newest one and pointed writers at the wrong place. -->
 
+## [2026-10-09] - Releases start as pre-releases; promote-release.yml makes them Latest
+
+**Agent:** Claude Code (Claude Opus 5.5) — `feat/reconnect-remote`
+**Files Modified:** `.github/workflows/release.yml`, `.github/workflows/promote-release.yml` (new), `dev/README.md`.
+**Database/API Changes:** None.
+**Summary:** A tag published the GitHub Release as Latest before any build had attached, so visitors (and, for
+v0.23.0, the update check) were pointed at a release with missing files. `release.yml` now always creates a
+pre-release; `promote-release.yml` (manual, `check` then `promote`) makes it Latest only when all 14 platform files
+are attached and non-empty, with `allow_missing` for a deliberate gap. The app's update check reads
+`releases/latest`, which excludes pre-releases, so it offers a version only after promotion.
+
 ## [2026-10-09] - "Sign in again": reauthorize an OAuth remote (#27)
 
 **Agent:** Claude Code (Claude Opus 5.5) — `feat/reconnect-remote`

@@ -145,10 +145,12 @@ jobs:
             echo "Release $GITHUB_REF_NAME already exists — leaving it as-is."
             exit 0
           fi
-          args=(--repo "$GITHUB_REPOSITORY" --title "Airclone $GITHUB_REF_NAME" --verify-tag)
-          case "$GITHUB_REF_NAME" in
-            *alpha*|*beta*|*rc*) args+=(--prerelease) ;;
-          esac
+          # ALWAYS a pre-release. The platform jobs take a while and the stores
+          # longer, and a release published as Latest with half its files is
+          # what a visitor (and the app's update check, which reads
+          # releases/latest and so never sees a pre-release) would be sent to.
+          # promote-release.yml makes it Latest once every file is attached.
+          args=(--repo "$GITHUB_REPOSITORY" --title "Airclone $GITHUB_REF_NAME" --verify-tag --prerelease)
           notes="dev/releases/$GITHUB_REF_NAME.md"
           if [ -f "$notes" ]; then
             args+=(--notes-file "$notes")
