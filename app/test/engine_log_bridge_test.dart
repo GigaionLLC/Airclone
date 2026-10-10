@@ -42,14 +42,16 @@ void main() {
       addTearDown(container.dispose);
       attachGlobalDiagnostics(container.read(diagnosticsProvider.notifier));
 
-      logEngineEvent(RcloneLogLevel.info, 'engine', 'i');
+      logEngineEvent(RcloneLogLevel.notice, 'engine', 'i');
       logEngineEvent(RcloneLogLevel.warning, 'engine', 'w');
       logEngineEvent(RcloneLogLevel.error, 'engine', 'e');
+      logEngineEvent(RcloneLogLevel.fatal, 'engine', 'f');
 
       expect(container.read(diagnosticsProvider).map((e) => e.level), [
-        DiagLevel.info,
+        DiagLevel.notice,
         DiagLevel.warning,
         DiagLevel.error,
+        DiagLevel.fatal,
       ]);
     });
 

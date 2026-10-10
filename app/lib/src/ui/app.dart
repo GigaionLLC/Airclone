@@ -69,8 +69,11 @@ class _AircloneAppState extends ConsumerState<AircloneApp> {
     attachGlobalDiagnostics(ref.read(diagnosticsProvider.notifier));
     final priorFlutterError = FlutterError.onError;
     FlutterError.onError = (details) {
+      // Fatal: a framework error is a screen that failed to draw, which the
+      // user cannot work around. An uncaught async error (below) often has no
+      // visible effect, so it stays an error.
       logDiagnostic(
-        DiagLevel.error,
+        DiagLevel.fatal,
         'ui',
         details.exceptionAsString(),
         // A full stack is noise in a report; the top frames are the signal.

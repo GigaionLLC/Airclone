@@ -95,7 +95,7 @@ class _MediaCapabilitiesDialogState extends State<_MediaCapabilitiesDialog> {
     try {
       final dump = await dumpMediaCapabilities();
       logDiagnostic(
-        DiagLevel.info,
+        DiagLevel.notice,
         'media-capabilities',
         mediaCapabilitySummary(dump),
       );

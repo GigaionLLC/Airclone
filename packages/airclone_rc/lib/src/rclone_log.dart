@@ -15,7 +15,14 @@ library;
 ///
 /// Deliberately not the app's `DiagLevel`: an enum is the whole reason this
 /// file exists, and mapping it is one `switch` in the host.
-enum RcloneLogLevel { info, warning, error }
+///
+/// Ordered least to most severe:
+///  * [notice]: expected, not a bug by itself (the OS closed a background
+///    engine, a dropped connection the retry recovered);
+///  * [warning]: a problem that may matter;
+///  * [error]: an operation failed;
+///  * [fatal]: the engine stopped working (crashed) and the user has to act.
+enum RcloneLogLevel { notice, warning, error, fatal }
 
 /// Receives an engine event: a severity, a short area tag (`engine`,
 /// `preview`), the message, and optionally the underlying error.

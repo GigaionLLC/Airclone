@@ -6,6 +6,7 @@ import 'dart:math';
 import 'package:http/http.dart' as http;
 import 'package:meta/meta.dart' show visibleForTesting;
 
+import 'engine_exit.dart';
 import 'oauth_flow.dart';
 import 'platform.dart';
 import 'rclone_client.dart';
@@ -281,8 +282,14 @@ class HttpRcloneClient
   Stream<Uri> get authUrls => _authUrls.stream;
 
   /// Fires if the rcd child exits without [quit] being called (crash, OOM
-  /// kill). The owner surfaces it and offers a restart.
+  /// kill). The owner surfaces it and offers a restart; [lastExit] says why.
   void Function()? onDied;
+
+  /// The most recent exit Airclone did not ask for, classified, or null since
+  /// the last [start]. Set before [onDied] fires, so the owner can tell "the OS
+  /// closed it in the background" from a crash.
+  EngineExit? get lastExit => _lastExit;
+  EngineExit? _lastExit;
 
   Uri _uri(String method) => Uri.parse('http://127.0.0.1:$_port/$method');
 
@@ -551,13 +558,16 @@ class HttpRcloneClient
     // Detect the child dying out from under us (crash/OOM); quit() exits are
     // expected and stay silent.
     _quitting = false;
+    _lastExit = null;
     final watched = _process!;
+    final startedAt = DateTime.now();
     unawaited(
-      watched.exitCode.then((_) {
+      watched.exitCode.then((code) {
         if (!_quitting && identical(_process, watched)) {
           _process = null;
           _port = null;
           _authHeader = null;
+          _noteUnexpectedExit(code, DateTime.now().difference(startedAt));
           onDied?.call();
         }
       }),
@@ -806,15 +816,23 @@ class HttpRcloneClient
   /// answering" — exactly the question an OS-mount freeze raises, and the one a
   /// user cannot answer from the outside.
   ///
-  /// A RECOVERED blip is recorded too, at [DiagLevel.info], and that is a
+  /// A RECOVERED blip is recorded too, at [RcloneLogLevel.notice], and that is a
   /// deliberate choice rather than noise. The retry it describes exists BECAUSE
   /// one such blip was recorded in the field and could be reasoned about; going
   /// silent now would fix the symptom and destroy the only evidence that a
-  /// device is dropping connections at all. Info is what this file already
-  /// reserves for "context that makes the errors readable".
+  /// device is dropping connections at all. Notice is the level for "expected,
+  /// and not a bug by itself".
   ///
   /// Silent during [quit], where a refused connection is the expected outcome,
   /// not a symptom.
+  ///
+  /// A failure is held back briefly before it is written. When the engine has
+  /// actually exited, the call that finds out first is usually an rc request
+  /// meeting "Connection refused" a moment before the exit is reported. The
+  /// exit entry says what happened and why ([_noteUnexpectedExit]); a WARN for
+  /// the same event on top of it is what made a normal Android background
+  /// kill read like a bug (#36). So if the process exits within
+  /// [exitGracePeriod], the warning is dropped.
   void _noteTransportFailure(
     String method,
     Object error, {
@@ -831,14 +849,45 @@ class HttpRcloneClient
     } else {
       _lastFailureReport = now;
     }
-    logSink(
-      recovered ? RcloneLogLevel.info : RcloneLogLevel.warning,
-      'engine',
-      recovered
-          ? 'engine dropped a connection on $method; the retry succeeded'
-          : 'no answer from the engine for $method',
-      detail: redactEngineLine('$error', sessionSecrets: _sessionSecrets),
+    void write() {
+      if (_quitting) return;
+      logSink(
+        recovered ? RcloneLogLevel.notice : RcloneLogLevel.warning,
+        'engine',
+        recovered
+            ? 'engine dropped a connection on $method; the retry succeeded'
+            : 'no answer from the engine for $method',
+        detail: redactEngineLine('$error', sessionSecrets: _sessionSecrets),
+      );
+    }
+
+    final watched = _process;
+    if (recovered || watched == null) {
+      write();
+      return;
+    }
+    unawaited(
+      watched.exitCode
+          .timeout(exitGracePeriod)
+          .then((_) {}, onError: (Object _) => write()),
     );
+  }
+
+  /// How long a transport failure waits to see whether the engine exited, in
+  /// which case the exit entry replaces it. See [_noteTransportFailure].
+  @visibleForTesting
+  static Duration exitGracePeriod = const Duration(seconds: 2);
+
+  /// Records an exit Airclone did not ask for: how it ended and after how long.
+  /// See engine_exit.dart for why that is the fact that matters.
+  void _noteUnexpectedExit(int exitCode, Duration uptime) {
+    final exit = describeEngineExit(
+      exitCode,
+      android: EnginePlatform.isAndroid,
+      uptime: uptime,
+    );
+    _lastExit = exit;
+    logSink(exit.level, 'engine', exit.message, detail: exit.detail);
   }
 
   /// Runs an arbitrary rclone subcommand via `core/command` with returnType

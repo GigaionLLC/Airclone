@@ -84,7 +84,7 @@ pass = zX9_obscured_value
         area: 'config-import',
         message: 'Merge failed',
       );
-      expect(e.format(), '09:04:07  ERROR  config-import  Merge failed');
+      expect(e.format(), '09:04:07  ERROR   config-import  Merge failed');
     });
 
     test('indents a multi-line detail under its event', () {
@@ -114,7 +114,7 @@ pass = zX9_obscured_value
     );
 
     test('header carries versions and the install channel', () {
-      final out = buildDiagnosticsReport(env, const []);
+      final out = buildDiagnosticsReport(env, const []).text;
       expect(out, contains('App:      0.6.1'));
       expect(out, contains('Install:  playStore'));
       // The channel says where updates come from; the build says WHICH package
@@ -129,7 +129,7 @@ pass = zX9_obscured_value
       final out = buildDiagnosticsReport(env, [
         DiagEntry(
           time: DateTime(2026, 8, 11, 9),
-          level: DiagLevel.info,
+          level: DiagLevel.notice,
           area: 'engine',
           message: 'first',
         ),
@@ -139,9 +139,92 @@ pass = zX9_obscured_value
           area: 'engine',
           message: 'second',
         ),
-      ]);
+      ]).text;
       expect(out.indexOf('first'), lessThan(out.indexOf('second')));
-      expect(out, contains('Entries:  2'));
+      expect(out, contains('Entries:  2 (1 error, 1 notice)'));
+    });
+
+    // #36: copy everything by default; when that will not paste into an
+    // issue, leave out what helps least, and say so in the report.
+    DiagEntry entry(DiagLevel level, int i, {int pad = 0}) => DiagEntry(
+      time: DateTime(2026, 10, 10, 10, 0, i % 60),
+      level: level,
+      area: 'engine',
+      message: '${level.name} $i ${'x' * pad}',
+    );
+
+    test('every level has its own tag and the columns line up', () {
+      for (final l in DiagLevel.values) {
+        final line = entry(l, 1).format();
+        expect(line.substring(10, 16).trim(), l.tag);
+        expect(line.substring(18), startsWith('engine'));
+      }
+    });
+
+    test('everything is copied when it fits', () {
+      final r = buildDiagnosticsReport(env, [
+        entry(DiagLevel.notice, 1),
+        entry(DiagLevel.fatal, 2),
+      ], maxChars: kClipboardReportBudget);
+      expect(r.complete, isTrue);
+      expect(r.text, isNot(contains('Included:')));
+      expect(r.summary, 'Copied all 2 entries.');
+    });
+
+    test('too big: notices go first, then warnings, never errors', () {
+      final entries = [
+        for (var i = 0; i < 50; i++) entry(DiagLevel.notice, i, pad: 400),
+        entry(DiagLevel.warning, 50, pad: 400),
+        entry(DiagLevel.error, 51),
+        entry(DiagLevel.fatal, 52),
+      ];
+      final r = buildDiagnosticsReport(env, entries, maxChars: 5000);
+      expect(r.text.length, lessThanOrEqualTo(5000));
+      expect(r.minLevel, DiagLevel.warning);
+      expect(r.text, contains('warning 50'));
+      expect(r.text, contains('error 51'));
+      expect(r.text, contains('fatal 52'));
+      expect(r.text, isNot(contains('notice 0')));
+      expect(
+        r.text,
+        contains(
+          'Included: fatal, error and warning; 50 less severe entries left '
+          'out.',
+        ),
+      );
+      expect(r.summary, 'Copied 3 of 53 entries: fatal, error and warning.');
+    });
+
+    test('still too big: the oldest errors go, the newest stay', () {
+      final entries = [
+        for (var i = 0; i < 40; i++) entry(DiagLevel.error, i, pad: 200),
+      ];
+      final r = buildDiagnosticsReport(env, entries, maxChars: 3000);
+      expect(r.text.length, lessThanOrEqualTo(3000));
+      expect(r.minLevel, DiagLevel.error);
+      expect(r.leftOutOldest, greaterThan(0));
+      expect(r.text, contains('error 39 '));
+      expect(r.text, isNot(contains('error 0 ')));
+      expect(r.text, contains('the oldest ${r.leftOutOldest} left out to fit'));
+    });
+
+    test('a scope the user picked filters without a budget', () {
+      final r = buildDiagnosticsReport(env, [
+        entry(DiagLevel.notice, 1),
+        entry(DiagLevel.error, 2),
+        entry(DiagLevel.fatal, 3),
+      ], minLevel: ReportScope.fatal.minLevel);
+      expect(r.text, contains('fatal 3'));
+      expect(r.text, isNot(contains('error 2')));
+      expect(r.text, contains('Entries:  3 (1 fatal, 1 error, 1 notice)'));
+      expect(r.text, contains('Included: fatal; 2 less severe entries'));
+    });
+
+    test('a scope with nothing in it says so', () {
+      final r = buildDiagnosticsReport(env, [
+        entry(DiagLevel.notice, 1),
+      ], minLevel: DiagLevel.fatal);
+      expect(r.text, contains('(nothing at this level)'));
     });
   });
 
@@ -156,7 +239,7 @@ pass = zX9_obscured_value
       expect(entries().single.message, isNot(contains('supersecret')));
 
       for (var i = 0; i < kDiagnosticsCapacity + 25; i++) {
-        log.record(DiagLevel.info, 'x', 'event $i');
+        log.record(DiagLevel.notice, 'x', 'event $i');
       }
       expect(entries(), hasLength(kDiagnosticsCapacity));
       // The oldest entries fell off the front; the newest is still there.

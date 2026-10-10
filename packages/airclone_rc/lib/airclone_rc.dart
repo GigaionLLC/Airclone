@@ -23,6 +23,7 @@ library;
 
 export 'src/oauth_flow.dart';
 export 'src/ffi_rclone_client.dart';
+export 'src/engine_exit.dart';
 export 'src/http_rclone_client.dart';
 export 'src/librclone_ffi.dart';
 export 'src/librclone_object_server.dart';

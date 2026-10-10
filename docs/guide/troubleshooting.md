@@ -22,20 +22,43 @@ Airclone keeps a local record of failures. Open it at:
   **Problem report**. Settings is a tab, not a dialog, but the contents are the
   same.
 
-The section shows either `Nothing recorded this session.` or a count such as
-`12 events recorded, 3 errors.` Expand it to read the entries, or use the
-buttons:
+The section shows `Nothing recorded this session.`, `4 notices, no problems.`,
+or a count such as `12 events recorded, 1 fatal, 3 errors.` Expand it to read
+the entries, or use the buttons:
 
 | Button | Platform | What it does |
 |---|---|---|
-| `Copy report` | all | Puts the whole report on the clipboard |
+| `Copy report` | all | Puts the report on the clipboard: everything, unless it is too long to paste into a GitHub issue (see below) |
+| `▾` next to it | all | Copy only part: `Copy everything`, `Copy errors and fatal only`, `Copy fatal only` |
 | `Save report…` | Windows, macOS, Linux | Asks where to save `airclone-diagnostics.txt` |
 | `Share report` | Android, iOS | Hands the same file to the system share sheet |
 | `Clear` | all | Empties the record |
 
 What the report contains: a short header (app version, platform and OS build,
-how the app was installed, which package it is, engine version and engine mode),
-then the recorded events oldest first.
+how the app was installed, which package it is, engine version and engine mode,
+and how many entries of each level), then the recorded events oldest first.
+
+Each event has one of four levels:
+
+| Level | Means | Report it? |
+|---|---|---|
+| `FATAL` | Something stopped working: the engine crashed, or a screen failed to draw | Yes |
+| `ERROR` | Something you asked for failed | Yes, if you didn't expect it |
+| `WARN` | A problem that may matter, or something degraded | Only alongside an error |
+| `NOTICE` | Expected, and not a bug by itself | No |
+
+The commonest notice on Android is `Android closed the engine to save memory
+while Airclone was in the background. This is normal and not a bug.` Android
+stops background processes when it needs memory. Airclone then shows
+`Android closed the engine while Airclone was in the background. Start it again
+to continue.` Starting it again is all it needs.
+
+Copying is built so you never have to choose. `Copy report` copies everything
+when it fits in a GitHub issue. When it doesn't, it leaves out what helps least
+first (notices, then warnings, then the oldest entries), never an error to make
+room for a notice. The report's `Included:` line and the message under the
+buttons both say exactly what was left out. `Save report…` and `Share report`
+always hold everything.
 
 The package line matters more than it looks. One platform ships several, and they
 fail in different ways: on Linux the AppImage, the tar.gz, the Flatpak from a
