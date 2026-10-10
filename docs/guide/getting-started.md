@@ -18,7 +18,7 @@ first cloud connection, and checking that it works.
 | macOS | App Store, or a direct download (signed and notarised) |
 | Linux | Direct download — an AppImage, a Flatpak, or a tarball, each for x86_64 and ARM64 (`uname -m` tells you which) |
 | Android (phone, tablet, TV) | Google Play, or a direct download |
-| iPhone / iPad | App Store only |
+| iPhone / iPad | App Store, the free [TestFlight beta](https://testflight.apple.com/join/kHRBzZnc), or the unsigned `.ipa` from the Releases page for sideloading (AltStore, SideStore, Sideloadly) |
 
 The store listings and the direct-download page are linked from the
 [project README](../../README.md). The store builds and the free direct-download builds are the

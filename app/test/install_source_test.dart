@@ -185,4 +185,33 @@ void main() {
       expect(macAppStoreReceiptPresent('airclone', (_) => true), isFalse);
     });
   });
+
+  // Issue #34. A sideloaded IPA must hear about new versions; an App Store or
+  // TestFlight copy must keep deferring to the store.
+  group('iosSideloaded', () {
+    const exe =
+        '/private/var/containers/Bundle/Application/ABC-123/Runner.app/Runner';
+
+    test('true when the bundle carries the profile it was signed with', () {
+      expect(
+        iosSideloaded(
+          exe,
+          (p) =>
+              p ==
+              '/private/var/containers/Bundle/Application/ABC-123/Runner.app/'
+                  'embedded.mobileprovision',
+        ),
+        isTrue,
+      );
+    });
+
+    test('false for an App Store / TestFlight install (Apple strips it)', () {
+      expect(iosSideloaded(exe, (_) => false), isFalse);
+    });
+
+    test('short/odd executable paths never crash', () {
+      expect(iosSideloaded('Runner', (_) => true), isFalse);
+      expect(iosSideloaded('', (_) => true), isFalse);
+    });
+  });
 }

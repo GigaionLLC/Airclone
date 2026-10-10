@@ -2779,7 +2779,13 @@ class _UpdateResult extends ConsumerWidget {
         const SizedBox(width: Space.x2),
         Expanded(
           child: Text(
-            '$latestTag available',
+            // iOS reaches this only when sideloaded (issue #34), and says it in
+            // words: the same binary ships in the App Store, which must never
+            // link out to another way of getting the app.
+            HostPlatform.isIOS
+                ? '$latestTag available. Get it the same way you installed '
+                      'this copy.'
+                : '$latestTag available',
             style: TextStyle(
               color: c.text,
               fontSize: 13,
@@ -2787,7 +2793,7 @@ class _UpdateResult extends ConsumerWidget {
             ),
           ),
         ),
-        if (url.isNotEmpty)
+        if (url.isNotEmpty && !HostPlatform.isIOS)
           TextButton(
             onPressed: () =>
                 launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication),

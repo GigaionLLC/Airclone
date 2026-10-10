@@ -83,7 +83,8 @@ jobs:
           airclone-android-arm64-v8a.apk
           airclone-android-armeabi-v7a.apk
           airclone-android-x86_64.apk
-          airclone-playstore.aab"
+          airclone-playstore.aab
+          airclone-ios-unsigned.ipa"
 
           missing=0
           for f in $expected; do
@@ -141,8 +142,9 @@ jobs:
           echo "$TAG is now the Latest release."
           if [[ " $ALLOW " != *" docker "* ]]; then
             image="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/airclone"
-            docker buildx imagetools create -t "$image:latest" "$image:${TAG#v}"
-            echo "$image:latest now points at ${TAG#v}."
+            ver="${TAG#v}"
+            docker buildx imagetools create -t "$image:latest" -t "$image:${ver%.*}" "$image:$ver"
+            echo "$image:latest and :${ver%.*} now point at $ver."
           fi
           docker logout ghcr.io
 
