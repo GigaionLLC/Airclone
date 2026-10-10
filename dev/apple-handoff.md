@@ -9,7 +9,7 @@ by design** — real IDs, key paths and account state live in the encrypted vaul
 (`python tool/vault.py unlock`, then
 `dev/vault/notes/apple-appstore-setup-record.md`).
 
-## State: last written 2026-10-10 — 0.23.2 IN REVIEW on both platforms (0.23.1 live)
+## State: last written 2026-10-10 — 0.24.0 IN REVIEW on both platforms (0.23.1 live)
 
 Read back from App Store Connect by the workflows that changed it, so these rows are observed.
 
@@ -31,8 +31,9 @@ Read back from App Store Connect by the workflows that changed it, so these rows
 | 0.23.0 | ❌ no record — created, then renamed to 0.23.1 with `set_version` (the v0.23.0 tag's MAS build failed) | ❌ no record — renamed to 0.23.1; build 150 uploaded but never attached |
 | **0.23.1** | **READY_FOR_SALE**, build 151, released 2026-10-07 | **READY_FOR_SALE**, build 151, released 2026-10-06 |
 | 0.23.1 `releaseType` | MANUAL | MANUAL |
-| **0.23.2** | **WAITING_FOR_REVIEW**, build 152, submitted 2026-10-10 | **WAITING_FOR_REVIEW**, build 152, submitted 2026-10-10 |
-| 0.23.2 `releaseType` | MANUAL | MANUAL — **do not release until the TestFlight public beta of build 152 is approved** (see below) |
+| 0.23.2 | ❌ no record — submitted 2026-10-10 05:33Z, cancelled 13:0xZ and renamed to 0.24.0 with `set_version` | ❌ no record — same; build 152 stays in TestFlight only |
+| **0.24.0** | **WAITING_FOR_REVIEW**, build 153, submitted 2026-10-10 13:08Z | **WAITING_FOR_REVIEW**, build 153, submitted 2026-10-10 13:07Z |
+| 0.24.0 `releaseType` | MANUAL | MANUAL — **do not release until a TestFlight public-beta build (152 or 153) is approved** (see below) |
 
 **Public TestFlight beta (iOS only, since 2026-10-09).** External group "Public beta", public link
 https://testflight.apple.com/join/kHRBzZnc, capped at 1000 testers, maintained by
@@ -40,7 +41,8 @@ https://testflight.apple.com/join/kHRBzZnc, capped at 1000 testers, maintained b
 testing once it is live on the App Store (0.23.1 was refused for that), so **every iOS upload goes to
 TestFlight before its App Store version is released**: run `testflight-public.yml -f mode=apply` after
 `ios-release.yml` uploads, and press release only once the beta review is approved. Build 152 was submitted
-for beta review 2026-10-09 and was still WAITING_FOR_REVIEW after 0.23.2 went to App Store review.
+for beta review 2026-10-09 and build 153 (0.24.0) on 2026-10-10; both were still WAITING_FOR_REVIEW after
+the 0.23.2 App Store submissions were cancelled and 0.24.0 was submitted, so the beta and App Store reviews are independent.
 
 **0.22.1's macOS release (2026-09-28) hit HTTP 500 on `/v1/appStoreVersionReleaseRequests`**
 (*"An unexpected error occurred on the server side"*). Nothing had changed: an `asc-release.yml`

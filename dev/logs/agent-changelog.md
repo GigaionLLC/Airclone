@@ -13,6 +13,20 @@ happened": nothing was logged between 2026-07-02 and 2026-07-15, or between 2026
      it is: it used to say ABOVE, which pushed it further down the file with every entry until
      it sat hundreds of lines under the newest one and pointed writers at the wrong place. -->
 
+## [2026-10-10] - v0.24.0 to every store; replaced 0.23.2 at Microsoft and Apple; TestFlight kept intact
+
+**Agent:** Claude Code (Claude Opus 5.5)
+**Files Modified:** `app/pubspec.yaml` (0.24.0+153), `dev/releases/v0.24.0.md`, `dev/apple-handoff.md`, this log
+**Database/API Changes:** Store state only.
+**Summary:** Tag v0.24.0 -> release run 38052043189 green, created as a pre-release; `promote-release.yml` check found
+17/17 files and the multi-arch image `ghcr.io/gigaionllc/airclone:0.24.0` (amd64 + arm64, anonymously pullable: the
+package inherited the public repo's visibility), then promoted v0.24.0 to Latest and moved `:latest`. Google Play:
+beta 153 confirmed, production serves 153 at 100%. Microsoft: `stage` with `delete_pending` cleared the unsubmitted
+0.23.2 draft 1152921505702090863 and created **1152921505702093072** (MSIX 0.24.0.0, pricing preserved), NOT
+submitted. Apple: build 153 uploaded on both platforms and VALID; added to the public TestFlight group and submitted
+for beta review; then the 0.23.2 App Store reviews were cancelled, both versions renamed to 0.24.0 with build 153,
+listing refreshed, audit "No gaps", resubmitted (MANUAL). TestFlight 152 and 153 both WAITING_FOR_REVIEW afterwards.
+
 ## [2026-10-10] - Interface size setting and AIRCLONE_SCALE (#32); Linux ARM64 (#30) and Docker image (#29)
 
 **Agent:** Claude Code (Claude Opus 5.5)
