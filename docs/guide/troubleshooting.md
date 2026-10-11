@@ -253,13 +253,13 @@ Other reasons a thumbnail may never appear:
 - **It is a disc rip or a broadcast recording.** `.vob`, `.m2ts`, `.mts`,
   `.m2t` and `.asf` files play, but always show the film icon: finding a frame in them over a cloud remote takes too long.
 - **`Keep cache in memory only` is on.** In Settings → **Storage & updates** →
-  `Preview cache`. With it on, nothing is written to disk, so every thumbnail is
+  `Cache`. With it on, nothing is written to disk, so every thumbnail is
   regenerated each session by design.
 - **You changed the rclone config password.** Cached previews are encrypted at
   rest and bound to that password. Blobs that no longer decrypt are simply
   regenerated, with no error — the first visit to a folder is slow again.
 
-The same `Preview cache` section shows how much is on disk and has a
+The same `Cache` section shows how much is on disk and has a
 `Clear cache` button.
 
 ---

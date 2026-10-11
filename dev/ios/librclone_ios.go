@@ -8,6 +8,11 @@
 // So this re-exports the same C ABI over rclone's INNER librclone package,
 // importing only what Airclone actually calls.
 //
+// cmd/serve/http is what lets previews STREAM (#45): it registers rc
+// serve/start type=http, which packages/airclone_rc/lib/src/librclone_object_server.dart
+// proxies Range requests to. Without it every video played or thumbnailed was
+// downloaded in full first. It pulls in cobra and cmd, but not cmd/mount2.
+//
 // fs/sync is NOT optional. rclone's own gomobile binding omits it, and
 // state/transfer_service.dart dispatches sync/copy and sync/move - taking that
 // binding verbatim would silently lose every directory transfer.
@@ -29,7 +34,8 @@ import "C"
 import (
 	"unsafe"
 
-	_ "github.com/rclone/rclone/backend/all" // every storage backend
+	_ "github.com/rclone/rclone/backend/all"    // every storage backend
+	_ "github.com/rclone/rclone/cmd/serve/http" // rc serve/start type=http - see above
 	_ "github.com/rclone/rclone/fs/operations"
 	_ "github.com/rclone/rclone/fs/sync" // sync/copy + sync/move - see above
 	"github.com/rclone/rclone/librclone/librclone"

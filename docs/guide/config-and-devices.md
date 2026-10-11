@@ -120,6 +120,10 @@ it when you are done.
 `Exact copy` only appears when your config is already encrypted and you are exporting all remotes. It
 opens with rclone and its own password, not with an Airclone passphrase.
 
+On a computer, `Export` asks where to save the file. A phone has no save dialog, so the file opens in
+the share sheet instead: on an iPhone or iPad pick **Save to Files**; on Android pick a files app,
+Drive, or wherever you want it.
+
 ## Importing from a file
 
 **Settings → Config → Import & export → `Import File Config`** → `Choose a file…`. Available on every

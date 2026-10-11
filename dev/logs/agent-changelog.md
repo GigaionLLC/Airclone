@@ -13,6 +13,26 @@ happened": nothing was logged between 2026-07-02 and 2026-07-15, or between 2026
      it is: it used to say ABOVE, which pushed it further down the file with every entry until
      it sat hundreds of lines under the newest one and pointed writers at the wrong place. -->
 
+## [2026-10-11] - v0.26.0: iOS streams previews; full Clear cache; mobile export, iOS download, Home button (#44-#47)
+
+**Agent:** Claude Code (Claude Opus 5.5)
+**Files Modified:** `packages/airclone_rc/lib/src/librclone_object_server.dart`, `dev/ios/librclone_ios.go`,
+`app/lib/src/state/{cache_crypto,engine_controller,open_external,download_settings}.dart`,
+`app/lib/src/ui/{config_export_dialog,settings_screen,mobile_home}.dart`, `app/pubspec.yaml` (share_plus; 0.26.0+158),
+new `packages/airclone_rc/test/object_cache_prune_test.dart`, `librclone_integration_test.dart`, docs/guide, `dev/releases/v0.26.0.md`.
+**Database/API Changes:** None.
+**Summary:** Reddit (iOS): app data over 7 GB, wants streaming, a Home button, and Export File Config does nothing.
+(#45) The in-process engine's object bridge copied every previewed/thumbnailed object in full into `tmp/<sha1>` and
+never deleted it; Clear cache missed it. Now the iOS librclone includes `cmd/serve/http` and the bridge proxies Range
+requests to a per-remote `serve/start type=http` (loopback, per-session Basic auth; `vfs/forget` + one retry on 404 for
+files newer than the dir cache). Without serve (desktop librclone) it falls back to the copy, now in
+`Caches/airclone_preview` capped at 1 GB / 1 day (`pruneCache`). Clear cache counts and clears all four cache dirs
+plus the legacy `tmp/<sha1>` files, which are also swept at engine start. Verified with a locally built
+Windows DLL from `librclone_ios.go`: integration suite 10/10, streaming leaves the cache empty; fallback passes on
+the stock DLL. (#44) `getSaveLocation` is desktop-only and threw outside the dialog's try; phones now write to the
+share stage and open the share sheet (`share_plus`; iOS `handOffToOs(share)` also fixes Share report). (#46) iOS
+Download goes to Documents/Downloads. (#47) Home button in the mobile header; re-tapping Files goes home.
+
 ## [2026-10-11] - v0.25.2: AppImage prefers newer system copies of plugin-facing libraries (#42)
 
 **Agent:** Claude Code (Claude Opus 5.5)

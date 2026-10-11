@@ -190,7 +190,18 @@ class _MobileHomeScreenState extends ConsumerState<MobileHomeScreen> {
             ? null
             : NavigationBar(
                 selectedIndex: _tab,
-                onDestinationSelected: (i) => setState(() => _tab = i),
+                onDestinationSelected: (i) {
+                  // Tapping Files while already on it goes Home, the list of
+                  // locations, from however deep you are (#47).
+                  if (i == 0 && _tab == 0) {
+                    final active = ref.read(activePaneProvider);
+                    final pane = ref.read(paneProvider(active));
+                    if (pane.remote != null && !pane.activeIsConsole) {
+                      ref.read(paneProvider(active).notifier).clear();
+                    }
+                  }
+                  setState(() => _tab = i);
+                },
                 destinations: const [
                   NavigationDestination(
                     icon: Icon(Icons.folder_outlined),
@@ -544,6 +555,18 @@ class _MobilePaneHeader extends ConsumerWidget {
                     ? 'Close search'
                     : (state.path.isEmpty ? 'All locations' : 'Up'),
               ),
+              // Home: straight back to the list of locations, from however deep
+              // you are (#47). At a remote's top level Back already does this.
+              if (hasRemote &&
+                  !isConsole &&
+                  !searchOpen &&
+                  state.path.isNotEmpty)
+                IconButton(
+                  onPressed: ctrl.clear,
+                  icon: const Icon(Icons.home_outlined, size: 22),
+                  color: c.text,
+                  tooltip: 'All locations',
+                ),
               if (searchOpen)
                 Expanded(child: PaneSearchBox(index: index, touch: true))
               else

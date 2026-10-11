@@ -395,6 +395,34 @@ void main() {
         expect(rangeStatus, 206);
         expect(rangeBytes, equals(data.sublist(100, 200)));
 
+        // A name that needs encoding, in a subfolder.
+        await Directory('${srcDir.path}/sub dir').create();
+        await File(
+          '${srcDir.path}/sub dir/clip #1 100%.bin',
+        ).writeAsBytes(data);
+        final odd = client.objectRef(srcDir.path, 'sub dir/clip #1 100%.bin');
+        final oddReq = await http.getUrl(Uri.parse(odd.url));
+        odd.headers.forEach(oddReq.headers.set);
+        oddReq.headers.set(HttpHeaders.rangeHeader, 'bytes=4990-');
+        final oddResp = await oddReq.close();
+        expect(oddResp.statusCode, 206);
+        expect(
+          await oddResp.fold<List<int>>([], (a, b) => a..addAll(b)),
+          equals(data.sublist(4990)),
+        );
+
+        // A librclone with rclone's serve http (the iOS build, #45) streams,
+        // and copies nothing into the cache; one without it copies.
+        final streams = await client
+            .rpc('serve/list')
+            .then((r) => (r['list'] as List).isNotEmpty, onError: (_) => false);
+        final cached = cacheDir.listSync().whereType<File>().isNotEmpty;
+        expect(
+          cached,
+          !streams,
+          reason: 'streams: $streams ${cacheDir.listSync()}',
+        );
+
         // Wrong/absent token is rejected.
         final bad = await http.getUrl(Uri.parse(ref.url));
         final badResp = await bad.close();

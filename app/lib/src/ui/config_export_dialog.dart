@@ -7,6 +7,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../state/cache_crypto.dart';
 import '../state/config_io.dart';
 import '../state/config_transfer_controller.dart';
+import '../state/host_platform.dart';
+import '../state/open_external.dart';
 import 'dialog_body.dart';
 import 'theme/tokens.dart';
 
@@ -140,25 +142,18 @@ class _ConfigExportDialogState extends ConsumerState<_ConfigExportDialog> {
           setState(() => _formError = "Passphrases don't match.");
           return;
         }
-        final loc = await getSaveLocation(
-          suggestedName: 'airclone-remotes.airclone-config',
-          confirmButtonText: 'Export',
+        setState(() => _formError = null);
+        await _saveOut(
+          'airclone-remotes.airclone-config',
+          'application/octet-stream',
+          (path) async {
+            final bytes = await _ctrl.sealExport(
+              _ctrl.scopedModel(full, scope),
+              _pass.text,
+            );
+            await File(path).writeAsBytes(bytes, flush: true);
+          },
         );
-        if (loc == null || !mounted) return;
-        setState(() {
-          _formError = null;
-          _step = _ExportStep.saving;
-        });
-        try {
-          final bytes = await _ctrl.sealExport(
-            _ctrl.scopedModel(full, scope),
-            _pass.text,
-          );
-          await File(loc.path).writeAsBytes(bytes, flush: true);
-          _done(loc.path);
-        } catch (e) {
-          _fail(e);
-        }
       case _Envelope.plaintext:
         // Destructive: gate behind an explicit confirm before touching disk.
         setState(() {
@@ -166,47 +161,75 @@ class _ConfigExportDialogState extends ConsumerState<_ConfigExportDialog> {
           _step = _ExportStep.confirmPlaintext;
         });
       case _Envelope.exactCopy:
-        final loc = await getSaveLocation(
-          suggestedName: 'rclone.conf',
-          confirmButtonText: 'Export',
-        );
-        if (loc == null || !mounted) return;
-        setState(() {
-          _formError = null;
-          _step = _ExportStep.saving;
-        });
-        try {
-          await _ctrl.exportExactCopy(loc.path);
-          _done(loc.path);
-        } catch (e) {
-          _fail(e);
-        }
+        setState(() => _formError = null);
+        await _saveOut('rclone.conf', 'text/plain', _ctrl.exportExactCopy);
     }
   }
 
   Future<void> _exportPlaintext() async {
     final full = _full ?? const {};
     final scope = _scope;
-    final loc = await getSaveLocation(
-      suggestedName: 'rclone.conf',
-      confirmButtonText: 'Export',
-    );
-    if (loc == null) {
-      if (mounted) setState(() => _step = _ExportStep.form);
-      return;
-    }
-    if (!mounted) return;
-    setState(() => _step = _ExportStep.saving);
-    try {
+    await _saveOut('rclone.conf', 'text/plain', (path) async {
       final ini = serializeIni(_ctrl.scopedModel(full, scope));
-      await File(loc.path).writeAsString(ini, flush: true);
-      _done(loc.path);
+      await File(path).writeAsString(ini, flush: true);
+    });
+  }
+
+  /// Writes the export with [write] and gets it to the user. A desktop asks
+  /// where to save it. A phone has no save dialog (file_selector's
+  /// getSaveLocation is desktop-only, and calling it there threw before any of
+  /// this dialog's error handling, so the button seemed to do nothing — #44):
+  /// the file is written to the share stage and offered through the system
+  /// share sheet, which on iOS includes Save to Files.
+  Future<void> _saveOut(
+    String name,
+    String mime,
+    Future<void> Function(String path) write,
+  ) async {
+    final mobile = HostPlatform.isAndroid || HostPlatform.isIOS;
+    try {
+      String path;
+      if (mobile) {
+        path = await writeSharableBytesFile(name, const []);
+      } else {
+        final loc = await getSaveLocation(
+          suggestedName: name,
+          confirmButtonText: 'Export',
+        );
+        if (!mounted) return;
+        if (loc == null) {
+          // Cancelled: back to the form (from the plaintext confirm too).
+          setState(() => _step = _ExportStep.form);
+          return;
+        }
+        path = loc.path;
+      }
+      if (!mounted) return;
+      setState(() => _step = _ExportStep.saving);
+      await write(path);
+      if (mobile) {
+        if (!mounted) return;
+        final box = context.findRenderObject() as RenderBox?;
+        await handOffToOs(
+          path,
+          mime: mime,
+          mode: ExternalOpenMode.share,
+          origin: box == null || !box.hasSize
+              ? null
+              : box.localToGlobal(Offset.zero) & box.size,
+        );
+        _done(null);
+      } else {
+        _done(path);
+      }
     } catch (e) {
       _fail(e);
     }
   }
 
-  void _done(String path) {
+  /// [path] is where a desktop saved the file; null when a phone handed it to
+  /// the share sheet.
+  void _done(String? path) {
     if (!mounted) return;
     setState(() {
       _savedPath = path;
@@ -473,12 +496,20 @@ class _ConfigExportDialogState extends ConsumerState<_ConfigExportDialog> {
     children: [
       _title(c, Icons.check_circle_outline, 'Exported'),
       const SizedBox(height: Space.x3),
-      Text('Saved to', style: TextStyle(color: c.textFaint, fontSize: 11)),
-      const SizedBox(height: 2),
-      Text(
-        _savedPath ?? '',
-        style: TextStyle(color: c.textMuted, fontSize: 12),
-      ),
+      if (_savedPath == null)
+        Text(
+          HostPlatform.isIOS
+              ? 'Sent to the share sheet. If you closed it without saving, '
+                    'export again and pick Save to Files.'
+              : 'Sent to the share sheet. If you closed it without saving, '
+                    'export again and pick where to send it.',
+          style: TextStyle(color: c.textMuted, fontSize: 12),
+        )
+      else ...[
+        Text('Saved to', style: TextStyle(color: c.textFaint, fontSize: 11)),
+        const SizedBox(height: 2),
+        Text(_savedPath!, style: TextStyle(color: c.textMuted, fontSize: 12)),
+      ],
       const SizedBox(height: Space.x4),
       Align(
         alignment: Alignment.centerRight,
