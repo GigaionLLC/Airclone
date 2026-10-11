@@ -13,6 +13,24 @@ happened": nothing was logged between 2026-07-02 and 2026-07-15, or between 2026
      it is: it used to say ABOVE, which pushed it further down the file with every entry until
      it sat hundreds of lines under the newest one and pointed writers at the wrong place. -->
 
+## [2026-10-11] - v0.25.1: AppImage picks the newer libwayland (#38); cancelled-stream noise dropped (#39)
+
+**Agent:** Claude Code (Claude Opus 5.5)
+**Files Modified:** `dev/linux/build-appimage.sh`, `.github/workflows/linux-runner.yml`,
+`packages/airclone_rc/lib/src/http_rclone_client.dart`, `packages/airclone_rc/test/engine_log_test.dart`,
+`docs/guide/troubleshooting.md`, `dev/releases/v0.25.1.md`, `app/pubspec.yaml` (0.25.1+156).
+**Database/API Changes:** None.
+**Summary:** Reddit (Arch, Intel iGPU): the v0.24.1 AppImage aborted with `No provider of eglGetPlatformDisplayEXT
+found`; the tar.gz ran. Checked against Arch's packages: Mesa 26.2.4's `libEGL_mesa.so.0` (built on Wayland 1.26)
+imports `wl_display_dispatch_queue_timeout`, `wl_display_create_queue_with_name` and `wl_fixes_interface`, absent
+from the Ubuntu 24.04 libwayland-client (1.22) that linuxdeploy put in `usr/lib`, which is searched first. The
+libwayland libs stay bundled but move to `usr/lib/fallback-wayland/<soname>/` with a `version` file; AppRun picks,
+per library, the newer of the system's and ours (equal keeps the system's, unreadable keeps the system's). The
+AppImage needs glibc 2.38, so Ubuntu 24.04 is its floor and has the same 1.22. AppRun's choice was tested in six
+cases on Ubuntu 24.04 (WSL). New `appimage-distros` CI job runs the AppImage 20 s under Xvfb in Arch, Fedora,
+Debian 13 and Ubuntu 24.04 containers. #39: `isEngineFailureLine` drops lines ending `context canceled` (every
+video seek/close); deadline and I/O errors are still kept.
+
 ## [2026-10-10] - Problem report: four levels, engine exit recorded, size-aware copy (#36)
 
 **Agent:** Claude Code (Claude Opus 5.5)

@@ -330,6 +330,51 @@ which is the usual case on WSL.
 as `~/Airclone/gdrive`, once FUSE is installed (`sudo apt install fuse3`). It did not work on
 Linux before v0.13.6.
 
+### ✅ Where it's known to work
+
+What we know, and how we know it:
+
+- ✅ **Confirmed by users:** someone ran it there and told us. Usually that was a problem report, which we fixed.
+- 🧪 **Tested by us:** every release build, or our own machines.
+- ❔ **Expected to work:** inside the supported range, but not confirmed yet.
+- ❌ **Not supported.**
+
+Running it somewhere not listed? [Tell us](https://github.com/GigaionLLC/Airclone/issues) and we'll add it.
+
+**Windows** (x64; minimum Windows 10)
+
+| System | Status | Notes |
+| :--- | :--- | :--- |
+| Windows 11 | ✅ 🧪 | Our development machines. Installer verified end to end in v0.5.7. Every build is also tested on GitHub's Windows Server runners. |
+| Windows 10 | ✅ | Confirmed by a user. Their blank-window startup bug (an empty card reader) was fixed in v0.8.3. |
+| Windows on ARM (Windows 11) | ❔ | No ARM build. The x64 build should run under Windows' built-in emulation. |
+| Windows 8.1 and older | ❌ | The installer requires Windows 10. |
+
+**macOS** (one universal app for Apple Silicon and Intel; minimum macOS 10.15 Catalina)
+
+| System | Status | Notes |
+| :--- | :--- | :--- |
+| Current macOS, Apple Silicon | 🧪 | Every build runs on GitHub's latest macOS runner. Each Mac App Store release also passes Apple's review. |
+| Intel Macs | ❔ | Included in the universal app, but not confirmed yet. |
+| macOS 10.15 Catalina to macOS 13 | ❔ | Within the stated minimum, but not confirmed yet. |
+| macOS 10.14 and older | ❌ | Below the minimum. |
+
+**Linux** (x86_64 and ARM64)
+
+The AppImage and the tar.gz need glibc 2.38 or newer, which means Ubuntu 24.04 or newer. The Flatpak brings its own runtime, so it's the one to try on older systems.
+
+| Distribution | Desktop / display | Status | Notes |
+| :--- | :--- | :--- | :--- |
+| Arch Linux (rolling) | niri (Wayland), 4K, Intel graphics | ✅ 🧪 | Confirmed by a user with the tar.gz. The too-small UI on 4K is fixed in v0.24.0 (`Interface size`, #32). The AppImage crash on Mesa 26.2 is fixed in v0.25.1 (#38). Every build starts the AppImage on Arch; the old v0.24.1 crashes there, so the check is known to catch it. |
+| Ubuntu 24.04 LTS | — | ✅ 🧪 | Confirmed by a user. Startup problems on a clean install were fixed in v0.8.x. Every build is made and tested here, on x86_64 and ARM64. |
+| Windows WSL2 (Ubuntu) | WSLg | ✅ | Confirmed by a user. Startup (v0.13.6) and typing (v0.13.7) fixed. |
+| Fedora (current) | — | 🧪 | Every build starts the AppImage on Fedora. |
+| Debian 13 (trixie) | — | 🧪 | Every build starts the AppImage on Debian 13. |
+| Linux Mint 22+, Pop!_OS 24.04, Kubuntu / Xubuntu 24.04+, elementary OS 8, Zorin OS 18 | — | ❔ | Built on Ubuntu 24.04, which these share. |
+| openSUSE Tumbleweed, Manjaro, EndeavourOS, CachyOS | — | ❔ | Rolling releases, like Arch. |
+| Raspberry Pi OS (64-bit, Trixie) | — | ❔ | Use the ARM64 build. |
+| Ubuntu 22.04, Debian 12, Raspberry Pi OS Bookworm, RHEL / Rocky / Alma 9 | — | ❌ AppImage, tar.gz · ❔ Flatpak | glibc is too old for the AppImage and tar.gz. The Flatpak should work, but isn't confirmed yet. |
+
 ## 🗺️ Roadmap
 
 **Phase 0** spikes → **Phase 1** desktop MVP → **Phase 2** mobile are **shipped**, iOS included; most

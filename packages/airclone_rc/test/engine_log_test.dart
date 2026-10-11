@@ -9,6 +9,32 @@ import 'package:test/test.dart';
 /// in it, and that decision lives in [isEngineFailureLine].
 void main() {
   group('isEngineFailureLine', () {
+    // #39: seeking or closing the player cancels a range request; nothing
+    // failed. A timeout or a broken read still did.
+    test('drops a request the client cancelled', () {
+      expect(
+        isEngineFailureLine(
+          "2026/10/11 09:06:54 ERROR : Films/a.mpg: Didn't finish writing GET "
+          'request (wrote 18284544/3404988416 bytes): context canceled',
+        ),
+        isFalse,
+      );
+      expect(
+        isEngineFailureLine(
+          "2026/10/11 09:06:54 ERROR : Films/a.mpg: Didn't finish writing GET "
+          'request (wrote 1/2 bytes): context deadline exceeded',
+        ),
+        isTrue,
+      );
+      expect(
+        isEngineFailureLine(
+          '2026/10/11 09:06:54 ERROR : Films/a.mpg: Failed to copy: '
+          'unexpected EOF',
+        ),
+        isTrue,
+      );
+    });
+
     test('keeps rclone failures', () {
       expect(
         isEngineFailureLine(
