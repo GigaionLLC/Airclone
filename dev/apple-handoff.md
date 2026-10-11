@@ -11,6 +11,13 @@ by design** — real IDs, key paths and account state live in the encrypted vaul
 
 ## State: last written 2026-10-11 — iOS 0.24.0 approved (held for TestFlight), macOS 0.24.0 in review, 0.26.0 builds uploaded (queued instead of 0.25.1)
 
+> **RESUME HERE (paused 2026-10-11 ~22:50Z).** TestFlight public beta (build 153) **APPROVED**. iOS 0.24.0 **RELEASED**
+> (READY_FOR_SALE). iOS 0.26.0: version record created, listing text applied, build 158 attached, copyright + MANUAL
+> set, `mode=audit` = **No gaps**. **Next iOS step: runbook step 7** — `asc-submit-review.yml -f platform=IOS -f mode=dry-run`,
+> then `-f mode=submit -f confirm_version=0.26.0`. macOS: 0.24.0 still IN_REVIEW; when approved, release it
+> (`asc-release.yml -f platform=MAC_OS -f mode=release -f confirm_version=0.24.0`), then runbook from step 0 for 0.26.0 / build 158.
+> Microsoft 0.26.0 is staged — Jake presses Submit. Play 158 is live at 100%; GitHub Latest = v0.26.0.
+
 Read back from App Store Connect by the workflows that changed it, so these rows are observed.
 
 | | macOS | iOS |
