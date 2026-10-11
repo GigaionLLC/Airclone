@@ -66,6 +66,10 @@ for p in elfs:
         # The dynamic loader and libc's own pieces are always there.
         if need.startswith(("ld-linux", "linux-vdso")):
             continue
+        # jni's libdartjni links the JVM for Android; on the desktop nothing
+        # loads it, so the JVM it names is never looked for.
+        if need == "libjvm.so" and p.endswith("libdartjni.so"):
+            continue
         missing.setdefault(need, []).append(os.path.relpath(p, ROOT))
 for need, users in sorted(missing.items()):
     print("  MISSING %-28s needed by %s%s" % (need, ", ".join(users[:3]),
@@ -88,6 +92,9 @@ for p in search:
     for s in run("strings", "-n", "8", p).splitlines():
         s = s.strip()
         if not pat.match(s) or "%" in s or s.endswith("/"):
+            continue
+        # Debug-symbol links (.dwz) only matter to a debugger.
+        if s.startswith("/usr/lib/debug/"):
             continue
         # A path only matters if its directory part is missing here.
         probe = s if "." not in os.path.basename(s) else os.path.dirname(s)

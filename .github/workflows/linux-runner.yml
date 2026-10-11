@@ -334,8 +334,8 @@ jobs:
           # GLib...) sit in usr/lib/prefer-system/<group>/ with the version
           # AppRun compares against the system's, and NOT in usr/lib.
           test -s squashfs-root/usr/lib/prefer-system/libwayland-client.so.0/libwayland-client.so.0
-          test -s squashfs-root/usr/lib/prefer-system/libpipewire-0.3.so.0/version
-          test -s squashfs-root/usr/lib/prefer-system/libglib-2.0.so.0/libgio-2.0.so.0
+          test -f squashfs-root/usr/lib/prefer-system/libpipewire-0.3.so.0/version
+          test -s squashfs-root/usr/lib/prefer-system/libgio-2.0.so.0/libgio-2.0.so.0
           for f in libwayland-client.so.0 libpipewire-0.3.so.0 libglib-2.0.so.0 libgio-2.0.so.0; do
             if [ -e "squashfs-root/usr/lib/$f" ]; then
               echo "::error::$f is still in usr/lib, where it shadows the host's"

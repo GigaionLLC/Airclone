@@ -197,80 +197,59 @@ say "Letting newer system copies win over the bundled ones"
 #    librsvg. On Ubuntu 24.04 it found none.
 #
 # THE RULE. These libraries stay bundled, for compatibility, but leave usr/lib
-# for usr/lib/prefer-system/<group>/, and AppRun chooses per group at run time:
-# the NEWER of the system's copy and ours. Shared-library ABIs only grow within
-# a soname, so the newer one serves our app and the system's plugins both. On a
-# newer distro that is the system's (the fix); on Ubuntu 24.04 the versions are
-# equal and the system's is used, which changes nothing there; on a system with
-# an older copy, or none, it is ours.
+# for usr/lib/prefer-system/<soname>/, and AppRun chooses per library at run
+# time: the NEWER of the system's copy and ours. Shared-library ABIs only grow
+# within a soname, so the newer one serves our app and the system's plugins
+# both. On a newer distro that is the system's (the fix); on Ubuntu 24.04 the
+# versions are equal and the system's is used, which changes nothing there; on a
+# system with an older copy, or none, it is ours.
 #
-# GROUPS, not single libraries, where a family must match itself: GLib's
-# libraries come from one build and call each other's internals, so a newer
-# system libglib with our older libgio is not a combination anyone tests. A
-# group is decided by its first library (the anchor), and uses OURS for all of
-# it if the system lacks any member. libwayland is three groups of one: Debian
-# packages -client, -egl and -cursor separately, so lacking -cursor must not
-# drag our older -client in.
+# WHICH LIBRARIES: the seeds below, plus every bundled library in their
+# dependency closure (dev/linux/prefer-system-groups.py). The closure is not
+# optional. The first version of this moved GTK alone, and on Arch, Fedora and
+# Debian the system's GTK pulled in the system's libpangoft2 beside our older
+# libpango: "undefined symbol: pango_font_description_set_features", and the
+# AppImage did not start. A system library is built against the system's
+# copies of what it links, so those must follow the same rule. With the whole
+# closure deciding per library, a newer system library always gets its own
+# dependencies, and ours is only ever used where the system's is older or
+# absent, which our newer copy satisfies. GTK itself is not a seed: nothing a
+# system plugin loads links it, and it works with newer Pango and GLib.
 #
-# Each group directory records the anchor's version in `version`, because
+# PER LIBRARY, not per family, so one missing package cannot drag our older
+# copies back in for everything else. Debian packages libwayland-client, -egl
+# and -cursor separately, for one: lacking -cursor must not bring our -client.
+#
+# Each directory records its library's version in `version`, because
 # linuxdeploy copies a library under its soname and the version would be lost.
-# And each moved library's RUNPATH gets usr/lib added, so when ours IS used it
-# still finds the bundled libraries it depends on.
+# Each moved library's RUNPATH gains usr/lib, so when ours IS used it still
+# finds the bundled libraries it depends on.
 command -v patchelf >/dev/null || { echo "patchelf is needed to package the AppImage." >&2; exit 1; }
 PREFER="$APPDIR/usr/lib/prefer-system"
 mkdir -p "$PREFER"
-while read -r anchor members; do
-  [ -n "$anchor" ] || continue
-  [ -e "$APPDIR/usr/lib/$anchor" ] || { echo "  $anchor is not bundled; nothing to move"; continue; }
-  dir="$PREFER/$anchor"
+SEEDS="libwayland-client.so.0 libwayland-egl.so.1 libwayland-cursor.so.0
+  libpipewire-0.3.so.0 libjack.so.0
+  libglib-2.0.so.0 libgobject-2.0.so.0 libgio-2.0.so.0 libgmodule-2.0.so.0 libgthread-2.0.so.0
+  librsvg-2.so.2
+  libva.so.2 libva-drm.so.2 libva-x11.so.2 libva-wayland.so.2 libvdpau.so.1 libvulkan.so.1"
+# shellcheck disable=SC2086
+MOVE="$(python3 "$(dirname "$0")/prefer-system-groups.py" "$APPDIR/usr/lib" $SEEDS)"
+[ -n "$MOVE" ] || { echo "no prefer-system libraries found; the bundle looks wrong" >&2; exit 1; }
+for name in $MOVE; do
+  dir="$PREFER/$name"
   mkdir -p "$dir"
-  for name in $anchor $members; do
-    [ -e "$APPDIR/usr/lib/$name" ] || continue
-    mv "$APPDIR/usr/lib/$name" "$dir/"
-    patchelf --set-rpath '$ORIGIN:$ORIGIN/../..' "$dir/$name"
-  done
-  # libglib-2.0.so.0 -> /usr/lib/.../libglib-2.0.so.0.8000.0 -> 8000.0
-  host="$(ldconfig -p | awk -v n="$anchor" '$1 == n && /x86-64|AArch64/ { print $NF; exit }')"
+  mv "$APPDIR/usr/lib/$name" "$dir/"
+  patchelf --set-rpath '$ORIGIN/../..' "$dir/$name"
+  # libglib-2.0.so.0 -> /usr/lib/.../libglib-2.0.so.0.8000.0 -> 8000.0. A name
+  # that carries no version records nothing, and AppRun then keeps the
+  # system's copy whenever there is one: the safe guess.
+  host="$(ldconfig -p | awk -v n="$name" '$1 == n && /x86-64|AArch64/ { print $NF; exit }')"
   real="$(basename "$(readlink -f "$host")")"
-  ver="${real#"$anchor".}"
-  case "$ver" in
-    [0-9]*) ;;
-    *) echo "cannot tell the version of $anchor from '$real'" >&2; exit 1 ;;
-  esac
+  ver="${real#"$name".}"
+  case "$ver" in [0-9]*) ;; *) ver="" ;; esac
   echo "$ver" > "$dir/version"
-  echo "  $anchor ($ver) +$(ls "$dir" | grep -c '\.so') -> usr/lib/prefer-system/$anchor/"
-done <<'GROUPS'
-libwayland-client.so.0
-libwayland-egl.so.1
-libwayland-cursor.so.0
-libpipewire-0.3.so.0
-libglib-2.0.so.0 libgobject-2.0.so.0 libgio-2.0.so.0 libgmodule-2.0.so.0 libgthread-2.0.so.0
-librsvg-2.so.2
-libgdk_pixbuf-2.0.so.0
-libgtk-3.so.0 libgdk-3.so.0 libgailutil-3.so.0
-libatk-1.0.so.0
-libatk-bridge-2.0.so.0
-libatspi.so.0
-libpulse.so.0 libpulse-simple.so.0 libpulse-mainloop-glib.so.0
-libjack.so.0
-libva.so.2 libva-drm.so.2 libva-x11.so.2 libva-wayland.so.2
-libvdpau.so.1
-libvulkan.so.1
-libdbus-1.so.3
-libsystemd.so.0
-libudev.so.1
-GROUPS
-if [ ! -e "$PREFER/libwayland-client.so.0/libwayland-client.so.0" ]; then
-  # linuxdeploy always bundles it today. If it ever stops, stage the host's so
-  # a machine without one can still start: GTK needs it.
-  wl="$(ldconfig -p | awk '$1 == "libwayland-client.so.0" { print $NF; exit }')"
-  [ -n "$wl" ] || { echo "libwayland-client.so.0 is not on this build host." >&2; exit 1; }
-  mkdir -p "$PREFER/libwayland-client.so.0"
-  cp -L "$wl" "$PREFER/libwayland-client.so.0/libwayland-client.so.0"
-  real="$(basename "$(readlink -f "$wl")")"
-  echo "${real#libwayland-client.so.0.}" > "$PREFER/libwayland-client.so.0/version"
-  echo "  staged $real from the build host"
-fi
+done
+echo "  $(echo "$MOVE" | wc -l) libraries prefer a newer system copy: $(echo $MOVE)"
 
 say "Staging a last-resort ALSA"
 # libasound is the one library that must NOT be bundled the ordinary way, and
@@ -364,26 +343,21 @@ if [ -n "$LIBS" ]; then
     export LD_LIBRARY_PATH="$HERE/usr/lib/fallback${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
   fi
 
-  # Per group, the NEWER of the system's copy and ours. Loading our older copy
-  # ahead of a newer system's is the class of bug that broke the AppImage on
-  # newer distros (#38, and the PipeWire/GLib plugins after it): the system's
-  # plugins need what their own version has. Ours is used when the system's is
-  # older, or the system lacks any library in the group. See build-appimage.sh,
-  # "Letting newer system copies win over the bundled ones".
+  # Per library, the NEWER of the system's copy and ours. Loading our older
+  # copy ahead of a newer system's is the class of bug that broke the AppImage
+  # on newer distros (#38, #42): the system's plugins need what their own
+  # version has. Ours is used when the system's is older or absent. See
+  # build-appimage.sh, "Letting newer system copies win over the bundled ones".
   for dir in "$HERE"/usr/lib/prefer-system/*/; do
     [ -d "$dir" ] || continue
     so="$(basename "$dir")"
     ours="$(cat "$dir/version" 2>/dev/null)"
+    sys="$(printf '%s\n' "$LIBS" | awk -v n="$so" '$1 == n && /x86-64|AArch64/ { print $NF; exit }')"
+    [ -n "$sys" ] || sys="$(printf '%s\n' "$LIBS" | awk -v n="$so" '$1 == n { print $NF; exit }')"
     use_ours=0
-    for member in "$dir"*.so*; do
-      name="$(basename "$member")"
-      if ! printf '%s\n' "$LIBS" | awk -v n="$name" '$1 == n { f = 1 } END { exit !f }'; then
-        use_ours=1
-      fi
-    done
-    if [ "$use_ours" = 0 ] && [ -n "$ours" ]; then
-      sys="$(printf '%s\n' "$LIBS" | awk -v n="$so" '$1 == n && /x86-64|AArch64/ { print $NF; exit }')"
-      [ -n "$sys" ] || sys="$(printf '%s\n' "$LIBS" | awk -v n="$so" '$1 == n { print $NF; exit }')"
+    if [ -z "$sys" ]; then
+      use_ours=1
+    elif [ -n "$ours" ]; then
       sysver="$(basename "$(readlink -f "$sys")")"
       sysver="${sysver#"$so".}"
       # Ours only when strictly newer: equal versions keep the system's. An
@@ -453,7 +427,7 @@ if [ ! -s "$APPDIR/usr/lib/prefer-system/libwayland-client.so.0/libwayland-clien
   exit 1
 fi
 for dir in "$APPDIR"/usr/lib/prefer-system/*/; do
-  test -s "$dir/version" || { echo "no version file in $dir" >&2; exit 1; }
+  test -f "$dir/version" || { echo "no version file in $dir" >&2; exit 1; }
   for member in "$dir"*.so*; do
     name="$(basename "$member")"
     if [ -e "$APPDIR/usr/lib/$name" ]; then
