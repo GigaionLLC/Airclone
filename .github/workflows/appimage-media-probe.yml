@@ -1,0 +1,84 @@
+name: AppImage media probe (Arch)
+
+# Investigation for the Arch report "v0.25.1 freezes completely when I open a
+# video" (AppImage; the tar.gz played). The AppImage bundles Ubuntu's
+# libpipewire 1.0, libpulse and libjack beside libmpv; Arch's own ALSA PipeWire
+# plugin already failed against the bundled libpipewire in the reporter's log
+# ("undefined symbol: pw_log_topic_register"). This plays a file through the
+# AppImage's libmpv on Arch with a real PipeWire session running, as shipped and
+# with those libraries removed, and through Arch's own libmpv for reference.
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/appimage-media-probe.yml'
+      - 'dev/linux/mpv-probe.py'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release whose AppImage to probe
+        default: v0.25.1
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    container: archlinux:latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Arch with a PipeWire desktop audio stack
+        run: |
+          pacman -Syu --noconfirm --needed pipewire pipewire-pulse pipewire-alsa pipewire-jack \
+            wireplumber dbus ffmpeg mpv python gtk3 mesa curl procps-ng
+          pacman -Q pipewire mpv | tee versions.txt
+
+      - name: Fetch the AppImage
+        env:
+          TAG: ${{ inputs.tag || 'v0.25.1' }}
+        run: |
+          curl -fsSL -o a.AppImage "https://github.com/GigaionLLC/Airclone/releases/download/$TAG/Airclone-x86_64.AppImage"
+          chmod +x a.AppImage && ./a.AppImage --appimage-extract >/dev/null
+          ls squashfs-root/usr/lib | grep -E 'pipewire|pulse|jack|mpv' | tee bundled.txt
+
+      - name: Test media (MPEG-2 with audio, like the report)
+        run: |
+          ffmpeg -loglevel error -f lavfi -i testsrc=duration=6:size=640x360:rate=25 \
+            -f lavfi -i sine=frequency=440:duration=6 -c:v mpeg2video -c:a mp2 -shortest test.mpg
+          ls -l test.mpg
+
+      - name: Probe
+        shell: bash
+        run: |
+          set +e
+          export XDG_RUNTIME_DIR=/tmp/xdg && mkdir -p -m 700 $XDG_RUNTIME_DIR
+          dbus-daemon --session --address=unix:path=$XDG_RUNTIME_DIR/bus --fork --nopidfile
+          export DBUS_SESSION_BUS_ADDRESS=unix:path=$XDG_RUNTIME_DIR/bus
+          pipewire > pw.log 2>&1 &
+          sleep 2; wireplumber > wp.log 2>&1 &
+          sleep 2; pipewire-pulse > pwp.log 2>&1 &
+          sleep 3
+          echo "--- PipeWire session:"; pw-cli info 0 2>&1 | grep -E 'version|name' | head -3
+          wpctl status 2>&1 | sed -n '1,25p'
+
+          R=squashfs-root/usr/lib
+          # Same library set minus the system-daemon clients under suspicion.
+          mkdir -p /tmp/nopw && cp -a $R/. /tmp/nopw/
+          rm -f /tmp/nopw/libpipewire-0.3.so* /tmp/nopw/libpulse*.so* /tmp/nopw/libjack.so*
+
+          run() {
+            label="$1"; shift
+            echo; echo "=================== $label"
+            timeout 45 "$@" 2>&1 | tail -25
+            code=${PIPESTATUS[0]}
+            echo ">>> $label: exit $code (124 = HUNG for 45 s)"
+            echo "$label: $code" >> results.txt
+          }
+          run "A bundled libmpv, as shipped" env LD_LIBRARY_PATH=$R python3 dev/linux/mpv-probe.py $R/libmpv.so.2 test.mpg
+          run "B bundled libmpv, no bundled pipewire/pulse/jack" env LD_LIBRARY_PATH=/tmp/nopw python3 dev/linux/mpv-probe.py /tmp/nopw/libmpv.so.2 test.mpg
+          run "C bundled libmpv, as shipped, ao=pulse" env LD_LIBRARY_PATH=$R python3 dev/linux/mpv-probe.py $R/libmpv.so.2 test.mpg --ao=pulse
+          run "D bundled libmpv, as shipped, ao=alsa" env LD_LIBRARY_PATH=$R python3 dev/linux/mpv-probe.py $R/libmpv.so.2 test.mpg --ao=alsa
+          run "E Arch's own libmpv" python3 dev/linux/mpv-probe.py /usr/lib/libmpv.so.2 test.mpg
+          echo; echo "=================== summary"; cat versions.txt results.txt
