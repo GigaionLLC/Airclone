@@ -9,7 +9,7 @@ by design** — real IDs, key paths and account state live in the encrypted vaul
 (`python tool/vault.py unlock`, then
 `dev/vault/notes/apple-appstore-setup-record.md`).
 
-## State: last written 2026-10-10 — 0.24.0 IN REVIEW on both platforms (0.23.1 live)
+## State: last written 2026-10-11 — iOS 0.24.0 approved (held for TestFlight), macOS 0.24.0 in review, 0.25.1 builds uploaded
 
 Read back from App Store Connect by the workflows that changed it, so these rows are observed.
 
@@ -32,8 +32,11 @@ Read back from App Store Connect by the workflows that changed it, so these rows
 | **0.23.1** | **READY_FOR_SALE**, build 151, released 2026-10-07 | **READY_FOR_SALE**, build 151, released 2026-10-06 |
 | 0.23.1 `releaseType` | MANUAL | MANUAL |
 | 0.23.2 | ❌ no record — submitted 2026-10-10 05:33Z, cancelled 13:0xZ and renamed to 0.24.0 with `set_version` | ❌ no record — same; build 152 stays in TestFlight only |
-| **0.24.0** | **WAITING_FOR_REVIEW**, build 153, submitted 2026-10-10 13:08Z | **WAITING_FOR_REVIEW**, build 153, submitted 2026-10-10 13:07Z |
+| **0.24.0** | **IN_REVIEW** (2026-10-11), build 153, submitted 2026-10-10 13:08Z | **PENDING_DEVELOPER_RELEASE** (approved 2026-10-11), build 153 — held: release only after the TestFlight beta is approved |
+| 0.25.1 | build 156 uploaded 2026-10-11, VALID, no version record yet | build 156 uploaded 2026-10-11, VALID, no version record yet. **Not** added to the TestFlight group (153 stays there) |
 | 0.24.0 `releaseType` | MANUAL | MANUAL — **do not release until a TestFlight public-beta build (152 or 153) is approved** (see below) |
+
+**Next (decided 2026-10-11: queue 0.25.1 behind 0.24.0, discard nothing).** Per platform, once 0.24.0 is released, run the [runbook](apple-appstore-and-macos.md#the-order-that-works) from step 0 for 0.25.1 with build 156. When checking TestFlight with `testflight-public.yml`, pass `-f build=153`: the default is the newest VALID build, which is now 156.
 
 **Public TestFlight beta (iOS only, since 2026-10-09).** External group "Public beta", public link
 https://testflight.apple.com/join/kHRBzZnc, capped at 1000 testers, maintained by
