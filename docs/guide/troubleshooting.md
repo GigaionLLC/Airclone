@@ -532,6 +532,27 @@ unaffected. On a machine with working sound you will not see it.
 are being drawn in software rather than by a GPU, which is slower and otherwise
 fine.
 
+## The AppImage closes at once: `No provider of eglGetPlatformDisplayEXT found`
+
+This one is a real failure, fixed in v0.25.1. Up to v0.25.0, the AppImage always
+used its own copy of the Wayland libraries, from the Ubuntu it is built on. A
+distro with a newer graphics driver (Arch with Mesa 26.2, for example) needs its
+own, newer copy, so the driver could not load and the app aborted:
+
+```
+No provider of eglGetPlatformDisplayEXT found.  Requires one of:
+EGL_EXT_platform_base
+```
+
+From v0.25.1 the AppImage uses whichever copy is newer, yours or its own. On an
+older version, use the tar.gz, or extract the AppImage and remove its copy:
+
+```
+./Airclone-x86_64.AppImage --appimage-extract
+rm squashfs-root/usr/lib/libwayland-*
+./squashfs-root/AppRun
+```
+
 ## Nothing here matches
 
 Two things worth trying before filing anything:
