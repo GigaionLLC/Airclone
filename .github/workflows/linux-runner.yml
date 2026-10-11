@@ -63,7 +63,7 @@ jobs:
       # Same set release.yml installs; see its comments for why each is needed.
       - name: Install build deps
         working-directory: .
-        run: sudo apt-get update && sudo apt-get install -y ninja-build libgtk-3-dev libmpv-dev mpv libsecret-1-dev desktop-file-utils
+        run: sudo apt-get update && sudo apt-get install -y ninja-build libgtk-3-dev libmpv-dev mpv libsecret-1-dev desktop-file-utils patchelf
       # Pinned to the release pin. A floating channel here would test a
       # different embedder than the one that ships.
       - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2  # v2.23.0
@@ -330,22 +330,34 @@ jobs:
             exit 1
           fi
           echo "libGLESv2 is in fallback-gles only"
-          # #38: libwayland likewise, one directory per library, each with the
-          # version AppRun compares against the system's.
-          test -s squashfs-root/usr/lib/fallback-wayland/libwayland-client.so.0/libwayland-client.so.0
-          test -s squashfs-root/usr/lib/fallback-wayland/libwayland-client.so.0/version
-          stray="$(find squashfs-root -name 'libwayland-*.so*' -not -path '*/fallback-wayland/*')"
-          if [ -n "$stray" ]; then
-            echo "::error::libwayland outside the fallback would shadow the host's: $stray"
-            exit 1
-          fi
-          echo "libwayland is in fallback-wayland only: $(ls squashfs-root/usr/lib/fallback-wayland | tr '\n' ' ')"
+          # The libraries system plugins also link (libwayland, libpipewire,
+          # GLib...) sit in usr/lib/prefer-system/<group>/ with the version
+          # AppRun compares against the system's, and NOT in usr/lib.
+          test -s squashfs-root/usr/lib/prefer-system/libwayland-client.so.0/libwayland-client.so.0
+          test -f squashfs-root/usr/lib/prefer-system/libpipewire-0.3.so.0/version
+          test -s squashfs-root/usr/lib/prefer-system/libgio-2.0.so.0/libgio-2.0.so.0
+          for f in libwayland-client.so.0 libpipewire-0.3.so.0 libglib-2.0.so.0 libgio-2.0.so.0; do
+            if [ -e "squashfs-root/usr/lib/$f" ]; then
+              echo "::error::$f is still in usr/lib, where it shadows the host's"
+              exit 1
+            fi
+          done
+          echo "prefer-system groups: $(ls squashfs-root/usr/lib/prefer-system | tr '\n' ' ')"
 
       - name: Keep the AppImage for the distro check
         uses: actions/upload-artifact@v4
         with:
           name: linux-appimage
           path: ${{ runner.temp }}/Airclone-x86_64.AppImage
+          retention-days: 3
+
+      # The tar.gz is this bundle as it stands, so the distro legs audit it too.
+      - name: Keep the tar.gz bundle for the distro check
+        run: tar -C build/linux/x64/release -czf "$RUNNER_TEMP/airclone-linux-x64.tar.gz" bundle
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-tarball
+          path: ${{ runner.temp }}/airclone-linux-x64.tar.gz
           retention-days: 3
 
   # Does the AppImage start on the distros people actually run it on (#38)?
@@ -362,6 +374,13 @@ jobs:
   # and it links libwayland-client, so this catches the mismatch without a
   # Wayland compositor. The Ubuntu leg is the oldest system the AppImage can run
   # on (it needs glibc 2.38), so it pins that the fix costs Ubuntu nothing.
+  #
+  # Starting proves only what loads at startup. The same mistake hid in audio
+  # (the ALSA PipeWire plugin, PipeWire's modules) and GLib (GVfs, GIO modules)
+  # until a video was opened, so each leg also installs a desktop's plugins and
+  # drivers and runs dev/linux/check-shadowing.py: every system plugin that
+  # would load against a library the AppImage still puts first must find every
+  # symbol it imports.
   appimage-distros:
     needs: compile
     runs-on: ubuntu-latest
@@ -379,16 +398,22 @@ jobs:
         run: |
           case "${{ matrix.distro }}" in
             arch)
-              pacman -Syu --noconfirm --needed xorg-server-xvfb xorg-xauth mesa libglvnd gtk3 file curl ;;
+              pacman -Syu --noconfirm --needed xorg-server-xvfb xorg-xauth mesa libglvnd gtk3 file curl \
+                binutils python vulkan-swrast libva-mesa-driver intel-media-driver pipewire pipewire-alsa \
+                pipewire-pulse pipewire-jack librsvg webp-pixbuf-loader gvfs ibus ;;
             fedora)
-              dnf -y install xorg-x11-server-Xvfb xorg-x11-xauth mesa-dri-drivers mesa-libEGL mesa-libGL gtk3 file findutils procps-ng ;;
+              dnf -y install xorg-x11-server-Xvfb xorg-x11-xauth mesa-dri-drivers mesa-libEGL mesa-libGL gtk3 file findutils procps-ng \
+                binutils python3 mesa-vulkan-drivers mesa-va-drivers pipewire-alsa pipewire-pulseaudio \
+                pipewire-jack-audio-connection-kit librsvg2 webp-pixbuf-loader gvfs ibus-gtk3 ;;
             debian|ubuntu)
               # libusb and libgpg-error are on linuxdeploy's exclude list, so the
               # AppImage relies on the system for them; every desktop install has
               # both, but these slim images do not, and the AppImage then stops
               # at the loader before reaching anything this job is about.
               apt-get update
-              DEBIAN_FRONTEND=noninteractive apt-get install -y xvfb xauth libgtk-3-0t64 libegl1 libegl-mesa0 libgl1-mesa-dri libgles2 libusb-1.0-0 libgpg-error0 file curl ;;
+              DEBIAN_FRONTEND=noninteractive apt-get install -y xvfb xauth libgtk-3-0t64 libegl1 libegl-mesa0 libgl1-mesa-dri libgles2 libusb-1.0-0 libgpg-error0 file curl \
+                binutils python3 mesa-vulkan-drivers mesa-va-drivers intel-media-va-driver pipewire-alsa \
+                pipewire-pulse pipewire-jack librsvg2-common webp-pixbuf-loader gvfs ibus-gtk3 ;;
           esac
           echo "Mesa EGL: $(ls /usr/lib*/libEGL_mesa.so.0 /usr/lib/*/libEGL_mesa.so.0 2>/dev/null | head -1)"
           echo "system libwayland-client: $(readlink -f "$(/sbin/ldconfig -p | awk '$1 == "libwayland-client.so.0" { print $NF; exit }')")"
@@ -419,6 +444,35 @@ jobs:
             exit 1
           fi
           echo "the AppImage ran 20 s on ${{ matrix.distro }}"
+
+      - uses: actions/checkout@v4
+        with:
+          path: src
+          sparse-checkout: dev/linux
+
+      - name: No system plugin loads against an older bundled library
+        run: python3 src/dev/linux/check-shadowing.py squashfs-root/usr/lib --strict
+
+      # Every library the AppImage needs is bundled or on a desktop install,
+      # under the name this distro uses. Hardcoded Ubuntu paths are reported.
+      - name: Nothing the AppImage needs is missing here
+        run: python3 src/dev/linux/check-appimage-deps.py squashfs-root --strict
+
+      # The tar.gz carries no system libraries: the README lists what to
+      # install (libmpv, libsecret, ALSA). Install exactly that, by this
+      # distro's names, and nothing it needs may be missing.
+      - uses: actions/download-artifact@v4
+        with:
+          name: linux-tarball
+      - name: The tar.gz has everything it needs once the README's packages are in
+        run: |
+          case "${{ matrix.distro }}" in
+            arch) pacman -S --noconfirm --needed mpv libsecret alsa-lib ;;
+            fedora) dnf -y install mpv-libs libsecret alsa-lib ;;
+            debian|ubuntu) DEBIAN_FRONTEND=noninteractive apt-get install -y libmpv2 libsecret-1-0 libasound2t64 ;;
+          esac
+          mkdir tarball && tar -C tarball -xzf airclone-linux-x64.tar.gz
+          python3 src/dev/linux/check-appimage-deps.py tarball/bundle --strict
 
   # Does mounting actually work on Linux, through the call Airclone makes?
   #
@@ -512,7 +566,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - name: Install build deps
-        run: sudo apt-get update && sudo apt-get install -y ninja-build libgtk-3-dev libmpv-dev mpv libsecret-1-dev desktop-file-utils flatpak flatpak-builder
+        run: sudo apt-get update && sudo apt-get install -y ninja-build libgtk-3-dev libmpv-dev mpv libsecret-1-dev desktop-file-utils patchelf flatpak flatpak-builder
       - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2  # v2.23.0
         with: { channel: stable, flutter-version: 3.47.0, cache: true }
       - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87  # stable branch
