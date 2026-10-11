@@ -178,65 +178,97 @@ done
   --icon-filename com.gigaionllc.airclone \
   "${EXTRA[@]}"
 
-say "Moving libwayland out of the search path"
-# linuxdeploy bundles libwayland-client, -egl and -cursor (GTK, libmpv and libva
-# all link them), and that broke the AppImage on Arch (#38). The system's Mesa
-# EGL driver, libEGL_mesa, links libwayland-client too, and resolves it through
-# OUR copy, because usr/lib is searched first. Our copy is the build host's
-# (Ubuntu 24.04, Wayland 1.22). Arch's Mesa 26.2 is built against Wayland 1.26
-# and needs wl_display_dispatch_queue_timeout, wl_display_create_queue_with_name
-# and wl_fixes_interface, which 1.22 does not have. So the driver failed to load,
-# EGL had no vendor, and libepoxy aborted with "No provider of
-# eglGetPlatformDisplayEXT found". Any distro with a newer Mesa goes the same way.
+say "Letting newer system copies win over the bundled ones"
+# THE CLASS OF BUG. linuxdeploy bundles every library the app links, and puts
+# them in usr/lib, which is searched before the system's. Most are harmless. The
+# ones that are not are the libraries a SYSTEM plugin or driver also links, and
+# loads into our process: Mesa's EGL driver, the ALSA PipeWire plugin, PipeWire's
+# own modules, GVfs and the GIO modules, gdk-pixbuf's SVG loader. Each was built
+# against the system's copy of that library, and resolves it through OURS, which
+# is the Ubuntu 24.04 build host's and older on any newer distro. The plugin then
+# fails to load, or loads and misbehaves.
 #
-# libwayland is the graphics driver's library as much as ours: whatever version
-# the system's Mesa was built against is the one that must be loaded. The ABI
-# only grows, so a newer system copy serves our GTK and libmpv as well.
+#  - #38: our libwayland-client (1.22) lacked symbols Arch's Mesa 26.2 needs, so
+#    the EGL driver failed and the AppImage aborted at startup.
+#  - After that, on Arch: the video player froze, and the log showed the ALSA
+#    PipeWire plugin failing against our libpipewire (1.0). A scan across Arch,
+#    Fedora and Debian 13 (dev/linux/check-shadowing.py) found 35 to 55 system
+#    plugins per distro unable to load, all through libpipewire, GLib or
+#    librsvg. On Ubuntu 24.04 it found none.
 #
-# Ubuntu loses nothing: the binary needs glibc 2.38, so the oldest system that
-# can run this AppImage is Ubuntu 24.04, which ships the same 1.22 we bundled.
+# THE RULE. These libraries stay bundled, for compatibility, but leave usr/lib
+# for usr/lib/prefer-system/<group>/, and AppRun chooses per group at run time:
+# the NEWER of the system's copy and ours. Shared-library ABIs only grow within
+# a soname, so the newer one serves our app and the system's plugins both. On a
+# newer distro that is the system's (the fix); on Ubuntu 24.04 the versions are
+# equal and the system's is used, which changes nothing there; on a system with
+# an older copy, or none, it is ours.
 #
-# Still bundled, for compatibility, but AppRun chooses per library at run time:
-# the NEWER of the system's copy and ours. The ABI only grows, so the newer one
-# serves both our GTK/libmpv and the system's Mesa. On Arch that is the system's
-# (the fix); on Ubuntu 24.04 they are equal and the system's is used, as before;
-# on a machine whose copy is older, or that has none (an X11-only or minimal
-# install), it is ours. Each directory records its library's full version in a
-# `version` file, because linuxdeploy copies a library under its soname
-# (libwayland-client.so.0) and the version would otherwise be lost.
+# GROUPS, not single libraries, where a family must match itself: GLib's
+# libraries come from one build and call each other's internals, so a newer
+# system libglib with our older libgio is not a combination anyone tests. A
+# group is decided by its first library (the anchor), and uses OURS for all of
+# it if the system lacks any member. libwayland is three groups of one: Debian
+# packages -client, -egl and -cursor separately, so lacking -cursor must not
+# drag our older -client in.
 #
-# ONE DIRECTORY PER LIBRARY, named by its soname, and
-# that is load-bearing: on Debian and Ubuntu, -client, -egl and -cursor are
-# separate packages, so a machine can have the client and lack the cursor
-# library. A shared directory would then put our old client ahead of the
-# system's again, which is the Arch failure all over.
-WAYLAND_FALLBACK="$APPDIR/usr/lib/fallback-wayland"
-mkdir -p "$WAYLAND_FALLBACK"
-for lib in "$APPDIR"/usr/lib/libwayland-*.so*; do
-  [ -e "$lib" ] || continue
-  name="$(basename "$lib")"
-  mkdir -p "$WAYLAND_FALLBACK/$name"
-  mv "$lib" "$WAYLAND_FALLBACK/$name/"
-  # libwayland-client.so.0 -> /usr/lib/.../libwayland-client.so.0.22.0 -> 22.0
-  host="$(ldconfig -p | awk -v n="$name" '$1 == n { print $NF; exit }')"
+# Each group directory records the anchor's version in `version`, because
+# linuxdeploy copies a library under its soname and the version would be lost.
+# And each moved library's RUNPATH gets usr/lib added, so when ours IS used it
+# still finds the bundled libraries it depends on.
+command -v patchelf >/dev/null || { echo "patchelf is needed to package the AppImage." >&2; exit 1; }
+PREFER="$APPDIR/usr/lib/prefer-system"
+mkdir -p "$PREFER"
+while read -r anchor members; do
+  [ -n "$anchor" ] || continue
+  [ -e "$APPDIR/usr/lib/$anchor" ] || { echo "  $anchor is not bundled; nothing to move"; continue; }
+  dir="$PREFER/$anchor"
+  mkdir -p "$dir"
+  for name in $anchor $members; do
+    [ -e "$APPDIR/usr/lib/$name" ] || continue
+    mv "$APPDIR/usr/lib/$name" "$dir/"
+    patchelf --set-rpath '$ORIGIN:$ORIGIN/../..' "$dir/$name"
+  done
+  # libglib-2.0.so.0 -> /usr/lib/.../libglib-2.0.so.0.8000.0 -> 8000.0
+  host="$(ldconfig -p | awk -v n="$anchor" '$1 == n && /x86-64|AArch64/ { print $NF; exit }')"
   real="$(basename "$(readlink -f "$host")")"
-  ver="${real#"$name".}"
+  ver="${real#"$anchor".}"
   case "$ver" in
-    [0-9]*.[0-9]*) ;;
-    *) echo "cannot tell the version of $name from '$real'" >&2; exit 1 ;;
+    [0-9]*) ;;
+    *) echo "cannot tell the version of $anchor from '$real'" >&2; exit 1 ;;
   esac
-  echo "$ver" > "$WAYLAND_FALLBACK/$name/version"
-  echo "  $name ($ver) -> usr/lib/fallback-wayland/$name/"
-done
-if [ ! -e "$WAYLAND_FALLBACK/libwayland-client.so.0/libwayland-client.so.0" ]; then
+  echo "$ver" > "$dir/version"
+  echo "  $anchor ($ver) +$(ls "$dir" | grep -c '\.so') -> usr/lib/prefer-system/$anchor/"
+done <<'GROUPS'
+libwayland-client.so.0
+libwayland-egl.so.1
+libwayland-cursor.so.0
+libpipewire-0.3.so.0
+libglib-2.0.so.0 libgobject-2.0.so.0 libgio-2.0.so.0 libgmodule-2.0.so.0 libgthread-2.0.so.0
+librsvg-2.so.2
+libgdk_pixbuf-2.0.so.0
+libgtk-3.so.0 libgdk-3.so.0 libgailutil-3.so.0
+libatk-1.0.so.0
+libatk-bridge-2.0.so.0
+libatspi.so.0
+libpulse.so.0 libpulse-simple.so.0 libpulse-mainloop-glib.so.0
+libjack.so.0
+libva.so.2 libva-drm.so.2 libva-x11.so.2 libva-wayland.so.2
+libvdpau.so.1
+libvulkan.so.1
+libdbus-1.so.3
+libsystemd.so.0
+libudev.so.1
+GROUPS
+if [ ! -e "$PREFER/libwayland-client.so.0/libwayland-client.so.0" ]; then
   # linuxdeploy always bundles it today. If it ever stops, stage the host's so
-  # a machine without one can still start.
+  # a machine without one can still start: GTK needs it.
   wl="$(ldconfig -p | awk '$1 == "libwayland-client.so.0" { print $NF; exit }')"
   [ -n "$wl" ] || { echo "libwayland-client.so.0 is not on this build host." >&2; exit 1; }
-  mkdir -p "$WAYLAND_FALLBACK/libwayland-client.so.0"
-  cp -L "$wl" "$WAYLAND_FALLBACK/libwayland-client.so.0/libwayland-client.so.0"
+  mkdir -p "$PREFER/libwayland-client.so.0"
+  cp -L "$wl" "$PREFER/libwayland-client.so.0/libwayland-client.so.0"
   real="$(basename "$(readlink -f "$wl")")"
-  echo "${real#libwayland-client.so.0.}" > "$WAYLAND_FALLBACK/libwayland-client.so.0/version"
+  echo "${real#libwayland-client.so.0.}" > "$PREFER/libwayland-client.so.0/version"
   echo "  staged $real from the build host"
 fi
 
@@ -332,27 +364,32 @@ if [ -n "$LIBS" ]; then
     export LD_LIBRARY_PATH="$HERE/usr/lib/fallback${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
   fi
 
-  # libwayland: per library, the NEWER of the system's and ours. Loading our
-  # older copy ahead of a newer system's is what broke the AppImage on Arch
-  # (#38): the system's Mesa needs what its own version has. Ours is used when
-  # the system's is missing or older. One directory per library, so a missing
-  # -cursor never brings our -client along. See build-appimage.sh, "Moving
-  # libwayland out of the search path".
-  for dir in "$HERE"/usr/lib/fallback-wayland/*/; do
+  # Per group, the NEWER of the system's copy and ours. Loading our older copy
+  # ahead of a newer system's is the class of bug that broke the AppImage on
+  # newer distros (#38, and the PipeWire/GLib plugins after it): the system's
+  # plugins need what their own version has. Ours is used when the system's is
+  # older, or the system lacks any library in the group. See build-appimage.sh,
+  # "Letting newer system copies win over the bundled ones".
+  for dir in "$HERE"/usr/lib/prefer-system/*/; do
     [ -d "$dir" ] || continue
     so="$(basename "$dir")"
     ours="$(cat "$dir/version" 2>/dev/null)"
-    sys="$(printf '%s\n' "$LIBS" | awk -v n="$so" '$1 == n { print $NF; exit }')"
     use_ours=0
-    if [ -z "$sys" ]; then
-      use_ours=1
-    elif [ -n "$ours" ]; then
+    for member in "$dir"*.so*; do
+      name="$(basename "$member")"
+      if ! printf '%s\n' "$LIBS" | awk -v n="$name" '$1 == n { f = 1 } END { exit !f }'; then
+        use_ours=1
+      fi
+    done
+    if [ "$use_ours" = 0 ] && [ -n "$ours" ]; then
+      sys="$(printf '%s\n' "$LIBS" | awk -v n="$so" '$1 == n && /x86-64|AArch64/ { print $NF; exit }')"
+      [ -n "$sys" ] || sys="$(printf '%s\n' "$LIBS" | awk -v n="$so" '$1 == n { print $NF; exit }')"
       sysver="$(basename "$(readlink -f "$sys")")"
       sysver="${sysver#"$so".}"
       # Ours only when strictly newer: equal versions keep the system's. An
       # unreadable system version also keeps the system's, the safe guess:
       # shadowing a working library is worse than lacking a newer one.
-      case "$sysver" in [0-9]*.[0-9]*) ;; *) sysver="" ;; esac
+      case "$sysver" in [0-9]*) ;; *) sysver="" ;; esac
       newest="$(printf '%s\n%s\n' "$sysver" "$ours" | sort -V 2>/dev/null | tail -n 1)"
       if [ -n "$sysver" ] && [ "$newest" = "$ours" ] && [ "$ours" != "$sysver" ]; then
         use_ours=1
@@ -409,18 +446,23 @@ if [ -n "$stray" ]; then
 fi
 echo "  libGLESv2.so.2 staged as a fallback only, and nowhere else"
 
-# The same rule for libwayland (#38): fallback-wayland, and nowhere else.
-if [ ! -s "$APPDIR/usr/lib/fallback-wayland/libwayland-client.so.0/libwayland-client.so.0" ]; then
-  echo "libwayland-client.so.0 is missing from usr/lib/fallback-wayland." >&2
+# The prefer-system libraries must be in their group directory and NOWHERE ELSE
+# on the search path: a copy left in usr/lib would shadow the system's again.
+if [ ! -s "$APPDIR/usr/lib/prefer-system/libwayland-client.so.0/libwayland-client.so.0" ]; then
+  echo "libwayland-client.so.0 is missing from usr/lib/prefer-system." >&2
   exit 1
 fi
-stray="$(find "$APPDIR" -name 'libwayland-*.so*' -not -path '*/fallback-wayland/*' -print)"
-if [ -n "$stray" ]; then
-  echo "libwayland landed outside the fallback, where it would shadow the host's:" >&2
-  echo "$stray" >&2
-  exit 1
-fi
-echo "  libwayland staged as a fallback only, and nowhere else"
+for dir in "$APPDIR"/usr/lib/prefer-system/*/; do
+  test -s "$dir/version" || { echo "no version file in $dir" >&2; exit 1; }
+  for member in "$dir"*.so*; do
+    name="$(basename "$member")"
+    if [ -e "$APPDIR/usr/lib/$name" ]; then
+      echo "$name is in usr/lib as well as prefer-system, where it would shadow the host's." >&2
+      exit 1
+    fi
+  done
+done
+echo "  $(ls "$APPDIR/usr/lib/prefer-system" | wc -l) library groups prefer a newer system copy: $(ls "$APPDIR/usr/lib/prefer-system" | tr '\n' ' ')"
 
 say "Checking the rclone engine is where the app will look for it"
 # Deliberately NOT a find-anywhere check like the loop above. RcloneEngine
