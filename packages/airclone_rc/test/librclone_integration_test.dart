@@ -417,7 +417,11 @@ void main() {
             .rpc('serve/list')
             .then((r) => (r['list'] as List).isNotEmpty, onError: (_) => false);
         final cached = cacheDir.listSync().whereType<File>().isNotEmpty;
-        expect(cached, !streams, reason: 'streams: $streams ${cacheDir.listSync()}');
+        expect(
+          cached,
+          !streams,
+          reason: 'streams: $streams ${cacheDir.listSync()}',
+        );
 
         // Wrong/absent token is rejected.
         final bad = await http.getUrl(Uri.parse(ref.url));
