@@ -8,6 +8,9 @@
 ///  * Android — a `content://` URI from our `FileProvider` (authority
 ///    `<applicationId>.fileprovider`) attached to an ACTION_VIEW / ACTION_SEND
 ///    chooser with a one-shot read grant. See MainActivity.kt.
+///  * iOS — sharing only, through the system share sheet (`share_plus`), which
+///    offers Save to Files, AirDrop and other apps. iOS cannot open a file in
+///    another app's viewer the way Android's ACTION_VIEW does.
 ///  * Desktop — a `file:` URL through `url_launcher`, i.e. the shell's default
 ///    handler.
 ///
@@ -22,8 +25,10 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/services.dart';
+import 'package:flutter/widgets.dart';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'package:airclone_rc/airclone_rc.dart';
@@ -144,11 +149,24 @@ Future<String?> stageForExternalOpen({
 
 /// Hands the real file at [path] to the OS. [mime] steers Android's chooser;
 /// desktop ignores it and lets the shell decide from the extension.
+///
+/// [origin] is where the share sheet points from on an iPad (in global
+/// coordinates); without one it points from the middle of the screen.
 Future<void> handOffToOs(
   String path, {
   required String mime,
   ExternalOpenMode mode = ExternalOpenMode.view,
+  Rect? origin,
 }) async {
+  if (HostPlatform.isIOS && mode == ExternalOpenMode.share) {
+    await SharePlus.instance.share(
+      ShareParams(
+        files: [XFile(path, mimeType: mime)],
+        sharePositionOrigin: origin ?? _screenCentre(),
+      ),
+    );
+    return;
+  }
   if (HostPlatform.isAndroid) {
     try {
       await _androidOpen(path, mime, mode);
@@ -173,6 +191,15 @@ Future<void> handOffToOs(
   throw Exception('Opening in another app is not supported on this platform.');
 }
 
+/// A 1-point rect in the middle of the screen: an iPad's share sheet is a
+/// popover and must point at something, and a caller with no button to hand
+/// over still gets a sheet instead of an error.
+Rect _screenCentre() {
+  final view = WidgetsBinding.instance.platformDispatcher.views.first;
+  final size = view.physicalSize / view.devicePixelRatio;
+  return Rect.fromCenter(center: size.center(Offset.zero), width: 1, height: 1);
+}
+
 Future<void> _androidOpen(String path, String mime, ExternalOpenMode mode) =>
     const MethodChannel('airclone/native').invokeMethod<bool>('openExternal', {
       'path': path,
@@ -190,6 +217,16 @@ Future<String> writeSharableTextFile(String name, String text) async {
   await _pruneStage(dir, keep: leaf);
   final target = File('${dir.path}/$leaf');
   await target.writeAsString(text, flush: true);
+  return target.path;
+}
+
+/// [writeSharableTextFile] for binary content (an encrypted config export).
+Future<String> writeSharableBytesFile(String name, List<int> bytes) async {
+  final dir = await _stageDir();
+  final leaf = _safeLeaf(name);
+  await _pruneStage(dir, keep: leaf);
+  final target = File('${dir.path}/$leaf');
+  await target.writeAsBytes(bytes, flush: true);
   return target.path;
 }
 

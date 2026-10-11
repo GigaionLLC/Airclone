@@ -284,52 +284,104 @@ final cacheMemoryOnlyProvider = NotifierProvider<CacheMemoryOnly, bool>(
   CacheMemoryOnly.new,
 );
 
-/// The cache directories Airclone writes (thumbnails + folder previews).
+/// Where the in-process engine keeps copies of files it previewed (videos it
+/// could not stream, for one). Under the app cache dir with the others, so
+/// Clear cache covers it (#45). See LibrcloneObjectServer.
+const String previewCacheDirName = 'airclone_preview';
+
+/// The cache directories Airclone writes: thumbnails, folder previews, preview
+/// copies, and files staged for opening in another app (open_external.dart).
 const List<String> _cacheDirNames = [
   'airclone_thumbs',
   'airclone_folderthumbs',
+  previewCacheDirName,
+  'airclone_open',
 ];
+
+/// Before #45 the preview copies went straight into the OS temp dir, named by
+/// a SHA-1 hex digest, and were never deleted: a phone that played videos kept
+/// every one in full. They are still counted and cleared, so updating frees it.
+final _legacyPreviewName = RegExp(r'^[0-9a-f]{40}(\.part)?$');
+
+Future<Directory> _cacheBase() async {
+  try {
+    return await getApplicationCacheDirectory();
+  } catch (_) {
+    return getTemporaryDirectory();
+  }
+}
+
+/// The directory for the in-process engine's preview copies.
+Future<String> previewCacheDir() async =>
+    '${(await _cacheBase()).path}/$previewCacheDirName';
+
+Future<List<File>> _legacyPreviewFiles() async {
+  final out = <File>[];
+  try {
+    await for (final f in (await getTemporaryDirectory()).list()) {
+      if (f is File && _legacyPreviewName.hasMatch(f.uri.pathSegments.last)) {
+        out.add(f);
+      }
+    }
+  } catch (_) {}
+  return out;
+}
+
+/// Deletes the pre-#45 preview copies left in the temp dir. Returns bytes
+/// freed.
+Future<int> sweepLegacyPreviewFiles() async {
+  var freed = 0;
+  for (final f in await _legacyPreviewFiles()) {
+    try {
+      final n = await f.length();
+      await f.delete();
+      freed += n;
+    } catch (_) {}
+  }
+  return freed;
+}
+
+Future<int> _dirSize(Directory dir) async {
+  var total = 0;
+  try {
+    if (!await dir.exists()) return 0;
+    await for (final f in dir.list(recursive: true)) {
+      if (f is File) {
+        try {
+          total += await f.length();
+        } catch (_) {}
+      }
+    }
+  } catch (_) {}
+  return total;
+}
 
 /// Total bytes currently used by the on-disk caches.
 Future<int> diskCacheSize() async {
+  final base = await _cacheBase();
   var total = 0;
-  Directory base;
-  try {
-    base = await getApplicationCacheDirectory();
-  } catch (_) {
-    base = await getTemporaryDirectory();
-  }
   for (final name in _cacheDirNames) {
+    total += await _dirSize(Directory('${base.path}/$name'));
+  }
+  for (final f in await _legacyPreviewFiles()) {
     try {
-      final dir = Directory('${base.path}/$name');
-      if (await dir.exists()) {
-        await for (final f in dir.list()) {
-          if (f is File) {
-            try {
-              total += await f.length();
-            } catch (_) {}
-          }
-        }
-      }
+      total += await f.length();
     } catch (_) {}
   }
   return total;
 }
 
-/// Deletes the on-disk thumbnail + folder-preview caches. Returns bytes freed.
+/// Deletes every on-disk cache (see [_cacheDirNames]) and the pre-#45 preview
+/// copies. Returns bytes freed.
 Future<int> clearDiskCaches() async {
   final before = await diskCacheSize();
-  Directory base;
-  try {
-    base = await getApplicationCacheDirectory();
-  } catch (_) {
-    base = await getTemporaryDirectory();
-  }
+  final base = await _cacheBase();
   for (final name in _cacheDirNames) {
     try {
       final dir = Directory('${base.path}/$name');
       if (await dir.exists()) await dir.delete(recursive: true);
     } catch (_) {}
   }
+  await sweepLegacyPreviewFiles();
   return before;
 }

@@ -11,6 +11,7 @@ list(APPEND FLUTTER_PLUGIN_LIST
   local_auth_windows
   media_kit_libs_windows_video
   media_kit_video
+  share_plus
   super_native_extensions
   url_launcher_windows
   volume_controller

@@ -505,10 +505,12 @@ class _CacheSectionState extends ConsumerState<_CacheSection> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         const _SectionLabel(
-          'Preview cache',
+          'Cache',
           help:
-              'Thumbnails are encrypted at rest — bound to your rclone config '
-              'password when the config is encrypted.',
+              'Thumbnails, and copies of files you previewed or opened in '
+              'another app (those are trimmed on their own). Clear '
+              'cache empties it now. Thumbnails are encrypted at rest — bound '
+              'to your rclone config password when the config is encrypted.',
         ),
         Row(
           children: [

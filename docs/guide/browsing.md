@@ -82,7 +82,9 @@ keyboard.
 
 On the phone the header shows a scrollable breadcrumb you can tap to jump to any ancestor. The
 button at the left of the header changes meaning with where you are — its tooltip reads `Up` inside
-a folder, `All locations` at a remote's root, and `Close console` on a console tab.
+a folder, `All locations` at a remote's root, and `Close console` on a console tab. Inside a folder a
+**Home** button beside it (`All locations`) goes straight back to the list of locations, and so does
+tapping `Files` in the bottom bar when you are already on it.
 
 Opening things:
 
@@ -378,7 +380,7 @@ Two things Airclone will refuse to do:
 - **It will not fetch an enormous image original.** Images above 128 MiB are skipped. Videos are not
   size-limited, because a frame is streamed rather than the whole file read.
 
-The disk cache is managed in Settings → `Storage & updates` → `Preview cache`, which shows how much
+The disk cache is managed in Settings → `Storage & updates` → `Cache`, which shows how much
 is on disk and offers `Clear cache`.
 
 ## Files stored online only

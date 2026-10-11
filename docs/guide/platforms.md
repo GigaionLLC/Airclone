@@ -98,6 +98,8 @@ dragged narrow gets the phone layout. The ⚠️ marks for tablets below are abo
 - **Android** keeps a transfer running in the background, with a notification. **iOS** suspends an
   app shortly after you leave it, so a transfer on an iPhone or iPad only runs while Airclone is on
   screen.
+- **Download on iPhone and iPad** always saves into `Downloads` in **On My Device**, which the Files
+  app shows under On My iPhone → Airclone. iOS has no folder picker to choose another.
 
 ## Backup and scheduling
 

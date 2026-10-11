@@ -1,6 +1,11 @@
+import 'dart:io';
+
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
+import 'host_platform.dart';
+import 'local_locations.dart';
 
 /// The remembered default download folder (or null until one is chosen).
 class DownloadDir extends Notifier<String?> {
@@ -77,7 +82,13 @@ final downloadAlwaysPromptProvider =
 /// unless "always ask" is on (or there is no default yet), in which case it
 /// opens a native folder picker and remembers the choice. Returns a
 /// forward-slashed path with NO trailing slash, or null if the user cancelled.
+///
+/// iOS has no folder picker (file_selector's getDirectoryPath is not
+/// implemented there: this threw, and Download did nothing, #46). It always
+/// downloads into Downloads in the app's Documents, which is the "On My Device"
+/// location here and On My iPhone → Airclone in the Files app.
 Future<String?> resolveDownloadDir(WidgetRef ref) async {
+  if (HostPlatform.isIOS) return iosDownloadDir();
   final always = ref.read(downloadAlwaysPromptProvider);
   final saved = ref.read(downloadDirProvider);
   if (!always && saved != null && saved.isNotEmpty) return saved;
@@ -88,4 +99,13 @@ Future<String?> resolveDownloadDir(WidgetRef ref) async {
   final norm = picked.replaceAll('\\', '/');
   await ref.read(downloadDirProvider.notifier).set(norm);
   return norm;
+}
+
+/// The iOS download folder (see [resolveDownloadDir]), created on first use.
+/// Null when the Documents dir could not be resolved.
+Future<String?> iosDownloadDir() async {
+  if (iosDocumentsRoot.isEmpty) return null;
+  final dir = Directory('$iosDocumentsRoot/Downloads');
+  await dir.create(recursive: true);
+  return dir.path;
 }

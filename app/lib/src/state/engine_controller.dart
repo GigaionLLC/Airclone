@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
@@ -584,14 +586,15 @@ class EngineController extends Notifier<EngineUi> {
     final (configPath, extraEnv) = await _platformSetup();
     final RcloneClient client;
     if (_resolvedMode == EngineMode.inProcess) {
-      // In-process librclone. Its preview byte-bridge needs a writable cache dir
-      // (the OS temp dir) since there is no rcd file server. No onDied: an
+      // In-process librclone. Its preview byte-bridge needs a cache dir of its
+      // own, which it prunes, since there is no rcd file server. No onDied: an
       // in-process engine is as alive as the app.
+      unawaited(sweepLegacyPreviewFiles());
       client = FfiRcloneClient(
         libraryPath: defaultLibrclonePath(),
         configPath: configPath,
         configPassword: password,
-        previewCacheDir: (await getTemporaryDirectory()).path,
+        previewCacheDir: await previewCacheDir(),
         logSink: logEngineEvent,
       );
     } else {
