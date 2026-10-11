@@ -13,6 +13,25 @@ happened": nothing was logged between 2026-07-02 and 2026-07-15, or between 2026
      it is: it used to say ABOVE, which pushed it further down the file with every entry until
      it sat hundreds of lines under the newest one and pointed writers at the wrong place. -->
 
+## [2026-10-11] - v0.25.2: AppImage prefers newer system copies of plugin-facing libraries (#42)
+
+**Agent:** Claude Code (Claude Opus 5.5)
+**Files Modified:** `dev/linux/build-appimage.sh`, new `dev/linux/{prefer-system-groups,check-shadowing,check-appimage-deps,mpv-probe}.py`,
+`.github/workflows/{linux-runner,release}.yml` (patchelf), `dev/releases/v0.25.2.md`, `app/pubspec.yaml` (0.25.2+157).
+**Database/API Changes:** None.
+**Summary:** Reddit (Arch, v0.25.1 AppImage): opening a video froze the app; log showed the ALSA PipeWire plugin
+failing on `pw_log_topic_register`. Same class as #38. A scan (`check-shadowing.py`) with a desktop's plugins
+installed found 35/46/55 system plugins (Arch/Fedora/Debian 13; Ubuntu 24.04: 0) unable to load, all via the bundled
+libpipewire 1.0, GLib and librsvg. An Arch PipeWire session confirmed mpv's pipewire/alsa/jack outputs fail as shipped
+and work without our libpipewire/libpulse/libjack; video outputs and hwdec matched Arch's own mpv (no real GPU, freeze
+itself not reproduced). Fix: seeds (libwayland x3, libpipewire, libjack, GLib x5, librsvg, libva x4, libvdpau,
+libvulkan) plus their whole bundled dependency closure move to `usr/lib/prefer-system/<soname>/` with a version file
+and RUNPATH `$ORIGIN/../..`; AppRun uses ours per library only when the system's is absent or older. A first attempt
+moved GTK by hand-picked groups and broke startup on all three newer distros (system libpangoft2 beside our libpango);
+the closure rule fixes that class. CI `appimage-distros` now also runs the shadowing scan (--strict) and
+`check-appimage-deps.py` (missing libraries, --strict; Ubuntu-only compiled-in paths reported) on the AppImage and the
+tar.gz. Final run: all four distros start, 0 broken plugins, 0 missing libraries. Runtime is static (no libfuse2).
+
 ## [2026-10-11] - v0.25.1: AppImage picks the newer libwayland (#38); cancelled-stream noise dropped (#39)
 
 **Agent:** Claude Code (Claude Opus 5.5)
