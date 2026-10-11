@@ -1,18 +1,21 @@
 name: AppImage media probe (Arch)
 
 # Investigation for the Arch report "v0.25.1 freezes completely when I open a
-# video" (AppImage; the tar.gz played). The AppImage bundles Ubuntu's
-# libpipewire 1.0, libpulse and libjack beside libmpv; Arch's own ALSA PipeWire
-# plugin already failed against the bundled libpipewire in the reporter's log
-# ("undefined symbol: pw_log_topic_register"). This plays a file through the
-# AppImage's libmpv on Arch with a real PipeWire session running, as shipped and
-# with those libraries removed, and through Arch's own libmpv for reference.
+# video" (AppImage; the tar.gz played), and the class of bug behind #38: an
+# AppImage library shadowing the system's newer copy, which system plugins and
+# drivers then fail against.
+#
+#  shadowing  every distro: which system plugins/drivers cannot load against
+#             the bundled libraries (dev/linux/check-shadowing.py)
+#  audio      Arch + a real PipeWire session: each audio output, bundled vs not
+#  video      Arch + Xvfb: each video output and hwdec path, bundled vs Arch's
 
 on:
   pull_request:
     paths:
       - '.github/workflows/appimage-media-probe.yml'
       - 'dev/linux/mpv-probe.py'
+      - 'dev/linux/check-shadowing.py'
   workflow_dispatch:
     inputs:
       tag:
@@ -22,8 +25,54 @@ on:
 permissions:
   contents: read
 
+env:
+  TAG: ${{ inputs.tag || 'v0.25.1' }}
+
 jobs:
-  probe:
+  shadowing:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { distro: arch, image: 'archlinux:latest' }
+          - { distro: fedora, image: 'fedora:latest' }
+          - { distro: debian, image: 'debian:trixie' }
+          - { distro: ubuntu, image: 'ubuntu:24.04' }
+    container: ${{ matrix.image }}
+    steps:
+      - name: A desktop's worth of system plugins and drivers
+        run: |
+          case "${{ matrix.distro }}" in
+            arch)
+              pacman -Syu --noconfirm --needed binutils curl python mesa vulkan-swrast vulkan-intel \
+                vulkan-radeon libva-mesa-driver intel-media-driver libvdpau-va-gl pipewire pipewire-alsa \
+                pipewire-pulse pipewire-jack gtk3 librsvg webp-pixbuf-loader gvfs ibus libproxy ;;
+            fedora)
+              dnf -y install binutils curl python3 mesa-dri-drivers mesa-vulkan-drivers mesa-va-drivers \
+                libva-intel-media-driver pipewire-alsa pipewire-pulseaudio pipewire-jack-audio-connection-kit \
+                gtk3 librsvg2 webp-pixbuf-loader gvfs ibus-gtk3 libproxy findutils || \
+              dnf -y install binutils curl python3 mesa-dri-drivers mesa-vulkan-drivers mesa-va-drivers \
+                pipewire-alsa pipewire-pulseaudio gtk3 librsvg2 gvfs ibus-gtk3 findutils ;;
+            debian|ubuntu)
+              apt-get update
+              DEBIAN_FRONTEND=noninteractive apt-get install -y binutils curl python3 libegl-mesa0 \
+                libgl1-mesa-dri mesa-vulkan-drivers mesa-va-drivers intel-media-va-driver vdpau-driver-all \
+                pipewire-alsa pipewire-pulse pipewire-jack libgtk-3-0t64 librsvg2-common webp-pixbuf-loader \
+                gvfs ibus-gtk3 libproxy1-plugin-gsettings libusb-1.0-0 libgpg-error0 ;;
+          esac
+
+      - uses: actions/checkout@v4
+
+      - name: Fetch the AppImage
+        run: |
+          curl -fsSL -o a.AppImage "https://github.com/GigaionLLC/Airclone/releases/download/$TAG/Airclone-x86_64.AppImage"
+          chmod +x a.AppImage && ./a.AppImage --appimage-extract >/dev/null
+
+      - name: Scan
+        run: python3 dev/linux/check-shadowing.py squashfs-root/usr/lib
+
+  audio:
     runs-on: ubuntu-latest
     container: archlinux:latest
     steps:
@@ -36,20 +85,16 @@ jobs:
           pacman -Q pipewire mpv | tee versions.txt
 
       - name: Fetch the AppImage
-        env:
-          TAG: ${{ inputs.tag || 'v0.25.1' }}
         run: |
           curl -fsSL -o a.AppImage "https://github.com/GigaionLLC/Airclone/releases/download/$TAG/Airclone-x86_64.AppImage"
           chmod +x a.AppImage && ./a.AppImage --appimage-extract >/dev/null
-          ls squashfs-root/usr/lib | grep -E 'pipewire|pulse|jack|mpv' | tee bundled.txt
 
       - name: Test media (MPEG-2 with audio, like the report)
         run: |
           ffmpeg -loglevel error -f lavfi -i testsrc=duration=6:size=640x360:rate=25 \
             -f lavfi -i sine=frequency=440:duration=6 -c:v mpeg2video -c:a mp2 -shortest test.mpg
-          ls -l test.mpg
 
-      - name: Probe
+      - name: Probe each audio output
         shell: bash
         run: |
           set +e
@@ -60,25 +105,73 @@ jobs:
           sleep 2; wireplumber > wp.log 2>&1 &
           sleep 2; pipewire-pulse > pwp.log 2>&1 &
           sleep 3
-          echo "--- PipeWire session:"; pw-cli info 0 2>&1 | grep -E 'version|name' | head -3
-          wpctl status 2>&1 | sed -n '1,25p'
-
           R=squashfs-root/usr/lib
-          # Same library set minus the system-daemon clients under suspicion.
           mkdir -p /tmp/nopw && cp -a $R/. /tmp/nopw/
           rm -f /tmp/nopw/libpipewire-0.3.so* /tmp/nopw/libpulse*.so* /tmp/nopw/libjack.so*
-
           run() {
             label="$1"; shift
             echo; echo "=================== $label"
-            timeout 45 "$@" 2>&1 | tail -25
+            timeout 45 "$@" 2>&1 | grep -vE '^\[ao/pulse\]  - ' | tail -14
             code=${PIPESTATUS[0]}
-            echo ">>> $label: exit $code (124 = HUNG for 45 s)"
+            echo ">>> $label: exit $code"
             echo "$label: $code" >> results.txt
           }
-          run "A bundled libmpv, as shipped" env LD_LIBRARY_PATH=$R python3 dev/linux/mpv-probe.py $R/libmpv.so.2 test.mpg
-          run "B bundled libmpv, no bundled pipewire/pulse/jack" env LD_LIBRARY_PATH=/tmp/nopw python3 dev/linux/mpv-probe.py /tmp/nopw/libmpv.so.2 test.mpg
-          run "C bundled libmpv, as shipped, ao=pulse" env LD_LIBRARY_PATH=$R python3 dev/linux/mpv-probe.py $R/libmpv.so.2 test.mpg --ao=pulse
-          run "D bundled libmpv, as shipped, ao=alsa" env LD_LIBRARY_PATH=$R python3 dev/linux/mpv-probe.py $R/libmpv.so.2 test.mpg --ao=alsa
-          run "E Arch's own libmpv" python3 dev/linux/mpv-probe.py /usr/lib/libmpv.so.2 test.mpg
-          echo; echo "=================== summary"; cat versions.txt results.txt
+          for ao in auto pipewire pulse alsa jack; do
+            run "shipped ao=$ao" env LD_LIBRARY_PATH=$R python3 dev/linux/mpv-probe.py $R/libmpv.so.2 test.mpg $( [ $ao != auto ] && echo --ao=$ao )
+            run "no bundled pw/pulse/jack ao=$ao" env LD_LIBRARY_PATH=/tmp/nopw python3 dev/linux/mpv-probe.py /tmp/nopw/libmpv.so.2 test.mpg $( [ $ao != auto ] && echo --ao=$ao )
+          done
+          run "Arch's own libmpv ao=auto" python3 dev/linux/mpv-probe.py /usr/lib/libmpv.so.2 test.mpg
+          echo; echo "=================== summary (0 = played to the end, 3 = mpv error, 124 = HUNG)"
+          cat versions.txt results.txt
+
+  video:
+    runs-on: ubuntu-latest
+    container: archlinux:latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Arch with Mesa, Vulkan (lavapipe), VA-API and a virtual display
+        run: |
+          pacman -Syu --noconfirm --needed xorg-server-xvfb xorg-xauth mesa vulkan-swrast vulkan-icd-loader \
+            libva-mesa-driver intel-media-driver ffmpeg mpv python gtk3 curl
+          pacman -Q mesa mpv libva vulkan-icd-loader | tee versions.txt
+
+      - name: Fetch the AppImage
+        run: |
+          curl -fsSL -o a.AppImage "https://github.com/GigaionLLC/Airclone/releases/download/$TAG/Airclone-x86_64.AppImage"
+          chmod +x a.AppImage && ./a.AppImage --appimage-extract >/dev/null
+
+      - name: Test media
+        run: |
+          ffmpeg -loglevel error -f lavfi -i testsrc=duration=4:size=640x360:rate=25 \
+            -c:v mpeg2video test.mpg
+          ffmpeg -loglevel error -f lavfi -i testsrc=duration=4:size=640x360:rate=25 \
+            -c:v libx264 -pix_fmt yuv420p test.mp4
+
+      - name: Probe each video output and decoder
+        shell: bash
+        run: |
+          set +e
+          R=squashfs-root/usr/lib
+          run() {
+            label="$1"; shift
+            echo; echo "=================== $label"
+            timeout 45 xvfb-run -a "$@" 2>&1 | tail -14
+            code=${PIPESTATUS[0]}
+            echo ">>> $label: exit $code"
+            echo "$label: $code" >> results.txt
+          }
+          for f in test.mpg test.mp4; do
+            for opts in "--vo=gpu --gpu-api=opengl --gpu-context=x11egl" \
+                        "--vo=gpu-next --gpu-api=opengl --gpu-context=x11egl" \
+                        "--vo=gpu --gpu-api=vulkan" \
+                        "--vo=gpu-next --gpu-api=vulkan" \
+                        "--vo=null --hwdec=vaapi" \
+                        "--vo=null --hwdec=vdpau" \
+                        "--vo=null --hwdec=auto-safe"; do
+              run "shipped $f $opts" env LD_LIBRARY_PATH=$R python3 dev/linux/mpv-probe.py $R/libmpv.so.2 $f --ao=null $opts --msg-level=all=warn,vo=v,vd=v
+              run "Arch's  $f $opts" python3 dev/linux/mpv-probe.py /usr/lib/libmpv.so.2 $f --ao=null $opts --msg-level=all=warn,vo=v,vd=v
+            done
+          done
+          echo; echo "=================== summary (0 = played, 3 = mpv error, 124 = HUNG)"
+          cat versions.txt results.txt
