@@ -351,6 +351,15 @@ jobs:
           path: ${{ runner.temp }}/Airclone-x86_64.AppImage
           retention-days: 3
 
+      # The tar.gz is this bundle as it stands, so the distro legs audit it too.
+      - name: Keep the tar.gz bundle for the distro check
+        run: tar -C build/linux/x64/release -czf "$RUNNER_TEMP/airclone-linux-x64.tar.gz" bundle
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-tarball
+          path: ${{ runner.temp }}/airclone-linux-x64.tar.gz
+          retention-days: 3
+
   # Does the AppImage start on the distros people actually run it on (#38)?
   #
   # WHY THIS EXISTS. Every other check runs on the Ubuntu runner that built the
@@ -443,6 +452,27 @@ jobs:
 
       - name: No system plugin loads against an older bundled library
         run: python3 src/dev/linux/check-shadowing.py squashfs-root/usr/lib --strict
+
+      # Every library the AppImage needs is bundled or on a desktop install,
+      # under the name this distro uses. Hardcoded Ubuntu paths are reported.
+      - name: Nothing the AppImage needs is missing here
+        run: python3 src/dev/linux/check-appimage-deps.py squashfs-root --strict
+
+      # The tar.gz carries no system libraries: the README lists what to
+      # install (libmpv, libsecret, ALSA). Install exactly that, by this
+      # distro's names, and nothing it needs may be missing.
+      - uses: actions/download-artifact@v4
+        with:
+          name: linux-tarball
+      - name: The tar.gz has everything it needs once the README's packages are in
+        run: |
+          case "${{ matrix.distro }}" in
+            arch) pacman -S --noconfirm --needed mpv libsecret alsa-lib ;;
+            fedora) dnf -y install mpv-libs libsecret alsa-lib ;;
+            debian|ubuntu) DEBIAN_FRONTEND=noninteractive apt-get install -y libmpv2 libsecret-1-0 libasound2t64 ;;
+          esac
+          mkdir tarball && tar -C tarball -xzf airclone-linux-x64.tar.gz
+          python3 src/dev/linux/check-appimage-deps.py tarball/bundle --strict
 
   # Does mounting actually work on Linux, through the call Airclone makes?
   #
