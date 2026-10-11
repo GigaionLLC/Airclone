@@ -178,6 +178,68 @@ done
   --icon-filename com.gigaionllc.airclone \
   "${EXTRA[@]}"
 
+say "Moving libwayland out of the search path"
+# linuxdeploy bundles libwayland-client, -egl and -cursor (GTK, libmpv and libva
+# all link them), and that broke the AppImage on Arch (#38). The system's Mesa
+# EGL driver, libEGL_mesa, links libwayland-client too, and resolves it through
+# OUR copy, because usr/lib is searched first. Our copy is the build host's
+# (Ubuntu 24.04, Wayland 1.22). Arch's Mesa 26.2 is built against Wayland 1.26
+# and needs wl_display_dispatch_queue_timeout, wl_display_create_queue_with_name
+# and wl_fixes_interface, which 1.22 does not have. So the driver failed to load,
+# EGL had no vendor, and libepoxy aborted with "No provider of
+# eglGetPlatformDisplayEXT found". Any distro with a newer Mesa goes the same way.
+#
+# libwayland is the graphics driver's library as much as ours: whatever version
+# the system's Mesa was built against is the one that must be loaded. The ABI
+# only grows, so a newer system copy serves our GTK and libmpv as well.
+#
+# Ubuntu loses nothing: the binary needs glibc 2.38, so the oldest system that
+# can run this AppImage is Ubuntu 24.04, which ships the same 1.22 we bundled.
+#
+# Still bundled, for compatibility, but AppRun chooses per library at run time:
+# the NEWER of the system's copy and ours. The ABI only grows, so the newer one
+# serves both our GTK/libmpv and the system's Mesa. On Arch that is the system's
+# (the fix); on Ubuntu 24.04 they are equal and the system's is used, as before;
+# on a machine whose copy is older, or that has none (an X11-only or minimal
+# install), it is ours. Each directory records its library's full version in a
+# `version` file, because linuxdeploy copies a library under its soname
+# (libwayland-client.so.0) and the version would otherwise be lost.
+#
+# ONE DIRECTORY PER LIBRARY, named by its soname, and
+# that is load-bearing: on Debian and Ubuntu, -client, -egl and -cursor are
+# separate packages, so a machine can have the client and lack the cursor
+# library. A shared directory would then put our old client ahead of the
+# system's again, which is the Arch failure all over.
+WAYLAND_FALLBACK="$APPDIR/usr/lib/fallback-wayland"
+mkdir -p "$WAYLAND_FALLBACK"
+for lib in "$APPDIR"/usr/lib/libwayland-*.so*; do
+  [ -e "$lib" ] || continue
+  name="$(basename "$lib")"
+  mkdir -p "$WAYLAND_FALLBACK/$name"
+  mv "$lib" "$WAYLAND_FALLBACK/$name/"
+  # libwayland-client.so.0 -> /usr/lib/.../libwayland-client.so.0.22.0 -> 22.0
+  host="$(ldconfig -p | awk -v n="$name" '$1 == n { print $NF; exit }')"
+  real="$(basename "$(readlink -f "$host")")"
+  ver="${real#"$name".}"
+  case "$ver" in
+    [0-9]*.[0-9]*) ;;
+    *) echo "cannot tell the version of $name from '$real'" >&2; exit 1 ;;
+  esac
+  echo "$ver" > "$WAYLAND_FALLBACK/$name/version"
+  echo "  $name ($ver) -> usr/lib/fallback-wayland/$name/"
+done
+if [ ! -e "$WAYLAND_FALLBACK/libwayland-client.so.0/libwayland-client.so.0" ]; then
+  # linuxdeploy always bundles it today. If it ever stops, stage the host's so
+  # a machine without one can still start.
+  wl="$(ldconfig -p | awk '$1 == "libwayland-client.so.0" { print $NF; exit }')"
+  [ -n "$wl" ] || { echo "libwayland-client.so.0 is not on this build host." >&2; exit 1; }
+  mkdir -p "$WAYLAND_FALLBACK/libwayland-client.so.0"
+  cp -L "$wl" "$WAYLAND_FALLBACK/libwayland-client.so.0/libwayland-client.so.0"
+  real="$(basename "$(readlink -f "$wl")")"
+  echo "${real#libwayland-client.so.0.}" > "$WAYLAND_FALLBACK/libwayland-client.so.0/version"
+  echo "  staged $real from the build host"
+fi
+
 say "Staging a last-resort ALSA"
 # libasound is the one library that must NOT be bundled the ordinary way, and
 # must still be available if the machine has none.
@@ -270,6 +332,37 @@ if [ -n "$LIBS" ]; then
     export LD_LIBRARY_PATH="$HERE/usr/lib/fallback${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
   fi
 
+  # libwayland: per library, the NEWER of the system's and ours. Loading our
+  # older copy ahead of a newer system's is what broke the AppImage on Arch
+  # (#38): the system's Mesa needs what its own version has. Ours is used when
+  # the system's is missing or older. One directory per library, so a missing
+  # -cursor never brings our -client along. See build-appimage.sh, "Moving
+  # libwayland out of the search path".
+  for dir in "$HERE"/usr/lib/fallback-wayland/*/; do
+    [ -d "$dir" ] || continue
+    so="$(basename "$dir")"
+    ours="$(cat "$dir/version" 2>/dev/null)"
+    sys="$(printf '%s\n' "$LIBS" | awk -v n="$so" '$1 == n { print $NF; exit }')"
+    use_ours=0
+    if [ -z "$sys" ]; then
+      use_ours=1
+    elif [ -n "$ours" ]; then
+      sysver="$(basename "$(readlink -f "$sys")")"
+      sysver="${sysver#"$so".}"
+      # Ours only when strictly newer: equal versions keep the system's. An
+      # unreadable system version also keeps the system's, the safe guess:
+      # shadowing a working library is worse than lacking a newer one.
+      case "$sysver" in [0-9]*.[0-9]*) ;; *) sysver="" ;; esac
+      newest="$(printf '%s\n%s\n' "$sysver" "$ours" | sort -V 2>/dev/null | tail -n 1)"
+      if [ -n "$sysver" ] && [ "$newest" = "$ours" ] && [ "$ours" != "$sysver" ]; then
+        use_ours=1
+      fi
+    fi
+    if [ "$use_ours" = 1 ]; then
+      export LD_LIBRARY_PATH="${dir%/}${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+    fi
+  done
+
   # Use the bundled libGLESv2 ONLY when the system has none AND has what it
   # needs to work: libGLdispatch, the glvnd core it links against, and an EGL
   # vendor driver for it to forward to. Without a vendor it would load and then
@@ -315,6 +408,19 @@ if [ -n "$stray" ]; then
   exit 1
 fi
 echo "  libGLESv2.so.2 staged as a fallback only, and nowhere else"
+
+# The same rule for libwayland (#38): fallback-wayland, and nowhere else.
+if [ ! -s "$APPDIR/usr/lib/fallback-wayland/libwayland-client.so.0/libwayland-client.so.0" ]; then
+  echo "libwayland-client.so.0 is missing from usr/lib/fallback-wayland." >&2
+  exit 1
+fi
+stray="$(find "$APPDIR" -name 'libwayland-*.so*' -not -path '*/fallback-wayland/*' -print)"
+if [ -n "$stray" ]; then
+  echo "libwayland landed outside the fallback, where it would shadow the host's:" >&2
+  echo "$stray" >&2
+  exit 1
+fi
+echo "  libwayland staged as a fallback only, and nowhere else"
 
 say "Checking the rclone engine is where the app will look for it"
 # Deliberately NOT a find-anywhere check like the loop above. RcloneEngine

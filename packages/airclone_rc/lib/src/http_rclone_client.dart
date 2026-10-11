@@ -51,11 +51,24 @@ const Set<String> _capabilityProbeMethods = {
 /// it cannot swallow the same wording when it describes something the USER
 /// asked for and did not get. Kept a pure top-level function so it is
 /// unit-testable in isolation.
+///
+/// A request the CLIENT cancelled is filtered out the same way (#39). Playing a
+/// video streams it with range requests, and every seek, and closing the
+/// player, cancels the one in flight. rclone logs each at ERROR:
+///
+///     ERROR : Films/a.mpg: Didn't finish writing GET request (wrote
+///     18284544/3404988416 bytes): context canceled
+///
+/// A 3 GB file seeked a few times filled a field report with these, and none
+/// was a failure. Matched on the error itself, `context canceled`, which Go
+/// reports only for a cancellation; a timeout is `context deadline exceeded`
+/// and a broken read is an I/O error, and both are still kept.
 bool isEngineFailureLine(String line) {
   if (!line.contains('ERROR') && !line.contains('CRITICAL')) return false;
   for (final probe in _capabilityProbeMethods) {
     if (line.contains('rc: "$probe"')) return false;
   }
+  if (line.trimRight().endsWith('context canceled')) return false;
   return true;
 }
 

@@ -330,6 +330,106 @@ jobs:
             exit 1
           fi
           echo "libGLESv2 is in fallback-gles only"
+          # #38: libwayland likewise, one directory per library, each with the
+          # version AppRun compares against the system's.
+          test -s squashfs-root/usr/lib/fallback-wayland/libwayland-client.so.0/libwayland-client.so.0
+          test -s squashfs-root/usr/lib/fallback-wayland/libwayland-client.so.0/version
+          stray="$(find squashfs-root -name 'libwayland-*.so*' -not -path '*/fallback-wayland/*')"
+          if [ -n "$stray" ]; then
+            echo "::error::libwayland outside the fallback would shadow the host's: $stray"
+            exit 1
+          fi
+          echo "libwayland is in fallback-wayland only: $(ls squashfs-root/usr/lib/fallback-wayland | tr '\n' ' ')"
+
+      - name: Keep the AppImage for the distro check
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-appimage
+          path: ${{ runner.temp }}/Airclone-x86_64.AppImage
+          retention-days: 3
+
+  # Does the AppImage start on the distros people actually run it on (#38)?
+  #
+  # WHY THIS EXISTS. Every other check runs on the Ubuntu runner that built the
+  # AppImage, where every bundled library matches the system's, so a bundled
+  # library that is too OLD for someone else's graphics driver cannot show up.
+  # That is how v0.24.1 shipped an AppImage that aborts at startup on Arch: our
+  # Ubuntu libwayland-client was loaded ahead of the system's, and Arch's Mesa
+  # 26.2 needs functions only its own newer copy has.
+  #
+  # Each leg runs the real AppImage in a distro's own container, under a virtual
+  # display with that distro's Mesa. EGL's driver loads at startup on X11 too,
+  # and it links libwayland-client, so this catches the mismatch without a
+  # Wayland compositor. The Ubuntu leg is the oldest system the AppImage can run
+  # on (it needs glibc 2.38), so it pins that the fix costs Ubuntu nothing.
+  appimage-distros:
+    needs: compile
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { distro: arch, image: 'archlinux:latest' }
+          - { distro: fedora, image: 'fedora:latest' }
+          - { distro: debian, image: 'debian:trixie' }
+          - { distro: ubuntu, image: 'ubuntu:24.04' }
+    container: ${{ matrix.image }}
+    steps:
+      - name: Install a desktop's graphics stack and a virtual display
+        run: |
+          case "${{ matrix.distro }}" in
+            arch)
+              pacman -Syu --noconfirm --needed xorg-server-xvfb xorg-xauth mesa libglvnd gtk3 file curl ;;
+            fedora)
+              dnf -y install xorg-x11-server-Xvfb xorg-x11-xauth mesa-dri-drivers mesa-libEGL mesa-libGL gtk3 file findutils procps-ng ;;
+            debian|ubuntu)
+              apt-get update
+              DEBIAN_FRONTEND=noninteractive apt-get install -y xvfb xauth libgtk-3-0t64 libegl1 libegl-mesa0 libgl1-mesa-dri libgles2 file curl ;;
+          esac
+          echo "Mesa EGL: $(ls /usr/lib*/libEGL_mesa.so.0 /usr/lib/*/libEGL_mesa.so.0 2>/dev/null | head -1)"
+          echo "system libwayland-client: $(readlink -f "$(/sbin/ldconfig -p | awk '$1 == "libwayland-client.so.0" { print $NF; exit }')")"
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: linux-appimage
+
+      - name: The AppImage starts
+        run: |
+          set -u
+          chmod +x Airclone-x86_64.AppImage
+          ./Airclone-x86_64.AppImage --appimage-extract >/dev/null
+          # The app is killed after 20 s, so timeout's 124 is the success
+          # outcome; anything else is the app dying on its own. errexit off, or
+          # the expected 124 ends the step before it can be read.
+          set +e
+          xvfb-run -a timeout 20 ./squashfs-root/AppRun > run.log 2>&1
+          code=$?
+          set -e
+          cat run.log
+          if [ "$code" -ne 124 ]; then
+            echo "::error::the AppImage exited with $code on ${{ matrix.distro }} before 20 s"
+            exit 1
+          fi
+          if grep -q 'No provider of eglGetPlatformDisplayEXT' run.log; then
+            echo "::error::EGL had no vendor on ${{ matrix.distro }} (#38)"
+            exit 1
+          fi
+          echo "the AppImage ran 20 s on ${{ matrix.distro }}"
+
+      # TEMPORARY, for the #38 PR only: the released v0.24.1 AppImage must FAIL
+      # here on Arch, or this job cannot see the bug it exists for.
+      - name: Control - v0.24.1 on this distro
+        if: matrix.distro == 'arch'
+        run: |
+          curl -fsSL -o old.AppImage https://github.com/GigaionLLC/Airclone/releases/download/v0.24.1/Airclone-x86_64.AppImage
+          chmod +x old.AppImage
+          mkdir old && cd old && ../old.AppImage --appimage-extract >/dev/null
+          set +e
+          xvfb-run -a timeout 20 ./squashfs-root/AppRun > run.log 2>&1
+          code=$?
+          set -e
+          tail -5 run.log
+          echo "v0.24.1 exit code: $code (124 = still running after 20 s)"
 
   # Does mounting actually work on Linux, through the call Airclone makes?
   #
