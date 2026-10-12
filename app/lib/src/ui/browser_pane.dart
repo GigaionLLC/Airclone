@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../rclone/models/job.dart';
 import 'package:airclone_rc/airclone_rc.dart';
 import '../rclone/models/remote.dart';
+import '../state/open_external.dart' show ExternalOpenMode;
 import '../state/advanced_mode.dart';
 import '../state/archive_command.dart';
 import '../state/archive_service.dart';
@@ -801,6 +802,17 @@ class BrowserPane extends ConsumerWidget {
         if (file.isDir) await ctrl.navigateTo(loc.path);
       case FileMenuAction.preview:
         if (!file.isDir && context.mounted) await _preview(context, state, loc);
+      case FileMenuAction.share:
+        if (!file.isDir && context.mounted) {
+          await openFileInAnotherApp(
+            context,
+            ref,
+            state.remote!,
+            loc.parentPath,
+            file,
+            mode: ExternalOpenMode.share,
+          );
+        }
       case FileMenuAction.openExternal:
         if (!file.isDir && context.mounted) {
           await openFileInAnotherApp(

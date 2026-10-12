@@ -691,7 +691,7 @@ class _UnsupportedBody extends StatelessWidget {
           : FilledButton.icon(
               onPressed: onOpenExternally,
               icon: const Icon(Icons.open_in_new, size: 18),
-              label: const Text('Open in another app'),
+              label: Text(openExternallyLabel),
             ),
     );
   }

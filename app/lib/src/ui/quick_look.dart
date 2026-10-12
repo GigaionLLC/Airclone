@@ -446,7 +446,7 @@ class _QuickLookState extends ConsumerState<_QuickLook> {
   _PreviewAction _bind(PreviewAction a) => switch (a) {
     PreviewAction.openExternally => (
       icon: Icons.open_in_new,
-      label: 'Open in another app',
+      label: openExternallyLabel,
       danger: false,
       run: () => _openExternally(ExternalOpenMode.view),
     ),
@@ -700,7 +700,7 @@ class _QuickLookState extends ConsumerState<_QuickLook> {
                   if (canOpenExternally)
                     IconButton(
                       icon: const Icon(Icons.open_in_new, color: Colors.white),
-                      tooltip: 'Open in another app',
+                      tooltip: openExternallyLabel,
                       onPressed: () => _openExternally(ExternalOpenMode.view),
                     ),
                   // Desktop only, images only: pop the current image into its

@@ -8,9 +8,11 @@
 ///  * Android — a `content://` URI from our `FileProvider` (authority
 ///    `<applicationId>.fileprovider`) attached to an ACTION_VIEW / ACTION_SEND
 ///    chooser with a one-shot read grant. See MainActivity.kt.
-///  * iOS — sharing only, through the system share sheet (`share_plus`), which
-///    offers Save to Files, AirDrop and other apps. iOS cannot open a file in
-///    another app's viewer the way Android's ACTION_VIEW does.
+///  * iOS — viewing opens QuickLook (QLPreviewController, AppDelegate.swift),
+///    the previewer Files and Mail use: Word, Excel, PowerPoint, Pages,
+///    Numbers, Keynote, RTF, PDF and more, with its own share button (#49).
+///    Sharing goes through the system share sheet (`share_plus`), which offers
+///    Save to Files, AirDrop and other apps.
 ///  * Desktop — a `file:` URL through `url_launcher`, i.e. the shell's default
 ///    handler.
 ///
@@ -34,15 +36,22 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:airclone_rc/airclone_rc.dart';
 import 'host_platform.dart';
 
+/// The label for [ExternalOpenMode.view]. On iOS it opens QuickLook, which is
+/// a previewer rather than another app; Android and desktop have no built-in
+/// previewer, so there it really is another app.
+String get openExternallyLabel =>
+    HostPlatform.isIOS ? 'Open in Quick Look' : 'Open in another app';
+
 /// Whether the staged file is opened for viewing or offered to a share target.
 /// Desktop has no share concept and always opens.
 enum ExternalOpenMode { view, share }
 
-/// Whether this platform can hand a file to another app at all. iOS has no
-/// implementation yet (it also has no engine — see the dual-engine plan), so
-/// callers hide the action there rather than failing at the tap.
+/// Whether this platform can hand a file to another app (or, on iOS, to
+/// QuickLook) at all. Callers hide the action elsewhere rather than failing at
+/// the tap.
 bool get canOpenExternally =>
     HostPlatform.isAndroid ||
+    HostPlatform.isIOS ||
     HostPlatform.isWindows ||
     HostPlatform.isMacOS ||
     HostPlatform.isLinux;
@@ -165,6 +174,22 @@ Future<void> handOffToOs(
         sharePositionOrigin: origin ?? _screenCentre(),
       ),
     );
+    return;
+  }
+  if (HostPlatform.isIOS) {
+    final shown = await const MethodChannel(
+      'airclone/native',
+    ).invokeMethod<bool>('quickLook', {'path': path});
+    // A type QuickLook cannot preview: the share sheet lists the apps that
+    // can open it ("Open in…").
+    if (shown != true) {
+      await handOffToOs(
+        path,
+        mime: mime,
+        mode: ExternalOpenMode.share,
+        origin: origin,
+      );
+    }
     return;
   }
   if (HostPlatform.isAndroid) {

@@ -2,6 +2,7 @@ import '../native/mpv_access.dart';
 import '../state/diagnostics.dart';
 import '../state/host_platform.dart';
 import '../state/media_formats.dart';
+import '../state/open_external.dart';
 import 'package:airclone_rc/airclone_rc.dart';
 import 'dart:async';
 
@@ -912,7 +913,7 @@ class _MediaPreviewBodyState extends ConsumerState<MediaPreviewBody> {
                   FilledButton.icon(
                     onPressed: widget.onOpenExternally,
                     icon: const Icon(Icons.open_in_new, size: 18),
-                    label: const Text('Open in another app'),
+                    label: Text(openExternallyLabel),
                   ),
               ],
             ),

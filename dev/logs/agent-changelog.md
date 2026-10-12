@@ -13,6 +13,17 @@ happened": nothing was logged between 2026-07-02 and 2026-07-15, or between 2026
      it is: it used to say ABOVE, which pushed it further down the file with every entry until
      it sat hundreds of lines under the newest one and pointed writers at the wrong place. -->
 
+## [2026-10-12] - v0.27.0: iOS opens documents in Quick Look; Share in the file menu (#49)
+
+**Agent:** Claude Code (Claude Opus 5.5)
+**Files Modified:** `app/ios/Runner/AppDelegate.swift` (airclone/native channel, `quickLook`), `app/lib/src/state/open_external.dart`,
+`app/lib/src/ui/{context_menu,browser_pane,preview_dialog,media_preview,quick_look}.dart`, docs/guide, `dev/releases/v0.27.0.md`, `app/pubspec.yaml` (0.27.0+159).
+**Database/API Changes:** None.
+**Summary:** Reddit (iOS): docx/xlsx don't open; wants a share option. `canOpenExternally` now includes iOS; `handOffToOs`
+view on iOS calls a new native `quickLook` method (QLPreviewController, scene-aware top VC) and falls back to the share
+sheet when `canPreview` is false. Label is `Open in Quick Look` on iOS (`openExternallyLabel`). New `FileMenuAction.share`
+(phones, not Android TV). iOS local files no longer get the desktop-only `Open with default app`. Android/desktop unchanged.
+
 ## [2026-10-11] - v0.26.0: iOS streams previews; full Clear cache; mobile export, iOS download, Home button (#44-#47)
 
 **Agent:** Claude Code (Claude Opus 5.5)
