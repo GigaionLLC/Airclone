@@ -59,7 +59,7 @@ dragged narrow gets the phone layout. The ⚠️ marks for tablets below are abo
 | Tree view | | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ |
 | Drag and drop (between panes and to or from the OS) | | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ |
 | Keyboard shortcuts and the Ctrl+K command palette | | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ⚠️ tablets | ❌ | ⚠️ iPad |
-| Open a file in another app / share sheet | | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ⏳ |
+| Open a file in another app / share sheet | | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ Quick Look |
 | Choose the audio track and subtitles; subtitle files beside a video | | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Image subtitles (Blu-ray PGS, DVD VobSub) | | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ |
 | Show in File Explorer / Finder / file manager | | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | ❌ | ❌ | ❌ |

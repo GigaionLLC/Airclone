@@ -335,7 +335,7 @@ a drop-down from the toolbar on a desktop, and the same set of operations in the
 | **Checksums** | The same dialog the file list offers. |
 | **Copy path** | The full `remote:path`, for the console, a script or a message. |
 | **Delete** | Always last in the menu and set apart from the rest, because it is the one that cannot be undone. |
-| **Open in another app** | Hands the file to whatever your system uses for it. Not shown on iOS, which has no route for it. |
+| **Open in another app** | Hands the file to whatever your system uses for it. On iPhone and iPad it is **Open in Quick Look**: the previewer Files and Mail use, which shows Word, Excel, PowerPoint, Pages, Numbers, Keynote and more, with its own share button. A type Quick Look cannot show opens the share sheet instead. Android and desktop have no built-in previewer, so there the file opens in another app. |
 | **Share…** | Phones only, where the system has a share sheet. |
 
 Copying or moving to another folder is still done from the file list: those need a destination, and
@@ -424,7 +424,8 @@ and on the platform, which is why the list is not identical everywhere:
 | `Select` | touch only — this is the way into multi-select |
 | `Open` | folders |
 | `Preview` | files |
-| `Open in another app…` | where handing the file to another app is possible |
+| `Open in another app…` (`Open in Quick Look…` on iPhone and iPad) | where handing the file to another app is possible |
+| `Share…` | files, on phones |
 | `Open with default app` | local files on desktop |
 | `Show in File Explorer` | local files, on builds allowed to start another program — not the Mac App Store build, not iOS, not Android |
 | `Download` | files on a cloud remote, everywhere except Android |

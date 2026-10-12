@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../state/android_native.dart';
 import '../state/host_platform.dart';
 import '../state/open_external.dart';
 import 'theme/tokens.dart';
@@ -12,6 +13,7 @@ enum FileMenuAction {
   open,
   preview,
   openExternal,
+  share,
   openWith,
   revealInFolder,
   copyPath,
@@ -116,18 +118,25 @@ Future<FileMenuAction?> showFileContextMenu(
       // when the in-app preview isn't the right tool. Cloud objects are staged
       // to the app cache first — see open_external.dart. Skipped for a LOCAL
       // file on desktop, which already gets the sharper "Open with default app"
-      // below; on Android that row is absent, so this is the phone's only route.
-      if (canOpenExternally && !(isLocal && !HostPlatform.isAndroid))
+      // below; on a phone that row is absent, so this is its only route. On iOS
+      // it opens QuickLook (#49).
+      if (canOpenExternally && !(isLocal && HostPlatform.isDesktop))
         _item(
           FileMenuAction.openExternal,
           Icons.open_in_new,
-          'Open in another app…',
+          '$openExternallyLabel…',
         ),
+      // Phones only: a television has nothing to share to, and a desktop has no
+      // share sheet ([ExternalOpenMode.share] degrades there to a plain open).
+      if (canOpenExternally &&
+          (HostPlatform.isIOS ||
+              (HostPlatform.isAndroid && !androidIsTelevision)))
+        _item(FileMenuAction.share, Icons.ios_share, 'Share…'),
     ],
     // Local files/folders interop with the OS via official, verifiable actions.
-    // Desktop only: Android has no "open a path with the default app" /
+    // Desktop only: phones have no "open a path with the default app" /
     // file-explorer reveal (those spawn OS processes).
-    if (isLocal && !HostPlatform.isAndroid) ...[
+    if (isLocal && HostPlatform.isDesktop) ...[
       if (!isDir)
         _item(
           FileMenuAction.openWith,
