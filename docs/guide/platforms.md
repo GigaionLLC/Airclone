@@ -90,14 +90,15 @@ dragged narrow gets the phone layout. The ⚠️ marks for tablets below are abo
 | Transfer concurrency and engine flags | 🔧 | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Bandwidth limit control | | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ⚠️ tablets | ❌ | ⚠️ iPad |
 | Default downloads folder | | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ |
-| Transfers keep going when you switch to another app | | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
+| Transfers keep going when you switch to another app | | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ⚠️ about 30 s |
 
 - **Copy, Move and Sync do not need Advanced mode.** The transfer dialog, including Sync, filters
   and dry run, is always reachable from the desktop `Tools` menu and the phone's **⋯** sheet.
   Advanced mode adds only the Two-way mode.
 - **Android** keeps a transfer running in the background, with a notification. **iOS** suspends an
-  app shortly after you leave it, so a transfer on an iPhone or iPad only runs while Airclone is on
-  screen.
+  app shortly after you leave it: a transfer gets about 30 seconds to finish, then waits until you
+  come back. Settings → Transfers → `Keep the screen on during transfers` (on by default) stops the
+  phone locking itself while one runs.
 - **Download on iPhone and iPad** always saves into `Downloads` in **On My Device**, which the Files
   app shows under On My iPhone → Airclone. iOS has no folder picker to choose another.
 
@@ -106,15 +107,17 @@ dragged narrow gets the phone layout. The ⚠️ marks for tablets below are abo
 | Feature | Advanced | Windows | Windows (MS Store) | macOS | macOS (App Store) | Linux | Linux (Flatpak) | Android | Android TV | iPhone / iPad |
 | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
 | Back up a folder (the wizard) and saved tasks | | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Scheduled tasks run while Airclone is open | | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ⏳ |
-| Scheduled tasks run with Airclone closed | | ✅ | ✅ | ⏳ | ⏳ | ⏳ | ⏳ | ✅ | ✅ | ❌ |
+| Scheduled tasks run while Airclone is open | | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Scheduled tasks run with Airclone closed | | ✅ | ✅ | ⏳ | ⏳ | ⏳ | ⏳ | ✅ | ✅ | ⚠️ when iOS allows |
 | Camera-roll (photo) backup | | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ⚠️ | ❌ |
 
 - **Saved tasks and Back up a folder do not need Advanced mode.** They are always in Settings →
   Automation. Advanced mode also puts a `Saved tasks` button in the desktop top bar.
 - **On macOS and Linux**, a schedule runs while Airclone is open. A run missed while it was closed
   starts once on the next launch.
-- **On iPhone and iPad** you run saved tasks by hand.
+- **On iPhone and iPad** a schedule runs while Airclone is open, and iOS runs it in the background
+  when it allows: usually while the phone is charging on Wi-Fi, often overnight. A run iOS does not
+  get to starts once on the next launch.
 - **Android TV** shows the photo backup section, but a television has no camera roll to copy.
 
 ## Drives, sharing and remote access

@@ -39,6 +39,9 @@ SchedulingSupport schedulingSupportFor(String operatingSystem) =>
       // emulator: an OS-timed wake with the app process dead ran a due task to
       // completion. The 15-minute floor is Android's, not ours.
       'android' => SchedulingSupport.background,
+      // BGTaskScheduler + the same headless entrypoint (#52). iOS decides when
+      // it runs, so the wording below is iOS's own; see [schedulingSummary].
+      'ios' => SchedulingSupport.background,
       // launchd and systemd-user are planned, not built. Until they are, saying
       // "background" here would be a lie with a data-loss shape: a user would
       // close the app expecting their backup to run.
@@ -75,5 +78,15 @@ String schedulingSummaryFor(SchedulingSupport s) => switch (s) {
         'when you start them by hand.',
 };
 
+/// The iOS sentence. Background support there is real but on iOS's terms: it
+/// picks the moment, so promising "even with Airclone closed" without saying
+/// that would be the overpromise this file exists to prevent.
+const String kIosSchedulingSummary =
+    'Scheduled tasks run while Airclone is open, and iOS runs them in the '
+    'background when it allows, usually while charging on Wi-Fi. A run iOS '
+    'does not get to starts once on next launch.';
+
 /// [schedulingSummaryFor] for the current platform.
-String get schedulingSummary => schedulingSummaryFor(schedulingSupport);
+String get schedulingSummary => HostPlatform.isIOS
+    ? kIosSchedulingSummary
+    : schedulingSummaryFor(schedulingSupport);

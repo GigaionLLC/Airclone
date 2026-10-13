@@ -88,5 +88,15 @@
 	     dev/plans/apple-appstore-plan.md before changing availability. -->
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
+	<!-- Scheduled tasks run in the background when iOS allows (#52); the id is
+	     AppDelegate.dueTaskId. -->
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>processing</string>
+	</array>
+	<key>BGTaskSchedulerPermittedIdentifiers</key>
+	<array>
+		<string>com.gigaionllc.airclone.due</string>
+	</array>
 </dict>
 </plist>

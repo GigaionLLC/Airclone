@@ -156,6 +156,10 @@ class TransferTask {
   /// [id] is always preserved (identity never changes).
   TransferTask copyWith({
     String? name,
+    String? srcFs,
+    String? srcLabel,
+    String? dstFs,
+    String? dstLabel,
     TransferOptions? options,
     Object? schedule = _undef,
     Object? lastRun = _undef,
@@ -165,10 +169,10 @@ class TransferTask {
   }) => TransferTask(
     id: id,
     name: name ?? this.name,
-    srcFs: srcFs,
-    srcLabel: srcLabel,
-    dstFs: dstFs,
-    dstLabel: dstLabel,
+    srcFs: srcFs ?? this.srcFs,
+    srcLabel: srcLabel ?? this.srcLabel,
+    dstFs: dstFs ?? this.dstFs,
+    dstLabel: dstLabel ?? this.dstLabel,
     options: options ?? this.options,
     schedule: identical(schedule, _undef)
         ? this.schedule

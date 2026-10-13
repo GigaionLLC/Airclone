@@ -33,9 +33,10 @@ void main() {
       expect(schedulingSupportFor('android'), SchedulingSupport.background);
     });
 
-    test('iOS still has no scheduling at all', () {
-      // iOS does not permit what this needs, and is explicitly out of scope.
-      expect(schedulingSupportFor('ios'), SchedulingSupport.none);
+    test('iOS schedules in the background on its own terms (#52)', () {
+      // BGTaskScheduler: real background runs, at a moment iOS picks. The
+      // wording that says so is kIosSchedulingSummary.
+      expect(schedulingSupportFor('ios'), SchedulingSupport.background);
     });
 
     test('an unknown platform gets none, not a guess', () {

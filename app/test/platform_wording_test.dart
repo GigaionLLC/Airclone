@@ -34,7 +34,7 @@ void main() {
     });
 
     test('a platform without background scheduling promises nothing', () {
-      for (final os in ['macos', 'linux', 'ios', 'fuchsia']) {
+      for (final os in ['macos', 'linux', 'fuchsia']) {
         final s = backgroundRegistrationBlurb(os);
         expect(s, isNot(contains('Windows')), reason: os);
         expect(s, isNot(contains('Scheduled Task')), reason: os);
@@ -68,9 +68,16 @@ void main() {
       expect(s, contains('next launch'));
     });
 
-    test('Windows and Android both map to background support', () {
+    test('Windows, Android and iOS map to background support', () {
       expect(schedulingSupportFor('windows'), SchedulingSupport.background);
       expect(schedulingSupportFor('android'), SchedulingSupport.background);
+      expect(schedulingSupportFor('ios'), SchedulingSupport.background);
+    });
+
+    test('iOS says that iOS picks the moment (#52)', () {
+      expect(kIosSchedulingSummary, contains('when it allows'));
+      expect(backgroundRegistrationBlurb('ios'), contains('when it allows'));
+      expect(backgroundRegistrationBlurb('ios'), isNot(contains('Windows')));
     });
   });
 }
