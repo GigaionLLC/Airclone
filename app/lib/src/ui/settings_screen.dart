@@ -27,6 +27,7 @@ import '../state/engine_flags.dart';
 import '../state/engine_mode.dart';
 import '../state/external_config_backup.dart';
 import '../state/host_platform.dart';
+import '../state/ios_background.dart';
 import '../state/install_source.dart';
 import '../state/interface_scale.dart';
 import '../state/jobs_controller.dart';
@@ -126,9 +127,10 @@ class SettingsContent extends ConsumerWidget {
           _InterfaceSizeSection(),
         ],
         if (desktop) ...[const SizedBox(height: Space.x4), _BackdropSection()],
-        if (desktop || advanced) ...[
+        if (desktop || advanced || HostPlatform.isIOS) ...[
           const SizedBox(height: Space.x5),
           const _GroupHeader('Transfers'),
+          if (HostPlatform.isIOS) const _IosKeepScreenOnRow(),
           // Desktop only: Android's directory picker returns SAF content://
           // URIs, which can't be a default download folder for the engine.
           if (desktop) _DownloadsSection(),
@@ -2975,6 +2977,42 @@ class _FlatpakMountNotice extends StatelessWidget {
         TextButton(
           onPressed: () => showMountUnavailableInFlatpakDialog(context),
           child: const Text('How to enable'),
+        ),
+      ],
+    );
+  }
+}
+
+/// iOS: keep the screen on while a transfer runs (#52). iOS suspends an app
+/// shortly after the phone locks, so without this a long sync stops there.
+class _IosKeepScreenOnRow extends ConsumerWidget {
+  const _IosKeepScreenOnRow();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final c = AircloneTheme.of(context);
+    return Row(
+      children: [
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Keep the screen on during transfers',
+                style: TextStyle(color: c.text, fontSize: 13),
+              ),
+              Text(
+                'iOS stops apps soon after the phone locks, so a long sync '
+                'needs the screen on. Leaving Airclone gives a transfer about '
+                '30 seconds to finish.',
+                style: TextStyle(color: c.textFaint, fontSize: 11),
+              ),
+            ],
+          ),
+        ),
+        Switch(
+          value: ref.watch(iosKeepScreenOnProvider),
+          onChanged: ref.read(iosKeepScreenOnProvider.notifier).set,
         ),
       ],
     );

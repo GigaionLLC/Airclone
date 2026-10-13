@@ -23,6 +23,7 @@ import '../state/engine_controller.dart';
 import '../state/external_config_backup.dart';
 import '../state/file_ops.dart';
 import '../state/host_platform.dart';
+import '../state/ios_background.dart';
 import '../state/jobs_controller.dart';
 import '../state/local_locations.dart';
 import '../state/mac_bookmarks.dart';
@@ -105,6 +106,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       // Android: keep WorkManager's periodic "run due tasks" wake in step with
       // the saved tasks and the Wi-Fi/charging settings. No-op elsewhere.
       ref.read(androidWorkReconcilerProvider);
+      // iOS: background time for running transfers, screen-on, and the
+      // BGTaskScheduler request for scheduled tasks (#52). No-op elsewhere.
+      ref.read(iosTransferKeepAliveProvider);
+      ref.read(iosBackgroundReconcilerProvider);
       // Android: arm the outside-the-sandbox backup so it tracks config changes.
       // The restore OFFER is driven reactively from build(), not from here.
       ref.read(externalBackupProvider.notifier).ensureLoaded();

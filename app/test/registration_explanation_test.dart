@@ -68,9 +68,9 @@ void main() {
   test(
     'a platform with no background scheduling does not blame a checkbox',
     () {
-      // There is no checkbox to blame on macOS or iOS, so pointing at one
+      // There is no checkbox to blame on macOS or Linux, so pointing at one
       // would send the user looking for a control that is not there.
-      for (final os in ['macos', 'linux', 'ios']) {
+      for (final os in ['macos', 'linux']) {
         final s = explain(os: os, runWhileClosed: true);
         expect(s, contains('no background scheduling'), reason: os);
         expect(s, isNot(contains('Task Scheduler')), reason: os);
@@ -80,11 +80,17 @@ void main() {
   );
 
   test('unsupported wins over not-opted-in', () {
-    // Both are true on iOS; only one of them is useful to say.
+    // Both are true on macOS; only one of them is useful to say.
     expect(
-      explain(os: 'ios', runWhileClosed: false),
+      explain(os: 'macos', runWhileClosed: false),
       contains('no background scheduling'),
     );
+  });
+
+  test('iOS says iOS picks the moment, and names no place to look (#52)', () {
+    final s = explain(os: 'ios', schedule: _daily);
+    expect(s, contains('iOS decides'));
+    expect(s, isNot(contains('Task Scheduler')));
   });
 
   group('Android', () {

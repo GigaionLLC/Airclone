@@ -40,12 +40,21 @@ void main() {
       );
     });
 
+    test('iOS, like Android, has one shared wake for every schedule', () {
+      for (final s in [_daily, _weekly, _interval]) {
+        expect(
+          registrationShapeFor(schedule: s, operatingSystem: 'ios'),
+          RegistrationShape.sharedPoller,
+        );
+      }
+    });
+
     test('a platform without background execution registers nothing', () {
       // Including exact schedules: there is nothing to register INTO. macOS and
       // Linux land here until launchd and systemd-user are actually built, so
       // this is the test that stops a half-built platform from silently
       // promising background runs.
-      for (final os in ['macos', 'linux', 'ios', 'plan9']) {
+      for (final os in ['macos', 'linux', 'plan9']) {
         for (final s in [_daily, _weekly, _interval]) {
           expect(
             registrationShapeFor(schedule: s, operatingSystem: os),

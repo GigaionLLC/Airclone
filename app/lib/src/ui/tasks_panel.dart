@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../rclone/models/job.dart';
+import '../rclone/models/remote.dart';
 import '../state/browser_controller.dart';
 import '../state/cache_crypto.dart';
 import '../state/config_password_vault.dart';
@@ -13,6 +14,7 @@ import '../state/jobs_controller.dart';
 import '../state/scheduler_controller.dart';
 import '../state/poll_cadence.dart';
 import '../state/registration_policy.dart';
+import '../state/remotes_provider.dart';
 import '../state/scheduler_pause.dart';
 import '../state/scheduler_registration.dart';
 import '../state/scheduling_policy.dart';
@@ -238,41 +240,113 @@ class _TasksDialog extends ConsumerWidget {
         );
   }
 
-  Future<String?> _promptName(BuildContext context, String dflt) {
-    final ctrl = TextEditingController(text: dflt);
-    return showDialog<String>(
-      context: context,
-      builder: (dctx) {
-        final c = AircloneTheme.of(dctx);
-        String? result() => ctrl.text.trim().isEmpty ? null : ctrl.text.trim();
-        return AlertDialog(
-          backgroundColor: c.surfaceRaised,
-          title: const Text('Save task as'),
-          content: TextField(
-            controller: ctrl,
-            autofocus: true,
-            decoration: InputDecoration(
-              hintText: 'Task name',
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(Radii.md),
-              ),
-            ),
-            onSubmitted: (_) => Navigator.of(dctx).pop(result()),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(dctx).pop(),
-              child: const Text('Cancel'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.of(dctx).pop(result()),
-              child: const Text('Save'),
-            ),
-          ],
-        );
-      },
-    );
+  Future<String?> _promptName(BuildContext context, String dflt) =>
+      promptTaskName(context, dflt);
+}
+
+/// Edits a saved task in place (#51): the same three steps as a new one
+/// (From and To, options, name), each starting from what the task has now. The
+/// task keeps its id, schedule and run history. Before this the only way to
+/// change a saved task was to delete it and build it again.
+///
+/// A backup or photo backup is only renamed here: its folders and options
+/// belong to its versions, and moving them would orphan every earlier one.
+Future<void> editTask(
+  BuildContext context,
+  WidgetRef ref,
+  TransferTask task,
+) async {
+  if (task.kind != TaskKind.transfer) {
+    final name = await promptTaskName(context, task.name, title: 'Rename task');
+    if (name == null || name == task.name) return;
+    ref.read(tasksProvider.notifier).update(task.copyWith(name: name));
+    return;
   }
+  final remotes = ref.read(remotesProvider).valueOrNull ?? const [];
+  FolderRef? seed(String fs) {
+    // The remote whose fs is the longest prefix of the stored one; the rest
+    // is the folder within it.
+    Remote? best;
+    for (final r in remotes) {
+      if (fs.startsWith(r.fs) && r.fs.length > (best?.fs.length ?? -1)) {
+        best = r;
+      }
+    }
+    return best == null
+        ? null
+        : (remote: best, path: fs.substring(best.fs.length));
+  }
+
+  final picked = await showFromToPicker(
+    context,
+    src: seed(task.srcFs),
+    dst: seed(task.dstFs),
+  );
+  if (picked == null || !context.mounted) return;
+  final srcLabel = '${picked.src.remote.name}:${picked.src.path}';
+  final dstLabel = '${picked.dst.remote.name}:${picked.dst.path}';
+  final options = await showTransferOptionsDialog(
+    context,
+    fromLabel: srcLabel,
+    toLabel: dstLabel,
+    initial: task.options,
+  );
+  if (options == null || !context.mounted) return;
+  final name = await promptTaskName(context, task.name);
+  if (name == null) return;
+  ref
+      .read(tasksProvider.notifier)
+      .update(
+        task.copyWith(
+          name: name,
+          srcFs: '${picked.src.remote.fs}${picked.src.path}',
+          srcLabel: srcLabel,
+          dstFs: '${picked.dst.remote.fs}${picked.dst.path}',
+          dstLabel: dstLabel,
+          options: options,
+        ),
+      );
+}
+
+/// Asks for a task's name, starting from [dflt].
+Future<String?> promptTaskName(
+  BuildContext context,
+  String dflt, {
+  String title = 'Save task as',
+}) {
+  final ctrl = TextEditingController(text: dflt);
+  return showDialog<String>(
+    context: context,
+    builder: (dctx) {
+      final c = AircloneTheme.of(dctx);
+      String? result() => ctrl.text.trim().isEmpty ? null : ctrl.text.trim();
+      return AlertDialog(
+        backgroundColor: c.surfaceRaised,
+        title: Text(title),
+        content: TextField(
+          controller: ctrl,
+          autofocus: true,
+          decoration: InputDecoration(
+            hintText: 'Task name',
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(Radii.md),
+            ),
+          ),
+          onSubmitted: (_) => Navigator.of(dctx).pop(result()),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dctx).pop(),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dctx).pop(result()),
+            child: const Text('Save'),
+          ),
+        ],
+      );
+    },
+  );
 }
 
 /// The always-visible face of scheduling, for Settings → Automation.
@@ -692,6 +766,12 @@ class _TaskRow extends ConsumerWidget {
               tooltip: 'Clean up old versions…',
             ),
           ],
+          IconButton(
+            onPressed: () => editTask(context, ref, task),
+            icon: const Icon(Icons.edit_outlined, size: 18),
+            color: c.textFaint,
+            tooltip: task.kind == TaskKind.transfer ? 'Edit…' : 'Rename…',
+          ),
           IconButton(
             onPressed: () => showScheduleDialog(context, ref, task),
             icon: Icon(

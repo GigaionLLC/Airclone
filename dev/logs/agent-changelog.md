@@ -13,6 +13,22 @@ happened": nothing was logged between 2026-07-02 and 2026-07-15, or between 2026
      it is: it used to say ABOVE, which pushed it further down the file with every entry until
      it sat hundreds of lines under the newest one and pointed writers at the wrong place. -->
 
+## [2026-10-12] - v0.28.0: edit saved tasks (#51); iOS background time, screen-on, BGTaskScheduler (#52)
+
+**Agent:** Claude Code (Claude Opus 5.5)
+**Files Modified:** `app/lib/src/ui/tasks_panel.dart` (`editTask`, `promptTaskName`), `app/lib/src/state/tasks_controller.dart`
+(`copyWith` endpoints), new `app/lib/src/state/ios_background.dart`, `scheduling_policy.dart` + `registration_policy.dart`
+(iOS = background/sharedPoller, iOS wording), `home_screen.dart`, `settings_screen.dart`, `app/ios/Runner/AppDelegate.swift`,
+`Info.plist` (UIBackgroundModes processing, BGTaskSchedulerPermittedIdentifiers), docs/guide/platforms.md, `dev/releases/v0.28.0.md`.
+**Database/API Changes:** None.
+**Summary:** Reddit (iOS): saved syncs can't be edited; no background sync. (#51) Edit reuses From/To picker (seeded by
+longest remote-fs prefix), options dialog (`initial:`) and name prompt; keeps id/schedule/history; backups rename only.
+(#52) While jobs are queued/running iOS holds `beginBackgroundTask` and optionally `isIdleTimerDisabled` (setting, default
+on). Scheduling enabled on iOS: `BGProcessingTaskRequest` (`com.gigaionllc.airclone.due`, network required, earliest =
+poll cadence) re-armed per run; a run starts a headless FlutterEngine on `androidWorkEntrypoint` over the `airclone/work_bg`
+contract (start/log/done) like DueTasksWorker.kt, skipped when the app is active. librclone Finalize is only `runtime.GC()`,
+so a background engine beside a suspended app is safe. Not testable without a device; CI compiles it.
+
 ## [2026-10-12] - v0.27.0: iOS opens documents in Quick Look; Share in the file menu (#49)
 
 **Agent:** Claude Code (Claude Opus 5.5)

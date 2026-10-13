@@ -47,7 +47,9 @@ RegistrationShape registrationShapeFor({
   // exact/shared split does not exist there — everything is served by the one
   // wake. Saying otherwise would promise a 09:00 fire that WorkManager cannot
   // make, on a platform whose floor is fifteen minutes anyway.
-  if (operatingSystem == 'android') return RegistrationShape.sharedPoller;
+  if (operatingSystem == 'android' || operatingSystem == 'ios') {
+    return RegistrationShape.sharedPoller;
+  }
   return switch (schedule.kind) {
     // Names a wall-clock time: the OS can hit it exactly.
     ScheduleKind.daily || ScheduleKind.weekly => RegistrationShape.exactTrigger,
@@ -139,6 +141,10 @@ String backgroundRegistrationBlurb(String operatingSystem) =>
       'android' =>
         'Lets Android wake Airclone in the background to run this task; a '
             'missed run starts at the next wake.',
+      'ios' =>
+        'Lets iOS run this task in the background when it allows, usually '
+            'while charging on Wi-Fi; a run it does not get to starts on next '
+            'launch.',
       _ =>
         'This device cannot run tasks with Airclone closed, so a missed run '
             'starts once on next launch.',
@@ -171,6 +177,11 @@ String registrationExplanation({
   // Only Windows exposes its registrations as named, inspectable entries. On
   // Android the wake is WorkManager's and there is nothing for a user to open,
   // so naming a place to look would send them hunting for one that is not there.
+  if (operatingSystem == 'ios') {
+    return 'iOS decides when background work runs, usually while the phone is '
+        'charging on Wi-Fi, often overnight. A run iOS does not get to starts '
+        'the next time you open Airclone.';
+  }
   if (operatingSystem == 'android') {
     return 'Android wakes Airclone about every $pollMinutes minutes and runs '
         'this when it is due, so it can start late — and later still if the '
