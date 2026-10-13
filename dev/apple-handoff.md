@@ -15,8 +15,8 @@ by design** — real IDs, key paths and account state live in the encrypted vaul
 > has **build 160 (0.28.0)** WAITING_FOR_REVIEW (158 also waiting); testers try 0.28.0's iOS background features first.
 > Builds 159 (0.27.0) and **160 (0.28.0)** uploaded on iOS + macOS, VALID. Next iOS: when 158 or 160 is beta-approved,
 > release 0.26.0 (`asc-release.yml -f platform=IOS -f mode=release -f confirm_version=0.26.0`), then runbook step 0 for
-> **0.28.0 / build 160** (0.27.0 is never submitted). macOS: 0.24.0 IN_REVIEW; when approved release it, then runbook for
-> 0.28.0 / build 160. Never poll with `asc-version.yml mode=report`: it exits 1 when nothing is editable and emails a failure.
+> **0.28.0 / build 160** (0.27.0 is never submitted). macOS: 0.24.0 **RELEASED** 2026-10-13; **0.28.0 / build 160
+> submitted 2026-10-13 20:39Z, WAITING_FOR_REVIEW** (MANUAL release); when approved, `asc-release.yml -f platform=MAC_OS`. Never poll with `asc-version.yml mode=report`: it exits 1 when nothing is editable and emails a failure.
 
 Read back from App Store Connect by the workflows that changed it, so these rows are observed.
 
