@@ -11,11 +11,12 @@ by design** — real IDs, key paths and account state live in the encrypted vaul
 
 ## State: last written 2026-10-11 — iOS 0.24.0 approved (held for TestFlight), macOS 0.24.0 in review, 0.26.0 builds uploaded (queued instead of 0.25.1)
 
-> **RESUME HERE (2026-10-12).** iOS: 0.24.0 live; **0.26.0 APPROVED, held (MANUAL)** until TestFlight approves build 158
-> (in Public beta, WAITING_FOR_REVIEW), then `asc-release.yml -f platform=IOS -f mode=release -f confirm_version=0.26.0`.
-> After that: runbook step 0 for **0.27.0 / build 159** (uploaded 2026-10-12, VALID) on iOS, and add 159 to TestFlight first.
-> macOS: 0.24.0 IN_REVIEW; when approved release it, then runbook for 0.27.0 / build 159 (skip 0.26.0 on Mac).
-> Never poll with `asc-version.yml mode=report`: it exits 1 when nothing is editable and emails a failure each run.
+> **RESUME HERE (2026-10-12, later).** iOS: 0.24.0 live; **0.26.0 APPROVED, held (MANUAL)**. TestFlight Public beta now
+> has **build 160 (0.28.0)** WAITING_FOR_REVIEW (158 also waiting); testers try 0.28.0's iOS background features first.
+> Builds 159 (0.27.0) and **160 (0.28.0)** uploaded on iOS + macOS, VALID. Next iOS: when 158 or 160 is beta-approved,
+> release 0.26.0 (`asc-release.yml -f platform=IOS -f mode=release -f confirm_version=0.26.0`), then runbook step 0 for
+> **0.28.0 / build 160** (0.27.0 is never submitted). macOS: 0.24.0 IN_REVIEW; when approved release it, then runbook for
+> 0.28.0 / build 160. Never poll with `asc-version.yml mode=report`: it exits 1 when nothing is editable and emails a failure.
 
 Read back from App Store Connect by the workflows that changed it, so these rows are observed.
 
