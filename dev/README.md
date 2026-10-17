@@ -32,6 +32,7 @@ actually changed in a shipped version — and you need the exact file rather tha
 | **Check the backlog / pick up parked work** | [`backlog/backlog-index.md`](backlog/backlog-index.md) → [`backlog/feature-backlog.md`](backlog/feature-backlog.md) | Index is the queue; feature-backlog is the prioritised MoSCoW roadmap with `[D]`/`[M]` platform tags. |
 | **Find reliability / hardening work** | [`backlog/hardening-audit-2026-07-15.md`](backlog/hardening-audit-2026-07-15.md) | 18 evidence-linked candidates. Reproduce before implementing — its line numbers have moved. |
 | **Start multi-step work** | [`plans/template-plan.md`](plans/template-plan.md), write into [`plans/`](plans/) | Required by rule 6 of [`AGENT.md`](../AGENT.md). |
+| **Track Google retiring rclone's shared Drive/Photos sign-in** | [`google-shared-client-id.md`](google-shared-client-id.md) | Upstream forum thread to watch, status timeline, and what to change in Airclone when the 90-day notice lands. |
 | **Reply to a bug report** | [`bug-reports.md`](bug-reports.md) | Plain and short: it's fixed, what went wrong in their terms, what to download. The mechanism belongs in the commit, not the reply. Close the issue with the reply. |
 | **Close out a task** | [`logs/agent-changelog.md`](logs/agent-changelog.md) + [`archive-plans/README.md`](archive-plans/README.md) | The Wrap-Up Protocol in [`AGENT.md`](../AGENT.md): log the entry, sync `wiki/`, move the finished plan. |
 
