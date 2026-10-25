@@ -140,8 +140,11 @@ find your task's own name in that list.
 
 Those entries are set up to be trustworthy when nobody is watching: a run missed
 because the PC was off or asleep starts when the PC is available again, a laptop
-on battery still runs, a slow run is not stacked on by the next slot, and any
-single run is stopped after six hours.
+on battery still runs, and a slow run is not stacked on by the next slot. A
+run that stops making progress is stopped after an hour without any (see
+[A task never runs twice at once](#a-task-never-runs-twice-at-once)), and no
+single run goes on longer than 72 hours, so a first backup of a lot of data
+has time to finish.
 
 ### On Android
 
@@ -180,6 +183,28 @@ Worth stating plainly, because it reads as a fault when it is not:
   that does fire at the exact time.
 
 There is no setting in Airclone for how often the background job wakes.
+
+## A task never runs twice at once
+
+One saved task only ever has one run going. That holds whatever started it: the
+schedule while Airclone is open, **Run** in Saved tasks, the photo backup's
+**Back up now** button, or a background run while Airclone is closed. Two copies
+of the same task would work on the same destination at the same time.
+
+- **You press Run on a task that is already running.** Nothing new starts, and
+  Airclone says so: *"… is already running — see Transfers"*, or *"… is already
+  running in another Airclone process"* when a background run has it.
+- **A task comes due while its last run is still going.** That slot is skipped,
+  not queued behind it. The task is not marked as run, so it starts once, as soon
+  as the run before it ends. Saved tasks shows a line saying the task was due but
+  still running from last time. A background run that skips a task for this
+  reason ends with success and writes a `[SKIP]` line to its log.
+
+A run that stops moving is not left to block the next one forever. If a run
+moves no data and does no other work for an hour, Airclone stops it and records
+a failed run that says *"stopped: no progress for 60 min"*. The next slot then
+runs normally. A run that keeps moving is never stopped for being slow, up to
+72 hours.
 
 ## If your config is encrypted
 

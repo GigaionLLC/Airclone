@@ -381,7 +381,10 @@ Three things make the worker work at all, each of them a constraint rather than 
   service from the background, and a worker *is* the background; WorkManager's own promotion is one of
   the sanctioned routes. Promoted, the run is capped at 5 h (inside Android 15's ~6 h/day `dataSync`
   budget); refused, at 8 min, because a plain worker is stopped at ~10. A run cut short is not lost —
-  the next wake resumes, since `copy` skips what is already at the destination.
+  the next wake resumes, since `copy` skips what is already at the destination. These stay well
+  under the desktop 72 h cap on purpose; the 60 min no-progress watchdog applies inside them too.
+  The worker also takes the per-task run lock (`TaskRunGate`), so it never starts a task the
+  foreground engine in the same process is already running.
 - **It yields to a visible app.** The in-app scheduler ticks every 30 s while an Activity is on screen
   and runs due tasks itself; running here as well would spawn a second rclone engine and race it over
   the same `SharedPreferences`.

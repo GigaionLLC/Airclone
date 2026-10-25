@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:airclone_rc/airclone_rc.dart';
+import 'package:airclone/src/rclone/models/job.dart';
 import 'package:airclone/src/state/engine_controller.dart';
 import 'package:airclone/src/state/jobs_controller.dart';
 import 'package:airclone/src/state/scheduler_controller.dart';
@@ -40,6 +41,19 @@ class _FailingClient implements RcloneClient {
     if (method == 'core/stats') return const {};
     return const {'jobid': 7}; // dispatch (sync/copy etc.)
   }
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+/// A run that never finishes: `job/status` always reports it still going, so
+/// only the watchdog or the outer cap can end the supervision.
+class _NeverFinishingClient implements RcloneClient {
+  @override
+  Future<Map<String, dynamic>> rpc(
+    String method, [
+    Map<String, dynamic>? params,
+  ]) async => const {'finished': false};
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
@@ -278,6 +292,133 @@ void main() {
       final h = c.read(tasksProvider).single.history;
       expect(h.single.ok, isFalse);
       expect(h.single.error, 'Engine not ready');
+    });
+  });
+  group('stall watchdog (recordRunOutcome)', () {
+    late ProviderContainer c;
+    late DateTime clock;
+    late List<int> stopped;
+
+    setUp(() {
+      c = ProviderContainer(
+        overrides: [
+          tasksProvider.overrideWith(() => _FixedTasks([_task(id: 't1')])),
+        ],
+      );
+      addTearDown(c.dispose);
+      clock = DateTime(2026, 10, 24, 2);
+      stopped = [];
+    });
+
+    /// Supervises local job 1 (rclone jobid 7). Every poll reads [job] for the
+    /// current snapshot and then moves the fake clock on by [step], so hours of
+    /// supervision run in milliseconds.
+    Future<TaskRunRecord> supervise(
+      Job Function(int poll) job, {
+      required Duration step,
+    }) async {
+      var poll = 0;
+      final client = _NeverFinishingClient();
+      await recordRunOutcome(
+        readClient: () => client,
+        tasks: c.read(tasksProvider.notifier),
+        readJobs: () {
+          final j = job(poll++);
+          clock = clock.add(step);
+          return [j];
+        },
+        taskId: 't1',
+        jobId: 1,
+        pollInterval: Duration.zero,
+        now: () => clock,
+        stopJob: (id) async => stopped.add(id),
+      );
+      return c.read(tasksProvider).single.history.single;
+    }
+
+    Job running({int? jobid = 7, int bytes = 0, int work = 0}) => Job(
+      id: 1,
+      type: JobType.sync,
+      source: 'a:',
+      dest: 'b:',
+      jobid: jobid,
+      bytes: bytes,
+      work: work,
+    );
+
+    test(
+      'a run that moves nothing for the window is stopped and failed',
+      () async {
+        final r = await supervise(
+          (_) => running(bytes: 500),
+          step: const Duration(minutes: 5),
+        );
+        expect(stopped, [1]);
+        expect(r.ok, isFalse);
+        expect(
+          r.error,
+          'stopped: no progress for 60 min (no bytes moved and '
+          'no files checked)',
+        );
+        expect(r.bytes, 500);
+        // It tripped just past the window, not at the outer cap.
+        expect(r.duration, lessThanOrEqualTo(const Duration(minutes: 80)));
+        expect(r.duration, greaterThan(const Duration(minutes: 60)));
+      },
+    );
+
+    test('bytes moving keep a long run alive until the 72 h cap', () async {
+      final r = await supervise(
+        (poll) => running(bytes: poll * 1000),
+        step: const Duration(minutes: 30),
+      );
+      expect(stopped, [1]);
+      expect(r.ok, isFalse);
+      expect(r.error, 'stopped: run did not finish within 72 h');
+      expect(r.duration, greaterThan(const Duration(hours: 72)));
+    });
+
+    test('non-byte work (checks, listing) counts as progress', () async {
+      final r = await supervise(
+        (poll) => running(bytes: 10, work: poll),
+        step: const Duration(minutes: 45),
+      );
+      expect(r.error, 'stopped: run did not finish within 72 h');
+    });
+
+    test(
+      'progress resets the window: a quiet spell shorter than it is fine',
+      () async {
+        // 50 quiet minutes, then a byte, then quiet for good: the stall is
+        // measured from the last progress, so it trips about 110 min in.
+        final r = await supervise(
+          (poll) => running(bytes: poll < 10 ? 0 : 1),
+          step: const Duration(minutes: 5),
+        );
+        expect(r.error, startsWith('stopped: no progress for 60 min'));
+        expect(r.duration, greaterThan(const Duration(minutes: 110)));
+        expect(r.duration, lessThan(const Duration(minutes: 125)));
+      },
+    );
+
+    test('time spent queued is not a stall; the cap still bounds it', () async {
+      final r = await supervise(
+        (_) => running(jobid: null).copyWith(status: JobStatus.queued),
+        step: const Duration(hours: 2),
+      );
+      expect(stopped, [1]);
+      expect(r.error, 'run did not start within 72 h');
+    });
+
+    test('a run that finishes in time is not stopped', () async {
+      final r = await supervise(
+        (poll) => poll < 3
+            ? running(bytes: poll)
+            : running(bytes: 3).copyWith(status: JobStatus.success),
+        step: const Duration(minutes: 20),
+      );
+      expect(stopped, isEmpty);
+      expect(r.ok, isTrue);
     });
   });
 }

@@ -1,5 +1,7 @@
+import 'dart:convert';
 import 'dart:io';
 
+import 'package:crypto/crypto.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'host_platform.dart';
@@ -109,8 +111,18 @@ String _triggerXml(TaskSchedule s) {
 /// contract), and the settings that make an *unattended* run trustworthy —
 /// `StartWhenAvailable` (catch up a run missed while the PC was off/asleep),
 /// `DisallowStartIfOnBatteries=false` (laptops on battery still run),
-/// `ExecutionTimeLimit=PT6H`, and `MultipleInstancesPolicy=IgnoreNew` (a slow
+/// `ExecutionTimeLimit=PT72H`, and `MultipleInstancesPolicy=IgnoreNew` (a slow
 /// run isn't stacked on by the next slot).
+///
+/// PT72H is only the outer backstop. The real guard against a hung run is the
+/// no-progress watchdog in `recordRunOutcome`, which stops a run that has
+/// moved nothing for `kStallWindow`; a long run that keeps moving is allowed
+/// to finish, which a fixed six-hour limit used to cut off mid-transfer. The
+/// value matches `kMaxSuperviseDuration` and the headless default timeout.
+///
+/// The Description carries a definition fingerprint (see
+/// [definitionFingerprint]), so [WindowsTaskScheduler.reconcile] can tell an
+/// entry written by an older build from a current one.
 ///
 /// Pure + side-effect free (no clock read, no I/O) so `windows_task_scheduler_test`
 /// can assert the schedule→XML mapping directly. [register] handles turning the
@@ -126,40 +138,42 @@ String buildTaskXml({
   // [0-9a-z-] so it's inert, but a future id source with & < > would otherwise
   // yield well-formed <Arguments> yet malformed <Description> — a latent trap.
   final idEsc = _xmlEscape(id);
-  return '<?xml version="1.0" encoding="UTF-16"?>\n'
-      '<Task version="1.2" xmlns="$_taskXmlns">\n'
-      '  <RegistrationInfo>\n'
-      '    <Author>Airclone</Author>\n'
-      '    <Description>Airclone scheduled transfer ($idEsc). Runs in the '
-      'background while Airclone is closed.</Description>\n'
-      '  </RegistrationInfo>\n'
-      '  <Triggers>\n'
-      '    ${_triggerXml(schedule)}\n'
-      '  </Triggers>\n'
-      '  <Principals>\n'
-      '    <Principal id="Author">\n'
-      '      <LogonType>InteractiveToken</LogonType>\n'
-      '      <RunLevel>LeastPrivilege</RunLevel>\n'
-      '    </Principal>\n'
-      '  </Principals>\n'
-      // Element order follows Task Scheduler's schema sequence (its parser is
-      // order-sensitive): batteries settings precede StartWhenAvailable, and
-      // Enabled precedes ExecutionTimeLimit.
-      '  <Settings>\n'
-      '    <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>\n'
-      '    <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>\n'
-      '    <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>\n'
-      '    <StartWhenAvailable>true</StartWhenAvailable>\n'
-      '    <Enabled>true</Enabled>\n'
-      '    <ExecutionTimeLimit>PT6H</ExecutionTimeLimit>\n'
-      '  </Settings>\n'
-      '  <Actions Context="Author">\n'
-      '    <Exec>\n'
-      '      <Command>$exe</Command>\n'
-      '      <Arguments>$args</Arguments>\n'
-      '    </Exec>\n'
-      '  </Actions>\n'
-      '</Task>\n';
+  return _stampDefinition(
+    '<?xml version="1.0" encoding="UTF-16"?>\n'
+    '<Task version="1.2" xmlns="$_taskXmlns">\n'
+    '  <RegistrationInfo>\n'
+    '    <Author>Airclone</Author>\n'
+    '    <Description>Airclone scheduled transfer ($idEsc). Runs in the '
+    'background while Airclone is closed.$_defToken</Description>\n'
+    '  </RegistrationInfo>\n'
+    '  <Triggers>\n'
+    '    ${_triggerXml(schedule)}\n'
+    '  </Triggers>\n'
+    '  <Principals>\n'
+    '    <Principal id="Author">\n'
+    '      <LogonType>InteractiveToken</LogonType>\n'
+    '      <RunLevel>LeastPrivilege</RunLevel>\n'
+    '    </Principal>\n'
+    '  </Principals>\n'
+    // Element order follows Task Scheduler's schema sequence (its parser is
+    // order-sensitive): batteries settings precede StartWhenAvailable, and
+    // Enabled precedes ExecutionTimeLimit.
+    '  <Settings>\n'
+    '    <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>\n'
+    '    <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>\n'
+    '    <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>\n'
+    '    <StartWhenAvailable>true</StartWhenAvailable>\n'
+    '    <Enabled>true</Enabled>\n'
+    '    <ExecutionTimeLimit>PT72H</ExecutionTimeLimit>\n'
+    '  </Settings>\n'
+    '  <Actions Context="Author">\n'
+    '    <Exec>\n'
+    '      <Command>$exe</Command>\n'
+    '      <Arguments>$args</Arguments>\n'
+    '    </Exec>\n'
+    '  </Actions>\n'
+    '</Task>\n',
+  );
 }
 
 /// Builds the definition for the shared `--run-due` job: one `TimeTrigger`
@@ -183,46 +197,71 @@ String buildDueRunnerXml({
 }) {
   final exe = _xmlEscape(exePath);
   final minutes = clampPollMinutes(intervalMinutes);
-  return '<?xml version="1.0" encoding="UTF-16"?>\n'
-      '<Task version="1.2" xmlns="$_taskXmlns">\n'
-      '  <RegistrationInfo>\n'
-      '    <Author>Airclone</Author>\n'
-      '    <Description>Airclone background scheduler. Wakes every $minutes '
-      'minutes and runs any saved task whose schedule is due, while Airclone '
-      'is closed.</Description>\n'
-      '  </RegistrationInfo>\n'
-      '  <Triggers>\n'
-      '    <TimeTrigger>'
-      '<Repetition>'
-      '<Interval>PT${minutes}M</Interval>'
-      '<StopAtDurationEnd>false</StopAtDurationEnd>'
-      '</Repetition>'
-      '<StartBoundary>${_boundaryDate}T00:00:00</StartBoundary>'
-      '<Enabled>true</Enabled>'
-      '</TimeTrigger>\n'
-      '  </Triggers>\n'
-      '  <Principals>\n'
-      '    <Principal id="Author">\n'
-      '      <LogonType>InteractiveToken</LogonType>\n'
-      '      <RunLevel>LeastPrivilege</RunLevel>\n'
-      '    </Principal>\n'
-      '  </Principals>\n'
-      '  <Settings>\n'
-      '    <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>\n'
-      '    <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>\n'
-      '    <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>\n'
-      '    <StartWhenAvailable>true</StartWhenAvailable>\n'
-      '    <Enabled>true</Enabled>\n'
-      '    <ExecutionTimeLimit>PT6H</ExecutionTimeLimit>\n'
-      '  </Settings>\n'
-      '  <Actions Context="Author">\n'
-      '    <Exec>\n'
-      '      <Command>$exe</Command>\n'
-      '      <Arguments>--run-due</Arguments>\n'
-      '    </Exec>\n'
-      '  </Actions>\n'
-      '</Task>\n';
+  return _stampDefinition(
+    '<?xml version="1.0" encoding="UTF-16"?>\n'
+    '<Task version="1.2" xmlns="$_taskXmlns">\n'
+    '  <RegistrationInfo>\n'
+    '    <Author>Airclone</Author>\n'
+    '    <Description>Airclone background scheduler. Wakes every $minutes '
+    'minutes and runs any saved task whose schedule is due, while Airclone '
+    'is closed.$_defToken</Description>\n'
+    '  </RegistrationInfo>\n'
+    '  <Triggers>\n'
+    '    <TimeTrigger>'
+    '<Repetition>'
+    '<Interval>PT${minutes}M</Interval>'
+    '<StopAtDurationEnd>false</StopAtDurationEnd>'
+    '</Repetition>'
+    '<StartBoundary>${_boundaryDate}T00:00:00</StartBoundary>'
+    '<Enabled>true</Enabled>'
+    '</TimeTrigger>\n'
+    '  </Triggers>\n'
+    '  <Principals>\n'
+    '    <Principal id="Author">\n'
+    '      <LogonType>InteractiveToken</LogonType>\n'
+    '      <RunLevel>LeastPrivilege</RunLevel>\n'
+    '    </Principal>\n'
+    '  </Principals>\n'
+    '  <Settings>\n'
+    '    <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>\n'
+    '    <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>\n'
+    '    <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>\n'
+    '    <StartWhenAvailable>true</StartWhenAvailable>\n'
+    '    <Enabled>true</Enabled>\n'
+    '    <ExecutionTimeLimit>PT72H</ExecutionTimeLimit>\n'
+    '  </Settings>\n'
+    '  <Actions Context="Author">\n'
+    '    <Exec>\n'
+    '      <Command>$exe</Command>\n'
+    '      <Arguments>--run-due</Arguments>\n'
+    '    </Exec>\n'
+    '  </Actions>\n'
+    '</Task>\n',
+  );
 }
+
+/// Where a definition's fingerprint goes, inside its Description. Replaced by
+/// [_stampDefinition] before anything is written.
+const _defPlaceholder = '%AIRCLONE_DEF%';
+const _defToken = ' [airclone-def:$_defPlaceholder]';
+final _defPattern = RegExp(r'airclone-def:([0-9a-f]{16})');
+
+/// Stamps [xml] with a fingerprint of itself: the first 16 hex digits of the
+/// SHA-256 of the definition as built, placeholder and all. Any change to what
+/// a build writes (a new time limit, a moved executable, an edited trigger)
+/// changes the fingerprint, with no version number to remember to bump.
+String _stampDefinition(String xml) {
+  final digest = sha256.convert(utf8.encode(xml)).toString().substring(0, 16);
+  return xml.replaceFirst(_defPlaceholder, digest);
+}
+
+/// The fingerprint stamped into a task definition, or null when there is none
+/// (an entry written before fingerprints existed, or not by Airclone at all).
+///
+/// Reads both a definition this file built and the XML `schtasks /Query /XML`
+/// prints back, which may arrive with stray NULs from the UTF-16 round trip.
+String? definitionFingerprint(String xml) =>
+    _defPattern.firstMatch(xml.replaceAll('\u0000', ''))?.group(1);
 
 /// Registers saved schedules as Windows Scheduled Tasks so they fire with the
 /// app CLOSED (the in-app scheduler only ticks while Airclone is open). Each task
@@ -332,6 +371,15 @@ class WindowsTaskScheduler {
   /// away. Rewriting everything on every launch would turn opening the app into
   /// a background run.
   ///
+  /// The one exception is an entry whose stored definition no longer matches
+  /// what this build writes, detected by the fingerprint in its Description
+  /// ([definitionFingerprint]). That entry is rewritten once, so an update
+  /// that changes the definition (as the PT6H → PT72H change did) reaches
+  /// tasks registered by an older build. A rewritten interval entry fires
+  /// once straight away, for the reason above; the shared job then runs only
+  /// what is due, and the run gate keeps it from starting anything already
+  /// running.
+  ///
   /// Deletes run before creates, so a shape change never leaves both forms
   /// registered at once.
   ///
@@ -379,29 +427,34 @@ class WindowsTaskScheduler {
       ),
     }.toList()..sort();
 
+    // An entry that exists under the right name can still hold a definition
+    // an older build wrote (the six-hour time limit, a moved executable).
+    // Compare fingerprints and rewrite only the ones that differ, so the
+    // restraint above still holds for an entry that is already current. A
+    // definition that cannot be read is left alone rather than guessed at.
+    final wanted = [
+      ...desired.exactTriggerIds,
+      if (desired.needsPoller) kDueRunnerTaskName,
+    ];
+    for (final name in wanted) {
+      if (!existing.contains(name) || write.contains(name)) continue;
+      final want = _definitionFor(name, tasks, pollMinutes);
+      if (want == null) continue;
+      final have = await registeredDefinition(name);
+      if (have == null) continue;
+      if (definitionFingerprint(have) != definitionFingerprint(want)) {
+        write.add(name);
+      }
+    }
+    write.sort();
+
     final created = <String>[];
     for (final name in write) {
-      final String xml;
-      if (name == kDueRunnerTaskName) {
-        xml = buildDueRunnerXml(
-          intervalMinutes: pollMinutes,
-          exePath: Platform.resolvedExecutable,
-        );
-      } else {
-        final match = [
-          for (final t in tasks)
-            if (t.id == name && t.schedule != null) t,
-        ];
-        // A wanted id with no task behind it cannot happen — the desired set is
-        // derived from these same tasks — but skipping beats writing a
-        // definition for something that does not exist.
-        if (match.isEmpty) continue;
-        xml = buildTaskXml(
-          schedule: match.first.schedule!,
-          id: match.first.id,
-          exePath: Platform.resolvedExecutable,
-        );
-      }
+      // A wanted id with no task behind it cannot happen — the desired set is
+      // derived from these same tasks — but skipping beats writing a
+      // definition for something that does not exist.
+      final xml = _definitionFor(name, tasks, pollMinutes);
+      if (xml == null) continue;
       final res = await _writeDefinition(name, xml);
       if (!res.ok) {
         return (
@@ -414,6 +467,50 @@ class WindowsTaskScheduler {
       created.add(name);
     }
     return (ok: true, error: null, created: created, deleted: deleted);
+  }
+
+  /// The definition this build wants under [name], or null when no task
+  /// behind it has a schedule.
+  String? _definitionFor(
+    String name,
+    List<TransferTask> tasks,
+    int pollMinutes,
+  ) {
+    if (name == kDueRunnerTaskName) {
+      return buildDueRunnerXml(
+        intervalMinutes: pollMinutes,
+        exePath: Platform.resolvedExecutable,
+      );
+    }
+    for (final t in tasks) {
+      final schedule = t.schedule;
+      if (t.id == name && schedule != null) {
+        return buildTaskXml(
+          schedule: schedule,
+          id: t.id,
+          exePath: Platform.resolvedExecutable,
+        );
+      }
+    }
+    return null;
+  }
+
+  /// The XML Task Scheduler holds for [name], via `schtasks /Query /TN … /XML`.
+  /// Null on non-Windows, a non-zero exit, or any error.
+  Future<String?> registeredDefinition(String name) async {
+    if (!HostPlatform.isWindows) return null;
+    try {
+      final res = await _run('schtasks', [
+        '/Query',
+        '/TN',
+        taskName(name),
+        '/XML',
+      ]);
+      if (res.exitCode != 0) return null;
+      return '${res.stdout}';
+    } catch (_) {
+      return null;
+    }
   }
 
   /// Writes one task definition under [name] via `schtasks /Create /XML … /F`.

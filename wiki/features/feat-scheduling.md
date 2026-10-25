@@ -112,7 +112,16 @@ airclone --run-due
 
 `headless/headless_runner.dart` runs the same task through the same code path with no UI and
 exits with a code the OS scheduler can read: **0** ran and succeeded, **1** ran and something
-failed, **2** could not start at all (bad or missing task id, engine unavailable).
+failed, **2** could not start at all (bad or missing task id, engine unavailable). A task skipped
+because it is already running elsewhere (§5.6) is a `[SKIP]` summary line and counts as **0**.
+
+Both XML shapes carry `ExecutionTimeLimit=PT72H`. That is the outer backstop only; the
+no-progress watchdog (§5.6) stops a hung run long before it. Each registered definition is stamped
+with a self-hash in its Description (`[airclone-def:<16 hex>]`, `definitionFingerprint`), and
+reconcile reads it back with `schtasks /Query /TN … /XML`. An entry whose stamp differs from what
+this build would write (an older build's PT6H entry, say) is rewritten **once**, and fires once
+straight after, because `/Create /F` resets its trigger. An entry whose definition cannot be read is
+left alone (§5.4a).
 
 One thing it refuses to do, on purpose: **an encrypted config with no stored password** blocks
 the checkbox. Every background fire would exit 2 unattended with no history entry, so Save stops
@@ -255,8 +264,10 @@ otherwise read as a bug:
   *replaces* a task, which resets its trigger state, and a repeating trigger
   whose start boundary is in the past then fires immediately. If reconcile
   rewrote everything it saw, opening Airclone would start a background run. Only
-  entries that are missing — or that the caller explicitly flags as changed, such
-  as the task you just edited — get written.
+  entries that are missing, that the caller explicitly flags as changed (such
+  as the task you just edited), or whose `[airclone-def:…]` stamp is not what
+  this build writes get written. The stamp is how a change to the XML itself
+  (PT6H → PT72H) reaches entries registered by an older build, once.
 - **Deletes happen before creates**, so a schedule changing shape never leaves
   both forms registered at once.
 - **If it cannot see what is registered, it deletes nothing.** A failed query
@@ -330,7 +341,44 @@ wake that found nothing due (most poller wakes, by design), and any wake at all
 while the scheduler is paused. So `0x0` with an empty history is expected for the
 shared poller and expected while paused — but for an **exact trigger** on an
 unpaused scheduler it is a real bug worth reporting rather than a configuration
-problem.
+problem. A task skipped because it was still running (§5.6) records nothing too:
+its slot was not consumed, and it runs as soon as the earlier run ends.
+
+### 5.6 One run per task, and the stall watchdog (#55, #54)
+
+**One run in flight per task**, across every runner. `state/task_run_gate.dart` has two parts:
+
+- `TaskRunLocks` (`taskRunLocksProvider`): an exclusive `RandomAccessFile.lock` on
+  `<app support>/run-locks/<key>.lock`, held for the whole run, plus a per-task name in
+  `IsolateNameServer`. The file lock works across processes (the GUI next to `--run-due`) and the OS
+  drops it when its holder dies. On POSIX it is a per-process record lock, so the name server
+  separates two isolates in one process (Android's WorkManager engine beside the foreground one).
+  The key comes from the task id only: `[A-Za-z0-9-]` as it is, anything else hex-encoded behind
+  `_`, so no id can name a path. An unusable lock directory does not block the run.
+- `TaskRunGate` (`taskRunGateProvider`): task id → the local `Job.id` it is running. `tryClaim` is
+  synchronous in-process, then takes the locks; `attach` binds the job, and the claim ends when the
+  real job does: finished, removed, or its engine gone. It does **not** end when a supervisor gives
+  up waiting.
+
+The scheduler tick (`dueTasks(..., running:)`), Run now (`_TaskRow._run`), the photo section's
+`_runNow` and `runSelected` in the headless runner (so `--run-due`, `--run-task`, WorkManager and
+the iOS BG task) all claim first. A Run now that is refused shows a SnackBar
+(`alreadyRunningMessage`) and starts nothing.
+
+**Skipped-slot policy.** A due task whose previous run is still going is **skipped, not queued**,
+and `lastRun` is **not** advanced, so it runs once as soon as the earlier run ends. In the app the
+skip is `SchedulerStatus.skippedWhileRunning`, shown as a line in Saved tasks
+(`skippedWhileRunningMessage`); in the headless runner it is
+`[SKIP] <name> [<id>] — already running in another Airclone process`, exit 0.
+
+**Stall watchdog.** `recordRunOutcome` (every runner supervises through it) stops a run that has
+made no progress for `kStallWindow` (60 min) with `job/stop`, and records
+`stopped: no progress for 60 min …`. Progress is bytes moved, or other work counted by the engine
+(listing, checks), so a slow walk of a huge tree does not trip it. `kMaxSuperviseDuration` (72 h)
+is the outer cap, and the same 72 h is the headless default (`kDefaultTimeoutMinutes`) and the
+Windows `PT72H`. Android and iOS keep their own much shorter `--timeout-minutes` (300 / 8 / 20),
+because their OS allows a background run far less than that. A job that never leaves `queued`
+records `run did not start within 72 h`.
 
 ## 6. What this is not, yet
 
@@ -358,7 +406,8 @@ problem.
 | Piece | File |
 | :--- | :--- |
 | What "scheduled" means per platform | `state/scheduling_policy.dart` |
-| Tick loop, dispatch, outcome supervision | `state/scheduler_controller.dart` |
+| Tick loop, dispatch, outcome supervision, stall watchdog | `state/scheduler_controller.dart` |
+| One run per task: cross-process lock and the task → job gate | `state/task_run_gate.dart` |
 | Schedule model and `isDue` | `state/task_schedule.dart` |
 | Task model, run history | `state/tasks_controller.dart` |
 | Delete cap default and application | `state/transfer_options.dart` |
@@ -377,6 +426,8 @@ problem.
 Tests: `test/scheduler_tick_test.dart`, `test/schedule_test.dart`,
 `test/scheduling_policy_test.dart`, `test/scheduler_delete_cap_test.dart`,
 `test/scheduler_empty_source_test.dart`, `test/scheduler_pause_ui_test.dart`,
+`test/task_run_gate_test.dart`, `test/headless_overlap_test.dart` (one run per task),
+`test/task_history_test.dart` (the stall watchdog),
 `test/from_to_picker_test.dart`, `test/windows_task_scheduler_test.dart`,
 `test/due_runner_task_test.dart`, `test/headless_breaker_test.dart` (the breaker on the
 path nobody is watching); the hybrid — `test/registration_policy_test.dart`,

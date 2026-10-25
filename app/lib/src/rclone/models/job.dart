@@ -32,6 +32,7 @@ class Job {
     this.rcMethod,
     this.rcParams,
     this.transferring = const [],
+    this.work = 0,
   });
 
   /// Local, app-assigned id (stable for the life of the job).
@@ -71,6 +72,15 @@ class Job {
   /// Files currently moving within this job (from `core/stats` scoped to the
   /// job's group). Empty unless it's running with an active per-file breakdown.
   final List<TransferItem> transferring;
+
+  /// Units of non-byte work the engine has done for this job so far: files
+  /// checked, deleted, renamed or copied server-side, and directory entries
+  /// listed (the `core/stats` counters, summed). It means nothing as a number;
+  /// what matters is whether it moves. The stall watchdog in
+  /// `recordRunOutcome` reads it next to [bytes], because a sync comparing a
+  /// large tree that is already up to date moves no bytes for a long time and
+  /// is still working.
+  final int work;
 
   /// Whether this job can be re-run (it reached dispatch, then terminated).
   bool get canRetry =>
@@ -123,6 +133,7 @@ class Job {
     String? rcMethod,
     Map<String, dynamic>? rcParams,
     List<TransferItem>? transferring,
+    int? work,
   }) => Job(
     id: id,
     type: type ?? this.type,
@@ -137,5 +148,6 @@ class Job {
     rcMethod: rcMethod ?? this.rcMethod,
     rcParams: rcParams ?? this.rcParams,
     transferring: transferring ?? this.transferring,
+    work: work ?? this.work,
   );
 }

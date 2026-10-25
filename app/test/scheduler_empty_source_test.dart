@@ -3,7 +3,10 @@ import 'package:airclone_rc/airclone_rc.dart';
 import 'package:airclone/src/state/engine_controller.dart' as engine;
 import 'package:airclone/src/state/engine_controller.dart'
     show engineControllerProvider;
+import 'dart:io';
+
 import 'package:airclone/src/state/scheduler_controller.dart';
+import 'package:airclone/src/state/task_run_gate.dart';
 import 'package:airclone/src/state/task_schedule.dart';
 import 'package:airclone/src/state/tasks_controller.dart';
 import 'package:airclone/src/state/transfer_options.dart';
@@ -101,7 +104,16 @@ TransferTask _task({TransferMode mode = TransferMode.sync}) => TransferTask(
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
-  setUp(() => SharedPreferences.setMockInitialValues({}));
+  late Directory tmp;
+  setUp(() {
+    SharedPreferences.setMockInitialValues({});
+    tmp = Directory.systemTemp.createTempSync('airclone-sched-');
+  });
+  tearDown(() {
+    try {
+      tmp.deleteSync(recursive: true);
+    } catch (_) {}
+  });
 
   /// Runs one tick and settles the unawaited dispatch behind it.
   Future<({_SpyTransfers svc, ProviderContainer c})> tickOnce({
@@ -114,14 +126,24 @@ void main() {
         tasksProvider.overrideWith(() => _FixedTasks([_task(mode: mode)])),
         engineControllerProvider.overrideWith(() => _FakeEngine(client)),
         transferServiceProvider.overrideWithValue(svc),
+        // The run claim (#55) takes a real lock file; keep it out of the
+        // machine's support directory.
+        taskRunLocksProvider.overrideWithValue(
+          TaskRunLocks(baseDir: () async => tmp),
+        ),
       ],
     );
     addTearDown(c.dispose);
     c.read(schedulerProvider.notifier).tick();
-    // The dispatch is fire-and-forget; give the source check and everything
-    // behind it a chance to resolve before asserting.
-    await Future<void>.delayed(Duration.zero);
-    await Future<void>.delayed(Duration.zero);
+    // The dispatch is fire-and-forget, behind the claim's file I/O and the
+    // source check: wait until it has either dispatched or recorded a refusal.
+    for (var i = 0; i < 200; i++) {
+      if (svc.dispatched.isNotEmpty ||
+          c.read(tasksProvider).single.history.isNotEmpty) {
+        break;
+      }
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+    }
     return (svc: svc, c: c);
   }
 

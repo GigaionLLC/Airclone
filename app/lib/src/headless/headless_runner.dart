@@ -14,6 +14,7 @@ import '../state/scheduler_controller.dart';
 import '../state/scheduler_pause.dart';
 import '../state/settings_controller.dart';
 import '../state/task_kind.dart';
+import '../state/task_run_gate.dart';
 import '../state/tasks_controller.dart';
 import '../state/transfer_options.dart';
 import '../state/transfer_service.dart';
@@ -51,8 +52,15 @@ const String kRunDueFlag = '--run-due';
 /// Overall wall-clock cap for the whole run, in minutes. Takes a value.
 const String kTimeoutFlag = '--timeout-minutes';
 
-/// Default wall-clock cap (6h) when [kTimeoutFlag] is absent or unparsable.
-const int kDefaultTimeoutMinutes = 360;
+/// Default wall-clock cap (72 h) when [kTimeoutFlag] is absent or unparsable.
+///
+/// This is only the outer backstop. A run that stops making progress is caught
+/// much sooner by the supervisor's stall watchdog ([kStallWindow]); a run that
+/// is merely big (a first backup of terabytes) is allowed to take days. The
+/// same 72 hours is the GUI cap ([kMaxSuperviseDuration]) and the Windows
+/// `ExecutionTimeLimit` (`PT72H`). Android and iOS pass a much shorter value,
+/// because their OS gives a background run far less time than that.
+const int kDefaultTimeoutMinutes = 72 * 60;
 
 /// Process exit codes (see the class doc for their meaning).
 const int kExitOk = 0;
@@ -137,17 +145,33 @@ class HeadlessTaskResult {
     required this.ok,
     this.error,
     this.bytes,
+    this.skipped = false,
   });
+
+  /// The result for a task that was not run because a run of it was already
+  /// going in another process. Not a failure: nothing went wrong, and the slot
+  /// is still due, so it runs once that other run ends.
+  const HeadlessTaskResult.skipped({required this.taskId, required this.name})
+    : ok = true,
+      error = null,
+      bytes = null,
+      skipped = true;
 
   final String taskId;
   final String name;
   final bool ok;
   final String? error;
   final int? bytes;
+  final bool skipped;
 
   /// The single line this task contributes to the stdout summary. Prefixed with
-  /// a fixed-width `[OK  ]`/`[FAIL]` tag so a log scrape can grep failures.
+  /// a fixed-width `[OK  ]`/`[FAIL]`/`[SKIP]` tag so a log scrape can grep
+  /// failures.
   String get summaryLine {
+    if (skipped) {
+      return '[SKIP] $name [$taskId] — already running in another Airclone '
+          'process';
+    }
     final tag = ok ? 'OK  ' : 'FAIL';
     final detail = ok
         ? (bytes != null ? ' — $bytes bytes' : '')
@@ -212,19 +236,21 @@ Future<HeadlessOutcome> runHeadlessInProcess(List<String> args) async {
   var code = kExitCannotStart;
   try {
     // Wrap the WHOLE run — engine boot included — under one outer deadline. The
-    // inner `_runSelected` already caps the task-execution stage at
+    // inner `runSelected` already caps the task-execution stage at
     // request.timeout, but the boot stage before it (isConfigEncrypted /
     // findExisting shell out to rclone with no timeout) runs outside that cap; a
     // wedged boot subprocess would otherwise leave this process spinning its
     // message loop forever as an invisible Task-Scheduler zombie. The slack lets
     // the inner cap fire first (clean per-task summary + exit 1) on a normal
-    // overrun, so this only trips on a genuinely stuck boot/dispatch.
+    // overrun, so this only trips on a genuinely stuck boot/dispatch. (The
+    // supervisor's own cap stops the jobs at request.timeout, the inner cap
+    // gives it one minute to record that, and this one minute more.)
     code = await _runHeadless(
       container,
       request,
       summary,
       diagnostics,
-    ).timeout(request.timeout + const Duration(minutes: 2));
+    ).timeout(request.timeout + const Duration(minutes: 3));
   } on TimeoutException {
     diagnostics.add(
       'airclone: headless run exceeded its wall-clock cap (engine boot or '
@@ -343,7 +369,7 @@ Future<int> _runHeadless(
     return kExitCannotStart;
   }
 
-  return _runSelected(container, request, selected, summary);
+  return runSelected(container, request, selected, summary);
 }
 
 /// Transient phases the engine passes through while coming up; we wait for it to
@@ -415,7 +441,11 @@ Future<EnginePhase> _awaitEngineSettled(
 /// Dispatches every [selected] task, supervises each to a terminal state, and
 /// records its outcome — all under one wall-clock [HeadlessRequest.timeout].
 /// Returns the process exit code and appends a summary line per task.
-Future<int> _runSelected(
+///
+/// Visible for the tests, which drive it without an engine to pin the
+/// already-running skip.
+@visibleForTesting
+Future<int> runSelected(
   ProviderContainer container,
   HeadlessRequest request,
   List<TransferTask> selected,
@@ -424,9 +454,18 @@ Future<int> _runSelected(
   final now = DateTime.now();
   final tasksCtrl = container.read(tasksProvider.notifier);
   final svc = container.read(transferServiceProvider);
+  final gate = container.read(taskRunGateProvider.notifier);
   final results = <String, HeadlessTaskResult>{};
 
   Future<void> runOne(TransferTask t) async {
+    // One run per task, across processes: the app, another wake, the other
+    // engine on Android (TaskRunGate). A task already running elsewhere is
+    // skipped, not failed, and its lastRun is left alone so the slot runs once
+    // that run ends — the same policy as the in-app scheduler.
+    if (await gate.tryClaim(t.id) != TaskClaim.claimed) {
+      results[t.id] = HeadlessTaskResult.skipped(taskId: t.id, name: t.name);
+      return;
+    }
     try {
       // Stamp lastRun before dispatch (mirrors SchedulerController.tick) so a
       // later --run-due can't treat this slot as still pending.
@@ -468,16 +507,22 @@ Future<int> _runSelected(
             ? withScheduledDeleteCap(t.options)
             : backupOptions(t.options),
       );
+      gate.attach(t.id, jobId);
       // Reuse the scheduler's supervisor verbatim: it polls the job to terminal
       // and appends exactly one [TaskRunRecord] to the task's capped history.
       // Pass a live client GETTER so mid-run engine death is detected promptly
-      // (a captured null-able reference would stay non-null past onDied).
+      // (a captured null-able reference would stay non-null past onDied). Its
+      // cap is this run's own budget, so a run cut short is stopped and says
+      // so in its history, instead of being abandoned mid-transfer.
       await recordRunOutcome(
         readClient: () => container.read(engineControllerProvider).client,
         tasks: tasksCtrl,
         readJobs: () => container.read(jobsControllerProvider),
         taskId: t.id,
         jobId: jobId,
+        maxSupervise: request.timeout,
+        stopJob: (id) =>
+            container.read(jobsControllerProvider.notifier).stop(id),
       );
       // Only trust a record this run actually produced. If the supervisor
       // returned without adding one (engine vanished), _latestRecordFor would
@@ -504,12 +549,18 @@ Future<int> _runSelected(
         ok: false,
         error: '$e',
       );
+    } finally {
+      gate.release(t.id);
     }
   }
 
   var timedOut = false;
   try {
-    await Future.wait(selected.map(runOne)).timeout(request.timeout);
+    // A minute past the budget, so each supervisor's own cap (which stops the
+    // job and records why) fires before this one gives up waiting on it.
+    await Future.wait(
+      selected.map(runOne),
+    ).timeout(request.timeout + const Duration(minutes: 1));
   } on TimeoutException {
     // The overall cap tripped; in-flight runs keep their engine work but we stop
     // waiting and report a failure. The process exits right after cleanup.

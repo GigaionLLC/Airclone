@@ -65,7 +65,7 @@ void main() {
           '<MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>',
         ),
       );
-      expect(x, contains('<ExecutionTimeLimit>PT6H</ExecutionTimeLimit>'));
+      expect(x, contains('<ExecutionTimeLimit>PT72H</ExecutionTimeLimit>'));
       expect(x, contains('<RunLevel>LeastPrivilege</RunLevel>'));
     });
 

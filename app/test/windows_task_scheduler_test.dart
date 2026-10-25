@@ -123,7 +123,7 @@ void main() {
           '<DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>',
         ),
       );
-      expect(xml, contains('<ExecutionTimeLimit>PT6H</ExecutionTimeLimit>'));
+      expect(xml, contains('<ExecutionTimeLimit>PT72H</ExecutionTimeLimit>'));
     });
 
     test('the action runs the exe with --run-task <id>', () {
@@ -178,6 +178,55 @@ void main() {
       expect(xml, contains('--run-task a&amp;b&lt;c&gt;d'));
       // ...and in the Description.
       expect(xml, contains('transfer (a&amp;b&lt;c&gt;d)'));
+    });
+  });
+
+  group('definition fingerprint (#54)', () {
+    String daily(int hour) => buildTaskXml(
+      schedule: TaskSchedule(kind: ScheduleKind.daily, hour: hour, minute: 0),
+      id: 'n',
+      exePath: exe,
+    );
+
+    test('both shapes carry one, and no placeholder is left behind', () {
+      final runner = buildDueRunnerXml(intervalMinutes: 15, exePath: exe);
+      for (final x in [daily(9), runner]) {
+        expect(definitionFingerprint(x), matches(RegExp(r'^[0-9a-f]{16}$')));
+        expect(x, isNot(contains('%AIRCLONE_DEF%')));
+      }
+    });
+
+    test('is stable for the same definition and changes with it', () {
+      expect(definitionFingerprint(daily(9)), definitionFingerprint(daily(9)));
+      expect(
+        definitionFingerprint(daily(9)),
+        isNot(definitionFingerprint(daily(10))),
+      );
+      expect(
+        definitionFingerprint(
+          buildDueRunnerXml(intervalMinutes: 15, exePath: exe),
+        ),
+        isNot(
+          definitionFingerprint(
+            buildDueRunnerXml(intervalMinutes: 15, exePath: r'D:\a.exe'),
+          ),
+        ),
+      );
+    });
+
+    test('reads through stray NULs from the UTF-16 round trip', () {
+      final x = daily(9);
+      final mangled = x.split('').join('\u0000');
+      expect(definitionFingerprint(mangled), definitionFingerprint(x));
+    });
+
+    test('is null for a definition an older build wrote', () {
+      expect(
+        definitionFingerprint(
+          '<Task><Description>Airclone</Description></Task>',
+        ),
+        isNull,
+      );
     });
   });
 }
