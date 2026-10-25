@@ -74,6 +74,23 @@ set_target_properties(${BINARY_NAME}
 # them to the application.
 include(flutter/generated_plugins.cmake)
 
+# Third-party plugin sources trip warnings that -Werror (APPLY_STANDARD_SETTINGS)
+# turns fatal on newer toolchains. Relaxed per plugin target, never for our own
+# runner code:
+#   * tray_manager calls app_indicator_new(), which current
+#     libayatana-appindicator marks deprecated (#54).
+#   * flutter_secure_storage_linux vendors a json.hpp whose `operator "" _json`
+#     spelling newer clang flags as -Wdeprecated-literal-operator.
+include(CheckCXXCompilerFlag)
+if(TARGET tray_manager_plugin)
+  target_compile_options(tray_manager_plugin PRIVATE -Wno-deprecated-declarations)
+endif()
+check_cxx_compiler_flag(-Wdeprecated-literal-operator HAS_WDEPRECATED_LITERAL_OPERATOR)
+if(HAS_WDEPRECATED_LITERAL_OPERATOR AND TARGET flutter_secure_storage_linux_plugin)
+  target_compile_options(flutter_secure_storage_linux_plugin PRIVATE
+    -Wno-deprecated-literal-operator)
+endif()
+
 
 # === Installation ===
 # By default, "installing" just makes a relocatable bundle in the build
