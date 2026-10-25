@@ -9,14 +9,16 @@ by design** — real IDs, key paths and account state live in the encrypted vaul
 (`python tool/vault.py unlock`, then
 `dev/vault/notes/apple-appstore-setup-record.md`).
 
-## State: last written 2026-10-11 — iOS 0.24.0 approved (held for TestFlight), macOS 0.24.0 in review, 0.26.0 builds uploaded (queued instead of 0.25.1)
+## State: last written 2026-10-25 — 0.26.0 (iOS) and 0.28.0 (macOS) approved and held, 0.29.1 build 162 uploaded on both
 
-> **RESUME HERE (2026-10-12, later).** iOS: 0.24.0 live; **0.26.0 APPROVED, held (MANUAL)**. TestFlight Public beta now
-> has **build 160 (0.28.0)** WAITING_FOR_REVIEW (158 also waiting); testers try 0.28.0's iOS background features first.
-> Builds 159 (0.27.0) and **160 (0.28.0)** uploaded on iOS + macOS, VALID. Next iOS: when 158 or 160 is beta-approved,
-> release 0.26.0 (`asc-release.yml -f platform=IOS -f mode=release -f confirm_version=0.26.0`), then runbook step 0 for
-> **0.28.0 / build 160** (0.27.0 is never submitted). macOS: 0.24.0 **RELEASED** 2026-10-13; **0.28.0 / build 160
-> submitted 2026-10-13 20:39Z, WAITING_FOR_REVIEW** (MANUAL release); when approved, `asc-release.yml -f platform=MAC_OS`. Never poll with `asc-version.yml mode=report`: it exits 1 when nothing is editable and emails a failure.
+> **RESUME HERE (2026-10-25).** iOS: 0.24.0 READY_FOR_SALE; **0.26.0 PENDING_DEVELOPER_RELEASE** (MANUAL).
+> macOS: 0.24.0 READY_FOR_SALE; **0.28.0 PENDING_DEVELOPER_RELEASE** (MANUAL). Read back 2026-10-25 by `asc-version.yml mode=report`.
+> **0.29.1 / build 162** was uploaded 2026-10-25 on both platforms (`ios-release.yml` run 40236021016 and
+> `mas-release.yml` run 40236011779, both succeeded) and is VALID in App Store Connect (`asc-version.yml mode=builds`).
+> **No 0.29.1 version record exists yet** on either platform.
+> Releasing 0.26.0 / 0.28.0 is Jake's call (`asc-release.yml -f platform=IOS|MAC_OS -f mode=release -f confirm_version=<version>`).
+> Next: once Jake decides, create the 0.29.1 versions and submit them (runbook step 0 onward, build 162).
+> Never poll with `asc-version.yml mode=report`: it exits 1 when nothing is editable and emails a failure; use `mode=builds`.
 
 Read back from App Store Connect by the workflows that changed it, so these rows are observed.
 
