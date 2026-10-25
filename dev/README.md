@@ -14,7 +14,7 @@ actually changed in a shipped version — and you need the exact file rather tha
 
 | I want to… | Go to | Notes |
 | :--- | :--- | :--- |
-| **Cut a release** | [Release checklist](#-release-checklist) below, then [`.github/workflows/release.yml`](../.github/workflows/release.yml) | Trigger is a `v*` tag push. Notes must exist *before* the tag. |
+| **Cut a release** | [Release checklist](#-release-checklist) below, then [`.github/workflows/release.yml`](../.github/workflows/release.yml). Shipping to every store step by step: [`store-release-playbook.md`](store-release-playbook.md) | Trigger is a `v*` tag push. Notes must exist *before* the tag. |
 | **Write the release notes** | [`releases/`](releases/) — add `releases/vX.Y.Z.md` | CI reads this exact path as `--notes-file` for the **GitHub Release**. The store "what's new" is a different, generic file — see [Release-notes coupling](#-ci-workflows). |
 | **Know what changed in a release** | [`releases/vX.Y.Z.md`](releases/) | One curated, user-facing file per shipped tag, `v0.1.0-beta.1` → the latest tag. |
 | **Submit to the Microsoft Store** | [`windows-signing-and-store.md`](windows-signing-and-store.md) §2 | Read the dated **PATH DECISION** block first — the product is an **MSIX** again as of 2026-08-08. |
@@ -144,7 +144,7 @@ the job leaves it alone. The store **"what's new"** is *not* that file: it is
 [`docs/store/store-release-notes.txt`](../docs/store/store-release-notes.txt), one generic line plus a
 link to the releases page, identical every release, copied verbatim to
 `distribution/whatsnew/whatsnew-en-US` for Play and read by `tool/asc_listing.py` as Apple's `whatsNew`.
-It must stay under **500 bytes** — Play truncates silently past that, so `release.yml` fails loudly
+It must stay under **500 bytes** — Play truncates silently past that, so `publish-play.yml` fails loudly
 instead. Per-tag distillation was removed on purpose: it shipped a mid-sentence fragment of notes
 written for a different audience to every store user. Microsoft is the exception — `tool/store_submit.py`
 clones the previous submission's field, so Microsoft's "what's new" is edited by hand in Partner Center.
@@ -228,6 +228,8 @@ Details: [`play-ci-setup.md`](play-ci-setup.md) · [`msstore-ci-setup.md`](mssto
 ## ✅ Release checklist
 
 Distilled from the store runbooks — Microsoft, Play, Apple — and the release history since v0.5.x.
+For the full linear path through every store, with who may press each button and when to stop, follow
+[`store-release-playbook.md`](store-release-playbook.md).
 
 1. **Bump the version** in [`app/pubspec.yaml`](../app/pubspec.yaml) (`version: X.Y.Z+N`). The build
    number `+N` is the Play **versionCode** and must strictly increase — the single most common upload
@@ -236,7 +238,7 @@ Distilled from the store runbooks — Microsoft, Play, Apple — and the release
    notes and nothing else — the stores do not read it. Follow the house style: user-benefit prose, then
    a `## Notes` section naming signing status and known limitations. While you are here, *check* (do
    not rewrite) [`docs/store/store-release-notes.txt`](../docs/store/store-release-notes.txt) — the
-   generic line every store shows, under 500 bytes or `release.yml` fails the run.
+   generic line every store shows, under 500 bytes or `publish-play.yml` fails the Play upload.
 3. **Green the local gates first:** `dart format --output=none --set-exit-if-changed .`,
    `flutter analyze` (CI fails on **any** info-level lint), `flutter test`. Run `dart format` with the
    SDK version CI pins — 3.47.0, the native SDK on the dev machine. The Docker image floats `stable`
@@ -301,9 +303,9 @@ the **v0.6.0 MSIX shipped with placeholder identity** — Partner Center rejecte
 v0.6.1 exists only to fix that.
 
 One result is confirmed by asking the system that holds it rather than by a step reporting its own
-success: the `android` job asks Play whether the version code it just uploaded is really in open
-testing ([`tool/play_tracks.py`](../tool/play_tracks.py) `--expect`) and fails the release when it is
-not. The rest is on you — download the assets and check:
+success: after a Play upload, `publish-play.yml` asks Play whether the version code it just uploaded
+is really in open testing ([`tool/play_tracks.py`](../tool/play_tracks.py) `--expect`) and fails the
+run when it is not. The tag's `android` job uploads nothing. The rest is on you — download the assets and check:
 
 | Asset | Confirm |
 | :--- | :--- |

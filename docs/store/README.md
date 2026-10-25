@@ -181,10 +181,11 @@ Two process rules that came out of the 2026-07-29 report and belong in every fut
 
 ## 🤖 Google Play
 
-Package `com.gigaionllc.airclone`. Every `v*` tag uploads the AAB to **open testing** automatically
-(`release.yml`, `tracks: beta` — Play's API name for Open testing), carrying the release notes from
-`store-release-notes.txt`, and then asks Play whether the version code actually arrived: the *Verify
-the build really landed in open testing* step fails the release if it did not, because a Play upload
+Package `com.gigaionllc.airclone`. A `v*` tag uploads nothing to Play (since v0.8.3). A human runs
+[`publish-play.yml`](../../.github/workflows/publish-play.yml) with `mode: upload`, which sends the
+tag's AAB to **open testing** (`tracks: beta` — Play's API name for Open testing) carrying the release
+notes from `store-release-notes.txt`, and then asks Play whether the version code actually arrived: its
+*Verify the build really landed in open testing* step fails the run if it did not, because a Play upload
 can report success and land nothing.
 
 **CI never touches production**, and that is the deliberate boundary rather than a missing credential:
@@ -200,7 +201,7 @@ to open testing is now its own deliberate run of `publish-play.yml`.
 | Per-release runbook | [`dev/google-play-store.md`](../../dev/google-play-store.md) |
 | Listing copy + screenshot checklist | [`play/listing-en-US.md`](play/listing-en-US.md) — **text is pasted into the Console by hand**; nothing in this repo pushes it |
 | Upload the listing images | Actions → **Play Store listing images** ([`play-images.yml`](../../.github/workflows/play-images.yml)) — images only, `replace: true`, report before apply |
-| "What's new" copy (≤500 **bytes**/locale) | [`store-release-notes.md`](store-release-notes.md) — one generic line every release, copied from `store-release-notes.txt` into `distribution/whatsnew/whatsnew-en-US` by the release job; the detail lives on the GitHub release |
+| "What's new" copy (≤500 **bytes**/locale) | [`store-release-notes.md`](store-release-notes.md) — one generic line every release, copied from `store-release-notes.txt` into `distribution/whatsnew/whatsnew-en-US` by `publish-play.yml`; the detail lives on the GitHub release |
 | Android TV assets | [`play/tv/MANIFEST.md`](play/tv/MANIFEST.md) — screenshots and banner, and the two traps that produced a wrong set first |
 | Upload-ready assets + slot map | [`play/store-ready/MANIFEST.md`](play/store-ready/MANIFEST.md) |
 | Demo-media licences | [`play/DEMO-MEDIA-PROVENANCE.md`](play/DEMO-MEDIA-PROVENANCE.md) |
@@ -371,6 +372,7 @@ GUID — seller, tenant, app, subscription, Partner Center product, or `CN=<GUID
 
 ### Documents
 
+- [`dev/store-release-playbook.md`](../../dev/store-release-playbook.md) — the linear path for shipping one version to every store: who may press each button, exact commands, checks and STOP points.
 - [`dev/windows-signing-and-store.md`](../../dev/windows-signing-and-store.md) — Windows signing as-built + the Microsoft Store runbook, certification post-mortems, MSIX identity plumbing.
 - [`dev/msstore-ci-setup.md`](../../dev/msstore-ci-setup.md) — the Microsoft submission credential from nothing, the commit trap in full, and why not `msstore publish`.
 - [`dev/google-play-store.md`](../../dev/google-play-store.md) — the per-release Play runbook and its gotchas.

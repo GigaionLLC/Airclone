@@ -13,6 +13,19 @@ happened": nothing was logged between 2026-07-02 and 2026-07-15, or between 2026
      it is: it used to say ABOVE, which pushed it further down the file with every entry until
      it sat hundreds of lines under the newest one and pointed writers at the wrong place. -->
 
+## [2026-10-25] - Store release playbook for agents
+
+**Agent:** Claude Code (Claude Opus 5.5)
+**Files Modified:** new `dev/store-release-playbook.md`; `dev/README.md` (router row, checklist pointer, two stale
+`release.yml` claims), `docs/store/README.md` (index entry, stale Play-on-tag claims), `dev/google-play-store.md`
+(stale `changesNotSentForReview` note), `AGENT.md` (Task Lookup rows), this changelog.
+**Database/API Changes:** None
+**Summary:** A linear playbook a lower-tier agent can follow to ship one version to GitHub, Docker, Play, the Microsoft
+Store and both Apple stores. It has a who-may-press table, a NEVER list, preflight checks, and 16 phases with exact
+commands, checks and STOP points. It also covers known traps and gives a report template. Every workflow input and mode
+was checked against the `.yml` source. Fixed in place: the Play 500-byte check and the open-testing verify step live in
+`publish-play.yml`, not `release.yml` (since v0.8.3, a tag uploads nothing to Play). No workflow or code changed.
+
 ## [2026-10-25] - Scheduled runs never overlap (#55); stall watchdog replaces the 6 h cap (#54)
 
 **Agent:** Claude Code (Claude Opus 5.5)
