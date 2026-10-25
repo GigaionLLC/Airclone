@@ -81,6 +81,9 @@ Options:
                           installing it.
       --version-tag TAG   Install this release instead of the newest.
 
+  --tray                  Start hidden in the tray, as the sign-in launch does.
+                          Opens the window instead when there is no tray.
+
   --log-input             Print one line per key event, and whether a text
                           field had focus to receive it. For working out why a
                           machine will not type. Changes nothing else.

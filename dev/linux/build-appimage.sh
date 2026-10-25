@@ -148,7 +148,8 @@ say "Resolving shared libraries"
 # deliberately NOT bundled, because bundling them is what makes an AppImage fail
 # on a machine whose graphics stack differs. What it does bundle is the part a
 # distro may genuinely not have: libmpv (media preview) and libsecret (the OS
-# credential store), plus their dependency trees.
+# credential store), libayatana-appindicator3 (the tray icon, #54; a minimal
+# install or a non-Ubuntu distro may lack it), plus their dependency trees.
 # linuxdeploy's exclude list treats libjack as a system library, and on a machine
 # with JACK installed it is one. Plenty of desktops have no JACK at all, and mpv
 # links it rather than dlopen-ing it, so an AppImage without it dies at startup
@@ -396,7 +397,7 @@ say "Checking the libraries a distro may not have are really inside"
 # against the BUILD MACHINE, which has every one of these installed, so it passes
 # whether or not they were bundled. That is exactly how an AppImage ships looking
 # verified and then fails on a user's machine.
-for lib in libmpv.so.2 libsecret-1.so.0; do
+for lib in libmpv.so.2 libsecret-1.so.0 libayatana-appindicator3.so.1; do
   if find "$APPDIR" -name "$lib" -print -quit | grep -q .; then
     echo "  $lib bundled"
   else

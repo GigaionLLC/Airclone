@@ -122,6 +122,16 @@ dependencies:
   # re-test on every Flutter stable bump (0.3.0 is the only 0.3.x).
   desktop_multi_window: ^0.3.0
 
+  # Desktop system-tray icon + menu (close-to-tray, #54): Windows Shell_NotifyIcon,
+  # macOS NSStatusItem, Linux libayatana-appindicator3 (a BUILD dependency on
+  # Linux: CI and every packaging recipe install it). DESKTOP ONLY; every call
+  # goes through state/tray_controller.dart, which is HostPlatform-guarded.
+  # Held on the 0.5.x line on purpose: 0.6+ is a ground-up rewrite on a new
+  # native layer that needs a newer SDK than CI pins. Showing/hiding the window
+  # is NOT this plugin's job: the runners expose a tiny `airclone/window`
+  # channel for that (see state/desktop_window.dart). MIT.
+  tray_manager: ^0.5.3
+
   # Dual-engine (MAS/iOS + desktop option): the in-process rclone engine
   # (FfiRcloneClient) calls librclone's C ABI over dart:ffi — RcloneInitialize /
   # RcloneRPC(method,json) / RcloneFinalize — instead of spawning `rcd`. `ffi`
@@ -165,10 +175,12 @@ flutter:
   # the material Icons class.
   uses-material-design: true
 
-  # To add assets to your application, add an assets section, like this:
-  # assets:
-  #   - images/a_dot_burr.jpeg
-  #   - images/a_dot_ham.jpeg
+  # Desktop tray icons (#54), generated from docs/brand by
+  # dev/desktop/make-tray-icons.py. tray_manager reads them from
+  # <exe dir>/data/flutter_assets on Windows/Linux and from the asset bundle on
+  # macOS, so they must be real assets. A few KB; mobile and web never load them.
+  assets:
+    - assets/tray/
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images

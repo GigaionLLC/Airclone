@@ -110,11 +110,24 @@ dragged narrow gets the phone layout. The ⚠️ marks for tablets below are abo
 | Scheduled tasks run while Airclone is open | | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Scheduled tasks run with Airclone closed | | ✅ | ✅ | ⏳ | ⏳ | ⏳ | ⏳ | ✅ | ✅ | ⚠️ when iOS allows |
 | Camera-roll (photo) backup | | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ⚠️ | ❌ |
+| Keep running in the tray with the window closed | | ✅ | ✅ | ✅ | ✅ | ⚠️ tray host | ⚠️ tray host | ❌ | ❌ | ❌ |
+| Start in the tray when you sign in | | ✅ | ⏳ | ⚠️ macOS 13+ | ⚠️ macOS 13+ | ⚠️ tray host | ⏳ | ❌ | ❌ | ❌ |
 
 - **Saved tasks and Back up a folder do not need Advanced mode.** They are always in Settings →
   Automation. Advanced mode also puts a `Saved tasks` button in the desktop top bar.
 - **On macOS and Linux**, a schedule runs while Airclone is open. A run missed while it was closed
-  starts once on the next launch.
+  starts once on the next launch. Hidden in the tray counts as open: turn on Settings → Tray →
+  `Closing the window keeps Airclone running in the tray` and schedules keep running with the window
+  closed. See [Keeping Airclone in the tray](tray.md).
+- **The tray is off by default.** Until you turn it on, closing the window quits, as before. If
+  something is still running the first time you close it, Airclone asks.
+- **"Tray host" on Linux** means your desktop must show StatusNotifier (AppIndicator) icons. KDE,
+  Cinnamon, Xfce and Ubuntu do. Plain GNOME needs the *AppIndicator and KStatusNotifierItem Support*
+  extension. Without one there is no icon, and closing the window quits.
+- **Starting at sign-in** is not built for the Microsoft Store build, which has to declare a startup
+  task in its package, or for the Flatpak, which needs the Background portal. On the Flatpak you can
+  add `flatpak run com.gigaionllc.airclone --tray` to your desktop's startup applications yourself.
+  On macOS it needs macOS 13 or later.
 - **On iPhone and iPad** a schedule runs while Airclone is open, and iOS runs it in the background
   when it allows: usually while the phone is charging on Wi-Fi, often overnight. A run iOS does not
   get to starts once on the next launch.
@@ -235,7 +248,11 @@ columns does not fit on a phone.
 **Background scheduling on macOS and Linux is not built yet.** Windows uses Task Scheduler and
 Android uses WorkManager. The macOS (launchd) and Linux (systemd) versions are planned. Until they
 exist, the app says plainly that a schedule runs only while it is open, rather than letting you
-close it and expect a backup that never happens.
+close it and expect a backup that never happens. Keeping Airclone in the tray covers most of the
+gap: it stays open with no window on screen, so schedules keep running.
+
+**Phones, tablets and the Web UI have no tray.** Android and iOS have no tray area for apps to sit
+in, and the Web UI is a browser tab. On Android, a running transfer shows a notification instead.
 
 ## Why Advanced mode exists
 
@@ -254,5 +271,6 @@ server or a task you already set up. The full list is in
 - [Getting started](getting-started.md): installing on each platform and the first launch
 - [Mounting a drive and sharing](mount-and-share.md): the mount drivers and the Flatpak permission
 - [Running tasks on a schedule](scheduling.md): what "run while Airclone is closed" arranges on each platform
+- [Keeping Airclone in the tray](tray.md): close-to-tray, the tray menu and starting at sign-in
 - [The Web UI](web-ui.md): hosting Airclone for a browser on another device
 - [Your remotes, and moving them between devices](config-and-devices.md): where the config lives, and QR transfer

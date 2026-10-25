@@ -58,9 +58,9 @@ Prove the load-bearing assumptions before committing to UI.
 - **Exit criteria:** identical RC JSON drives both transports; a remote is browsable in Android Files;
   the iOS xcframework executes an RPC.
 
-### Phase 1 — Desktop MVP · **DONE**, except the tray (shipped through the alpha run to v0.1.0-beta.1 and since)
-There is **no system tray and no minimize-to-keep-running** — verified absent, no tray package and
-no tray code ([`feature-backlog.md`](../backlog/feature-backlog.md), MUST / App shell). First-run
+### Phase 1 — Desktop MVP · **DONE** (shipped through the alpha run to v0.1.0-beta.1 and since)
+The system tray and close-to-tray came last, with #54 (`tray_manager`; `state/tray_controller.dart`,
+[`feature-backlog.md`](../backlog/feature-backlog.md), MUST / App shell). First-run
 onboarding shipped as a zero-remotes empty state, not the guided wizard the bullet below implies.
 - Spawn/supervise `rcd` (loopback + socket, transient creds); binary provisioning + SHA256 +
   min-version + `"system"`/PATH fallback.

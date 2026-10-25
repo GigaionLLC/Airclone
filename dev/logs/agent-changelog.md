@@ -13,6 +13,30 @@ happened": nothing was logged between 2026-07-02 and 2026-07-15, or between 2026
      it is: it used to say ABOVE, which pushed it further down the file with every entry until
      it sat hundreds of lines under the newest one and pointed writers at the wrong place. -->
 
+## [2026-10-25] - System tray and close-to-tray on desktop (#54)
+
+**Agent:** Claude Code (Claude Opus 5.5)
+**Files Modified:** new `app/lib/src/state/{tray_controller,tray_status,close_to_tray,autostart,desktop_window}.dart`,
+`app/lib/src/ui/{tray_settings_section,close_to_tray_dialog}.dart`, `ui/app.dart`, `ui/settings_screen.dart`,
+`headless/cli_info.dart` (`--tray`), `app/assets/tray/`, `dev/desktop/make-tray-icons.py`, `pubspec.yaml` (`tray_manager`),
+`windows/runner/{main,flutter_window}.cpp` + `.h`, `windows/installer/airclone.iss`, `macos/Runner/{AppDelegate,MainFlutterWindow}.swift`,
+`linux/runner/my_application.cc`, `linux/packaging/com.gigaionllc.airclone.yml` + `flatpak-modules/`, `dev/linux/build-{appimage,flatpak}.sh`,
+`docker/Dockerfile`, `.github/workflows/{release,linux-runner,linux-screenshot}.yml`, tests `tray_test`, `autostart_test`,
+`tray_settings_widget_test`, `cli_info_test`; docs/guide/tray.md (new), docs/guide/{README,platforms}.md, README.md,
+`wiki/features/features-index.md`, `wiki/core/03-user-journey.md`, backlog, cross-platform plan.
+**Database/API Changes:** None. New prefs key for the close-to-tray choice (tri-state: unset/true/false).
+**Summary:** GitHub discussion #54. A `tray_manager` icon on Windows, macOS and Linux (libayatana-appindicator,
+StatusNotifier host checked over D-Bus first) whose menu is a status line throttled to 2 s (also the Windows/macOS tooltip,
+clipped to 127 chars), Open, Pause/Resume all (the queue: queued waits, running finishes), a bandwidth-limit submenu, and
+Quit (still through the mounts guard). Settings → Tray: "Closing the window keeps Airclone running in the tray", default
+off; never chosen + work running asks once and saves the answer. X arrives through `AppLifecycleListener.onExitRequested`
+(Windows/Linux) and a `performClose` override on macOS (`airclone/window` channel). Optional start in the tray at sign-in:
+HKCU Run value written by the runner from its own module path + `--tray` (uninstaller removes it), `SMAppService.mainApp`
+on macOS 13+, XDG autostart entry with a quoted, control-char-refusing Exec of the app's own path (AppImage file if
+`APPIMAGE`); hidden on MSIX (needs a startupTask + Windows 10 2004 for parameters), Flatpak (Background portal not wired)
+and Snap (no package). Single windowed instance on Windows (named mutex + broadcast show) and Linux (GApplication), headless
+runs excluded. Scheduler untouched: it keeps ticking because the app stays open. Mobile and web unchanged.
+
 ## [2026-10-25] - Store release playbook for agents
 
 **Agent:** Claude Code (Claude Opus 5.5)

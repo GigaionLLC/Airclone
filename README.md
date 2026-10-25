@@ -107,7 +107,8 @@ things, and a few features are not built yet on every platform. The big ones:
 - 🪟 **The Microsoft Store build** is the same as the installer, except that the app and its rclone
   engine update only through the Store.
 - ⏰ **Scheduled tasks run with Airclone closed only on Windows and Android.** On macOS and Linux they
-  run while it is open, and iOS has no scheduling yet.
+  run while it is open, which includes sitting in the tray with the window closed. iOS runs them
+  only when iOS allows.
 - 🔧 **Some features stay hidden until you turn on Advanced mode** in Settings: mounting, serving,
   two-way sync and the command console among them.
 
@@ -317,7 +318,7 @@ Each comes for **x86_64** (most PCs) and **ARM64** (Raspberry Pi 4/5 on a 64-bit
 | :--- | :--- |
 | `Airclone-x86_64.AppImage` | One file. `chmod +x` it and run it — it carries its own libraries, so nothing needs installing. **Start here if you are not sure.** |
 | `airclone.flatpak` | `flatpak install --user ./airclone.flatpak`. Integrates with your software centre, but **does not update itself**: it is a single file, so `flatpak update` refreshes the GNOME runtime it uses and not Airclone. Airclone checks for new releases and tells you; install the new `.flatpak` over the old one. **Mounting needs one extra permission** you grant yourself, because it lets Airclone run commands outside the sandbox — see [mounting from the Flatpak](docs/guide/mount-and-share.md#mounting-from-the-flatpak-needs-one-permission). Everything else works without it. |
-| `airclone-linux-x64.tar.gz` | The raw files, for packaging it yourself or putting it where you want. Needs `libmpv`, `libsecret-1` and `libasound2` installed already — the other two carry their own. |
+| `airclone-linux-x64.tar.gz` | The raw files, for packaging it yourself or putting it where you want. Needs `libmpv`, `libsecret-1`, `libasound2` and `libayatana-appindicator3` (the tray icon) installed already — the other two carry their own. |
 
 The rclone engine is included in all three; there is nothing else to download. The
 AppImage uses your system's ALSA (`libasound2`) when you have one — replacing a working

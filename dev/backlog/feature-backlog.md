@@ -344,7 +344,14 @@ Status verified against `app/lib` at v0.7.6. **✅ = built and in the shipping a
   `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` (Play policy).
 
 **App shell**
-- ⬜ `[D]` System tray + pinned quick actions — verified absent.
+- ✅ `[D]` System tray + pinned quick actions (#54): a tray icon on Windows, macOS and Linux
+  (StatusNotifier host needed), whose menu is the quick actions — a throttled status line, Open,
+  Pause/Resume all, a bandwidth-limit switch, Quit; close-to-tray (off by default, asked once
+  when work is running) and an optional start-in-tray at sign-in (Run key, SMAppService, XDG
+  autostart; hidden on MSIX and Flatpak) — `state/tray_controller.dart`, `state/tray_status.dart`,
+  `state/close_to_tray.dart`, `state/autostart.dart`, `state/desktop_window.dart`,
+  `ui/tray_settings_section.dart`, `ui/close_to_tray_dialog.dart`. User guide:
+  [`docs/guide/tray.md`](../../docs/guide/tray.md).
 - ✅ `[D]` Desktop mount as a secondary convenience: `mount/types` detection, VFS options panel with
   cache-mode presets, drive-letter pinning — `state/mount_controller.dart`,
   `ui/mount_options_editor.dart`, `state/mount_letters.dart`. Hidden entirely in the MAS build

@@ -22,6 +22,8 @@ Options:
   --run-due               Run every scheduled task that is due, then exit.
   --run-task ID           Run one saved task by id, then exit.
 
+  --tray                  Start hidden in the menu bar, as the login item does.
+
   --log-input             Print one line per key event, and whether a text field
                           had focus to receive it.
 
@@ -64,8 +66,59 @@ class AppDelegate: FlutterAppDelegate {
     }
     if wantsNoWindow(args) {
       startHeadlessEngine(args)
+    } else {
+      // Observers, not overrides: these delegate methods may or may not be
+      // implemented by FlutterAppDelegate depending on the Flutter version,
+      // and a wrong `override` either way does not compile.
+      launchObserver = NotificationCenter.default.addObserver(
+        forName: NSApplication.didFinishLaunchingNotification,
+        object: nil,
+        queue: nil
+      ) { [weak self] _ in self?.didFinishLaunchingWindowed() }
     }
     super.applicationWillFinishLaunching(notification)
+  }
+
+  private var launchObserver: NSObjectProtocol?
+
+  /// Tray support (#54), set up once AppKit has installed its own Apple event
+  /// handlers.
+  private func didFinishLaunchingWindowed() {
+    if let o = launchObserver {
+      NotificationCenter.default.removeObserver(o)
+      launchObserver = nil
+    }
+    // A login-item launch (SMAppService) carries no arguments, so `--tray`
+    // cannot say "start hidden"; the open-application Apple event says it was
+    // launched as a login item instead.
+    let event = NSAppleEventManager.shared().currentAppleEvent
+    let asLoginItem =
+      event?.eventID == AEEventID(kAEOpenApplication)
+      && event?.paramDescriptor(forKeyword: AEKeyword(keyAEPropData))?.enumCodeValue
+        == OSType(keyAELaunchedAsLogInItem)
+    if asLoginItem, let w = MainFlutterWindow.main, !w.startedHidden {
+      w.beginHidden()
+    }
+    // A Dock click (or opening the app again from Finder) while the window sits
+    // in the tray brings it back. Replaces AppKit's reopen handler, which would
+    // otherwise only ask the delegate and do nothing for an ordered-out window.
+    NSAppleEventManager.shared().setEventHandler(
+      self,
+      andSelector: #selector(handleReopen(_:withReplyEvent:)),
+      forEventClass: AEEventClass(kCoreEventClass),
+      andEventID: AEEventID(kAEReopenApplication)
+    )
+  }
+
+  @objc private func handleReopen(
+    _ event: NSAppleEventDescriptor, withReplyEvent reply: NSAppleEventDescriptor
+  ) {
+    guard let w = MainFlutterWindow.main else { return }
+    if !w.isVisible || w.isMiniaturized || w.alphaValue == 0 {
+      w.showFromTray()
+    } else {
+      NSApp.activate(ignoringOtherApps: true)
+    }
   }
 
   /// Runs Dart with NO window, for `--webui` and the scheduled-task flags.
@@ -106,8 +159,13 @@ class AppDelegate: FlutterAppDelegate {
   /// Closing the last window quits - unless there was never meant to be one.
   /// A server that stopped because a window it never showed was closed would be
   /// a baffling way to lose a Web UI.
+  ///
+  /// With the tray up (#54) the main window is only ever hidden, and quitting
+  /// is the tray's Quit or Cmd-Q; closing the last image pop-out while the main
+  /// window sits in the tray must not end the app either.
   override func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
-    return !wantsNoWindow(CommandLine.arguments)
+    if wantsNoWindow(CommandLine.arguments) { return false }
+    return !(MainFlutterWindow.main?.interceptClose ?? false)
   }
 
   override func applicationSupportsSecureRestorableState(_ app: NSApplication) -> Bool {

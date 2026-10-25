@@ -47,6 +47,7 @@ import '../state/window_backdrop.dart';
 import 'config_encryption_dialog.dart';
 import 'config_export_dialog.dart';
 import 'photo_backup_section.dart';
+import 'tray_settings_section.dart';
 import 'config_import_dialog.dart';
 import 'dialog_body.dart';
 import 'external_backup_dialogs.dart';
@@ -127,6 +128,12 @@ class SettingsContent extends ConsumerWidget {
           _InterfaceSizeSection(),
         ],
         if (desktop) ...[const SizedBox(height: Space.x4), _BackdropSection()],
+        // Tray (#54): close-to-tray and the sign-in launch. Desktop only.
+        if (desktop) ...[
+          const SizedBox(height: Space.x5),
+          const _GroupHeader('Tray'),
+          const TraySettingsSection(),
+        ],
         if (desktop || advanced || HostPlatform.isIOS) ...[
           const SizedBox(height: Space.x5),
           const _GroupHeader('Transfers'),

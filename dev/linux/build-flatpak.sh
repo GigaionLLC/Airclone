@@ -85,7 +85,7 @@ say "What the runtime already provides"
 # Printing it makes that a fact rather than a guess, and shows when a runtime
 # bump changes the answer.
 flatpak run --user --command=sh "org.gnome.Sdk//$RUNTIME_VERSION" -c \
-  'ldconfig -p | grep -E "libmpv|libplacebo|libass|libsecret|libavcodec" || true' \
+  'ldconfig -p | grep -E "libmpv|libplacebo|libass|libsecret|libavcodec|appindicator|dbusmenu" || true' \
   2>/dev/null | sed 's/^/  /' || echo "  (could not inspect the runtime)"
 
 say "Staging the build context"
@@ -95,6 +95,8 @@ cp -a "$BUNDLE"/. "$CTX/bundle/"
 cp "$PKG/$APP_ID.desktop" "$PKG/$APP_ID.metainfo.xml" "$CTX/"
 cp "$PKG"/icons/*.png "$CTX/icons/"
 cp "$PKG/$APP_ID.yml" "$CTX/"
+# The tray's appindicator modules (#54), which the manifest names by path.
+cp -a "$PKG/flatpak-modules" "$CTX/"
 if [ "$RUNTIME_VERSION" != "$MANIFEST_RUNTIME" ]; then
   echo "  building against runtime $RUNTIME_VERSION, not the manifest's $MANIFEST_RUNTIME"
   sed -i "s/^runtime-version: .*/runtime-version: '$RUNTIME_VERSION'/" \

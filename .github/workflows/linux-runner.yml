@@ -63,7 +63,7 @@ jobs:
       # Same set release.yml installs; see its comments for why each is needed.
       - name: Install build deps
         working-directory: .
-        run: sudo apt-get update && sudo apt-get install -y ninja-build libgtk-3-dev libmpv-dev mpv libsecret-1-dev desktop-file-utils patchelf
+        run: sudo apt-get update && sudo apt-get install -y ninja-build libgtk-3-dev libmpv-dev mpv libsecret-1-dev libayatana-appindicator3-dev desktop-file-utils patchelf
       # Pinned to the release pin. A floating channel here would test a
       # different embedder than the one that ships.
       - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2  # v2.23.0
@@ -467,9 +467,9 @@ jobs:
       - name: The tar.gz has everything it needs once the README's packages are in
         run: |
           case "${{ matrix.distro }}" in
-            arch) pacman -S --noconfirm --needed mpv libsecret alsa-lib ;;
-            fedora) dnf -y install mpv-libs libsecret alsa-lib ;;
-            debian|ubuntu) DEBIAN_FRONTEND=noninteractive apt-get install -y libmpv2 libsecret-1-0 libasound2t64 ;;
+            arch) pacman -S --noconfirm --needed mpv libsecret alsa-lib libayatana-appindicator ;;
+            fedora) dnf -y install mpv-libs libsecret alsa-lib libayatana-appindicator-gtk3 ;;
+            debian|ubuntu) DEBIAN_FRONTEND=noninteractive apt-get install -y libmpv2 libsecret-1-0 libasound2t64 libayatana-appindicator3-1 ;;
           esac
           mkdir tarball && tar -C tarball -xzf airclone-linux-x64.tar.gz
           python3 src/dev/linux/check-appimage-deps.py tarball/bundle --strict
@@ -566,7 +566,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - name: Install build deps
-        run: sudo apt-get update && sudo apt-get install -y ninja-build libgtk-3-dev libmpv-dev mpv libsecret-1-dev desktop-file-utils patchelf flatpak flatpak-builder
+        run: sudo apt-get update && sudo apt-get install -y ninja-build libgtk-3-dev libmpv-dev mpv libsecret-1-dev libayatana-appindicator3-dev desktop-file-utils patchelf flatpak flatpak-builder
       - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2  # v2.23.0
         with: { channel: stable, flutter-version: 3.47.0, cache: true }
       - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87  # stable branch

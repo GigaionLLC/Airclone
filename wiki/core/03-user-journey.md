@@ -57,17 +57,19 @@ The body is identical across the three desktops; the **chrome and OS integration
 │ JOBS [Active] Sched History            ▓▓▓▓▓▓░ 73% 8.4MB/s ETA 0:03    │
 │ ⛁ Mounts  ⌨ CLI  ● engine ok    ↑12.4MB/s · 2 jobs        | 5 items   │
 └───────────────────────────────────────────────────────────────────────┘
-   ▼ system tray (notification area), PLANNED — right-click ▾
-     ┌──────────────────────────┐
-     │ Airclone — engine ok     │
-     │ Mount  gdrive → X:        │
-     │ Quick: Sync "Photos"      │
-     │ Open · Pause all · Quit   │
-     └──────────────────────────┘
+   ▼ system tray (notification area) — right-click ▾ (left click opens the window)
+     ┌───────────────────────────────────┐
+     │ Transferring 2 files, 4.1 MB/s     │  (status, disabled)
+     │ Open Airclone                      │
+     │ Pause all / Resume all             │
+     │ Bandwidth limit: Unlimited       ▸ │
+     │ Quit Airclone                      │
+     └───────────────────────────────────┘
 ```
 - **Mount** → drive letter (`X:`) via WinFsp; appears in Explorer "This PC".
-- A tray icon in the notification area, keeping jobs/mounts running while minimized, is **planned,
-  not built** — nothing in `app/windows/` or `app/lib/` implements one.
+- A tray icon in the notification area (#54) keeps jobs, mounts and schedules running with the
+  window closed when Settings → Tray → close-to-tray is on (off by default). The hover tooltip
+  carries the same status line. `state/tray_controller.dart`; guide: `docs/guide/tray.md`.
 - Distribution: portable zip + an Inno Setup installer, both code-signed (Azure Artifact Signing),
   plus the Microsoft Store MSIX.
 
@@ -83,11 +85,11 @@ The body is identical across the three desktops; the **chrome and OS integration
 ├──────────────┴───────────────────────────────────────────────────────┤
 │ ⛁ Mounts  ⌨ CLI  ● engine ok    ↑12.4MB/s · 2 jobs        | 5 items   │
 └───────────────────────────────────────────────────────────────────────┘
-   ▲ macOS menu-bar extra (status item) — PLANNED, not built
+   ▲ macOS menu-bar extra (status item): the same menu as the Windows tray
 ```
 - **Mount** → `/Volumes/<name>` via macFUSE / FUSE-T; shows in Finder sidebar.
-- Native **menu bar**; traffic-light window controls. A menu-bar status item is **planned, not
-  built**.
+- Native **menu bar**; traffic-light window controls. A menu-bar status item (#54) carries the tray
+  menu; with close-to-tray on, the red button hides the window and Cmd-Q still quits.
 - Distribution: DMG + zip, **Developer-ID signed + notarized** (no Gatekeeper scare), plus the Mac
   App Store package.
 
@@ -103,10 +105,11 @@ The body is identical across the three desktops; the **chrome and OS integration
 ├──────────────┴───────────────────────────────────────────────────────┤
 │ ⛁ Mounts  ⌨ CLI  ● engine ok    ↑12.4MB/s · 2 jobs        | 5 items   │
 └───────────────────────────────────────────────────────────────────────┘
-   ▼ AppIndicator/StatusNotifier tray — PLANNED (and GNOME needs an extension)
+   ▼ AppIndicator/StatusNotifier tray (plain GNOME needs the AppIndicator extension)
 ```
 - **Mount** → `~/mnt/...` or `/mnt/...` via FUSE3; appears in Nautilus/Dolphin.
-- Honors system GTK/Qt theme. A StatusNotifierItem tray is **planned, not built**.
+- Honors system GTK/Qt theme. A StatusNotifierItem tray (#54, libayatana-appindicator) shows when
+  the desktop has a host; it has no tooltip there, so the menu's status line stands in.
 - Distribution: a `tar.gz` bundle — the only Linux artifact the release pipeline produces.
 
 ### Desktop dialogs (shared, OS-themed)
@@ -130,8 +133,8 @@ Dual-pane + **tabs** (many remotes open), drag/drop onto folders + drag-out, mul
 remote config/OAuth, copy/move/**sync**/**bisync**, dry-run + color compare, transfer queue with
 live speed/ETA + bandwidth slider, **mount manager** (VFS options + FUSE auto-install),
 **serve** (WebDAV/SFTP/HTTP/FTP/DLNA), scheduler (interval / daily / weekly), public links, crypt
-wizard, headless/remote-`rcd` profiles (v2). Tray, auto-launch and a watch-folder trigger are
-**planned, not built** — nothing in `app/` implements any of the three.
+wizard, headless/remote-`rcd` profiles (v2). The tray and the sign-in launch shipped
+with #54; a watch-folder trigger is **planned, not built**.
 
 ---
 
@@ -281,7 +284,7 @@ nothing phones home. Full design: [19-enterprise-readiness](19-enterprise-readin
 | Appears in OS file explorer | ✅ FUSE drive | ✅ FUSE volume | ✅ FUSE | ⏳ DocumentsProvider | ⏳ File Provider |
 | Live mount perf for upload/move | ➖ VFS | ➖ VFS | ➖ VFS | ➖ on-demand | ➖ whole-file |
 | Serve (WebDAV/SFTP/HTTP/DLNA) | ✅ | ✅ | ✅ | ➖ (in-app) | ➖ (in-app) |
-| System tray / menu-bar | ⏳ | ⏳ | ⏳ | ❌ | ❌ |
+| System tray / menu-bar | ✅ | ✅ | ⚠️ needs a tray host | ❌ | ❌ |
 | Scheduler (interval / daily / weekly) | ✅ | ✅ | ✅ | ✅ | ❌ |
 | Runs with the app closed | ✅ Task Scheduler | ➖ while open | ➖ while open | ✅ WorkManager poll | ❌ |
 | MDM/policy managed | ⏳ ADMX/Intune | ⏳ profiles/Jamf | ⏳ /etc/repo | ⏳ managed config | ⏳ AppConfig |
