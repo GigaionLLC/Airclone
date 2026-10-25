@@ -13,6 +13,25 @@ happened": nothing was logged between 2026-07-02 and 2026-07-15, or between 2026
      it is: it used to say ABOVE, which pushed it further down the file with every entry until
      it sat hundreds of lines under the newest one and pointed writers at the wrong place. -->
 
+## [2026-10-25] - Scheduled runs never overlap (#55); stall watchdog replaces the 6 h cap (#54)
+
+**Agent:** Claude Code (Claude Opus 5.5)
+**Files Modified:** new `app/lib/src/state/task_run_gate.dart`, `scheduler_controller.dart`, `jobs_controller.dart`,
+`rclone/models/job.dart` (`work`), `headless/headless_runner.dart`, `windows_task_scheduler.dart`, `ui/tasks_panel.dart`,
+`ui/photo_backup_section.dart`; tests `task_run_gate_test.dart`, `headless_overlap_test.dart` (new), `scheduler_tick_test.dart`,
+`scheduler_empty_source_test.dart`, `task_history_test.dart`, `reconcile_exec_test.dart`, `due_runner_task_test.dart`,
+`windows_task_scheduler_test.dart`, `headless_args_test.dart`; docs/guide/scheduling.md, wiki/features/feat-scheduling.md (§5.6),
+wiki/core/07-state-context.md, 10-external-integrations.md, 14-performance-standards.md;
+dev/archive-plans/overlapping-runs-and-stall-watchdog-plan.md.
+**Database/API Changes:** None. Lock files under `<app support>/run-locks/`; Windows task Description gains `[airclone-def:<hash>]`.
+**Summary:** (#55) One run in flight per task across the tick, Run now, photo backup and every headless wake: an exclusive
+OS file lock per task (cross-process) plus an IsolateNameServer name (same-process engines on Android), and `TaskRunGate`
+mapping task id → local job, released when the real job ends. Run now on a running task shows a SnackBar. A due task still
+running is skipped without stamping lastRun (runs once when the earlier run ends), shown in Saved tasks or as headless
+`[SKIP]`, exit 0. (#54) `recordRunOutcome` stops a run after 60 min without progress (bytes or engine work) and records why;
+the outer cap is 72 h in the GUI, headless default and both Windows XMLs (PT72H). Reconcile rewrites a registered entry whose
+definition stamp differs, once; an unreadable definition is left alone. Android/iOS budgets unchanged.
+
 ## [2026-10-12] - v0.28.0: edit saved tasks (#51); iOS background time, screen-on, BGTaskScheduler (#52)
 
 **Agent:** Claude Code (Claude Opus 5.5)

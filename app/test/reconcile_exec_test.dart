@@ -37,13 +37,27 @@ TransferTask _task({
 );
 
 /// Records every schtasks invocation and answers /Query from a fixed folder.
+/// `/Query /TN <name> /XML` answers from [definitions]; a name missing there
+/// fails the query, which reconcile must treat as "leave it alone".
 class _Fake {
-  _Fake({this.registered = const <String>{}});
+  _Fake({
+    this.registered = const <String>{},
+    this.definitions = const <String, String>{},
+  });
   final Set<String> registered;
+  final Map<String, String> definitions;
   final calls = <List<String>>[];
 
   Future<ProcessResult> run(String exe, List<String> args) async {
     calls.add(args);
+    if (args.first == '/Query' && args.contains('/XML')) {
+      final full = args[args.indexOf('/TN') + 1];
+      final name = full.startsWith(r'Airclone\') ? full.substring(9) : full;
+      final xml = definitions[name];
+      return xml == null
+          ? ProcessResult(0, 1, '', 'ERROR: not found')
+          : ProcessResult(0, 0, xml, '');
+    }
     if (args.first == '/Query') {
       final csv = registered
           .map((n) => '"\\Airclone\\$n","","Ready"')
@@ -68,6 +82,20 @@ class _Fake {
   /// Indexes into [calls], so ordering between verbs can be asserted.
   int indexOf(String verb) => calls.indexWhere((c) => c.first == verb);
 }
+
+/// What this build writes for the tasks the reconcile tests use, as the OS
+/// would hand it back from `/Query /XML`.
+Map<String, String> _current() => {
+  'nightly': buildTaskXml(
+    schedule: _daily,
+    id: 'nightly',
+    exePath: Platform.resolvedExecutable,
+  ),
+  kDueRunnerTaskName: buildDueRunnerXml(
+    intervalMinutes: 15,
+    exePath: Platform.resolvedExecutable,
+  ),
+};
 
 void main() {
   // schtasks does not exist off Windows and every public method no-ops there,
@@ -131,7 +159,10 @@ void main() {
       // `/Create /F` REPLACES a task, which resets its trigger state — and a
       // repeating trigger with a past boundary then fires straight away. If
       // reconcile rewrote everything, opening the app would start a run.
-      final f = _Fake(registered: {'nightly', kDueRunnerTaskName});
+      final f = _Fake(
+        registered: {'nightly', kDueRunnerTaskName},
+        definitions: _current(),
+      );
       final r = await WindowsTaskScheduler(runner: f.run).reconcile(
         tasks: [
           _task(id: 'nightly', schedule: _daily),
@@ -143,6 +174,38 @@ void main() {
       expect(r.deleted, isEmpty);
       expect(f.created, isEmpty);
       expect(f.deleted, isEmpty);
+    }, skip: onWindows ? false : 'schtasks is Windows-only');
+
+    test('an entry an older build wrote is rewritten once (#54)', () async {
+      // The six-hour ExecutionTimeLimit lives in the OS's copy of the
+      // definition, so an update alone would never lift it. Strip the
+      // fingerprint to stand in for a pre-fingerprint definition.
+      final old = _current()['nightly']!.replaceAll(
+        RegExp(r' \[airclone-def:[0-9a-f]{16}\]'),
+        '',
+      );
+      final f = _Fake(
+        registered: {'nightly', kDueRunnerTaskName},
+        definitions: {..._current(), 'nightly': old},
+      );
+      final r = await WindowsTaskScheduler(runner: f.run).reconcile(
+        tasks: [
+          _task(id: 'nightly', schedule: _daily),
+          _task(id: 'every2h', schedule: _interval),
+        ],
+        pollMinutes: 15,
+      );
+      expect(f.created, [r'Airclone\nightly']);
+      expect(r.deleted, isEmpty);
+    }, skip: onWindows ? false : 'schtasks is Windows-only');
+
+    test('an entry whose definition cannot be read is left alone', () async {
+      final f = _Fake(registered: {'nightly'});
+      await WindowsTaskScheduler(runner: f.run).reconcile(
+        tasks: [_task(id: 'nightly', schedule: _daily)],
+        pollMinutes: 15,
+      );
+      expect(f.created, isEmpty);
     }, skip: onWindows ? false : 'schtasks is Windows-only');
 
     test(

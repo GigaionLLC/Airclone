@@ -54,6 +54,14 @@ void main() {
       expect(dueTasks([_task(lastRun: null)], now).map((t) => t.id), ['1']);
     });
 
+    test('excludes a due task that already has a run in flight (#55)', () {
+      final tasks = [_task(id: 'a'), _task(id: 'b')];
+      expect(dueTasks(tasks, now, running: {'a'}).map((t) => t.id), ['b']);
+      // Once that run ends, the held-back task is due again: its slot was
+      // skipped, not consumed.
+      expect(dueTasks(tasks, now).map((t) => t.id), ['a', 'b']);
+    });
+
     test('excludes a scheduled task whose interval has not elapsed', () {
       final t = _task(lastRun: now.subtract(const Duration(minutes: 30)));
       expect(dueTasks([t], now), isEmpty);

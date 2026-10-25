@@ -12,6 +12,7 @@ import 'jobs_controller.dart';
 import 'scheduler_pause.dart';
 import 'scheduler_registration.dart';
 import 'task_kind.dart';
+import 'task_run_gate.dart';
 import 'task_schedule.dart';
 import 'tasks_controller.dart';
 import 'transfer_options.dart';
@@ -23,7 +24,11 @@ import 'windows_task_scheduler.dart';
 /// in-memory runtime state — never persisted.
 @immutable
 class SchedulerStatus {
-  const SchedulerStatus({this.tickedAt, this.skippedWhileUnavailable});
+  const SchedulerStatus({
+    this.tickedAt,
+    this.skippedWhileUnavailable,
+    this.skippedWhileRunning = const {},
+  });
 
   /// Wall-clock time of the most recent tick (null before the first). It changes
   /// every 30 s, so a widget that watches this provider rebuilds and re-evaluates
@@ -38,28 +43,47 @@ class SchedulerStatus {
   /// the engine available.
   final DateTime? skippedWhileUnavailable;
 
+  /// Ids of the tasks that were due on the latest tick but held back because
+  /// their previous run is still going (see [TaskRunGate]). Their `lastRun` is
+  /// deliberately NOT advanced, so each one runs once as soon as the run in
+  /// flight ends, rather than losing the slot. Recomputed every tick, so an
+  /// entry disappears when that catch-up run starts.
+  final Set<String> skippedWhileRunning;
+
   @override
   bool operator ==(Object other) =>
       other is SchedulerStatus &&
       other.tickedAt == tickedAt &&
-      other.skippedWhileUnavailable == skippedWhileUnavailable;
+      other.skippedWhileUnavailable == skippedWhileUnavailable &&
+      setEquals(other.skippedWhileRunning, skippedWhileRunning);
 
   @override
-  int get hashCode => Object.hash(tickedAt, skippedWhileUnavailable);
+  int get hashCode => Object.hash(
+    tickedAt,
+    skippedWhileUnavailable,
+    Object.hashAllUnordered(skippedWhileRunning),
+  );
 }
 
 /// The scheduled tasks that are due to run at [now], in list order.
 ///
-/// Pulled out of the tick loop so its branches are unit-testable. Three gates,
+/// Pulled out of the tick loop so its branches are unit-testable. Four gates,
 /// in order: the task must carry a [TaskSchedule]; a two-way (bisync) task whose
 /// baseline hasn't been established is never auto-run (its first `--resync` is
 /// destructive and must be done manually once — see [SchedulerController.tick]);
-/// and finally [isDue] must fire for the schedule given the task's `lastRun`.
-List<TransferTask> dueTasks(List<TransferTask> tasks, DateTime now) => [
+/// a task whose id is in [running] already has a run in flight and never gets a
+/// second one beside it ([TaskRunGate]); and finally [isDue] must fire for the
+/// schedule given the task's `lastRun`.
+List<TransferTask> dueTasks(
+  List<TransferTask> tasks,
+  DateTime now, {
+  Set<String> running = const {},
+}) => [
   for (final t in tasks)
     if (t.schedule != null &&
         !(t.options.mode == TransferMode.bisync &&
             !t.options.baselineEstablished) &&
+        !running.contains(t.id) &&
         isDue(t.schedule!, now: now, lastRun: t.lastRun))
       t,
 ];
@@ -111,7 +135,8 @@ class SchedulerController extends Notifier<SchedulerStatus> {
     if (ref.read(schedulerPausedProvider) != null) return;
     // Before tasks hydrate from disk the list is empty, so a cold boot fires
     // nothing here regardless of engine state.
-    final due = dueTasks(ref.read(tasksProvider), now);
+    final all = ref.read(tasksProvider);
+    final due = dueTasks(all, now);
 
     // Engine not ready (still starting, config locked, or crashed): we can't run
     // anything now. Rather than silently dropping a due slot — which used to fail
@@ -126,18 +151,34 @@ class SchedulerController extends Notifier<SchedulerStatus> {
       return;
     }
 
+    // A due task whose previous run is still going is held back, not run a
+    // second time beside it. Its lastRun stays where it is, so it is still due
+    // on the tick after that run ends and runs once then: a long run delays the
+    // next slot rather than swallowing it. The skip is published so the tasks
+    // panel can say why a due task did not start.
+    final gate = ref.read(taskRunGateProvider.notifier);
+    final runnable = dueTasks(
+      all,
+      now,
+      running: ref.read(taskRunGateProvider).keys.toSet(),
+    );
+    final busy = {
+      for (final t in due)
+        if (!runnable.contains(t)) t.id,
+    };
+
     final tasks = ref.read(tasksProvider.notifier);
     final svc = ref.read(transferServiceProvider);
-    for (final t in due) {
-      // Stamp lastRun BEFORE the async kickoff so the next tick can't double-fire.
-      tasks.update(t.copyWith(lastRun: now));
+    for (final t in runnable) {
       // Fire-and-forget the dispatch, but supervise it to a terminal state so
       // the outcome lands in history — a failed scheduled run must not vanish.
-      unawaited(_runAndRecord(svc, tasks, t));
+      // The gate claim inside it is taken synchronously, so the next tick
+      // cannot double-fire even before lastRun is stamped.
+      unawaited(_runAndRecord(svc, tasks, gate, t, now));
     }
     // Publish the tick (re-times UI labels) and clear any prior skip warning —
     // the engine is back, so due tasks just ran.
-    state = SchedulerStatus(tickedAt: now);
+    state = SchedulerStatus(tickedAt: now, skippedWhileRunning: busy);
   }
 
   /// Dispatches [t] and supervises the resulting job to a terminal state,
@@ -146,11 +187,31 @@ class SchedulerController extends Notifier<SchedulerStatus> {
   Future<void> _runAndRecord(
     TransferService svc,
     TasksController tasks,
+    TaskRunGate gate,
     TransferTask t,
+    DateTime now,
   ) async {
+    final claim = await gate.tryClaim(t.id);
+    if (claim != TaskClaim.claimed) {
+      // Another process (a background run) is running this task. Same policy
+      // as a run in flight here: lastRun is left alone so the slot runs once
+      // that run ends, and the skip shows in the panel until then.
+      if (claim == TaskClaim.runningElsewhere) {
+        state = SchedulerStatus(
+          tickedAt: state.tickedAt,
+          skippedWhileUnavailable: state.skippedWhileUnavailable,
+          skippedWhileRunning: {...state.skippedWhileRunning, t.id},
+        );
+      }
+      return;
+    }
+    // Stamp lastRun only once the run is really ours, BEFORE the async
+    // dispatch, so a slot is never consumed by a run that did not happen.
+    tasks.update(t.copyWith(lastRun: now));
     // The guard the delete cap cannot be: a cap of 100 still lets a destination
     // of 80 files be wiped. Nothing else catches that.
     if (await _sourceIsUnsafe(t)) {
+      gate.release(t.id);
       tasks.recordRun(
         t.id,
         TaskRunRecord(
@@ -162,27 +223,35 @@ class SchedulerController extends Notifier<SchedulerStatus> {
       );
       return;
     }
-    final jobId = await svc.transferAdvancedRaw(
-      srcFs: t.srcFs,
-      dstFs: t.dstFs,
-      srcLabel: t.srcLabel,
-      dstLabel: t.dstLabel,
-      // Two run-time enforcements, both for the same reason: a task saved
-      // before a constraint existed, or edited through the raw advanced dialog,
-      // must not be able to run as something other than what its name says.
-      //
-      // A backup is copy-only with versions kept, whatever its stored options
-      // say; a repeating Sync never runs uncapped.
-      options: t.kind == TaskKind.transfer
-          ? withScheduledDeleteCap(t.options)
-          : backupOptions(t.options),
-    );
+    final int jobId;
+    try {
+      jobId = await svc.transferAdvancedRaw(
+        srcFs: t.srcFs,
+        dstFs: t.dstFs,
+        srcLabel: t.srcLabel,
+        dstLabel: t.dstLabel,
+        // Two run-time enforcements, both for the same reason: a task saved
+        // before a constraint existed, or edited through the raw advanced dialog,
+        // must not be able to run as something other than what its name says.
+        //
+        // A backup is copy-only with versions kept, whatever its stored options
+        // say; a repeating Sync never runs uncapped.
+        options: t.kind == TaskKind.transfer
+            ? withScheduledDeleteCap(t.options)
+            : backupOptions(t.options),
+      );
+    } catch (_) {
+      gate.release(t.id);
+      rethrow;
+    }
+    gate.attach(t.id, jobId);
     await recordRunOutcome(
       readClient: () => ref.read(engineControllerProvider).client,
       tasks: tasks,
       readJobs: () => ref.read(jobsControllerProvider),
       taskId: t.id,
       jobId: jobId,
+      stopJob: (id) => ref.read(jobsControllerProvider.notifier).stop(id),
       onOutcome: ({required bool ok, String? error}) {
         if (ok || !isDeleteCapError(error)) return;
         unawaited(
@@ -244,14 +313,37 @@ const String kEmptySourceRefusal =
 /// test can drive the loop without waiting on wall-clock seconds.
 const kOutcomePollInterval = Duration(seconds: 1);
 
-/// Hard wall-clock cap on a single supervised run. Without it the GUI supervisor
-/// can spin forever — a paused transfer queue leaves a job `queued` with no
-/// rclone jobid (phase 1 loops), or a genuinely stuck rclone job keeps phase 2
-/// polling — and each dispatch would leak one loop for the app's lifetime. When
-/// it trips we record a timed-out failure so the run still lands in history.
-/// Mirrors the Scheduled-Task `ExecutionTimeLimit=PT6H`. (Headless is also
-/// bounded by [HeadlessRequest.timeout] + process exit; this covers the GUI.)
-const kMaxSuperviseDuration = Duration(hours: 6);
+/// How long a running job may go without moving a byte or doing any other
+/// work (checks, deletes, renames, server-side copies, listing) before the
+/// supervisor calls it stuck, stops it, and records the failure.
+///
+/// A wall-clock cap cannot tell a stuck run from a big one: a first backup of
+/// a few terabytes takes days, and one cut at six hours restarts every night
+/// and never finishes. A no-progress window can. Sixty minutes, because:
+/// rclone's own I/O idle timeout (`--timeout`, 5 min) and its retries already
+/// surface a dead connection far sooner, so anything quiet for an hour has
+/// stalled in a way rclone is not handling; listing a huge tree counts as
+/// work, so a slow walk does not trip it; and a single large server-side copy
+/// or a slow provider-side operation can sit without visible progress for tens
+/// of minutes. Tripping a healthy run costs a whole restart, while noticing a
+/// stuck one half an hour later costs nothing more than that half hour.
+const kStallWindow = Duration(minutes: 60);
+
+/// Outer wall-clock cap on a single supervised run, the backstop behind
+/// [kStallWindow]. It bounds the cases the watchdog cannot see: a paused
+/// transfer queue that leaves a job `queued` with no rclone jobid (phase 1),
+/// and a job whose counters keep creeping without ever finishing. Without it
+/// each dispatch could leak one loop for the app's lifetime. When it trips the
+/// job is stopped and a timed-out failure is recorded, so the run still lands
+/// in history. The same 72 hours is the Scheduled-Task `ExecutionTimeLimit`
+/// (`PT72H`) and the headless default (`kDefaultTimeoutMinutes`), so every
+/// path gives up at the same point.
+const kMaxSuperviseDuration = Duration(hours: 72);
+
+/// "60 min", "72 h": a duration as the run history shows it.
+String _span(Duration d) => d.inMinutes >= 120 && d.inMinutes % 60 == 0
+    ? '${d.inHours} h'
+    : '${d.inMinutes} min';
 
 /// Supervises one dispatched task run to its terminal state and appends the
 /// outcome to the task's capped per-run history. Shared by the scheduler tick
@@ -272,6 +364,12 @@ const kMaxSuperviseDuration = Duration(hours: 6);
 /// goes null the moment rcd dies ([EngineController.onDied]), and re-reading it
 /// each poll lets the loop notice death promptly and bail instead of spinning to
 /// [maxSupervise] against a stale non-null handle.
+///
+/// The stall watchdog: once the job is running, if neither its bytes nor its
+/// other work count ([Job.work]) moves for [stallWindow], the job is stopped
+/// through [stopJob] and a failure naming the stall is recorded. [maxSupervise]
+/// is the outer cap over both phases and stops the job the same way. [now] is
+/// the clock both read, injectable so a test can drive hours in milliseconds.
 Future<void> recordRunOutcome({
   required RcloneClient? Function() readClient,
   required TasksController tasks,
@@ -280,10 +378,21 @@ Future<void> recordRunOutcome({
   required int jobId,
   Duration pollInterval = kOutcomePollInterval,
   Duration maxSupervise = kMaxSuperviseDuration,
+  Duration stallWindow = kStallWindow,
+  DateTime Function() now = DateTime.now,
+  Future<void> Function(int localJobId)? stopJob,
   void Function({required bool ok, String? error})? onOutcome,
 }) async {
-  final start = DateTime.now();
+  final start = now();
   final deadline = start.add(maxSupervise);
+
+  Future<void> stop() async {
+    try {
+      await stopJob?.call(jobId);
+    } catch (_) {
+      // Best effort: the failure is recorded either way.
+    }
+  }
 
   Job? localJob() {
     for (final j in readJobs()) {
@@ -300,10 +409,10 @@ Future<void> recordRunOutcome({
     tasks.recordRun(
       taskId,
       TaskRunRecord(
-        at: DateTime.now(),
+        at: now(),
         ok: ok,
         error: (error != null && error.isNotEmpty) ? error : null,
-        duration: DateTime.now().difference(start),
+        duration: now().difference(start),
         bytes: (bytes != null && bytes > 0) ? bytes : null,
       ),
     );
@@ -332,10 +441,12 @@ Future<void> recordRunOutcome({
     }
     // A paused queue can leave a job `queued` with no jobid indefinitely; the
     // wall-clock cap stops this phase from spinning for the app's lifetime.
-    if (DateTime.now().isAfter(deadline)) {
+    if (now().isAfter(deadline)) {
+      // Stop it too: a queued job left behind would still start later.
+      await stop();
       record(
         ok: false,
-        error: 'run did not start within ${maxSupervise.inHours}h',
+        error: 'run did not start within ${_span(maxSupervise)}',
       );
       return;
     }
@@ -344,10 +455,19 @@ Future<void> recordRunOutcome({
 
   // Phase 2: poll to completion. Prefer the jobs poller's own terminal signal
   // when it beats us to it (it also carries bytes/error); otherwise ask the
-  // engine directly.
+  // engine directly. The watchdog starts here, at the moment the job is really
+  // running: time spent queued is not a stall.
+  var lastBytes = -1;
+  var lastWork = -1;
+  var lastProgress = now();
   while (true) {
     final job = localJob();
     if (job == null) return;
+    if (job.bytes != lastBytes || job.work != lastWork) {
+      lastBytes = job.bytes;
+      lastWork = job.work;
+      lastProgress = now();
+    }
     if (job.isFinished) {
       record(
         ok: job.status == JobStatus.success,
@@ -365,11 +485,26 @@ Future<void> recordRunOutcome({
       record(ok: false, error: 'the engine stopped before the run finished');
       return;
     }
-    // Bound a genuinely stuck rclone job so phase 2 can't poll forever.
-    if (DateTime.now().isAfter(deadline)) {
+    // A job that has moved nothing for the whole window is stuck: stop it, so
+    // the slot is free for the next run, and say why in its history.
+    if (now().difference(lastProgress) > stallWindow) {
+      await stop();
       record(
         ok: false,
-        error: 'run did not finish within ${maxSupervise.inHours}h',
+        error:
+            'stopped: no progress for ${_span(stallWindow)} (no bytes moved '
+            'and no files checked)',
+        bytes: job.bytes,
+      );
+      return;
+    }
+    // The outer cap, for a run that creeps but never finishes.
+    if (now().isAfter(deadline)) {
+      await stop();
+      record(
+        ok: false,
+        error: 'stopped: run did not finish within ${_span(maxSupervise)}',
+        bytes: job.bytes,
       );
       return;
     }

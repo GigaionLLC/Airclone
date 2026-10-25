@@ -25,6 +25,7 @@ import '../state/transfer_service.dart';
 import '../state/windows_task_scheduler.dart';
 import '../state/backup_restore.dart';
 import '../state/task_kind.dart';
+import '../state/task_run_gate.dart';
 import '../state/backup_retention.dart';
 import 'backup_actions.dart';
 import 'backup_wizard.dart';
@@ -131,6 +132,37 @@ class _TasksDialog extends ConsumerWidget {
                           'A scheduled task was due while the engine was '
                           'locked — unlock to let it run.',
                           style: TextStyle(color: c.warning, fontSize: 11),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              // A due task held back because its previous run is still going.
+              // Not a warning: nothing is wrong, the slot just waits for it.
+              if (sched.skippedWhileRunning.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(
+                    Space.x5,
+                    Space.x2,
+                    Space.x5,
+                    0,
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.hourglass_top_rounded,
+                        size: 13,
+                        color: c.textFaint,
+                      ),
+                      const SizedBox(width: Space.x2),
+                      Expanded(
+                        child: Text(
+                          skippedWhileRunningMessage([
+                            for (final t in tasks)
+                              if (sched.skippedWhileRunning.contains(t.id))
+                                t.name,
+                          ]),
+                          style: TextStyle(color: c.textFaint, fontSize: 11),
                         ),
                       ),
                     ],
@@ -831,6 +863,24 @@ class _TaskRow extends ConsumerWidget {
     // drop the bisync baseline flip (phase-3 plan §3).
     final container = ProviderScope.containerOf(context, listen: false);
 
+    // One run per task (TaskRunGate): a task the scheduler, an earlier click or
+    // a background run is already running gets no second copy beside it, which
+    // would race the first on the same destination. Claimed through the
+    // container, not the WidgetRef, for the same lifetime reason as above.
+    final gate = container.read(taskRunGateProvider.notifier);
+    final claim = await gate.tryClaim(task.id);
+    if (claim != TaskClaim.claimed) {
+      messenger.showSnackBar(
+        SnackBar(content: Text(alreadyRunningMessage(task.name, claim))),
+      );
+      return;
+    }
+    // The claim awaited; the baseline dialog below needs a live context.
+    if (!context.mounted) {
+      gate.release(task.id);
+      return;
+    }
+
     // The SAME re-application the scheduler tick and the headless runner do
     // (scheduler_controller.dart, headless_runner.dart). A backup is copy-only
     // with versions kept whatever its stored options say, and a repeating Sync
@@ -868,43 +918,55 @@ class _TaskRow extends ConsumerWidget {
     }
 
     final int jobId;
-    if (!needsBaseline && !reestablish) {
-      stampScheduledRun();
-      jobId = await svc.transferAdvancedRaw(
-        srcFs: task.srcFs,
-        dstFs: task.dstFs,
-        srcLabel: task.srcLabel,
-        dstLabel: task.dstLabel,
-        options: effectiveOptions,
-      );
-      messenger.showSnackBar(SnackBar(content: Text('Started "${task.name}"')));
-    } else {
-      final choice = await showBaselineDialog(context, task);
-      if (choice == null || !context.mounted) return;
-      stampScheduledRun();
-      jobId = await svc.transferAdvancedRaw(
-        srcFs: task.srcFs,
-        dstFs: task.dstFs,
-        srcLabel: task.srcLabel,
-        dstLabel: task.dstLabel,
-        options: task.options.copyWith(
-          resyncMode: choice.resyncMode,
-          dryRun: choice.dryRun,
-        ),
-        forceResync: true,
-      );
-      messenger.showSnackBar(
-        SnackBar(
-          content: Text(
-            choice.dryRun
-                ? 'Dry-run baseline for "${task.name}" started'
-                : 'Establishing baseline for "${task.name}"…',
+    try {
+      if (!needsBaseline && !reestablish) {
+        stampScheduledRun();
+        jobId = await svc.transferAdvancedRaw(
+          srcFs: task.srcFs,
+          dstFs: task.dstFs,
+          srcLabel: task.srcLabel,
+          dstLabel: task.dstLabel,
+          options: effectiveOptions,
+        );
+        messenger.showSnackBar(
+          SnackBar(content: Text('Started "${task.name}"')),
+        );
+      } else {
+        final choice = await showBaselineDialog(context, task);
+        if (choice == null || !context.mounted) {
+          gate.release(task.id);
+          return;
+        }
+        stampScheduledRun();
+        jobId = await svc.transferAdvancedRaw(
+          srcFs: task.srcFs,
+          dstFs: task.dstFs,
+          srcLabel: task.srcLabel,
+          dstLabel: task.dstLabel,
+          options: task.options.copyWith(
+            resyncMode: choice.resyncMode,
+            dryRun: choice.dryRun,
           ),
-        ),
-      );
-      // A dry-run proves nothing on disk, so it must NOT mark the baseline done.
-      if (!choice.dryRun) _flipBaselineOnSuccess(ref, jobId);
+          forceResync: true,
+        );
+        messenger.showSnackBar(
+          SnackBar(
+            content: Text(
+              choice.dryRun
+                  ? 'Dry-run baseline for "${task.name}" started'
+                  : 'Establishing baseline for "${task.name}"…',
+            ),
+          ),
+        );
+        // A dry-run proves nothing on disk, so it must NOT mark the baseline done.
+        if (!choice.dryRun) _flipBaselineOnSuccess(ref, jobId);
+      }
+    } catch (_) {
+      gate.release(task.id);
+      rethrow;
     }
+    // From here the claim follows the job, and ends when it does.
+    gate.attach(task.id, jobId);
 
     // Supervise the dispatched job to a terminal state and append the outcome to
     // this task's per-run history — the same path the scheduler uses.
@@ -915,6 +977,8 @@ class _TaskRow extends ConsumerWidget {
         readJobs: () => container.read(jobsControllerProvider),
         taskId: task.id,
         jobId: jobId,
+        stopJob: (id) =>
+            container.read(jobsControllerProvider.notifier).stop(id),
       ),
     );
   }

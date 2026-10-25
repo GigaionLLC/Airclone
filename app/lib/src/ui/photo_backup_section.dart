@@ -16,6 +16,7 @@ import '../state/poll_cadence.dart';
 import '../state/scheduler_controller.dart';
 import '../state/scheduling_policy.dart';
 import '../state/task_kind.dart';
+import '../state/task_run_gate.dart';
 import '../state/task_schedule.dart';
 import '../state/tasks_controller.dart';
 import '../state/transfer_service.dart';
@@ -314,20 +315,37 @@ class _PhotoBackupCard extends ConsumerWidget {
         .where((t) => t.id == task.id)
         .firstOrNull;
     if (live == null) return;
+    // One run at a time (TaskRunGate): a backup the schedule or a background
+    // wake is already running is not started a second time beside it.
+    final gate = container.read(taskRunGateProvider.notifier);
+    final claim = await gate.tryClaim(live.id);
+    if (claim != TaskClaim.claimed) {
+      messenger.showSnackBar(
+        SnackBar(content: Text(alreadyRunningMessage(live.name, claim))),
+      );
+      return;
+    }
     // Stamp lastRun dispatch-adjacent so the next tick does not fire a second,
     // scheduled run right behind this manual one.
     if (live.schedule != null) {
       notifier.update(live.copyWith(lastRun: DateTime.now()));
     }
-    final jobId = await container
-        .read(transferServiceProvider)
-        .transferAdvancedRaw(
-          srcFs: live.srcFs,
-          dstFs: live.dstFs,
-          srcLabel: live.srcLabel,
-          dstLabel: live.dstLabel,
-          options: backupOptions(live.options),
-        );
+    final int jobId;
+    try {
+      jobId = await container
+          .read(transferServiceProvider)
+          .transferAdvancedRaw(
+            srcFs: live.srcFs,
+            dstFs: live.dstFs,
+            srcLabel: live.srcLabel,
+            dstLabel: live.dstLabel,
+            options: backupOptions(live.options),
+          );
+    } catch (_) {
+      gate.release(live.id);
+      rethrow;
+    }
+    gate.attach(live.id, jobId);
     messenger.showSnackBar(
       const SnackBar(content: Text('Photo backup started — see Transfers.')),
     );
@@ -338,6 +356,8 @@ class _PhotoBackupCard extends ConsumerWidget {
         readJobs: () => container.read(jobsControllerProvider),
         taskId: live.id,
         jobId: jobId,
+        stopJob: (id) =>
+            container.read(jobsControllerProvider.notifier).stop(id),
       ),
     );
   }

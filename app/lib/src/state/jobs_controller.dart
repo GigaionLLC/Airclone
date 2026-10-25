@@ -119,6 +119,7 @@ class JobsController extends Notifier<List<Job>> {
     String? rcMethod,
     Map<String, dynamic>? rcParams,
     List<TransferItem>? transferring,
+    int? work,
   }) {
     state = [
       for (final j in state)
@@ -133,6 +134,7 @@ class JobsController extends Notifier<List<Job>> {
             rcMethod: rcMethod,
             rcParams: rcParams,
             transferring: transferring,
+            work: work,
           )
         else
           j,
@@ -248,6 +250,7 @@ class JobsController extends Notifier<List<Job>> {
           speedBps: speed,
           total: total > 0 ? total : null,
           transferring: items,
+          work: workUnitsFromStats(stats),
         );
       } catch (_) {
         // Stats may be unavailable momentarily; skip this field this tick.
@@ -273,6 +276,19 @@ class JobsController extends Notifier<List<Job>> {
   }
 
   static int _asInt(Object? v) => v is num ? v.toInt() : 0;
+
+  /// The [Job.work] value for one `core/stats` reply: every counter that rises
+  /// when rclone does something other than move bytes. Absent keys count as
+  /// zero, because older engines do not report `listed`.
+  static int workUnitsFromStats(Map<String, dynamic> stats) =>
+      _asInt(stats['checks']) +
+      _asInt(stats['deletes']) +
+      _asInt(stats['deletedDirs']) +
+      _asInt(stats['renames']) +
+      _asInt(stats['serverSideCopies']) +
+      _asInt(stats['serverSideMoves']) +
+      _asInt(stats['listed']) +
+      _asInt(stats['transfers']);
   static double _asDouble(Object? v) => v is num ? v.toDouble() : 0;
 }
 

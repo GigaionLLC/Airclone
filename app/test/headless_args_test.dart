@@ -56,11 +56,14 @@ void main() {
   });
 
   group('parseHeadlessArgs — timeout', () {
-    test('defaults to 360 minutes when absent', () {
+    test('defaults to 72 hours (4320 minutes) when absent', () {
       expect(
         parseHeadlessArgs(['--run-due']).timeout,
         const Duration(minutes: kDefaultTimeoutMinutes),
       );
+      // The same 72 h backstop as the GUI supervisor and the Scheduled Task's
+      // ExecutionTimeLimit; the stall watchdog ends a stuck run long before.
+      expect(kDefaultTimeoutMinutes, 72 * 60);
     });
 
     test('parses the space-separated form', () {
