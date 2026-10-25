@@ -189,8 +189,8 @@ verification. Same for any future channel that re-signs our APKs, e.g. an F-Droi
   the API usually means "wait and re-run."
 - **`changesNotSentForReview`** — if the first automated run fails with *"changes cannot be sent for
   review automatically"*, set `changesNotSentForReview: true` for ONE run, then remove it (it errors
-  the opposite way once a reviewed release exists). The release.yml step keeps this commented with the
-  same note.
+  the opposite way once a reviewed release exists). No workflow carries the flag today (checked 2026-10-25), so
+  using it means a one-run edit to `publish-play.yml`'s upload step.
 - **A pre-release tag no longer reaches testers by itself** *(fixed in v0.8.3)*. It used to: all
   three Play steps lived in `release.yml` and gated only on `refs/tags/*` plus the secret, with
   `tracks: beta` hardcoded and **no `-beta.N`/`-rc` exclusion anywhere on the Play path** — so an
