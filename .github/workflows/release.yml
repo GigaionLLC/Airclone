@@ -502,16 +502,20 @@ jobs:
 
   linux:
     # Two architectures, each built NATIVELY on its own runner (x64 on
-    # ubuntu-latest, arm64 on GitHub's ARM runner) rather than cross-compiled:
+    # ubuntu-24.04, arm64 on GitHub's ARM runner) rather than cross-compiled:
     # Flutter, the Rust crate, librclone and the AppImage/Flatpak tooling all
     # then run the same way on both, and every "does it start" check below runs
     # on the architecture it is checking. The x64 file names are unchanged, so
     # existing download links and the AppImage self-updater keep working.
+    # x64 is pinned to ubuntu-24.04, not ubuntu-latest: ubuntu-latest moved to
+    # 26.04 in 2026-10, whose clang fails flutter_secure_storage_linux's
+    # bundled json.hpp under -Werror (v0.29.0 shipped without x64 Linux), and
+    # 24.04 keeps the glibc baseline the arm64 runner already builds against.
     strategy:
       fail-fast: false
       matrix:
         include:
-          - { runner: ubuntu-latest, arch: x64, rclone_arch: amd64, librclone: librclone-linux, tarball: airclone-linux-x64.tar.gz, appimage: Airclone-x86_64.AppImage, flatpak: airclone.flatpak, suffix: '' }
+          - { runner: ubuntu-24.04, arch: x64, rclone_arch: amd64, librclone: librclone-linux, tarball: airclone-linux-x64.tar.gz, appimage: Airclone-x86_64.AppImage, flatpak: airclone.flatpak, suffix: '' }
           - { runner: ubuntu-24.04-arm, arch: arm64, rclone_arch: arm64, librclone: librclone-linux-arm64, tarball: airclone-linux-arm64.tar.gz, appimage: Airclone-aarch64.AppImage, flatpak: airclone-aarch64.flatpak, suffix: '-arm64' }
     runs-on: ${{ matrix.runner }}
     needs: [release, librclone]
@@ -785,7 +789,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { runner: ubuntu-latest, arch: x64, platform: amd64, tarball: airclone-linux-x64.tar.gz }
+          - { runner: ubuntu-24.04, arch: x64, platform: amd64, tarball: airclone-linux-x64.tar.gz }
           - { runner: ubuntu-24.04-arm, arch: arm64, platform: arm64, tarball: airclone-linux-arm64.tar.gz }
     runs-on: ${{ matrix.runner }}
     permissions:

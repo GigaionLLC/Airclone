@@ -53,7 +53,7 @@ concurrency:
 
 jobs:
   compile:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 40
     defaults:
       run:
@@ -383,7 +383,7 @@ jobs:
   # symbol it imports.
   appimage-distros:
     needs: compile
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
       matrix:
@@ -488,7 +488,7 @@ jobs:
   # Kept as its own job: it needs only rclone and FUSE, not the Flutter build,
   # so it answers in a couple of minutes.
   mount-probe:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
@@ -561,7 +561,7 @@ jobs:
   # before it is committed.
   flatpak:
     if: github.event_name == 'workflow_dispatch' && inputs.flatpak
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@v7
@@ -630,7 +630,7 @@ jobs:
   # it stops dying is visible. What the run answers is whether a patched plugin
   # survives - which is what decides if pop-out can come back to Linux.
   popout:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 45
     continue-on-error: true
     steps:
