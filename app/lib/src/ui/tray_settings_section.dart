@@ -14,6 +14,7 @@ class TraySettingsSection extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final closeToTray = ref.watch(closeToTrayProvider) ?? false;
+    final minimizeToTray = ref.watch(minimizeToTrayProvider);
     final trayUp = ref.watch(trayAvailableProvider);
     final autostart = ref.watch(autostartProvider);
     return Column(
@@ -32,6 +33,25 @@ class TraySettingsSection extends ConsumerWidget {
               ? (v) => ref.read(closeToTrayProvider.notifier).set(v)
               : null,
         ),
+        if (HostPlatform.isWindows) ...[
+          const SizedBox(height: Space.x4),
+          _SwitchRow(
+            key: const ValueKey('tray.minimizeToTray'),
+            title: 'Minimizing the window hides it to the tray',
+            help: trayUp
+                ? 'The minimize button hides the window. Click the tray icon '
+                      'to bring it back.'
+                : 'The tray icon is not available, so minimizing the window '
+                      'keeps it in the taskbar.',
+            value: effectiveMinimizeToTray(
+              setting: minimizeToTray,
+              trayAvailable: trayUp,
+            ),
+            onChanged: trayUp
+                ? (v) => ref.read(minimizeToTrayProvider.notifier).set(v)
+                : null,
+          ),
+        ],
         const SizedBox(height: Space.x4),
         if (autostart.support.supported)
           _SwitchRow(

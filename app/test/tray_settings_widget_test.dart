@@ -5,6 +5,7 @@ library;
 
 import 'package:airclone/src/state/autostart.dart';
 import 'package:airclone/src/state/close_to_tray.dart';
+import 'package:airclone/src/state/host_platform.dart';
 import 'package:airclone/src/ui/theme/app_theme.dart';
 import 'package:airclone/src/ui/tray_settings_section.dart';
 import 'package:flutter/material.dart';
@@ -96,6 +97,27 @@ void main() {
     expect(switchOf(tester, 'tray.closeToTray').onChanged, isNull);
     expect(switchOf(tester, 'tray.closeToTray').value, isFalse);
     expect(find.textContaining('closing the window quits'), findsOneWidget);
+  });
+
+  testWidgets('minimize-to-tray is Windows only and needs a tray', (
+    tester,
+  ) async {
+    final c = await pump(tester, trayUp: true);
+    final row = find.byKey(const ValueKey('tray.minimizeToTray'));
+    if (!HostPlatform.isWindows) {
+      expect(row, findsNothing);
+      return;
+    }
+    expect(row, findsOneWidget);
+    expect(switchOf(tester, 'tray.minimizeToTray').value, isFalse);
+    await tester.tap(find.descendant(of: row, matching: find.byType(Switch)));
+    await tester.pumpAndSettle();
+    expect(c.read(minimizeToTrayProvider), isTrue);
+    expect(switchOf(tester, 'tray.minimizeToTray').value, isTrue);
+    c.read(trayAvailableProvider.notifier).set(false);
+    await tester.pumpAndSettle();
+    expect(switchOf(tester, 'tray.minimizeToTray').onChanged, isNull);
+    expect(switchOf(tester, 'tray.minimizeToTray').value, isFalse);
   });
 
   testWidgets('sign-in launch: a switch when supported', (tester) async {

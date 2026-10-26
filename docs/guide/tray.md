@@ -25,6 +25,11 @@ The switch is greyed out when there is no tray to hide in. Closing the window th
 so Airclone never ends up running with no window and no icon. See [Linux needs a tray
 host](#linux-needs-a-tray-host).
 
+On **Windows only**, Settings → Tray → **Minimizing the window hides it to the tray**
+lets the minimize button hide the window too. It is **off by default**, independent of the
+close-to-tray setting, and disabled without a tray icon. Click the tray icon or choose
+**Open Airclone** from its menu to restore the window; transfers, mounts and schedules keep running.
+
 ## What keeps running in the tray
 
 Everything that runs while the window is open keeps running while it is hidden:

@@ -13,6 +13,21 @@ happened": nothing was logged between 2026-07-02 and 2026-07-15, or between 2026
      it is: it used to say ABOVE, which pushed it further down the file with every entry until
      it sat hundreds of lines under the newest one and pointed writers at the wrong place. -->
 
+## [2026-10-26] - Opt-in minimize to tray on Windows
+
+**Agent:** Codex (Sol), reviewed and applied by Claude Code (Claude Opus 5.5)
+**Files Modified:** `app/lib/src/state/{close_to_tray,desktop_window}.dart`,
+`app/lib/src/ui/{app,tray_settings_section}.dart`, `app/windows/runner/flutter_window.{cpp,h}`,
+`app/test/{tray_test,tray_settings_widget_test}.dart`, `docs/guide/tray.md`,
+`app/pubspec.yaml` (0.31.0+165), `dev/releases/v0.31.0.md`, this changelog.
+**Database/API Changes:** New boolean SharedPreferences key `minimize_to_tray` (default false)
+and Windows `airclone/window` method `setMinimizeToTray` with a validated bool argument.
+**Summary:** Windows users can opt into hiding the window when minimized. The app pushes the
+setting gated by tray availability at startup and on changes; the close setting stays independent.
+Native minimize handling preserves base window sizing, and existing tray/second-launch restore
+paths restore iconic windows. Added persistence, effective-state and widget coverage plus docs.
+Requested by Jake after v0.30.1: "minimize to the tray as well ... on windows".
+
 ## [2026-10-26] - v0.30.1: Flatpak tray library builds again (Linux files back)
 
 **Agent:** Claude Code (Claude Opus 5.5)
