@@ -13,6 +13,20 @@ happened": nothing was logged between 2026-07-02 and 2026-07-15, or between 2026
      it is: it used to say ABOVE, which pushed it further down the file with every entry until
      it sat hundreds of lines under the newest one and pointed writers at the wrong place. -->
 
+## [2026-10-26] - v0.30.1: Flatpak tray library builds again (Linux files back)
+
+**Agent:** Claude Code (Claude Opus 5.5)
+**Files Modified:**
+- `app/linux/packaging/flatpak-modules/libayatana-appindicator-gtk3.json` (`-DCMAKE_INSTALL_LIBDIR=lib` on the three CMake modules)
+- `app/pubspec.yaml` (0.30.1+164), `dev/releases/v0.30.1.md`
+
+**Why:** the v0.30.0 release run failed in both Linux jobs at "Build Flatpak": the GNOME SDK's
+CMake installs `ayatana-ido` to `/app/lib64`, so `libayatana-indicator` could not find
+`libayatana-ido3-0.4.pc` (pkg-config searches `/app/lib/pkgconfig`). With the Linux jobs failed,
+v0.30.0 shipped without tarballs, AppImages and Flatpaks, and without the Docker image. The PR never
+ran the Flatpak build: in `linux-runner.yml` that job runs only on a manual dispatch with
+`flatpak: true`. Tags are never moved, so this ships as v0.30.1 (like v0.29.1).
+
 ## [2026-10-26] - Tray review fixes: menu leak, stable click keys, update quit, close dialogs, Arch, APPIMAGE
 
 **Agent:** Claude Code (Claude Opus 5.5), with OpenCode (DeepSeek V4.1 Flash)
