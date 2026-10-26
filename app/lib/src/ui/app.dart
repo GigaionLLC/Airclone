@@ -84,6 +84,11 @@ class _AircloneAppState extends ConsumerState<AircloneApp> {
     WidgetsBinding.instance.addPostFrameCallback((_) => tray.start());
   }
 
+  /// One close decision at a time. A second X, or Cmd-Q racing the close
+  /// button, joins the question already on screen instead of stacking another.
+  Future<CloseAction?>? _closeDecision;
+  Future<AppExitResponse>? _exitResponse;
+
   /// A deliberate quit: the tray's Quit, the close-to-tray question's Quit.
   /// Goes through the platform's normal exit request, so [_onExitRequested]
   /// still runs the mounts guard, unmounts, and stops the engine.
@@ -145,9 +150,22 @@ class _AircloneAppState extends ConsumerState<AircloneApp> {
     }
   }
 
+  /// [_resolveClose] once for concurrent callers; the Future is cleared when
+  /// it settles, so the next close starts a fresh decision.
+  Future<CloseAction?> _resolveCloseOnce() {
+    final pending = _closeDecision;
+    if (pending != null) return pending;
+    late final Future<CloseAction?> future;
+    future = _resolveClose().whenComplete(() {
+      if (identical(_closeDecision, future)) _closeDecision = null;
+    });
+    _closeDecision = future;
+    return future;
+  }
+
   /// macOS close button while the tray is up (see [_startTray]).
   Future<void> _onMacWindowClose() async {
-    final action = await _resolveClose();
+    final action = await _resolveCloseOnce();
     if (action == CloseAction.hideToTray) {
       await DesktopWindow.hide();
     } else if (action == CloseAction.quit) {
@@ -201,12 +219,25 @@ class _AircloneAppState extends ConsumerState<AircloneApp> {
   /// `quit()` has its own internal timeouts and the outer one guarantees a wedged
   /// engine can never leave the window hanging (a user clicking X and getting
   /// nothing is far worse than a stray process, which the job object reaps).
-  Future<AppExitResponse> _onExitRequested() async {
+  Future<AppExitResponse> _onExitRequested() {
+    // One exit at a time: a second close or quit while the first is still
+    // asking (close-to-tray, mounted drives) shares its answer instead of
+    // opening a second dialog and running the unmount/quit twice.
+    final pending = _exitResponse;
+    if (pending != null) return pending;
+    late final Future<AppExitResponse> future;
+    future = _handleExitRequest().whenComplete(() {
+      if (identical(_exitResponse, future)) _exitResponse = null;
+    });
+    return _exitResponse = future;
+  }
+
+  Future<AppExitResponse> _handleExitRequest() async {
     // Close-to-tray (#54). Windows and Linux deliver the close button here, so
     // it is decided here; macOS routes the button to [_onMacWindowClose], and
     // what arrives here is always a real quit (Cmd-Q, the app menu, logout).
     if (!_explicitQuit && !HostPlatform.isMacOS) {
-      final action = await _resolveClose();
+      final action = await _resolveCloseOnce();
       if (action == null) return AppExitResponse.cancel;
       if (action == CloseAction.hideToTray) {
         await DesktopWindow.hide();

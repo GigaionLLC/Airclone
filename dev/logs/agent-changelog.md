@@ -13,6 +13,19 @@ happened": nothing was logged between 2026-07-02 and 2026-07-15, or between 2026
      it is: it used to say ABOVE, which pushed it further down the file with every entry until
      it sat hundreds of lines under the newest one and pointed writers at the wrong place. -->
 
+## [2026-10-26] - Tray review fixes: menu leak, stable click keys, update quit, close dialogs, Arch, APPIMAGE
+
+**Agent:** Claude Code (Claude Opus 5.5), with OpenCode (DeepSeek V4.1 Flash)
+**Files Modified:**
+- `app/linux/CMakeLists.txt` (`--as-needed` for tray_manager)
+- `app/lib/src/state/autostart.dart`, `app/test/autostart_test.dart`
+- `app/lib/src/state/tray_controller.dart`, `app/lib/src/state/tray_status.dart` (comment)
+- `app/lib/src/ui/app.dart`, `app/lib/src/ui/settings_screen.dart`
+- `app/test/tray_test.dart`
+- `docs/guide/tray.md`, `wiki/core/03-user-journey.md`, this changelog
+**Database/API Changes:** None
+**Summary:** Fixes from the PR #58 review. The tar.gz loads on Arch again (the plugin no longer records Ubuntu-only ayatana libraries as NEEDED). Linux autostart trusts `APPIMAGE` only when the executable runs from inside its own `APPDIR`, so a launch from another AppImage's terminal no longer points autostart at that AppImage. The context menu rebuilds only on a structure change on Windows and macOS, so tray_manager 0.5.3 no longer leaks a Windows submenu handle every 2 s; Linux, which has no tooltip and no leak, still refreshes its status row every 2 s. Clicks dispatch by stable MenuItem key, and only preset rates are accepted. Settings → Update offers Quit when close-to-tray is on, through the tray's quit path (mounts guard included). Repeated closes share one close-to-tray question, and concurrent exit requests share one quit flow.
+
 ## [2026-10-25] - System tray and close-to-tray on desktop (#54)
 
 **Agent:** Claude Code (Claude Opus 5.5)

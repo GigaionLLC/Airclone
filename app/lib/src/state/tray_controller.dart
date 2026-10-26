@@ -74,13 +74,15 @@ class TrayMenuInput {
   String get structureKey => '$queuePaused|$bwLimit|$engineReady';
 }
 
-/// The tray menu. Pure apart from the callbacks, so tests can walk it.
+/// The tray menu. Pure apart from [onAction], so tests can walk it.
+///
+/// Every clickable item carries a stable [MenuItem.key] and reports that key
+/// through [onAction], never a closure bound to this build. A rebuild replaces
+/// the plugin's item objects, so the key is what lets a click from the menu
+/// before a rebuild still reach the same action.
 Menu buildTrayMenu(
   TrayMenuInput input, {
-  required void Function() onOpen,
-  required void Function() onTogglePause,
-  required void Function(String rate) onSetBandwidth,
-  required void Function() onQuit,
+  required void Function(String key) onAction,
 }) {
   final presets = [...kTrayBandwidthPresets];
   final custom = !presets.any((p) => sameBandwidth(p, input.bwLimit));
@@ -92,14 +94,18 @@ Menu buildTrayMenu(
         disabled: true,
       ),
       MenuItem.separator(),
-      MenuItem(key: 'open', label: 'Open Airclone', onClick: (_) => onOpen()),
+      MenuItem(
+        key: 'open',
+        label: 'Open Airclone',
+        onClick: (item) => onAction(item.key!),
+      ),
       MenuItem(
         key: 'pause',
         label: input.queuePaused ? 'Resume all' : 'Pause all',
         toolTip: input.queuePaused
             ? 'Start the waiting transfers again'
             : 'Queued transfers wait; running ones finish',
-        onClick: (_) => onTogglePause(),
+        onClick: (item) => onAction(item.key!),
       ),
       MenuItem.submenu(
         key: 'bwlimit',
@@ -119,15 +125,69 @@ Menu buildTrayMenu(
                 key: 'bw:$p',
                 label: trayBandwidthLabel(p),
                 checked: sameBandwidth(p, input.bwLimit),
-                onClick: (_) => onSetBandwidth(p),
+                onClick: (item) => onAction(item.key!),
               ),
           ],
         ),
       ),
       MenuItem.separator(),
-      MenuItem(key: 'quit', label: 'Quit Airclone', onClick: (_) => onQuit()),
+      MenuItem(
+        key: 'quit',
+        label: 'Quit Airclone',
+        onClick: (item) => onAction(item.key!),
+      ),
     ],
   );
+}
+
+/// Rebuilds the context menu only when what it offers changes (plus, on Linux,
+/// a throttled status change).
+///
+/// The menu also has a status row, which changes every couple of seconds. On
+/// Windows, tray_manager 0.5.3 leaks the Bandwidth submenu handle on every
+/// `setContextMenu`, and the per-process USER-object quota is exhausted after
+/// 5-6 hours of that. A status-only change therefore never rebuilds: the live
+/// text rides in the tooltip on Windows and macOS, and the row keeps its old
+/// label until the next structure change. Linux has no tooltip and no leak, so
+/// there [liveStatus] keeps the row current.
+class TrayMenuPublisher {
+  TrayMenuPublisher({required this.rebuild, this.liveStatus});
+
+  final void Function(TrayMenuInput input) rebuild;
+
+  /// Linux only: AppIndicator has no tooltip, so the menu's status row is the
+  /// only status there is, and it is rebuilt for a status change too (at most
+  /// every [TrayTextThrottle.interval]). Rebuilding leaks nothing on Linux;
+  /// the submenu handle leak is Windows-only, where the tooltip carries the
+  /// live text instead.
+  final TrayTextThrottle? liveStatus;
+  String? _structure;
+
+  /// Whether a status change is waiting for the throttle interval to pass.
+  bool get statusPending {
+    final live = liveStatus;
+    return live != null && _status != live.last;
+  }
+
+  String? _status;
+
+  /// Rebuilds for a structure change (or, with [liveStatus], a status change
+  /// the throttle lets through) and returns true; otherwise leaves the menu
+  /// alone and returns false.
+  bool update(TrayMenuInput input, [DateTime? now]) {
+    _status = input.status;
+    final structureChanged = input.structureKey != _structure;
+    final live = liveStatus;
+    // A structure rebuild carries the current status too, so it counts as
+    // that status's push (and a click's result shows at once).
+    if (structureChanged) live?.reset();
+    final statusDue =
+        live != null && live.offer(input.status, now ?? DateTime.now());
+    if (!structureChanged && !statusDue) return false;
+    _structure = input.structureKey;
+    rebuild(input);
+    return true;
+  }
 }
 
 /// What the tray summary reads from the providers right now.
@@ -152,8 +212,11 @@ class TrayController with TrayListener {
 
   final Ref _ref;
   final _tooltip = TrayTextThrottle();
-  final _menu = TrayTextThrottle();
-  String? _structure;
+  late final _menu = TrayMenuPublisher(
+    liveStatus: HostPlatform.isLinux ? TrayTextThrottle() : null,
+    rebuild: (input) =>
+        unawaited(_guard(trayManager.setContextMenu(_buildMenu(input)))),
+  );
   Timer? _trailing;
   bool _started = false;
   bool _up = false;
@@ -163,6 +226,10 @@ class TrayController with TrayListener {
   Future<void> Function()? onQuit;
 
   bool get isUp => _up;
+
+  /// A deliberate quit: the menu's Quit item and Settings → Update's Quit both
+  /// go through here, so both run the mounts guard in the app.
+  Future<void> requestQuit() async => onQuit?.call();
 
   /// Creates the tray icon when this platform has a tray host. Safe to call
   /// more than once; only the first call does anything.
@@ -254,19 +321,15 @@ class TrayController with TrayListener {
       bwLimit: a.bwLimit,
       engineReady: a.engineReady,
     );
-    if (input.structureKey != _structure) {
-      _structure = input.structureKey;
-      _menu.reset(); // a click's result shows at once, not 2 s later
-    }
-    final key = '${input.structureKey}|${input.status}';
-    if (_menu.offer(key, now)) {
-      unawaited(_guard(trayManager.setContextMenu(_buildMenu(input))));
-    } else if (key != _menu.last) {
-      pending = true;
-    }
+    // Structure only on Windows and macOS, where the tooltip above carries the
+    // live text: a rebuild per stats tick leaks a Windows submenu handle (see
+    // [TrayMenuPublisher]). Linux also rebuilds for a throttled status change.
+    _menu.update(input, now);
+    if (_menu.statusPending) pending = true;
 
-    // A change refused for timing goes out once the interval has passed,
-    // even if nothing else changes in between (the last tick of a transfer).
+    // A tooltip or Linux status change refused for timing goes out once the
+    // interval has passed, even if nothing else changes in between (the last
+    // tick of a transfer).
     if (pending && _trailing == null) {
       _trailing = Timer(_tooltip.interval, () {
         _trailing = null;
@@ -275,15 +338,31 @@ class TrayController with TrayListener {
     }
   }
 
-  Menu _buildMenu(TrayMenuInput input) => buildTrayMenu(
-    input,
-    onOpen: () => unawaited(DesktopWindow.show()),
-    onTogglePause: () => _ref.read(queuePausedProvider.notifier).toggle(),
-    onSetBandwidth: (rate) => unawaited(
-      _ref.read(bandwidthControllerProvider.notifier).setLimit(rate),
-    ),
-    onQuit: () => unawaited(onQuit?.call()),
-  );
+  Menu _buildMenu(TrayMenuInput input) =>
+      buildTrayMenu(input, onAction: _onMenuAction);
+
+  /// A tray click, by the stable key every item carries rather than by object
+  /// identity: the plugin may deliver a click from a menu built before a
+  /// rebuild, and that item's key still names the same action.
+  void _onMenuAction(String key) {
+    switch (key) {
+      case 'open':
+        unawaited(DesktopWindow.show());
+      case 'pause':
+        _ref.read(queuePausedProvider.notifier).toggle();
+      case 'quit':
+        unawaited(requestQuit());
+      default:
+        if (key.startsWith('bw:')) {
+          final rate = key.substring('bw:'.length);
+          if (kTrayBandwidthPresets.contains(rate)) {
+            unawaited(
+              _ref.read(bandwidthControllerProvider.notifier).setLimit(rate),
+            );
+          }
+        }
+    }
+  }
 
   Future<void> _guard(Future<void> f) async {
     try {

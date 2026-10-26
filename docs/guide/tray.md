@@ -39,7 +39,7 @@ Everything that runs while the window is open keeps running while it is hidden:
 
 | Item | What it does |
 | :--- | :--- |
-| *Status line* | What Airclone is doing now: `Idle`, or something like `Transferring 2 files, 4.1 MB/s, 3 min left · 1 queued · Limit 5M/s`. It updates at most every two seconds. |
+| *Status line* | What Airclone is doing now: `Idle`, or something like `Transferring 2 files, 4.1 MB/s, 3 min left · 1 queued · Limit 5M/s`. On Linux it updates at most every two seconds. On Windows and macOS the hover text carries the live status, and the menu line refreshes when you pause, resume or change the limit. |
 | **Open Airclone** | Shows the window again. |
 | **Pause all** / **Resume all** | Pauses the queue. Transfers waiting in the queue wait. Transfers already running finish, because stopping one halfway would leave a partial file. **Resume all** lets the queue go again. |
 | **Bandwidth limit** | Sets the speed limit for every transfer: Unlimited, 1, 5, 10, 50 or 100 MB/s. A limit you set elsewhere in the app shows up here as well, ticked. It is greyed out while the engine is still starting. |

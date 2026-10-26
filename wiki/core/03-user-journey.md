@@ -69,7 +69,9 @@ The body is identical across the three desktops; the **chrome and OS integration
 - **Mount** → drive letter (`X:`) via WinFsp; appears in Explorer "This PC".
 - A tray icon in the notification area (#54) keeps jobs, mounts and schedules running with the
   window closed when Settings → Tray → close-to-tray is on (off by default). The hover tooltip
-  carries the same status line. `state/tray_controller.dart`; guide: `docs/guide/tray.md`.
+  carries the live status line; the menu's status row refreshes when an action changes the menu (on Linux,
+  with no tooltip, every two seconds).
+  `state/tray_controller.dart`; guide: `docs/guide/tray.md`.
 - Distribution: portable zip + an Inno Setup installer, both code-signed (Azure Artifact Signing),
   plus the Microsoft Store MSIX.
 

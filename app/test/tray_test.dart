@@ -229,13 +229,8 @@ void main() {
   });
 
   group('buildTrayMenu', () {
-    Menu build(TrayMenuInput input, {List<String>? log}) => buildTrayMenu(
-      input,
-      onOpen: () => log?.add('open'),
-      onTogglePause: () => log?.add('pause'),
-      onSetBandwidth: (r) => log?.add('bw:$r'),
-      onQuit: () => log?.add('quit'),
-    );
+    Menu build(TrayMenuInput input, {List<String>? log}) =>
+        buildTrayMenu(input, onAction: (key) => log?.add(key));
 
     MenuItem item(Menu m, String key) =>
         m.items!.firstWhere((i) => i.key == key);
@@ -279,6 +274,89 @@ void main() {
       ).submenu!.items!.firstWhere((i) => i.key == 'bw:5M');
       bw.onClick!(bw);
       expect(log, ['open', 'pause', 'quit', 'bw:5M']);
+    });
+
+    test('a click from before a rebuild still reaches its action', () {
+      final log = <String>[];
+      final first = build(running, log: log);
+      // A structure change rebuilds the menu. The click below is delivered on
+      // the first build's item, whose key is what dispatch uses.
+      build(
+        const TrayMenuInput(
+          status: 'Idle',
+          queuePaused: true,
+          bwLimit: 'off',
+          engineReady: true,
+        ),
+        log: log,
+      );
+      final stale = item(first, 'pause');
+      expect(stale.key, 'pause');
+      stale.onClick!(stale);
+      expect(log, ['pause']);
+    });
+
+    test('status-only changes never rebuild the context menu', () {
+      var rebuilds = 0;
+      final menu = TrayMenuPublisher(rebuild: (_) => rebuilds++);
+      // In TrayController this callback is setContextMenu. Fifty status-line
+      // changes on the same structure must produce one rebuild, not fifty.
+      for (var i = 0; i < 50; i++) {
+        menu.update(
+          TrayMenuInput(
+            status: 'Transferring $i files',
+            queuePaused: false,
+            bwLimit: 'off',
+            engineReady: true,
+          ),
+        );
+      }
+      expect(rebuilds, 1);
+
+      // A click's own result is a structure change, and does rebuild.
+      expect(
+        menu.update(
+          const TrayMenuInput(
+            status: 'Idle',
+            queuePaused: true,
+            bwLimit: 'off',
+            engineReady: true,
+          ),
+        ),
+        isTrue,
+      );
+      expect(rebuilds, 2);
+    });
+
+    test('with liveStatus (Linux) the status row is rebuilt, throttled', () {
+      var rebuilds = 0;
+      final menu = TrayMenuPublisher(
+        rebuild: (_) => rebuilds++,
+        liveStatus: TrayTextThrottle(),
+      );
+      final t0 = DateTime(2026, 10, 26);
+      TrayMenuInput at(String status, {bool paused = false}) => TrayMenuInput(
+        status: status,
+        queuePaused: paused,
+        bwLimit: 'off',
+        engineReady: true,
+      );
+      expect(menu.update(at('a'), t0), isTrue);
+      // Within the interval a new status waits, and says so.
+      expect(menu.update(at('b'), t0.add(const Duration(seconds: 1))), isFalse);
+      expect(menu.statusPending, isTrue);
+      expect(menu.update(at('b'), t0.add(const Duration(seconds: 2))), isTrue);
+      expect(menu.statusPending, isFalse);
+      // A structure change goes out at once, whatever the throttle says.
+      expect(
+        menu.update(
+          at('c', paused: true),
+          t0.add(const Duration(milliseconds: 2100)),
+        ),
+        isTrue,
+      );
+      expect(menu.statusPending, isFalse);
+      expect(rebuilds, 3);
     });
 
     test('the current preset is checked, a custom limit is shown', () {

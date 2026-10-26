@@ -101,10 +101,11 @@ String? formatEta(double? seconds) {
 
 /// Rate-limits the text pushed to the OS tray.
 ///
-/// The stats poll ticks every second; pushing a tooltip (and on Linux
-/// rebuilding the whole AppIndicator menu) on every tick is wasted work and
-/// makes the hover text flicker. A new text goes out when it differs from the
-/// last one pushed AND at least [interval] has passed since that push.
+/// The stats poll ticks every second; pushing a tooltip on every tick is wasted
+/// work and makes the hover text flicker. A new text goes out when it differs
+/// from the last one pushed AND at least [interval] has passed since that
+/// push. (The menu itself is rebuilt only on a structure change — see
+/// `tray_controller.dart`.)
 class TrayTextThrottle {
   TrayTextThrottle({this.interval = const Duration(seconds: 2)});
 
