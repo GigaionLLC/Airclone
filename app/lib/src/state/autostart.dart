@@ -142,13 +142,21 @@ String linuxAutostartEntry(String executable) =>
 /// running from one (the runtime exports `APPIMAGE`; the binary inside lives
 /// on a mount that is gone after this session), otherwise this executable.
 /// Only ever this app's own path, and only an existing absolute file.
+/// `APPIMAGE` is inherited by children of other AppImages (a terminal, an
+/// editor), so it counts only when this executable runs from inside `APPDIR`,
+/// the mount the AppImage runtime sets up for us.
 String? linuxAutostartExecutable(
   Map<String, String> env,
   String resolvedExecutable, {
   bool Function(String path)? exists,
 }) {
   final fileExists = exists ?? (p) => File(p).existsSync();
-  final appImage = env['APPIMAGE'];
+  final appDir = (env['APPDIR'] ?? '').replaceFirst(RegExp(r'/+$'), '');
+  final insideAppDir =
+      appDir.startsWith('/') &&
+      !appDir.split('/').contains('..') &&
+      resolvedExecutable.startsWith('$appDir/');
+  final appImage = insideAppDir ? env['APPIMAGE'] : null;
   for (final candidate in [appImage, resolvedExecutable]) {
     if (candidate == null || candidate.isEmpty) continue;
     if (!candidate.startsWith('/')) continue;

@@ -111,11 +111,46 @@ void main() {
     test('prefers the AppImage file', () {
       expect(
         linuxAutostartExecutable(
-          {'APPIMAGE': '/home/u/Airclone.AppImage'},
+          {
+            'APPIMAGE': '/home/u/Airclone.AppImage',
+            'APPDIR': '/tmp/.mount_x/',
+          },
           '/tmp/.mount_x/airclone',
           exists: all,
         ),
         '/home/u/Airclone.AppImage',
+      );
+    });
+
+    test('ignores an APPIMAGE inherited from another AppImage', () {
+      // No APPDIR: the tar.gz build started from an AppImage terminal.
+      expect(
+        linuxAutostartExecutable(
+          {'APPIMAGE': '/home/u/Terminal.AppImage'},
+          '/opt/airclone/airclone',
+          exists: all,
+        ),
+        '/opt/airclone/airclone',
+      );
+      // APPDIR belongs to the other AppImage, not to this executable.
+      expect(
+        linuxAutostartExecutable(
+          {
+            'APPIMAGE': '/home/u/Terminal.AppImage',
+            'APPDIR': '/tmp/.mount_term',
+          },
+          '/tmp/.mount_termx/airclone',
+          exists: all,
+        ),
+        '/tmp/.mount_termx/airclone',
+      );
+      expect(
+        linuxAutostartExecutable(
+          {'APPIMAGE': '/home/u/Terminal.AppImage', 'APPDIR': '/tmp/../opt'},
+          '/tmp/../opt/airclone',
+          exists: all,
+        ),
+        '/tmp/../opt/airclone',
       );
     });
 
@@ -129,7 +164,7 @@ void main() {
     test('ignores relative and missing paths', () {
       expect(
         linuxAutostartExecutable(
-          {'APPIMAGE': 'Airclone.AppImage'},
+          {'APPIMAGE': 'Airclone.AppImage', 'APPDIR': '/opt/airclone'},
           '/opt/airclone/airclone',
           exists: all,
         ),
@@ -137,7 +172,7 @@ void main() {
       );
       expect(
         linuxAutostartExecutable(
-          {'APPIMAGE': '/gone.AppImage'},
+          {'APPIMAGE': '/gone.AppImage', 'APPDIR': '/opt/airclone'},
           '/opt/airclone/airclone',
           exists: (p) => p != '/gone.AppImage',
         ),
