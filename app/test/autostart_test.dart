@@ -111,10 +111,7 @@ void main() {
     test('prefers the AppImage file', () {
       expect(
         linuxAutostartExecutable(
-          {
-            'APPIMAGE': '/home/u/Airclone.AppImage',
-            'APPDIR': '/tmp/.mount_x/',
-          },
+          {'APPIMAGE': '/home/u/Airclone.AppImage', 'APPDIR': '/tmp/.mount_x/'},
           '/tmp/.mount_x/airclone',
           exists: all,
         ),

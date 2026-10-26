@@ -2961,8 +2961,7 @@ class _InstallUpdateButton extends ConsumerWidget {
             if (closeToTray) ...[
               const SizedBox(width: Space.x2),
               TextButton(
-                onPressed: () =>
-                    ref.read(trayControllerProvider).requestQuit(),
+                onPressed: () => ref.read(trayControllerProvider).requestQuit(),
                 child: const Text('Quit'),
               ),
             ],
