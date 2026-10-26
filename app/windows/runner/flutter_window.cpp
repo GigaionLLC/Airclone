@@ -147,6 +147,14 @@ bool FlutterWindow::OnCreate() {
         } else if (method == "setInterceptClose") {
           // Nothing to do: WM_CLOSE already reaches Dart as an exit request.
           result->Success();
+        } else if (method == "setMinimizeToTray") {
+          const auto* on = std::get_if<bool>(call.arguments());
+          if (on == nullptr) {
+            result->Error("bad-args", "setMinimizeToTray takes a bool");
+            return;
+          }
+          minimize_to_tray_ = *on;
+          result->Success();
         } else if (method == "autostartEnabled") {
           result->Success(flutter::EncodableValue(AutostartEnabled()));
         } else if (method == "setAutostart") {
@@ -198,6 +206,12 @@ LRESULT
 FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
                               WPARAM const wparam,
                               LPARAM const lparam) noexcept {
+  const bool hide_on_minimize =
+      message == WM_SIZE && wparam == SIZE_MINIMIZED && minimize_to_tray_;
+  if (hide_on_minimize) {
+    ::ShowWindow(hwnd, SW_HIDE);
+  }
+
   // Give Flutter, including plugins, an opportunity to handle window messages.
   if (flutter_controller_) {
     std::optional<LRESULT> result =

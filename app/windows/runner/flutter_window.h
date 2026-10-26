@@ -52,6 +52,7 @@ class FlutterWindow : public Win32Window {
       window_channel_;
 
   bool start_hidden_ = false;
+  bool minimize_to_tray_ = false;
 };
 
 #endif  // RUNNER_FLUTTER_WINDOW_H_

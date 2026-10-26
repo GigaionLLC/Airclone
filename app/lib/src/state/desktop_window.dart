@@ -48,6 +48,10 @@ class DesktopWindow {
   static Future<void> setInterceptClose(bool intercept) =>
       _call<void>('setInterceptClose', intercept);
 
+  /// Windows: hide on minimize while a tray icon can bring the window back.
+  static Future<void> setMinimizeToTray(bool enabled) =>
+      _call<void>('setMinimizeToTray', enabled);
+
   /// Windows (Run key) and macOS 13+ (SMAppService): whether Airclone starts
   /// at sign-in. Null when the runner cannot do it here.
   static Future<bool?> nativeAutostartEnabled() =>

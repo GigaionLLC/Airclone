@@ -1,5 +1,6 @@
 // AppExitResponse (the onExitRequested return) lives in dart:ui — services.dart
 // only ever refers to it prefixed, so it is not re-exported by material.
+import 'dart:async';
 import 'dart:ui' show AppExitResponse, AppExitType;
 
 import 'package:flutter/material.dart';
@@ -76,6 +77,13 @@ class _AircloneAppState extends ConsumerState<AircloneApp> {
   /// desktop without an indicator host; X then quits as it always has.
   void _startTray() {
     if (!HostPlatform.isDesktop) return;
+    if (HostPlatform.isWindows) {
+      ref.listenManual<bool>(
+        effectiveMinimizeToTrayProvider,
+        (_, enabled) => unawaited(DesktopWindow.setMinimizeToTray(enabled)),
+        fireImmediately: true,
+      );
+    }
     final tray = ref.read(trayControllerProvider)..onQuit = _quitApp;
     // macOS: Dart cannot tell the close button from Cmd-Q (both arrive as
     // applicationShouldTerminate), so with a tray up the runner intercepts

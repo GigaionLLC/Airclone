@@ -53,6 +53,53 @@ final closeToTrayProvider = NotifierProvider<CloseToTray, bool?>(
   CloseToTray.new,
 );
 
+/// Windows: minimize hides the window only when a tray is available.
+class MinimizeToTray extends Notifier<bool> {
+  static const prefsKey = 'minimize_to_tray';
+
+  @override
+  bool build() {
+    _load();
+    return false;
+  }
+
+  Future<void> _load() async {
+    try {
+      final p = await SharedPreferences.getInstance();
+      final v = p.getBool(prefsKey);
+      if (v != null) state = v;
+    } catch (_) {
+      // Unreadable: minimize normally.
+    }
+  }
+
+  Future<void> set(bool value) async {
+    state = value;
+    try {
+      final p = await SharedPreferences.getInstance();
+      await p.setBool(prefsKey, value);
+    } catch (_) {
+      // Best effort: the in-memory choice still holds for this session.
+    }
+  }
+}
+
+final minimizeToTrayProvider = NotifierProvider<MinimizeToTray, bool>(
+  MinimizeToTray.new,
+);
+
+bool effectiveMinimizeToTray({
+  required bool setting,
+  required bool trayAvailable,
+}) => setting && trayAvailable;
+
+final effectiveMinimizeToTrayProvider = Provider<bool>((ref) {
+  return effectiveMinimizeToTray(
+    setting: ref.watch(minimizeToTrayProvider),
+    trayAvailable: ref.watch(trayAvailableProvider),
+  );
+});
+
 /// Whether a tray icon is up right now. Set by the tray controller; false on
 /// mobile, web, and on a Linux desktop with no indicator host, which is what
 /// makes X quit there exactly as it always has.

@@ -213,6 +213,76 @@ void main() {
     });
   });
 
+  group('MinimizeToTray', () {
+    test('defaults off and loads a saved choice', () async {
+      SharedPreferences.setMockInitialValues({});
+      final c = ProviderContainer();
+      addTearDown(c.dispose);
+      expect(c.read(minimizeToTrayProvider), isFalse);
+      await Future<void>.delayed(Duration.zero);
+      expect(c.read(minimizeToTrayProvider), isFalse);
+
+      SharedPreferences.setMockInitialValues({MinimizeToTray.prefsKey: true});
+      final saved = ProviderContainer();
+      addTearDown(saved.dispose);
+      saved.read(minimizeToTrayProvider);
+      await Future<void>.delayed(Duration.zero);
+      expect(saved.read(minimizeToTrayProvider), isTrue);
+    });
+
+    test('persists both choices', () async {
+      SharedPreferences.setMockInitialValues({});
+      final c = ProviderContainer();
+      addTearDown(c.dispose);
+      c.read(minimizeToTrayProvider);
+      await Future<void>.delayed(Duration.zero);
+      for (final value in [true, false]) {
+        await c.read(minimizeToTrayProvider.notifier).set(value);
+        expect(c.read(minimizeToTrayProvider), value);
+        final p = await SharedPreferences.getInstance();
+        expect(p.getBool(MinimizeToTray.prefsKey), value);
+      }
+    });
+
+    test('only effective with the setting and a tray', () {
+      for (final setting in [false, true]) {
+        for (final trayAvailable in [false, true]) {
+          expect(
+            effectiveMinimizeToTray(
+              setting: setting,
+              trayAvailable: trayAvailable,
+            ),
+            setting && trayAvailable,
+          );
+        }
+      }
+    });
+
+    test('effective provider follows setting and tray changes', () async {
+      SharedPreferences.setMockInitialValues({});
+      final c = ProviderContainer();
+      addTearDown(c.dispose);
+      final values = <bool>[];
+      c.listen<bool>(
+        effectiveMinimizeToTrayProvider,
+        (_, value) => values.add(value),
+        fireImmediately: true,
+      );
+      await Future<void>.delayed(Duration.zero);
+      await c.read(minimizeToTrayProvider.notifier).set(true);
+      expect(c.read(effectiveMinimizeToTrayProvider), isFalse);
+      c.read(trayAvailableProvider.notifier).set(true);
+      expect(c.read(effectiveMinimizeToTrayProvider), isTrue);
+      await c.read(minimizeToTrayProvider.notifier).set(false);
+      expect(c.read(effectiveMinimizeToTrayProvider), isFalse);
+      await c.read(minimizeToTrayProvider.notifier).set(true);
+      expect(c.read(effectiveMinimizeToTrayProvider), isTrue);
+      c.read(trayAvailableProvider.notifier).set(false);
+      expect(c.read(effectiveMinimizeToTrayProvider), isFalse);
+      expect(values, [false, true, false, true, false]);
+    });
+  });
+
   group('bandwidth helpers', () {
     test('labels', () {
       expect(trayBandwidthLabel('off'), 'Unlimited');
