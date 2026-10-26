@@ -80,6 +80,11 @@ include(flutter/generated_plugins.cmake)
 # our own runner code.
 if(TARGET tray_manager_plugin)
   target_compile_options(tray_manager_plugin PRIVATE -Wno-deprecated-declarations)
+  # Ubuntu's ayatana-appindicator3-0.1.pc (0.5.x) lists libayatana-indicator3
+  # and libayatana-ido3 in its public link line, so without --as-needed the
+  # plugin records both as NEEDED although it calls neither. Arch ships 0.6.x,
+  # which needs neither, so the tar.gz failed to load there.
+  target_link_options(tray_manager_plugin PRIVATE "LINKER:--as-needed")
 endif()
 
 
