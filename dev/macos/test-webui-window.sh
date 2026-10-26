@@ -81,6 +81,26 @@ if [ "${gui_windows:-0}" -eq 0 ]; then
   echo "a plain launch showed no window either - this runner cannot see windows," >&2
   echo "so the --webui result above proves nothing" >&2
   sed -n '1,20p' "$work/gui.log" >&2
+  # A crash says more than "no window": show the faulting thread's frames.
+  sleep 3
+  report="$(ls -t "$HOME"/Library/Logs/DiagnosticReports/Airclone*.ips 2>/dev/null | head -1)"
+  if [ -n "$report" ]; then
+    echo "crash report $report:" >&2
+    /usr/bin/python3 - "$report" >&2 <<'PY' || sed -n '1,120p' "$report" >&2
+import json, sys
+text = open(sys.argv[1]).read()
+head, _, body = text.partition("\n")
+r = json.loads(body)
+print(r.get("exception"), r.get("termination", {}).get("indicator"))
+images = r.get("usedImages", [])
+for t in r.get("threads", []):
+    if not t.get("triggered"):
+        continue
+    for f in t.get("frames", [])[:40]:
+        img = images[f["imageIndex"]].get("name", "?") if f.get("imageIndex", -1) < len(images) else "?"
+        print(" ", img, f.get("symbol", hex(f.get("imageOffset", 0))))
+PY
+  fi
   exit 2
 fi
 if [ "${webui_windows:-0}" -ne 0 ]; then

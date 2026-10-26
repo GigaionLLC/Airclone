@@ -24,11 +24,13 @@ LABEL org.opencontainers.image.title="Airclone" \
 # OpenGL ES + EGL with Mesa's software renderer (libgles2, libegl1,
 # libgl1-mesa-dri): the Linux engine refuses to start without libGLESv2.so.2
 # even for --webui, which the first smoke-test run caught. There is no GPU in
-# here and none is needed. The ubuntu user is replaced by "airclone", which the
-# entrypoint gives PUID/PGID at start.
+# here and none is needed. libayatana-appindicator3-1 is only so the tray
+# plugin (#54) loads; with no session bus there is never a tray icon. The
+# ubuntu user is replaced by "airclone", which the entrypoint gives PUID/PGID
+# at start.
 RUN apt-get update \
  && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-      libgtk-3-0t64 libmpv2 libsecret-1-0 libasound2t64 \
+      libgtk-3-0t64 libmpv2 libsecret-1-0 libasound2t64 libayatana-appindicator3-1 \
       libgles2 libegl1 libgl1-mesa-dri \
       xvfb xauth tini gosu curl ca-certificates tzdata fonts-dejavu-core \
  && rm -rf /var/lib/apt/lists/* \

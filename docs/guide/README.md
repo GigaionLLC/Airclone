@@ -22,6 +22,7 @@ your first cloud connection.
 | [Copying, moving and syncing](transferring.md) | The four transfer modes and why only Sync can lose data, dry runs and the preview, the conflict prompt, and the transfers list — including what pause really does. |
 | [Backing up a folder](backup.md) | The Back up a folder wizard, where the files land, why a backup only ever copies, how replaced files are kept as versions, the retention window, and how to restore. |
 | [Running tasks on a schedule](scheduling.md) | Saved tasks, the schedule kinds, what "run while Airclone is closed" arranges on each platform, and the delete cap and pause that protect a repeating sync. |
+| [Keeping Airclone in the tray](tray.md) | Desktop only: closing the window to the tray (off by default), what keeps running there, the tray menu (pause or resume all, bandwidth limit, quit), starting in the tray when you sign in, `--tray`, and the tray host Linux needs. |
 | [Backing up your photos (Android)](photos-android.md) | Android-only camera-roll backup: setting it up, what it copies, where it lands, the Wi-Fi and charging constraints, and the permissions Airclone asks for. |
 | [Mounting a drive and sharing](mount-and-share.md) | Mounting a remote as a drive, serving it over HTTP, WebDAV, FTP, SFTP or DLNA on your network, and asking a provider for a public link. |
 | [Your remotes, and moving them between devices](config-and-devices.md) | Where your rclone config lives on each platform, how to lock it with a password, and the three ways to carry your remotes to another device. |

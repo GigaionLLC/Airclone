@@ -41,6 +41,11 @@ finish-args:
   # libsecret, for the config-password vault (flutter_secure_storage_linux).
   - --talk-name=org.freedesktop.secrets
 
+  # The tray icon (#54): libayatana-appindicator registers a StatusNotifierItem
+  # with the desktop's watcher. Without it the icon never appears and closing
+  # the window quits, as it did before there was a tray.
+  - --talk-name=org.kde.StatusNotifierWatcher
+
 # WHY THERE ARE FOUR MODULES BEFORE THE APP.
 #
 # The Flutter binary links libmpv (media_kit, for image/video/audio preview) and
@@ -137,6 +142,13 @@ modules:
       - /lib/pkgconfig
       - /share/applications
       - /share/icons
+
+  # The tray icon (#54). tray_manager links libayatana-appindicator3, which the
+  # GNOME runtime does not ship, so without this the app would not start at all.
+  # Vendored from github.com/flathub/shared-modules (libayatana-appindicator/,
+  # intltool/, at 3d87a66, 2026-02-07); archive hashes and tag commits rechecked
+  # 2026-10-25. All LGPL.
+  - flatpak-modules/libayatana-appindicator-gtk3.json
 
   - name: airclone
     buildsystem: simple

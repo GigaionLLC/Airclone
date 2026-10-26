@@ -1,19 +1,29 @@
 // AppExitResponse (the onExitRequested return) lives in dart:ui — services.dart
 // only ever refers to it prefixed, so it is not re-exported by material.
-import 'dart:ui' show AppExitResponse;
+import 'dart:ui' show AppExitResponse, AppExitType;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show ServicesBinding;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:airclone_rc/airclone_rc.dart';
+import '../rclone/models/job.dart';
 import '../state/android_native.dart';
+import '../state/close_to_tray.dart';
+import '../state/desktop_window.dart';
 import '../state/diagnostics.dart';
 import '../state/engine_controller.dart';
+import '../state/host_platform.dart';
 import '../state/interface_scale.dart';
+import '../state/jobs_controller.dart';
 import '../state/mount_controller.dart';
 import '../state/settings_controller.dart';
 import '../state/skin.dart';
+import '../state/stats_controller.dart';
+import '../state/tray_controller.dart';
+import '../state/tray_status.dart';
 import '../state/window_backdrop.dart';
+import 'close_to_tray_dialog.dart';
 import 'close_with_mounts_dialog.dart';
 import 'home_screen.dart';
 import 'theme/app_theme.dart';
@@ -53,6 +63,114 @@ class _AircloneAppState extends ConsumerState<AircloneApp> {
     // it, so this needs no platform guard. [WindowsChildJob] covers the
     // *disorderly* exits this hook cannot see.
     _lifecycle = AppLifecycleListener(onExitRequested: _onExitRequested);
+    _startTray();
+  }
+
+  /// True while a quit chosen on purpose (the tray's Quit, or "Quit" in the
+  /// close-to-tray question) is on its way through [_onExitRequested], so
+  /// that pass skips the close-to-tray decision and goes straight to the
+  /// mounts guard.
+  bool _explicitQuit = false;
+
+  /// Desktop tray (#54). Nothing happens on mobile or the web, or on a Linux
+  /// desktop without an indicator host; X then quits as it always has.
+  void _startTray() {
+    if (!HostPlatform.isDesktop) return;
+    final tray = ref.read(trayControllerProvider)..onQuit = _quitApp;
+    // macOS: Dart cannot tell the close button from Cmd-Q (both arrive as
+    // applicationShouldTerminate), so with a tray up the runner intercepts
+    // the button itself and asks here instead.
+    DesktopWindow.onCloseRequested(_onMacWindowClose);
+    WidgetsBinding.instance.addPostFrameCallback((_) => tray.start());
+  }
+
+  /// One close decision at a time. A second X, or Cmd-Q racing the close
+  /// button, joins the question already on screen instead of stacking another.
+  Future<CloseAction?>? _closeDecision;
+  Future<AppExitResponse>? _exitResponse;
+
+  /// A deliberate quit: the tray's Quit, the close-to-tray question's Quit.
+  /// Goes through the platform's normal exit request, so [_onExitRequested]
+  /// still runs the mounts guard, unmounts, and stops the engine.
+  Future<void> _quitApp() async {
+    if (_explicitQuit) return;
+    _explicitQuit = true;
+    try {
+      final r = await ServicesBinding.instance.exitApplication(
+        AppExitType.cancelable,
+      );
+      if (r == AppExitResponse.cancel) _explicitQuit = false;
+    } catch (_) {
+      _explicitQuit = false;
+    }
+  }
+
+  /// Something is moving or waiting: what makes "never chosen" ask once
+  /// instead of quitting.
+  TrayActivity _activityNow() => trayActivityFrom(
+    stats: ref.read(statsProvider),
+    jobs: ref.read(jobsControllerProvider),
+    queuePaused: false,
+    bwLimit: 'off',
+    engineReady: true,
+  );
+
+  bool _jobsRunning() => ref
+      .read(jobsControllerProvider)
+      .any(
+        (j) => j.status == JobStatus.running || j.status == JobStatus.queued,
+      );
+
+  /// What the window's close button does now: hide, quit, or (null) nothing,
+  /// when the user cancelled the one-time question.
+  Future<CloseAction?> _resolveClose() async {
+    final activity = _activityNow();
+    final action = decideClose(
+      closeToTray: ref.read(closeToTrayProvider),
+      trayAvailable: ref.read(trayAvailableProvider),
+      busy: activity.isBusy || _jobsRunning(),
+    );
+    if (action != CloseAction.ask) return action;
+    final context = _navigatorKey.currentContext;
+    if (context == null || !context.mounted) return CloseAction.quit;
+    final line = trayStatusLine(activity);
+    final answer = await askCloseToTray(
+      context,
+      activity: line == 'Idle' ? 'Transfers are queued' : line,
+    );
+    switch (answer) {
+      case CloseToTrayAnswer.keepRunning:
+        await ref.read(closeToTrayProvider.notifier).set(true);
+        return CloseAction.hideToTray;
+      case CloseToTrayAnswer.quit:
+        await ref.read(closeToTrayProvider.notifier).set(false);
+        return CloseAction.quit;
+      case CloseToTrayAnswer.cancel:
+        return null;
+    }
+  }
+
+  /// [_resolveClose] once for concurrent callers; the Future is cleared when
+  /// it settles, so the next close starts a fresh decision.
+  Future<CloseAction?> _resolveCloseOnce() {
+    final pending = _closeDecision;
+    if (pending != null) return pending;
+    late final Future<CloseAction?> future;
+    future = _resolveClose().whenComplete(() {
+      if (identical(_closeDecision, future)) _closeDecision = null;
+    });
+    _closeDecision = future;
+    return future;
+  }
+
+  /// macOS close button while the tray is up (see [_startTray]).
+  Future<void> _onMacWindowClose() async {
+    final action = await _resolveCloseOnce();
+    if (action == CloseAction.hideToTray) {
+      await DesktopWindow.hide();
+    } else if (action == CloseAction.quit) {
+      await _quitApp();
+    }
   }
 
   @override
@@ -94,12 +212,44 @@ class _AircloneAppState extends ConsumerState<AircloneApp> {
     };
   }
 
-  /// Always answers [AppExitResponse.exit] — the close is never cancelled, we
-  /// only take the chance to stop `rcd` first. Bounded and failure-tolerant:
+  /// Cancels only for a choice the user just made: hide to the tray, keep the
+  /// mounts, or cancel the close-to-tray question. Otherwise the close always
+  /// goes through, and we take the chance to stop `rcd` first. Bounded and
+  /// failure-tolerant:
   /// `quit()` has its own internal timeouts and the outer one guarantees a wedged
   /// engine can never leave the window hanging (a user clicking X and getting
   /// nothing is far worse than a stray process, which the job object reaps).
-  Future<AppExitResponse> _onExitRequested() async {
+  Future<AppExitResponse> _onExitRequested() {
+    // One exit at a time: a second close or quit while the first is still
+    // asking (close-to-tray, mounted drives) shares its answer instead of
+    // opening a second dialog and running the unmount/quit twice.
+    final pending = _exitResponse;
+    if (pending != null) return pending;
+    late final Future<AppExitResponse> future;
+    future = _handleExitRequest().whenComplete(() {
+      if (identical(_exitResponse, future)) _exitResponse = null;
+    });
+    return _exitResponse = future;
+  }
+
+  Future<AppExitResponse> _handleExitRequest() async {
+    // Close-to-tray (#54). Windows and Linux deliver the close button here, so
+    // it is decided here; macOS routes the button to [_onMacWindowClose], and
+    // what arrives here is always a real quit (Cmd-Q, the app menu, logout).
+    if (!_explicitQuit && !HostPlatform.isMacOS) {
+      final action = await _resolveCloseOnce();
+      if (action == null) return AppExitResponse.cancel;
+      if (action == CloseAction.hideToTray) {
+        await DesktopWindow.hide();
+        return AppExitResponse.cancel;
+      }
+    }
+    final response = await _quitFlow();
+    if (response == AppExitResponse.cancel) _explicitQuit = false;
+    return response;
+  }
+
+  Future<AppExitResponse> _quitFlow() async {
     // Mounted drives are the one thing a close can take away from OTHER apps:
     // an editor with an unsaved file on X:, a copy running in Explorer. Ask
     // before pulling them out from under it. Queried fresh rather than read off
@@ -137,6 +287,16 @@ class _AircloneAppState extends ConsumerState<AircloneApp> {
     } catch (_) {
       /* nothing left to do but exit */
     }
+    // Take the tray icon down too, or Windows leaves a ghost icon in the
+    // notification area until the mouse passes over it.
+    try {
+      await ref
+          .read(trayControllerProvider)
+          .stop()
+          .timeout(const Duration(seconds: 1));
+    } catch (_) {
+      /* cosmetic */
+    }
     return AppExitResponse.exit;
   }
 
@@ -169,6 +329,9 @@ class _AircloneAppState extends ConsumerState<AircloneApp> {
   /// there is no navigator to ask on — never strand a close behind a dialog
   /// that cannot be shown.
   Future<bool> _confirmCloseWithMounts(List<String> mounts) async {
+    // A quit from the tray can arrive with the window hidden; the question
+    // has to be seen to be answered.
+    await DesktopWindow.show();
     final context = _navigatorKey.currentContext;
     if (context == null || !context.mounted) return true;
     return confirmCloseWithMounts(context, mounts);

@@ -43,11 +43,11 @@ look identical here. **Shipped** = in the app today · **partial** = usable but 
 | Public links | `feat-public-link.md` | all | shipped | Generate shareable links where the backend supports it (capability-gated). `ui/public_link_dialog.dart`. |
 | Encryption (crypt) | `feat-encryption.md` · config-password half in [`feat-config-management.md` §6](feat-config-management.md#6-config-encryption-is-rclones-own-and-it-is-cli-only) | all | shipped | Encrypted remotes (`ui/encrypt_remote_dialog.dart`) and the config password. |
 | Settings & themes | `feat-settings.md` | all | shipped | Preferences, light/dark themes, skins. `ui/settings_screen.dart`, `state/skin.dart`. i18n is the part that does not exist yet. |
-| Tray & windows | `feat-tray-windows.md` | desktop | **not built** | System tray, auto-launch, window management. Nothing is wired — no tray or launch-at-startup code exists in `app/lib/src`. |
+| Tray & windows | `feat-tray-windows.md` | desktop | shipped | System tray with a status line, Pause/Resume all, bandwidth limit and Quit; close-to-tray (off by default); start in the tray at sign-in. `state/tray_controller.dart`, `state/close_to_tray.dart`, `state/autostart.dart`, `ui/tray_settings_section.dart`; user guide [`docs/guide/tray.md`](../../docs/guide/tray.md). |
 | Onboarding | `feat-onboarding.md` | all | partial | What ships is the pane's first-run empty state when zero remotes are configured (`ui/browser_pane.dart`). The onboarding *experience* expressing the product vision is not built. |
 
 > **A seed row is not a missing feature.** Most of the back-ticked docs above describe things that
-> ship today and simply have no page yet; only **Mobile file-provider** and **Tray & windows** are
+> ship today and simply have no page yet; only **Mobile file-provider** is
 > unbuilt outright, with **Onboarding** half-there, and the status column is there so the three
 > states stop looking alike. Where a shipped
 > surface has been written up on a page that *does* exist, the Doc column points at that section

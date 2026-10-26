@@ -15,6 +15,13 @@
 struct _MyApplication {
   GtkApplication parent_instance;
   char** dart_entrypoint_arguments;
+  // The main window, once built. A second activate (a second launch handed to
+  // this primary instance) presents it instead of building another (#54).
+  GtkWindow* window;
+  // `--tray`: keep the window hidden until the tray (Dart) shows it.
+  gboolean start_hidden;
+  // 'airclone/window' (#54). Dart side: lib/src/state/desktop_window.dart.
+  FlMethodChannel* window_channel;
 };
 
 // `--version` / `--help`, answered HERE in C++, before GTK or GL exist at all.
@@ -86,6 +93,10 @@ static void PrintHelp() {
       "                          --output PATH saves the file instead, and\n"
       "                          --version-tag TAG picks a release.\n"
       "\n"
+      "  --tray                  Start hidden in the tray, as the sign-in\n"
+      "                          launch does. Opens the window instead when\n"
+      "                          the desktop has no tray.\n"
+      "\n"
       "  --log-input             Print one line per key event, and whether a\n"
       "                          text field had focus to receive it. For\n"
       "                          working out why a machine will not type.\n"
@@ -131,6 +142,60 @@ static bool GlesAvailable() {
 }
 
 G_DEFINE_TYPE(MyApplication, my_application, GTK_TYPE_APPLICATION)
+
+// Whether anything would show a tray icon (#54). tray_manager uses
+// libayatana-appindicator, which talks StatusNotifierItem; a session with no
+// org.kde.StatusNotifierWatcher (stock GNOME without the AppIndicator
+// extension) shows nothing, and hiding the window there would strand the app.
+// The Flatpak manifest grants --talk-name for exactly this name.
+static gboolean TrayHostAvailable() {
+  g_autoptr(GError) error = nullptr;
+  g_autoptr(GDBusConnection) bus =
+      g_bus_get_sync(G_BUS_TYPE_SESSION, nullptr, &error);
+  if (bus == nullptr) return FALSE;
+  g_autoptr(GVariant) reply = g_dbus_connection_call_sync(
+      bus, "org.freedesktop.DBus", "/org/freedesktop/DBus",
+      "org.freedesktop.DBus", "NameHasOwner",
+      g_variant_new("(s)", "org.kde.StatusNotifierWatcher"),
+      G_VARIANT_TYPE("(b)"), G_DBUS_CALL_FLAGS_NONE, 1000, nullptr, &error);
+  if (reply == nullptr) return FALSE;
+  gboolean owned = FALSE;
+  g_variant_get(reply, "(b)", &owned);
+  return owned;
+}
+
+static void present_window(MyApplication* self) {
+  if (self->window == nullptr) return;
+  gtk_widget_show(GTK_WIDGET(self->window));
+  gtk_window_present(self->window);
+}
+
+static void window_method_cb(FlMethodChannel* channel, FlMethodCall* call,
+                             gpointer user_data) {
+  MyApplication* self = MY_APPLICATION(user_data);
+  const gchar* method = fl_method_call_get_name(call);
+  g_autoptr(FlMethodResponse) response = nullptr;
+  if (g_strcmp0(method, "hide") == 0) {
+    if (self->window != nullptr) gtk_widget_hide(GTK_WIDGET(self->window));
+    response = FL_METHOD_RESPONSE(fl_method_success_response_new(nullptr));
+  } else if (g_strcmp0(method, "show") == 0) {
+    present_window(self);
+    response = FL_METHOD_RESPONSE(fl_method_success_response_new(nullptr));
+  } else if (g_strcmp0(method, "startedHidden") == 0) {
+    g_autoptr(FlValue) v = fl_value_new_bool(self->start_hidden);
+    response = FL_METHOD_RESPONSE(fl_method_success_response_new(v));
+  } else if (g_strcmp0(method, "trayHostAvailable") == 0) {
+    g_autoptr(FlValue) v = fl_value_new_bool(TrayHostAvailable());
+    response = FL_METHOD_RESPONSE(fl_method_success_response_new(v));
+  } else if (g_strcmp0(method, "setInterceptClose") == 0) {
+    // The close button already reaches Dart as an exit request here.
+    response = FL_METHOD_RESPONSE(fl_method_success_response_new(nullptr));
+  } else {
+    // Sign-in launch on Linux is an XDG autostart file Dart writes itself.
+    response = FL_METHOD_RESPONSE(fl_method_not_implemented_response_new());
+  }
+  fl_method_call_respond(call, response, nullptr);
+}
 
 // Called when first Flutter frame received.
 static void first_frame_cb(MyApplication* self, FlView* view) {
@@ -202,6 +267,14 @@ static void apply_window_chrome(GtkWindow* window) {
 static void my_application_activate(GApplication* application) {
   MyApplication* self = MY_APPLICATION(application);
 
+  // Single instance (#54): another `airclone` launched while this one runs is
+  // handed here by GApplication. Show the window we have; never build a second
+  // app (a second engine, a second scheduler) beside it.
+  if (self->window != nullptr) {
+    present_window(self);
+    return;
+  }
+
   // A windowless run (--webui, --run-due, --run-task) still BUILDS a window,
   // because realizing an FlView is the only public way to start the engine on
   // Linux - but it must never SHOW one.
@@ -217,6 +290,11 @@ static void my_application_activate(GApplication* application) {
 
   GtkWindow* window =
       GTK_WINDOW(gtk_application_window_new(GTK_APPLICATION(application)));
+  self->window = window;
+  // Cleared by GTK if the window is ever destroyed, so present_window cannot
+  // touch a dead one.
+  g_object_add_weak_pointer(G_OBJECT(window),
+                            reinterpret_cast<gpointer*>(&self->window));
 
   // Use a header bar when running in GNOME as this is the common style used
   // by applications and is the setup most users will be using (e.g. Ubuntu
@@ -268,13 +346,21 @@ static void my_application_activate(GApplication* application) {
   // case nothing ever maps the toplevel and it stays invisible. Realizing still
   // happens either way: that is what creates the GL context the engine starts
   // on.
-  if (!windowless) {
+  // A `--tray` launch is windowed but starts hidden: the tray shows it.
+  if (!windowless && !self->start_hidden) {
     g_signal_connect_swapped(view, "first-frame", G_CALLBACK(first_frame_cb),
                              self);
   }
   gtk_widget_realize(GTK_WIDGET(view));
 
   fl_register_plugins(FL_PLUGIN_REGISTRY(view));
+
+  g_autoptr(FlStandardMethodCodec) codec = fl_standard_method_codec_new();
+  self->window_channel = fl_method_channel_new(
+      fl_engine_get_binary_messenger(fl_view_get_engine(view)),
+      "airclone/window", FL_METHOD_CODEC(codec));
+  fl_method_channel_set_method_call_handler(self->window_channel,
+                                            window_method_cb, self, nullptr);
 
   // Every window desktop_multi_window creates (each pop-out image viewer) gets
   // the generated plugins registered on its own engine.
@@ -293,6 +379,7 @@ static void my_application_activate(GApplication* application) {
   } else {
     g_signal_connect(view, "map", G_CALLBACK(view_mapped_cb), nullptr);
     gtk_widget_grab_focus(GTK_WIDGET(view));
+    if (self->start_hidden) gtk_widget_hide(GTK_WIDGET(window));
   }
 }
 
@@ -358,10 +445,35 @@ static gboolean my_application_local_command_line(GApplication* application,
     return TRUE;
   }
 
+  const gboolean windowless =
+      WantsWindowlessDart(self->dart_entrypoint_arguments);
+  self->start_hidden =
+      !windowless && HasArg(self->dart_entrypoint_arguments, "--tray");
+
+  // Single instance for the windowed app (#54), so "Start in the tray at sign
+  // in" plus a launch from the app menu shows the running Airclone instead of
+  // starting a second one. Windowless runs stay NON_UNIQUE: the scheduler
+  // starts `--run-task` while the app may be open, and that run must happen in
+  // its own process, not be handed to this one as an activate. Snap would need
+  // a D-Bus slot for the app id, and there is no snap, so it is left out.
+  if (!windowless && g_getenv("SNAP") == nullptr) {
+    // 0 is G_APPLICATION_DEFAULT_FLAGS, spelled so it builds against GLib
+    // older than 2.74 (Ubuntu 22.04) and without the FLAGS_NONE deprecation.
+    g_application_set_flags(application, static_cast<GApplicationFlags>(0));
+  }
+
   g_autoptr(GError) error = nullptr;
   if (!g_application_register(application, nullptr, &error)) {
     g_warning("Failed to register: %s", error->message);
     *exit_status = 1;
+    return TRUE;
+  }
+
+  // Already running: a sign-in launch has nothing to add; anything else asks
+  // the running instance (my_application_activate there) to show its window.
+  if (g_application_get_is_remote(application)) {
+    if (!self->start_hidden) g_application_activate(application);
+    *exit_status = 0;
     return TRUE;
   }
 
@@ -393,6 +505,12 @@ static void my_application_shutdown(GApplication* application) {
 static void my_application_dispose(GObject* object) {
   MyApplication* self = MY_APPLICATION(object);
   g_clear_pointer(&self->dart_entrypoint_arguments, g_strfreev);
+  g_clear_object(&self->window_channel);
+  if (self->window != nullptr) {
+    g_object_remove_weak_pointer(G_OBJECT(self->window),
+                                 reinterpret_cast<gpointer*>(&self->window));
+    self->window = nullptr;
+  }
   G_OBJECT_CLASS(my_application_parent_class)->dispose(object);
 }
 

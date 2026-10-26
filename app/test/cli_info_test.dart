@@ -177,7 +177,7 @@ void main() {
       expect(start, greaterThan(0));
       expect(end, greaterThan(start));
       final help = src.substring(start, end);
-      for (final flag in [...flags, '--webui-bind', '--webui-port']) {
+      for (final flag in [...flags, '--webui-bind', '--webui-port', '--tray']) {
         expect(help, contains(flag), reason: 'Linux --help omits $flag');
         expect(
           usageText('x'),
@@ -206,7 +206,7 @@ void main() {
       final f = File('macos/Runner/AppDelegate.swift');
       if (!f.existsSync()) return;
       final src = f.readAsStringSync();
-      for (final flag in [...flags, '--webui-bind', '--webui-port']) {
+      for (final flag in [...flags, '--webui-bind', '--webui-port', '--tray']) {
         expect(src, contains(flag), reason: 'macOS --help omits $flag');
       }
     });

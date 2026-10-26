@@ -15,6 +15,7 @@ import '../state/app_info.dart';
 import '../state/biometric_unlock.dart';
 import '../state/build_kind.dart';
 import '../state/cache_crypto.dart';
+import '../state/close_to_tray.dart';
 import '../state/config_password_vault.dart';
 import '../state/config_transfer_controller.dart';
 import '../state/diagnostics.dart';
@@ -43,10 +44,12 @@ import '../state/remotes_provider.dart';
 import '../state/settings_controller.dart';
 import '../state/skin.dart';
 import '../state/thumbnail_service.dart';
+import '../state/tray_controller.dart';
 import '../state/window_backdrop.dart';
 import 'config_encryption_dialog.dart';
 import 'config_export_dialog.dart';
 import 'photo_backup_section.dart';
+import 'tray_settings_section.dart';
 import 'config_import_dialog.dart';
 import 'dialog_body.dart';
 import 'external_backup_dialogs.dart';
@@ -127,6 +130,12 @@ class SettingsContent extends ConsumerWidget {
           _InterfaceSizeSection(),
         ],
         if (desktop) ...[const SizedBox(height: Space.x4), _BackdropSection()],
+        // Tray (#54): close-to-tray and the sign-in launch. Desktop only.
+        if (desktop) ...[
+          const SizedBox(height: Space.x5),
+          const _GroupHeader('Tray'),
+          const TraySettingsSection(),
+        ],
         if (desktop || advanced || HostPlatform.isIOS) ...[
           const SizedBox(height: Space.x5),
           const _GroupHeader('Transfers'),
@@ -2879,6 +2888,12 @@ class _InstallUpdateButton extends ConsumerWidget {
     final target = currentSelfUpdateTarget(source);
     if (!canOfferSelfUpdate(target)) return const SizedBox.shrink();
 
+    // With close-to-tray on, the X button only hides the window, so the
+    // installer would keep waiting. Ask for a real quit instead, through the
+    // same path (and mounts guard) as the tray's Quit item.
+    final closeToTray =
+        ref.watch(closeToTrayProvider) == true &&
+        ref.watch(trayAvailableProvider);
     final job = ref.watch(updateJobProvider);
     return switch (job) {
       UpdateDownloading(:final fraction) => Row(
@@ -2930,9 +2945,27 @@ class _InstallUpdateButton extends ConsumerWidget {
       // for Airclone to close. Airclone does not close itself - an app that
       // vanishes mid-sentence is one nobody trusts twice.
       UpdateAwaitingExit() => Flexible(
-        child: Text(
-          'Close Airclone to finish updating. It will start again by itself.',
-          style: TextStyle(color: c.success, fontSize: 13),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Flexible(
+              child: Text(
+                closeToTray
+                    ? 'Quit Airclone to finish updating. It will start again '
+                          'by itself.'
+                    : 'Close Airclone to finish updating. It will start again '
+                          'by itself.',
+                style: TextStyle(color: c.success, fontSize: 13),
+              ),
+            ),
+            if (closeToTray) ...[
+              const SizedBox(width: Space.x2),
+              TextButton(
+                onPressed: () => ref.read(trayControllerProvider).requestQuit(),
+                child: const Text('Quit'),
+              ),
+            ],
+          ],
         ),
       ),
       UpdateFailed(:final message) => Flexible(

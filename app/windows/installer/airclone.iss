@@ -80,6 +80,13 @@ Name: "{group}\{#AppName}"; Filename: "{app}\{#AppExeName}"
 Name: "{group}\{cm:UninstallProgram,{#AppName}}"; Filename: "{uninstallexe}"
 Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppExeName}"; Tasks: desktopicon
 
+[Registry]
+; "Start Airclone in the tray when I sign in" (#54) is a value the APP writes
+; under HKCU\...\Run (windows/runner/flutter_window.cpp). Setup never creates it
+; (ValueType: none); this line only removes it on uninstall, so no sign-in
+; entry outlives the program it starts.
+Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: none; ValueName: "Airclone"; Flags: uninsdeletevalue dontcreatekey
+
 [Run]
 Filename: "{app}\{#AppExeName}"; Description: "{cm:LaunchProgram,{#AppName}}"; Flags: nowait postinstall skipifsilent
 
