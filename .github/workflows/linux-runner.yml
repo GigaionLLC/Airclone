@@ -345,7 +345,7 @@ jobs:
           echo "prefer-system groups: $(ls squashfs-root/usr/lib/prefer-system | tr '\n' ' ')"
 
       - name: Keep the AppImage for the distro check
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: linux-appimage
           path: ${{ runner.temp }}/Airclone-x86_64.AppImage
@@ -354,7 +354,7 @@ jobs:
       # The tar.gz is this bundle as it stands, so the distro legs audit it too.
       - name: Keep the tar.gz bundle for the distro check
         run: tar -C build/linux/x64/release -czf "$RUNNER_TEMP/airclone-linux-x64.tar.gz" bundle
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: linux-tarball
           path: ${{ runner.temp }}/airclone-linux-x64.tar.gz
@@ -418,7 +418,7 @@ jobs:
           echo "Mesa EGL: $(ls /usr/lib*/libEGL_mesa.so.0 /usr/lib/*/libEGL_mesa.so.0 2>/dev/null | head -1)"
           echo "system libwayland-client: $(readlink -f "$(/sbin/ldconfig -p | awk '$1 == "libwayland-client.so.0" { print $NF; exit }')")"
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: linux-appimage
 
@@ -445,7 +445,7 @@ jobs:
           fi
           echo "the AppImage ran 20 s on ${{ matrix.distro }}"
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           path: src
           sparse-checkout: dev/linux
@@ -461,7 +461,7 @@ jobs:
       # The tar.gz carries no system libraries: the README lists what to
       # install (libmpv, libsecret, ALSA). Install exactly that, by this
       # distro's names, and nothing it needs may be missing.
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: linux-tarball
       - name: The tar.gz has everything it needs once the README's packages are in
