@@ -2,7 +2,8 @@
 ///
 /// The transcripts in `test/fixtures/config_flows/interactive_flows.json` were
 /// captured from rclone v1.75.1 by driving librclone directly
-/// (`dev/plans/fd2-probe/capture_flow.dart`). Replaying them is the difference
+/// (`dev/plans/fd2-probe/capture_flow.dart`) and re-walked on every pin bump
+/// (`dev/plans/fd2-probe/replay_rcd.py`, last v1.76.0). Replaying them is the difference
 /// between testing what rclone does and testing what we assumed it does — the
 /// shared-client_id warning was found exactly this way, by capturing rather
 /// than imagining.

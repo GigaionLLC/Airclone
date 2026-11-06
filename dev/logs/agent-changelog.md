@@ -13,6 +13,25 @@ happened": nothing was logged between 2026-07-02 and 2026-07-15, or between 2026
      it is: it used to say ABOVE, which pushed it further down the file with every entry until
      it sat hundreds of lines under the newest one and pointed writers at the wrong place. -->
 
+## [2026-11-06] - rclone 1.76.0
+
+**Agent:** Claude Code (Claude Opus 5.5)
+**Files Modified:** the five rclone pin sites (`.github/workflows/release.yml`,
+`dev/android/build-rclone.ps1`, `dev/desktop/build-librclone.{ps1,sh}`,
+`dev/ios/build-librclone-ios.sh`), `app/lib/src/webui/webui_param_guards.dart`,
+`app/lib/src/state/console/rclone_commands.dart`, `app/test/fixtures/config_flows/*`,
+`dev/plans/fd2-probe/{capture_flow.dart,replay_rcd.py}`, `docs/store/store-release-notes.txt`,
+`dev/google-shared-client-id.md`, `dev/apple-handoff.md`, `app/pubspec.yaml` (0.31.1+166),
+`dev/releases/v0.31.1.md`, this changelog.
+**Database/API Changes:** None in the app. rclone adds rc calls `operations/getfile` and
+`operations/index` (off the allowlist) and drops `pluginsctl/*` (never used).
+**Summary:** Moved rclone from v1.75.2 to v1.76.0 after comparing the two binaries side by side;
+the release.yml comment holds what was verified and what was not (no live FUSE mount, no real
+OAuth sign-in). The console now refuses `rclone index`, which writes into a remote. Config-flow
+fixtures were re-walked through `rclone rcd` by the new `replay_rcd.py`; the flows are unchanged.
+The provider fixture picks up the upstream option changes. Requested by Jake: "New rclone version
+released. Proceed to cut a new release with it updated".
+
 ## [2026-10-26] - Opt-in minimize to tray on Windows
 
 **Agent:** Codex (Sol), reviewed and applied by Claude Code (Claude Opus 5.5)
