@@ -2,7 +2,7 @@
 /// destructive-flag set. This is the allowlist that gates the command console:
 /// an unknown verb is treated as [CommandTier.blocked] and refused.
 ///
-/// The list is curated from `rclone`'s command tree (v1.74.4); it changes only
+/// The list is curated from `rclone`'s command tree (v1.76.0); it changes only
 /// when the pinned rclone bumps. Phase 2 layers autocomplete/help on top of the
 /// same table. Classification is ALWAYS on parsed tokens, never a substring
 /// match of the raw line (see [console_command.dart]).
@@ -111,6 +111,7 @@ final Map<String, RcloneCommandInfo> kRcloneCommands = {
     _b('selfupdate', 'Update the rclone binary — managed by Airclone'),
     _b('gendocs', 'Output markdown docs for rclone to the directory supplied'),
     _b('gitannex', 'Speaks with git-annex over stdin/stdout'),
+    _b('index', 'Write a listing file into every directory of a remote'),
   ])
     c.name: c,
 };
@@ -194,6 +195,9 @@ const Map<String, String> _inAppAlternative = {
   'serve': 'Use "Serve / Share on LAN" in the toolbar.',
   'rc': 'Airclone already runs and drives the rclone engine for you.',
   'rcd': 'Airclone already runs and drives the rclone engine for you.',
+  'index':
+      'It writes a listing file into every directory of the remote. To share '
+      'a remote\'s files, use "Serve / Share on LAN" in the toolbar.',
   'selfupdate': 'Update the engine from Settings → Engine.',
 };
 

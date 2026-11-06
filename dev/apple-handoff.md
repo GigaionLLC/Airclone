@@ -9,15 +9,12 @@ by design** — real IDs, key paths and account state live in the encrypted vaul
 (`python tool/vault.py unlock`, then
 `dev/vault/notes/apple-appstore-setup-record.md`).
 
-## State: last written 2026-10-25 — 0.26.0 (iOS) and 0.28.0 (macOS) approved and held, 0.29.1 build 162 uploaded on both
+## State: last written 2026-11-06 — 0.31.0 live on both, 0.31.1 build 166 in progress
 
-> **RESUME HERE (2026-10-25).** iOS: 0.24.0 READY_FOR_SALE; **0.26.0 PENDING_DEVELOPER_RELEASE** (MANUAL).
-> macOS: 0.24.0 READY_FOR_SALE; **0.28.0 PENDING_DEVELOPER_RELEASE** (MANUAL). Read back 2026-10-25 by `asc-version.yml mode=report`.
-> **0.29.1 / build 162** was uploaded 2026-10-25 on both platforms (`ios-release.yml` run 40236021016 and
-> `mas-release.yml` run 40236011779, both succeeded) and is VALID in App Store Connect (`asc-version.yml mode=builds`).
-> **No 0.29.1 version record exists yet** on either platform.
-> Releasing 0.26.0 / 0.28.0 is Jake's call (`asc-release.yml -f platform=IOS|MAC_OS -f mode=release -f confirm_version=<version>`).
-> Next: once Jake decides, create the 0.29.1 versions and submit them (runbook step 0 onward, build 162).
+> **RESUME HERE (2026-11-06).** iOS and macOS: **0.31.0 build 165 released 2026-11-03**, nothing held.
+> **0.31.1 / build 166** (rclone 1.76.0) is the next version on both platforms; read `mode=builds` and the coordinator's
+> notes for how far it got. Releasing an approved version is Jake's call
+> (`asc-release.yml -f platform=IOS|MAC_OS -f mode=release -f confirm_version=<version>`).
 > Never poll with `asc-version.yml mode=report`: it exits 1 when nothing is editable and emails a failure; use `mode=builds`.
 
 Read back from App Store Connect by the workflows that changed it, so these rows are observed.

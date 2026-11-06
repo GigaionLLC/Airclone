@@ -1,7 +1,7 @@
 # Google Drive / Photos: rclone's shared client_id is being retired
 
 **Watch this thread:** [rclone forum — "Google Drive and Google Photos users - ACTION REQUIRED"](https://forum.rclone.org/t/google-drive-and-google-photos-users-action-required/54005)
-(announcement by ncw, 2026-07-06; last checked 2026-10-16, 25 posts).
+(announcement by ncw, 2026-07-06; last checked 2026-11-06, 27 posts).
 
 ## What upstream said
 
@@ -29,6 +29,7 @@
 | 2026-09-01 | Google Cloud consent screen now wants a **homepage URL and privacy policy** before "Publish app" works. Users got around it with any URL (2026-10-03: even `example.com`). The app then shows as "published, unverified", and sign-in shows a "not verified → continue" warning but works. |
 | 2026-09-19 | ncw: "Google have gone silent… I think they are revising their plan". |
 | 2026-10-16 | **No 90-day notice posted yet.** The shared id still works. |
+| 2026-11-06 | **Still no 90-day notice** (newest post 2026-11-01). rclone 1.76.0 still ships the shared id and asks the same `config_shared_client_id` question, replayed through `rclone rcd`. |
 
 ## What it means for Airclone
 

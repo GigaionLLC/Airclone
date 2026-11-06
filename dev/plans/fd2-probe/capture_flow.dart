@@ -89,10 +89,10 @@ void main(List<String> args) {
   call("config/setpath", {"path": scratch});
 
   final out = <String, dynamic>{
-    "_source": "Captured from rclone v1.75.1 via librclone by "
+    "_source": "Captured from rclone v1.76.0 via librclone by "
         "dev/plans/fd2-probe/capture_flow.dart. Walks stop before any state "
         "that would bind the OAuth listener.",
-    "rcloneVersion": "v1.75.1",
+    "rcloneVersion": "v1.76.0",
     "flows": {
       "drive_declines_shared_id":
           walk("drive", {"config_shared_client_id": "false"}),

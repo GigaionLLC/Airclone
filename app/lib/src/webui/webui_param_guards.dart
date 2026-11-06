@@ -467,7 +467,7 @@ class FsSpec {
   final Map<String, String> params;
 }
 
-/// Splits [path] the way rclone's `fspath.Parse` (1.75.1) does, or returns
+/// Splits [path] the way rclone's `fspath.Parse` (1.76.0) does, or returns
 /// null where rclone would refuse it too.
 ///
 /// Only the NAME and PARAMETER part is modelled - the path after the colon
@@ -591,7 +591,7 @@ String? _commandOptionIn(
 /// rclone accepts both the config spelling (`password_command`) and the Go
 /// field spelling (`PasswordCommand`) depending on where the option rides.
 ///
-/// Every option in rclone 1.75.1 whose value reaches a local `exec.Command`:
+/// Every option in rclone 1.76.0 whose value reaches a local `exec.Command`:
 /// `ssh` (sftp), `bearer_token_command` (webdav), `password_command`,
 /// `metadata_mapper`, and `name_transform` with a `command=` step. Anything
 /// else ENDING in `command` is refused as well, so a future option that

@@ -55,6 +55,30 @@ env:
   # Store MSIX (windows job), built into librclone, and built as the Android
   # jniLib (android job). Keep in sync with dev/android/build-rclone.ps1 +
   # dev/desktop/build-librclone.sh — ci.yml greps this line and enforces it.
+  # v1.76.0 (2026-11-06). A SECURITY release again (go1.27.3, x/net and brotli
+  # CVEs; HTTPS to HTTP redirects refused unless --allow-https-downgrade, with
+  # the matching credential leaks fixed in netstorage, seafile, swift and
+  # ulozto; local Remove, Rmdir, DirMove and metadata escaping the root through
+  # a planted symlink; rc request size limits). Also ours: OneDrive Business
+  # and SharePoint must be on 1.76+ before 2027-04-01 (tempauth retirement);
+  # `Fix case- or Unicode-only renames deleting the file` and `moving a file
+  # onto its own name deleting it`.
+  # Verified against the v1.76.0 binary (SHA256 checked against upstream
+  # SHA256SUMS), side by side with v1.75.2: `--rc-serve` Range still 206 with
+  # the right bytes, and a Range past EOF is now 416, not a bad 206 (both
+  # object paths pass the status through); the config flows in
+  # app/test/fixtures/config_flows replay byte for byte, shared Google id
+  # prompt included, so config/create still needs `parameters`; `Token already
+  # configured` is still the Sign in again step; vfs/stats options unchanged.
+  # NOT verified live: a FUSE mount, the agent host cannot mount. The mount
+  # option reshape was checked by source instead: cmd/mountlib/rc.go and
+  # vfs/vfscommon/options.go are identical between the tags.
+  # Host-command audit for the Web UI guards: no new exec.Command file, no new
+  # `*_command` option. New rc calls operations/getfile and operations/index
+  # stay off the allowlist. A zip with symlinks still cannot leave the extract
+  # folder, so secureRcloneVersion stays 1.75.1.
+  # rclone 1.76.0 needs go1.26 or newer: setup-go `stable` satisfies it.
+  # What follows is the reasoning for v1.75.2 and v1.75.1, still in force:
   # v1.75.2 (2026-10-09). Another SECURITY release (go1.26.9 + x/net CVEs;
   # local `.rclonelink` root escape; header leaks on redirect/downgrade in
   # fshttp and webdav; pcloud OAuth callback state). Also ours: `oauthutil:
@@ -99,7 +123,7 @@ env:
   # cost a Store certification cycle — see AddRemoteController.answer); and the
   # v0.7.2 mount options still reshape — every one read back off vfs/stats
   # unchanged, which matters because 1.75.1 touched the VFS heavily.
-  RCLONE_VERSION: v1.75.2
+  RCLONE_VERSION: v1.76.0
 
 # ── The Flutter version is PINNED everywhere below. Bump it deliberately. ─────
 # `channel: stable` is a moving target. On 2026-08-15 it moved to 3.47.0 in the

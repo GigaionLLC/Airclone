@@ -15,7 +15,7 @@ import 'package:airclone/src/state/remote_setup_recipes.dart';
 import 'package:airclone/src/ui/add_remote/guided_steps.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-/// `config/providers` from rclone v1.75.1, trimmed to the backends under test.
+/// `config/providers` from rclone v1.76.0, trimmed to the backends under test.
 Map<String, RcloneProvider> loadFixture() {
   final raw = File(
     'test/fixtures/config_flows/provider_options.json',
@@ -51,7 +51,7 @@ void main() {
             contains(field.option),
             reason:
                 '${recipe.type}.${field.option} does not exist in rclone '
-                '1.75.1 — the field would write nothing',
+                '1.76.0 — the field would write nothing',
           );
         }
       });
