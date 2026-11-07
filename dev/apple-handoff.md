@@ -9,12 +9,14 @@ by design** — real IDs, key paths and account state live in the encrypted vaul
 (`python tool/vault.py unlock`, then
 `dev/vault/notes/apple-appstore-setup-record.md`).
 
-## State: last written 2026-11-06 — 0.31.0 live on both, 0.31.1 build 166 in progress
+## State: last written 2026-11-07 — 0.31.1 live on both
 
-> **RESUME HERE (2026-11-06).** iOS and macOS: **0.31.0 build 165 released 2026-11-03**.
-> **0.31.1 / build 166** (rclone 1.76.0) is `WAITING_FOR_REVIEW` on both, submitted 2026-11-06 23:57Z (macOS) and
-> 23:59Z (iOS), `releaseType` MANUAL. Releasing an approved version is Jake's call
-> (`asc-release.yml -f platform=IOS|MAC_OS -f mode=release -f confirm_version=<version>`).
+> **RESUME HERE (2026-11-07).** iOS and macOS: **0.31.1 build 166 (rclone 1.76.0) released 2026-11-07**
+> (macOS 18:05Z, iOS 20:02Z, both read back `READY_FOR_SALE`), `releaseType` MANUAL. Nothing is in review.
+> Build 166 was not sent to the public TestFlight beta before release.
+> Releasing an approved version is Jake's call
+> (`asc-release.yml -f platform=IOS|MAC_OS -f mode=release -f confirm_version=<version>`); `mode=dry-run` with
+> `confirm_version` stays green while in review and is the safe way to poll the state.
 > Never poll with `asc-version.yml mode=report`: it exits 1 when nothing is editable and emails a failure; use `mode=builds`.
 
 Read back from App Store Connect by the workflows that changed it, so these rows are observed.
