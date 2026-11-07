@@ -11,9 +11,9 @@ by design** — real IDs, key paths and account state live in the encrypted vaul
 
 ## State: last written 2026-11-06 — 0.31.0 live on both, 0.31.1 build 166 in progress
 
-> **RESUME HERE (2026-11-06).** iOS and macOS: **0.31.0 build 165 released 2026-11-03**, nothing held.
-> **0.31.1 / build 166** (rclone 1.76.0) is the next version on both platforms; read `mode=builds` and the coordinator's
-> notes for how far it got. Releasing an approved version is Jake's call
+> **RESUME HERE (2026-11-06).** iOS and macOS: **0.31.0 build 165 released 2026-11-03**.
+> **0.31.1 / build 166** (rclone 1.76.0) is `WAITING_FOR_REVIEW` on both, submitted 2026-11-06 23:57Z (macOS) and
+> 23:59Z (iOS), `releaseType` MANUAL. Releasing an approved version is Jake's call
 > (`asc-release.yml -f platform=IOS|MAC_OS -f mode=release -f confirm_version=<version>`).
 > Never poll with `asc-version.yml mode=report`: it exits 1 when nothing is editable and emails a failure; use `mode=builds`.
 
