@@ -278,6 +278,7 @@ After Jake's OK: `gh issue comment <n> --body-file <file>` and then `gh issue cl
 | A `*-latest` job breaks on compiler or tool errors that nobody changed | Runner image drift (how v0.29.0 lost x64 Linux) | STOP. The fix pins the runner in a workflow, which is a separate PR, not part of the release |
 | MS `stage` refuses: a submission is already pending | Only one pending submission is allowed | Phase 8 rules: `delete_pending` only for an unsubmitted `PendingCommit` draft |
 | MS `delete_pending` 409 on a `Certification` submission | The API cannot cancel it | Jake only: Partner Center → *Cancel certification*. Once it is *Publishing*, nothing can stop it |
+| Play upload red at `Committing the Edit` with `The service is currently unavailable` | Google outage: the AAB uploaded, the commit did not (v0.31.1, 2026-11-06). Nothing landed and the code was not used up | STOP and report. Check `store-feedback.yml` still shows the old `beta`. With Jake's OK, re-dispatch `mode=upload` once, some hours later. It went through on the retry |
 | Play upload: "version code already used" | Each code can be uploaded once, ever | STOP. You need a new `+N`, so a new tag. Jake decides |
 | Apple `create` refuses, or the new version would queue behind a held one | One editable version per platform, and held versions block | STOP. Jake decides the order ([apple-handoff.md](apple-handoff.md)) |
 | Apple upload green but no build in `mode=builds` | Apple dropped it silently (builds 117 and 118 did) | Wait up to 2 h, then report. A re-upload needs a higher `build_number` |
