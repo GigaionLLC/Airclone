@@ -48,7 +48,7 @@ on:
         default: true
         type: boolean
       apple:
-        description: 'Apple: Mac + iOS upload, Add for Review (AFTER_APPROVAL), TestFlight'
+        description: 'Apple: Mac + iOS upload, TestFlight, Add for Review (AFTER_APPROVAL)'
         required: true
         default: true
         type: boolean
@@ -305,8 +305,11 @@ jobs:
         if: always()
         run: rm -f key.p8
 
+  # After ios-testflight, so the beta is in Beta App Review before the version
+  # is: Apple closes a live version to external testing. A failed TestFlight
+  # job does not hold the App Store back.
   apple-ios:
-    needs: [gate, ios-upload, apple-mac]
+    needs: [gate, ios-upload, apple-mac, ios-testflight]
     if: ${{ !cancelled() && needs.ios-upload.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 300
@@ -332,15 +335,35 @@ jobs:
         if: always()
         run: rm -f key.p8
 
-  # The public beta must be in Beta App Review before the App Store version
-  # goes live: Apple closes a live version to external testing.
+  # The public beta goes into Beta App Review first, before apple-ios submits
+  # the version. testflight-public needs a processed build, so it waits for VALID.
+  # Runs alongside apple-mac: it dispatches no asc-* workflow.
   ios-testflight:
-    needs: [gate, ios-upload, apple-ios]
+    needs: [gate, ios-upload]
     if: ${{ !cancelled() && needs.ios-upload.result == 'success' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 200
     steps:
       - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with: { python-version: '3.12' }
+      - run: pip install --quiet cryptography
+      - name: Wait for the iOS build to be VALID
+        env:
+          P8: ${{ secrets.APPSTORE_API_PRIVATE_KEY }}
+          KEY_ID: ${{ vars.APPSTORE_API_KEY_ID }}
+          ISSUER: ${{ secrets.APPSTORE_ISSUER_ID }}
+          VERSION: ${{ needs.gate.outputs.version }}
+          BUILD: ${{ needs.gate.outputs.build }}
+        run: |
+          set -euo pipefail
+          umask 077
+          printf '%s' "$P8" > key.p8
+          python tool/ship_lane.py apple-wait --platform IOS --version "$VERSION" \
+            --build "$BUILD" --key key.p8 --wait-min 150
+      - name: Shred the key
+        if: always()
+        run: rm -f key.p8
       - name: TestFlight public beta
         env:
           BUILD: ${{ needs.gate.outputs.build }}

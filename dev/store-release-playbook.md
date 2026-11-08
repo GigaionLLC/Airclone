@@ -113,9 +113,11 @@ for the release is the OK for every step it runs, including Play production at 1
    - Play `publish-play upload`, then `promote-play` at the rollout % (phases 6, 7);
    - Microsoft `submit-msstore submit`, then it watches the public catalog for the version and $1.49 for
      up to 5.5 h (phase 9). Not live by then is a warning, not a failure;
-   - Apple `mas-release` and `ios-release` upload (phase 10). Then, one platform after the other, it waits
-     for the build to be VALID and runs create (if needed), listing text, apply, audit and Add for Review,
-     all with AFTER_APPROVAL (phases 11 to 13). Then TestFlight `apply` (phase 15).
+   - Apple `mas-release` and `ios-release` upload (phase 10). Once the iOS build is VALID, TestFlight
+     `apply` (phase 15), so the beta is in Beta App Review first. Then, one platform after the other (iOS
+     after TestFlight), it waits for the build to be VALID and runs create (if needed), listing text, apply,
+     audit and Add for Review, all with AFTER_APPROVAL (phases 11 to 13). A failed TestFlight job does not
+     hold the iOS submit back.
 4. Watch it: `gh run list --workflow=ship.yml --limit 1`, then `gh run watch {RUN} --interval 90`. Its summary
    links every lane run. Fill in the report as each job lands.
 
@@ -128,9 +130,10 @@ stops before writing when an older version is still held, the version was reject
   the stores already done.
 - One ship per tag at a time; a second run for the same tag waits. Cancelling a ship run stops every job not yet started.
 
-**Known trap:** the TestFlight job runs after Add for Review. If App Review approves the version before Beta
-App Review approves the beta, the App Store version goes live first, and Apple closes it to external testing.
-Check the TestFlight state in the report.
+**Known trap:** the beta is submitted first, but Apple reviews the two separately. If App Review approves the
+version before Beta App Review approves the beta, the App Store version goes live first, and Apple closes it to
+external testing (testers stay on the older beta). Check the TestFlight state in the report. Until 2026-11-08
+(v0.31.2) the TestFlight job ran after Add for Review, which made this likely.
 
 ---
 
