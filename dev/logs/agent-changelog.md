@@ -19,7 +19,7 @@ happened": nothing was logged between 2026-07-02 and 2026-07-15, or between 2026
 **Files Modified:** `dev/coordinator-playbook.md` (new), `dev/rclone-bump-playbook.md` (new),
 `tool/ship_watch.py` (new), `dev/store-release-playbook.md`, `dev/README.md`, `AGENT.md`, this changelog.
 **Database/API Changes:** None
-**Summary:** From 2026-11-15 a DeepSeek model coordinates Airclone and Opus only advises, so the recurring
+**Summary:** Once the Opus subscription ends (about a week after 2026-11-08) a DeepSeek model coordinates Airclone and Opus only advises, so the recurring
 work is written down for it: a coordinator playbook (cold start, daily check, change to merge, Dependabot,
 outside PRs, traps), an rclone bump playbook modelled on PR #65, a carve-out tier and a post-release watch
 phase in the store playbook, and the ship-run watcher turned from a scratch loop into `tool/ship_watch.py`.
