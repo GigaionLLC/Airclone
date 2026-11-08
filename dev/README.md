@@ -263,16 +263,18 @@ no one. Steps 1 to 4 below are what has to be true before the tag.
    [`promote-release.yml`](../.github/workflows/promote-release.yml) (`mode: check`, then
    `mode: promote`) to make it Latest. It refuses unless every platform file is attached and
    non-empty; `allow_missing` names a file you knowingly ship without. An `alpha`/`beta`/`rc` tag is
-   never promoted. A tag publishes to NO store — since v0.8.3 every store lane is a button. Before
-   that there was no pre-release gate and an `-rc` tag reached public open testing like any other,
-   which is the hole the manual lanes closed.
+   never promoted. A **final** tag then ships to every store via `ship.yml`, which runs steps 4 to 6
+   itself (2026-11-08); an `-rc` tag publishes to no store. Before v0.8.3 there was no pre-release gate
+   and an `-rc` tag reached public open testing like any other, which is the hole the gate closes.
 5. **Verify the artifacts — see the rule below.** Do not move on because the run is green.
-6. **Store lanes.** Nothing has been published yet — the tag only built and attached artifacts. Start with
+6. **Store lanes** (by hand; `ship.yml` does this for a final tag, and the playbook is the current
+   order). Nothing has been published yet — the tag only built and attached artifacts. Start with
    the pre-submission truth audit in [`../docs/store/README.md`](../docs/store/README.md), then:
-   - **Microsoft** — Actions → *Submit to Microsoft Store* with `mode: stage`, the only supported mode
-     (`submit` is refused by [`tool/store_submit.py`](../tool/store_submit.py) because an API commit
-     publishes this app at **$0**, which it did on 2026-08-17). Then press *Submit for certification*
-     in Partner Center yourself. ([`msstore-ci-setup.md`](msstore-ci-setup.md))
+   - **Microsoft** — Actions → *Submit to Microsoft Store*, `mode: dry-run`, then `mode: submit`.
+     [`tool/store_submit.py`](../tool/store_submit.py) sends the price as an explicit tier and refuses
+     to commit unless it reads back (an API commit without one published this app at **$0** on
+     2026-08-17); afterwards `tool/msstore_price.py --version X.Y.Z` checks the live price.
+     ([`msstore-ci-setup.md`](msstore-ci-setup.md))
    - **Apple (Mac App Store + iOS)** — the ordered runbook is
      [`apple-appstore-and-macos.md`](apple-appstore-and-macos.md) §2, one `gh workflow run` per step:
      `asc-version.yml -f mode=create` if the version record does not exist yet → `asc-listing.yml`
