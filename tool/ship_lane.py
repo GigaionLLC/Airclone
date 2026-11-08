@@ -9,6 +9,7 @@ code path and its own safety checks. This is the glue:
     python tool/ship_lane.py dispatch mas-release.yml --ref v0.32.0 -f mode=upload --timeout-min 150
     python tool/ship_lane.py apple "STATE target=NONE blocking=0 build=VALID"
     python tool/ship_lane.py apple-ship --platform IOS --version 0.32.0 --build 170 --key key.p8
+    python tool/ship_lane.py apple-wait --platform IOS --version 0.32.0 --build 170 --key key.p8
 
 dispatch: starts the workflow, finds the run it started, waits for it (polling
 every 90 s - faster trips GitHub's secondary rate limit), and exits non-zero
@@ -20,6 +21,10 @@ apple-ship: playbook phases 11-13 for one platform. Waits for the build to be
 VALID, then create, listing text, apply, audit and Add for Review, with
 releaseType AFTER_APPROVAL. Needs KEY_ID and ISSUER in the environment and the
 key at --key; it reads state itself and leaves every write to the lanes.
+
+apple-wait: only waits for the build to be VALID, and writes nothing. ship.yml
+runs it before the TestFlight lane, which needs a processed build, so the beta
+is in Beta App Review before the App Store version is submitted.
 
 apple: reads the line `tool/asc_build.py --version-state` prints and says what
 to do next - wait, create, update, done or stop - so the decision is code with
@@ -86,12 +91,20 @@ def decide_apple(target: str, blocking: int, build: str) -> tuple[str, str]:
     if blocking:
         return "stop", ("%d older version(s) still hold the platform (in review, "
                         "or approved and waiting). Jake decides the order." % blocking)
+    action, why = decide_build(build)
+    if action != "ready":
+        return action, why
+    return ("create" if target == "NONE" else "update"), why
+
+
+def decide_build(build: str) -> tuple[str, str]:
+    """(action, why) for the build alone. action is one of wait, ready, stop."""
     if build in BUILD_BAD:
         return "stop", ("build is %s at Apple. A re-upload needs a higher build "
                         "number, which is a new tag." % build)
     if build != "VALID":
         return "wait", "build is %s" % build
-    return ("create" if target == "NONE" else "update"), "build VALID"
+    return "ready", "build VALID"
 
 
 def pick_run(runs: list[dict], since: datetime, ref: str) -> dict | None:
@@ -277,8 +290,31 @@ def apple_ship(argv: list[str]) -> int:
     return 0
 
 
+def apple_wait(argv: list[str]) -> int:
+    """Wait until the build is VALID. Read-only; the version state is ignored."""
+    args = dict(zip(argv[::2], argv[1::2]))
+    platform, version, build = args["--platform"], args["--version"], args["--build"]
+    key, wait_min = args["--key"], int(args.get("--wait-min", "150"))
+    deadline = time.monotonic() + wait_min * 60
+    while True:
+        s = read_state(key, platform, version, build)
+        action, why = decide_build(s["build"])
+        print("%s build %s: %s (%s)" % (platform, build, action, why), flush=True)
+        if action == "ready":
+            return 0
+        if action == "stop":
+            print("::error::%s build %s: %s" % (platform, build, why))
+            return 1
+        if time.monotonic() > deadline:
+            print("::error::%s build %s still not VALID after %d min. Apple may have "
+                  "dropped it (builds 117 and 118 were); report it." % (platform, build, wait_min))
+            return 1
+        time.sleep(600)
+
+
 def main() -> int:
-    cmds = {"dispatch": dispatch, "apple": apple, "apple-ship": apple_ship}
+    cmds = {"dispatch": dispatch, "apple": apple, "apple-ship": apple_ship,
+            "apple-wait": apple_wait}
     if len(sys.argv) < 2 or sys.argv[1] not in cmds:
         print(__doc__)
         return 2

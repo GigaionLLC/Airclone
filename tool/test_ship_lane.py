@@ -94,5 +94,14 @@ class DecideAppleTest(unittest.TestCase):
             ship_lane.parse_state("STATE target=NONE")
 
 
+class DecideBuildTest(unittest.TestCase):
+    def test_build_states(self) -> None:
+        self.assertEqual(ship_lane.decide_build("VALID")[0], "ready")
+        self.assertEqual(ship_lane.decide_build("PROCESSING")[0], "wait")
+        self.assertEqual(ship_lane.decide_build("NONE")[0], "wait")
+        for b in ("INVALID", "FAILED", "EXPIRED"):
+            self.assertEqual(ship_lane.decide_build(b)[0], "stop", b)
+
+
 if __name__ == "__main__":
     unittest.main()
