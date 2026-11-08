@@ -21,31 +21,29 @@ Steps 1-5 are what --stage runs; 6 and 7 belong to --commit alone:
     6. POST commit        hands it to certification
     7. GET status         bounded poll, only to catch an immediate rejection
 
-Three modes, and only the middle one is the route this product uses:
+Three modes:
 
   * default   a dry run. It authenticates and reports the app's real state and
               creates nothing, because a bad submission costs a review cycle
               measured in days.
-  * --stage   THE supported route. Creates the submission, uploads the package
-              and stops, leaving an editable draft for a human to check and send
-              with Partner Center's "Submit for certification" - which re-derives
-              the price from the pricing module.
-  * --commit  REFUSED for this product, by the advanced-pricing guard below.
-              Committing through the API sets an advanced-pricing app's price to
-              0, which is how this app once published at $0, unstoppable once
-              started. The guard refuses before creating anything, so a refusal
-              leaves no draft behind. Do not remove it - AGENT.md rule 10 makes
-              stage the only supported route.
+  * --stage   creates the submission, uploads the package and stops, leaving an
+              editable draft for a human to check and send with Partner Center's
+              "Submit for certification".
+  * --commit  the full automatic submission. Allowed only because the price is
+              sent as an explicit tier (BASE_PRICE_TIER) and read back before
+              commit. Committing with the price left out is how this app once
+              published at $0 (2026-08-17): see the pricing notes at step 4 and
+              AGENT.md rule 10. The guard refuses before creating anything when
+              the live pricing cannot be read, so a refusal leaves no draft.
 
-Because step 3 CLONES the last published submission, the Store listing's release
-notes carry forward from the previous version instead of coming from the repo.
-Google Play and Apple both read docs/store/store-release-notes.txt; Microsoft is
-the deliberate exception, and its notes are edited by hand in Partner Center.
+Step 3 CLONES the last published submission, so everything but the packages,
+the price tier and the English release notes carries over. The notes come from
+docs/store/store-release-notes.txt, the same file Google Play and Apple read.
 
 Run from CI (see .github/workflows/submit-msstore.yml) or locally:
 
     STORE_TENANT_ID=... STORE_CLIENT_ID=... STORE_CLIENT_SECRET=... \\
-    python tool/store_submit.py --app-id 9PJ6LRTS2B8X --package airclone.msix --stage
+    python tool/store_submit.py --app-id 9PJ6LRTS2B8X --package airclone.msix --commit
 """
 
 from __future__ import annotations
@@ -82,6 +80,19 @@ ACCEPTED = {"CommitStarted", "PreProcessing", "CertificationInProgress", "Releas
 # of these is allowed — a newer build must not queue behind an older one — but it
 # discards review progress, so it is announced rather than done quietly.
 IN_FLIGHT = {"PreProcessing", "Certification", "CertificationInProgress", "Release"}
+
+# THE STORE PRICE, as the API's tier name. This is money: change it only when the
+# price itself changes, and check the tier in Partner Center (Pricing and
+# availability -> view table) first.
+#
+# A product on the advanced pricing model reads back `priceId: "Base"`, which the
+# API refuses on the way in, and a submission with the priceId dropped reads back
+# `Free` and commits at $0. Naming the real tier is the one payload that keeps
+# the price (Microsoft's own msstore-cli does the same since its PR #175).
+# Advanced-model tiers run Tier1012 ($0.99) up in $0.10 steps to Tier1102 ($9.99),
+# so $1.49 is Tier1017.
+BASE_PRICE_TIER = "Tier1017"  # $1.49 USD
+ADVANCED_TIERS = {f"Tier{n}" for n in range(1012, 1425)}
 
 
 def fail(msg: str) -> None:
@@ -156,8 +167,8 @@ def main() -> int:
     ap.add_argument(
         "--commit",
         action="store_true",
-        help="REFUSED for this product - committing through the API sets an advanced-pricing "
-        "app's price to 0. Use --stage and submit from Partner Center (AGENT.md rule 10)",
+        help="submit for certification. Sends the price as BASE_PRICE_TIER and refuses "
+        "unless it reads back exactly (AGENT.md rule 10)",
     )
     ap.add_argument(
         "--stage",
@@ -169,6 +180,11 @@ def main() -> int:
         "--delete-pending",
         action="store_true",
         help="delete an existing pending submission instead of refusing",
+    )
+    ap.add_argument(
+        "--release-notes",
+        default="docs/store/store-release-notes.txt",
+        help="\"What's new\" text for the English listings (default: %(default)s)",
     )
     ap.add_argument(
         "--poll-seconds",
@@ -244,36 +260,35 @@ def main() -> int:
             pricing_unknown = f"GET on submission {last} returned HTTP {_r.status_code}"
 
     # ── The commit trap — checked BEFORE anything is created ────────────────
-    # Committing through this API DESTROYS the price of a product on the
-    # advanced pricing model. Proven the hard way on 2026-08-17: v0.6.8 was
-    # API-committed, Partner Center then showed its base price as $0 against a
-    # live price of $1.49, and it published free.
+    # `commit` applies the submission's pricing block. Proven the hard way on
+    # 2026-08-17: v0.6.8 was API-committed with the priceId dropped (the field
+    # then reads `Free`), and it published at $0 against a live price of $1.49.
+    # A staged PUT alone is harmless - Partner Center re-derives the price when
+    # a human submits from there.
     #
-    # The PUT is harmless — a staged draft still shows the real price. It is
-    # `commit` that applies the submission's pricing block, and the block we are
-    # forced to send says Free. Submitting from Partner Center instead re-derives
-    # pricing from the pricing module, which is why the v0.6.7 stage-then-submit
-    # path published correctly at $1.49.
+    # So a commit must send the real price as an explicit tier (step 4), and the
+    # tier constant only means anything on the advanced pricing model, whose
+    # tier numbering it uses. Refuse before creating a submission, so a refusal
+    # leaves nothing behind.
     #
-    # Refuse before creating a submission, so a refusal leaves nothing behind.
-    # FAIL CLOSED. This used to read `live_pricing.get(...) and args.commit`,
-    # which only guards anything when the READ SUCCEEDED. A 500, a timeout, a
-    # throttle, or an app with no lastPublishedApplicationSubmission all leave
-    # live_pricing empty, `.get()` returns None, and the commit sails through
-    # unguarded - the one path this function exists to block, open in exactly
-    # the conditions where nobody is watching. If we cannot PROVE the product
-    # is not on advanced pricing, refuse.
-    if args.commit and (not live_pricing or live_pricing.get("isAdvancedPricingModel")):
-        fail(
-            ("this product uses the ADVANCED PRICING MODEL" if live_pricing
-             else f"the live pricing could not be read ({pricing_unknown})")
-            + ", and committing through the API "
-            "sets its price to 0.\n"
-            "Use mode 'stage' instead, then press 'Submit for certification' in Partner "
-            "Center, which preserves the price.\n"
-            "See dev/msstore-ci-setup.md §0 - 'NEVER commit a submission through the API', "
-            "and AGENT.md rule 10."
-        )
+    # FAIL CLOSED. A 500, a timeout, a throttle, or an app with no
+    # lastPublishedApplicationSubmission all leave live_pricing empty; if we
+    # cannot read what is live, we cannot prove the model, so refuse.
+    if args.commit:
+        why = ""
+        if not live_pricing:
+            why = f"the live pricing could not be read ({pricing_unknown})"
+        elif not live_pricing.get("isAdvancedPricingModel"):
+            why = (f"the live pricing is not on the advanced model ({live_pricing}), "
+                   f"so {BASE_PRICE_TIER} is not a tier it understands")
+        elif BASE_PRICE_TIER not in ADVANCED_TIERS:
+            why = f"BASE_PRICE_TIER {BASE_PRICE_TIER} is not an advanced-model tier"
+        if why:
+            fail(
+                f"{why}.\nRefusing to commit: a commit with the wrong pricing block "
+                "publishes at the wrong price.\nUse mode 'stage' and submit from Partner "
+                "Center, or fix BASE_PRICE_TIER. See AGENT.md rule 10."
+            )
 
     if not (args.commit or args.stage):
         # Report the pricing of whatever submission is current. This script has
@@ -296,9 +311,7 @@ def main() -> int:
             print(f"  trialPeriod            = {pricing.get('trialPeriod')}")
             print(f"  marketSpecificPricings = {markets}")
         print("\nDRY RUN — authenticated, app reachable, no submission created.")
-        print("Re-run with --stage to upload it as a draft, then press Submit in")
-        print("Partner Center. --commit is refused for this product - see the")
-        print("module docstring and AGENT.md rule 10.")
+        print(f"--stage uploads it as a draft; --commit submits it at {BASE_PRICE_TIER}.")
         return 0
 
     # ── 3. Create ───────────────────────────────────────────────────────────
@@ -321,22 +334,42 @@ def main() -> int:
         {"fileName": os.path.basename(args.package), "fileStatus": "PendingUpload"}
     )
 
+    # "What's new" is per submission and the clone carries the LAST release's
+    # text forward, so set it from the file Play and Apple already read.
+    notes = ""
+    if os.path.isfile(args.release_notes):
+        with open(args.release_notes, encoding="utf-8") as f:
+            notes = f.read().strip()
+    listings = sub.get("listings") or {}
+    if notes:
+        for lang, listing in listings.items():
+            if lang.lower().startswith("en"):
+                listing.setdefault("baseListing", {})["releaseNotes"] = notes
+                print(f"release notes for {lang} set from {args.release_notes}")
+            else:
+                print(f"::warning::listing {lang} keeps its old release notes (the file is English)")
+    elif args.commit:
+        fail(f"{args.release_notes} is missing or empty - refusing to commit last release's "
+             f"notes. Delete draft {sub_id} and add the file.")
+    else:
+        print(f"::warning::{args.release_notes} is missing or empty; release notes are the "
+              "last release's - edit them in Partner Center before submitting.")
+
     # PRICING — handle with care, this is money.
     #
     # There is exactly one payload this API accepts, and it is not the one you
     # would choose. For a product on the advanced pricing model the API hands
     # back `priceId: "Base"` and then refuses it on the way in ("'Base' is not a
     # valid PriceId for base price"); omitting the whole pricing object is also
-    # refused ("Pricing data was not provided in the request"). That leaves
-    # sending pricing with `priceId` dropped — after which the field reads back
-    # as `Free`.
+    # refused ("Pricing data was not provided in the request"). Dropping just
+    # `priceId` is accepted but reads back `Free`, and a COMMIT of that block
+    # published the app at $0 (2026-08-17).
     #
-    # So the write is forced, and safety has to come from verifying the result
-    # instead: read the submission back, compare against what is live, and let
-    # that decide whether committing is allowed.
+    # So name the real price as an explicit tier, then read the submission back
+    # and let that decide whether committing is allowed.
     payload = dict(sub)
     pricing_in = dict(payload.get("pricing") or {})
-    pricing_in.pop("priceId", None)
+    pricing_in["priceId"] = BASE_PRICE_TIER
     payload["pricing"] = pricing_in
     check(
         http.put(
@@ -353,18 +386,9 @@ def main() -> int:
     ).get("pricing", {})
 
     def price_shape(p: dict) -> tuple:
-        # Deliberately EXCLUDES priceId and isAdvancedPricingModel.
-        #
-        # For a product on the advanced pricing model those two fields are a
-        # legacy projection that does not describe the real price. Writing this
-        # submission always flips them to `Free` / `False`, and it means nothing:
-        # verified in Partner Center on 2026-08-17, where the staged draft still
-        # showed **$1.49 across 240 markets** with the free trial intact, while
-        # the API reported `priceId: Free`.
-        #
-        # Comparing them produced a false alarm that cost a review cycle, and as
-        # a guard it would block every future release. The fields below do
-        # round-trip honestly, so they are what gets compared.
+        # EXCLUDES priceId and isAdvancedPricingModel: the live submission reads
+        # `Base` / True and ours carries an explicit tier, so those never match
+        # and are checked on their own below. Everything else must round-trip.
         return (
             p.get("trialPeriod"),
             tuple(sorted((p.get("marketSpecificPricings") or {}).items())),
@@ -395,14 +419,18 @@ def main() -> int:
         print(f"::warning::pricing NOT verified - {pricing_unknown}. Nothing was "
               "compared against a live submission; check Pricing and availability "
               "in Partner Center before submitting.")
-    if now.get("priceId") != live_pricing.get("priceId"):
-        # Expected and benign — say so, so nobody re-raises the alarm that this
-        # already caused once. The authority is Partner Center's pricing module.
-        print(
-            f"note: priceId reads {now.get('priceId')} vs {live_pricing.get('priceId')} live. "
-            "This is the legacy projection of advanced-model pricing and does not affect the "
-            "real price - confirm in Partner Center, Pricing and availability, if in doubt."
-        )
+    # The price itself. A commit applies this block, so it must hold exactly the
+    # tier we sent; anything else (`Free`, a silently remapped tier) is a price
+    # change in front of customers.
+    print(f"priceId on the new submission: {now.get('priceId')} "
+          f"(isAdvancedPricingModel={now.get('isAdvancedPricingModel')}, "
+          f"sent {BASE_PRICE_TIER})")
+    if now.get("priceId") != BASE_PRICE_TIER:
+        detail = f"priceId read back as {now.get('priceId')!r}, not {BASE_PRICE_TIER!r}"
+        if args.stage:
+            print(f"::warning::{detail}. Check Pricing and availability before submitting.")
+        else:
+            fail(f"{detail}.\nRefusing to commit. Delete draft {sub_id} and investigate.")
 
     # ── 5. Upload ───────────────────────────────────────────────────────────
     # The API takes a ZIP whose entry names match the fileName values above.

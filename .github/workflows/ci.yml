@@ -188,6 +188,14 @@ jobs:
         # is silent - an unsigned author goes green - so it has tests, and they
         # run here rather than on the live check.
         run: python tool/test_cla_check.py
+      - name: Test the Store submission price checks
+        working-directory: .
+        # tool/store_submit.py commits Microsoft Store submissions, and the
+        # pricing block it commits is the price customers pay (it once published
+        # this app at $0). The tests cover every path that decides a commit.
+        run: |
+          pip install --disable-pip-version-check -q requests
+          python tool/test_store_submit.py
       - name: Check the workflow files
         working-directory: .
         # GitHub's parser is the only authority on a workflow file and it has no

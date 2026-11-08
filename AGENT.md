@@ -127,17 +127,19 @@ Store shapes, contexts, and data models.
    Where an external system holds the result, ask it: [`tool/play_tracks.py`](tool/play_tracks.py)
    asserts Play actually serves the version code CI just built, and the release job fails if it does
    not.
-10. **NEVER commit a Microsoft Store submission through the API.** Committing sets the price of this
-    product to **0** and publishes it free — it happened on 2026-08-17 with v0.6.8, and once a
-    submission reaches *Publishing* it cannot be stopped by anyone, by any means. The listing was
-    free for the whole certification cycle of the fix.
-    - The *only* supported route is **`mode: stage`**, then press **Submit for certification** in
-      Partner Center, which re-derives pricing from the pricing module.
-      [`tool/store_submit.py`](tool/store_submit.py) now refuses `--commit` for a product on the
-      advanced pricing model — **do not remove that guard** to "unblock" a release.
-    - The `pricing.priceId` the API returns (`Base`) is a legacy projection it will not accept back.
-      Every writable payload reads back as `Free`. That is expected on a *staged draft* and harmless;
-      it is only fatal at commit. Full account: [`dev/msstore-ci-setup.md`](dev/msstore-ci-setup.md).
+10. **A Microsoft Store commit through the API must name the price as an explicit tier.** Committing
+    with the price left out set this product to **$0** and published it free (2026-08-17, v0.6.8);
+    once a submission reaches *Publishing* nobody can stop it.
+    - The API returns `priceId: Base` for this advanced-pricing product and refuses it back; dropping
+      `priceId` reads back `Free` and **commits at $0**. [`tool/store_submit.py`](tool/store_submit.py)
+      sends `BASE_PRICE_TIER` (`Tier1017` = $1.49) and refuses to commit unless that exact tier reads
+      back, markets/trial/sales match the live submission, and the live product is on the advanced
+      model. **Do not loosen those checks**, and change `BASE_PRICE_TIER` only with the price itself
+      (Jake only).
+    - After each automatic publish, check the public catalog still sells at $1.49
+      ([`dev/msstore-ci-setup.md`](dev/msstore-ci-setup.md) "Check the live price"). If it reads $0,
+      tell Jake at once and fix the price in Partner Center.
+    - `mode: stage` + **Submit for certification** in Partner Center stays available as the manual route.
 11. **Partner Center is the authority on pricing and availability — never the API JSON, never a
     module's status label.** When touching a Store submission:
     - **Re-load the page and re-read the value** after saving. *Save draft* gives no confirmation,

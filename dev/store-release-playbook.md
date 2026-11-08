@@ -35,11 +35,11 @@ Placeholders: `{TAG}` = `v0.29.1`, `{VERSION}` = `0.29.1`, `{BUILD}` = `162` (th
 | Promote to Latest (phase 5) | Agent | No | Only after `mode=check` passes in full |
 | Play open testing upload (phase 6) | Jake's OK | **Yes.** It burns a version code for good | Open testing is public |
 | Play production rollout and its % (phase 7) | **Jake only** | Yes | Reaches every user. A judgement call |
-| MS `stage` (phase 8) | Agent | **Yes.** It makes a draft | The draft does nothing until a human submits it |
+| MS `stage` (manual route only) | Agent | **Yes.** It makes a draft | The draft does nothing until a human submits it |
 | MS `delete_pending` (phase 8) | Agent, but only for an unsubmitted `PendingCommit` draft. Anything else is **Jake only** | Yes (it deletes) | A submitted one loses its place in the review queue |
-| MS **Submit for certification** in Partner Center (phase 9) | **Jake only** | Yes | Takes days. The price comes from Partner Center |
 | MS pricing, in any store | **Jake only** | Yes | [Pricing policy](../docs/store/README.md#-pricing-policy--the-one-rule-every-platform-shares) |
-| MS commit through the API (`mode: submit`) | **NEVER. Nobody.** | Yes | It published this app at $0 on 2026-08-17 ([AGENT.md](../AGENT.md) rule 10) |
+| MS `mode: submit` (phase 9) | Agent | **Yes. Certification, then it publishes by itself** | Sends the price as `Tier1017` ($1.49) and refuses unless it reads back ([AGENT.md](../AGENT.md) rule 10) |
+| MS `BASE_PRICE_TIER` in `tool/store_submit.py` | **Jake only** | Yes | It is the price |
 | Apple upload, mas + ios (phase 10) | Agent | **Yes.** Each upload uses up a build number | Upload does not submit |
 | Apple version `create` (phase 12) | Jake's OK if an older version is held, otherwise Agent | **Yes.** It has no dry run | Only one editable version per platform |
 | Apple `apply` and `audit` (phase 12) | Agent | `apply` writes. `audit` does not | Re-runnable |
@@ -54,7 +54,7 @@ Placeholders: `{TAG}` = `v0.29.1`, `{VERSION}` = `0.29.1`, `{BUILD}` = `162` (th
 ## ⛔ NEVER
 
 - **Never promote a release that is missing a platform file.** Only use `allow_missing` when Jake has named that exact file for this release.
-- **Never commit an MS submission through the API.** Never run `submit-msstore.yml` with `mode: submit`, and never remove or weaken the guard in [`tool/store_submit.py`](../tool/store_submit.py).
+- **Never weaken the MS price checks** in [`tool/store_submit.py`](../tool/store_submit.py) (explicit tier, read-back, advanced-model guard), and never change `BASE_PRICE_TIER`. A commit without them published the app at $0.
 - **Never re-dispatch a store lane that failed after it created a store-side object.** Read its log, check the store's state, then report.
 - **Never poll faster than 90 s.** Use `gh run watch {RUN} --interval 90`.
 - **Never use `asc-version.yml mode=report` to poll.** It exits 1 whenever no version is editable, and every failure sends an email. Use `mode=builds`.
@@ -162,32 +162,31 @@ his own words, run the dry run (`dry_run` defaults to true) and show him the out
 - **STOP if:** the tool refuses (narrowing a live rollout, or going backwards). Never pass its override yourself.
 - **Store-side object:** **yes**.
 
-### 8. Microsoft Store: stage
+### 8. Microsoft Store: dry run
 
-Dry run first:
 `gh workflow run submit-msstore.yml -f tag={TAG} -f mode=dry-run`
 
 Read the log:
 
 - Identity checks pass (no `PLACEHOLDER`).
+- The last published submission shows `isAdvancedPricingModel = True`. If not, **STOP** and report: the price tier would be wrong.
 - Look for `a submission is already pending: … (status <S>)`:
-  - None pending, so stage with `delete_pending=false`.
-  - `<S>` is `PendingCommit` and it is an older staged draft nobody submitted, so stage with `-f delete_pending=true`.
-  - Any other status (`CommitStarted`, `PreProcessing`, `Certification`, `Release`…), so **STOP**. Jake submitted it, and only he can decide to cancel it in Partner Center.
+  - None pending, so submit with `delete_pending=false`.
+  - `<S>` is `PendingCommit` and it is an older staged draft nobody submitted, so submit with `-f delete_pending=true`.
+  - Any other status (`CommitStarted`, `PreProcessing`, `Certification`, `Release`…), so **STOP**. It is in review, and cancelling it is Jake's call.
+- **Store-side object:** no.
 
-`gh workflow run submit-msstore.yml -f tag={TAG} -f mode=stage -f delete_pending=<false|true>`
+### 9. Microsoft Store: submit
 
-- **Success:** the log shows `pricing preserved …`, `uploaded`, `STAGED. Submission … is NOT submitted.` Do not copy the submission ID into any public place.
-- **Verify:** run the `mode=dry-run` again. It now reports one pending submission with status `PendingCommit`.
-- **STOP if:** you see `::warning::pricing NOT verified` or a pricing warning. Report it to Jake word for word, minus the IDs. Also stop if it fails after `created submission`. A draft may exist then, so do not re-run. Dry-run to read the state and report.
-- **Store-side object:** **yes** (a draft).
+`gh workflow run submit-msstore.yml -f tag={TAG} -f mode=submit -f delete_pending=<false|true>`
 
-### 9. Microsoft: Jake submits (Jake only)
+- **Success:** the log shows `release notes for en-us set …`, `pricing preserved …`, `priceId on the new submission: Tier1017`, `uploaded`, `committed submission …` and `Submitted. Status …`. Do not copy the submission ID into any public place.
+- **Verify:** `mode=dry-run` reports the pending submission in `PreProcessing` or `Certification`. Certification takes 1–3 days; it then publishes by itself.
+- **After it publishes:** run the price check in [msstore-ci-setup.md](msstore-ci-setup.md) "Check the live price". The purchase price must read `1.49 USD`. **If it reads 0, tell Jake at once** (he fixes the price in Partner Center).
+- **STOP if:** the tool refuses (`Refusing to commit`, a pricing warning, `priceId read back as …`). It deleted nothing and committed nothing, but a draft may exist: dry-run, then report word for word, minus the IDs. Also stop if it fails after `created submission`; do not re-run.
+- **Store-side object:** **yes** (a submission in certification).
 
-Jake opens the draft in Partner Center. He edits "What's new" by hand (it is copied over from the last
-submission, not taken from the repo) and checks *Pricing and availability*: reload and re-read after
-saving, in a window at least 1400 px wide ([AGENT.md](../AGENT.md) rule 11). Then he presses **Submit for
-certification**. You only list this under "Left for Jake".
+Manual route, only if Jake asks: `mode=stage`, then Jake checks the draft in Partner Center (≥1400 px wide, [AGENT.md](../AGENT.md) rule 11) and presses **Submit for certification**.
 
 ### 10. Apple upload (mas + ios)
 
@@ -276,7 +275,7 @@ After Jake's OK: `gh issue comment <n> --body-file <file>` and then `gh issue cl
 | `asc-version.yml mode=report` red, "no editable … version" | Expected: it exits 1 when nothing is editable | Ignore. Use `mode=builds` |
 | `linux-runner.yml` red on the `popout` job | Fails by design (`continue-on-error`) | Ignore. It is not part of a release |
 | A `*-latest` job breaks on compiler or tool errors that nobody changed | Runner image drift (how v0.29.0 lost x64 Linux) | STOP. The fix pins the runner in a workflow, which is a separate PR, not part of the release |
-| MS `stage` refuses: a submission is already pending | Only one pending submission is allowed | Phase 8 rules: `delete_pending` only for an unsubmitted `PendingCommit` draft |
+| MS `submit` refuses: a submission is already pending | Only one pending submission is allowed | Phase 8 rules: `delete_pending` only for an unsubmitted `PendingCommit` draft |
 | MS `delete_pending` 409 on a `Certification` submission | The API cannot cancel it | Jake only: Partner Center → *Cancel certification*. Once it is *Publishing*, nothing can stop it |
 | Play upload red at `Committing the Edit` with `The service is currently unavailable` | Google outage: the AAB uploaded, the commit did not (v0.31.1, 2026-11-06). Nothing landed and the code was not used up | STOP and report. Check `store-feedback.yml` still shows the old `beta`. With Jake's OK, re-dispatch `mode=upload` once, some hours later. It went through on the retry |
 | Play upload: "version code already used" | Each code can be uploaded once, ever | STOP. You need a new `+N`, so a new tag. Jake decides |
@@ -303,7 +302,7 @@ Release {TAG} ({VERSION}+{BUILD}) — report
 | 4 promote check | | | |
 | 5 promote | | | |
 | 6 Play open testing | | beta={BUILD} | |
-| 8 MS stage | | staged, delete_pending=<x> | |
+| 8–9 MS submit | | committed, delete_pending=<x>; live price after publish | |
 | 10 mas / ios upload | | | |
 | 11 builds VALID | | mac <y/n>, ios <y/n> | |
 | 12 create/apply/audit | | No gaps <y/n> | |
@@ -316,7 +315,6 @@ STOPPED at: <phase, exact error line, store state> (or "none")
 
 ### Left for Jake
 
-- [ ] Partner Center: edit "What's new", check pricing, **Submit for certification** (phase 9)
 - [ ] Play production rollout % (phase 7)
 - [ ] Apple: release each approved version (phase 14). Name any held older versions
 - [ ] Apple: Add for Review, if not yet approved (phase 13)

@@ -2,9 +2,10 @@
 
 **Purpose:** reproduce, from nothing, the credential that lets CI submit Airclone's MSIX to the
 Microsoft Store — for a new Partner Center account, a rotated secret, or a different app.
-**Status:** ✅ working via **`mode: stage` + a human pressing Submit in Partner Center**. Automatic
-`commit` is **permanently disabled** for this product — it publishes the app free (§0, and AGENT.md
-rule 10). Read §0 in full before touching anything about pricing.
+**Status:** automatic **`mode: submit`** with an explicit price tier since 2026-11-08 (first run:
+v0.31.1; the live price is checked after each publish). `mode: stage` + Submit in Partner Center
+remains the manual route. A commit without the explicit tier published the app free (§0, and
+AGENT.md rule 10). Read §0 in full before touching anything about pricing.
 **Related:** [`dev/windows-signing-and-store.md`](windows-signing-and-store.md) §2 (the manual
 submission runbook + as-built account facts) · [`docs/store/README.md`](../docs/store/README.md) (the
 store hub) · [`dev/play-ci-setup.md`](play-ci-setup.md) (the same job for Google Play — read it too,
@@ -64,47 +65,45 @@ with `makeappx unpack` / `pack` instead of rebuilt — see
 > and a pending submission blocks the next one. (In the v0.6.7 attempt nothing was actually left
 > behind — Partner Center still offered "Start update" — but do check.)
 >
-> ## ⛔ NEVER `commit` a submission through the API — it publishes the app FREE
+> ## ⛔ A commit through the API must send the price as an explicit tier
 >
 > This is the most expensive lesson in this repo. On **2026-08-17** v0.6.8 was committed through the
-> REST API, passed certification, and **published at $0** against a live price of $1.49. Once a
-> submission reaches *Publishing* it cannot be cancelled by anyone; the listing stayed free for the
-> entire certification cycle of the correction.
+> REST API with the price left out, passed certification, and **published at $0** against a live
+> price of $1.49. Once a submission reaches *Publishing* it cannot be cancelled by anyone; the listing
+> stayed free for the entire certification cycle of the correction.
 >
-> Only one payload is writable, and it mutates a field you cannot leave alone:
->
-> | Attempt | Result |
+> | `pricing.priceId` sent | Result |
 > | :--- | :--- |
-> | send `pricing` back as received (`priceId: "Base"`) | `'Base' is not a valid PriceId for base price` |
-> | omit the whole `pricing` object | `Pricing data was not provided in the request` |
-> | drop just `priceId` | **accepted** — reads back as `priceId: Free`, `isAdvancedPricingModel: false` |
+> | back as received (`Base`) | `'Base' is not a valid PriceId for base price` |
+> | whole `pricing` object omitted | `Pricing data was not provided in the request` |
+> | `priceId` dropped | accepted, reads back `Free`. **PUT only** (a staged draft): harmless, Partner Center still showed $1.49 across 240 markets. **Commit: published at $0** |
+> | explicit tier **`Tier1017`** ($1.49) | what [`tool/store_submit.py`](../tool/store_submit.py) sends since 2026-11-08 |
 >
-> **What that readback means depends entirely on what you do next**, and conflating the two cases is
-> what caused the incident:
+> Advanced-pricing tiers are `Tier1012` ($0.99) up in $0.10 steps to `Tier1102` ($9.99) (Microsoft's
+> Pricing-resource docs; the `msstore` CLI's `--priceId` option, its PR #175 of 2026-09-21, handles
+> the same `Base` problem the same way). The tool refuses to commit unless the tier reads back exactly,
+> markets/trial/sales match the live submission, and the live product is on the advanced model; it
+> checks the model before creating anything, so that refusal leaves no draft behind. **Do not loosen
+> those checks to unblock a release.**
 >
-> | | Effect |
-> | :--- | :--- |
-> | **PUT only** (a staged draft) | **harmless.** Partner Center still shows the real price — verified at **$1.49 across 240 markets**, free trial intact |
-> | **API `commit`** | **destroys the price.** The submission's pricing block is applied; base price becomes **0** |
+> A contradiction between two observations (draft at $1.49, committed at $0) was once read as "the
+> earlier alarm was a false positive". It was a missing variable: stage vs commit.
 >
-> Submitting from **Partner Center** instead re-derives pricing from the pricing module, which is why
-> the v0.6.7 stage-then-submit path published correctly at its real price.
+> ### Check the live price
 >
-> **So the only supported route for this product is:**
+> After every automatic publish, read the public catalog (no credentials):
 >
-> 1. `mode: stage` — CI uploads the package and leaves an editable draft
-> 2. a human opens **Pricing and availability**, confirms the price, and presses **Submit for
->    certification**
+> ```bash
+> curl -s "https://displaycatalog.mp.microsoft.com/v7.0/products?bigIds=9PJ6LRTS2B8X&market=US&languages=en-US" \
+>   | python3 -c 'import json,sys
+> for p in json.load(sys.stdin)["Products"]:
+>   for d in p["DisplaySkuAvailabilities"]:
+>     for a in d["Availabilities"]:
+>       if "Purchase" in a.get("Actions", []): print(a["OrderManagementData"]["Price"])'
+> ```
 >
-> [`tool/store_submit.py`](../tool/store_submit.py) refuses `--commit` outright when the live
-> submission has `isAdvancedPricingModel`, checked *before* creating anything so a refusal leaves no
-> draft behind. **Do not remove that guard to unblock a release.**
->
-> **How the wrong conclusion was reached** (worth knowing, because it will look tempting again): the
-> staged draft showed $1.49 while the committed submission showed $0. Both readings were correct. The
-> difference was *stage vs commit* — but it was read as "the earlier alarm was a false positive", the
-> guard was loosened, and the app shipped free. A contradiction between two observations is evidence
-> of a missing variable, not proof that one of them was wrong.
+> It must show `ListPrice` 1.49 USD (2026-11-08: 1.49, plus a trial SKU). **0 means the app is free:
+> tell Jake at once**; the price is fixed in Partner Center → Pricing and availability.
 >
 > `STORE_SELLER_ID` is not read by `store_submit.py` (the REST API takes no seller id) but is kept
 > set, since it costs nothing and Partner Center tooling asks for it.
@@ -343,8 +342,8 @@ input decides how far it goes:
 | `mode` | What it does |
 | :--- | :--- |
 | **`dry-run`** (default) | authenticates and reads the app's real state — pending submission, last published submission, both pricing blocks — and **creates nothing** |
-| **`stage`** | `--stage`: uploads the package and leaves an editable draft. **The only supported route for this product** (§0) |
-| **`submit`** | `--commit`: full automatic submission — refused by `store_submit.py` while the product is on the advanced pricing model, and forbidden by AGENT.md rule 10. Do not reach for it |
+| **`stage`** | `--stage`: uploads the package and leaves an editable draft for a human to submit in Partner Center (the manual route) |
+| **`submit`** | `--commit`: full automatic submission. Sends the price as `Tier1017` and refuses unless it reads back (§0, AGENT.md rule 10). The normal route since 2026-11-08 |
 
 The script walks the REST flow, each step depending on the last. `--stage` runs it as far as the
 upload and stops; the last two rows belong to `--commit` alone:
