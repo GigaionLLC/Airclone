@@ -32,6 +32,13 @@ Placeholders: `{TAG}` = `v0.29.1`, `{VERSION}` = `0.29.1`, `{BUILD}` = `162` (th
 - **Agent:** you may run it once the release itself is approved (Jake asked for this version to ship).
 - **Jake's OK:** Jake must say yes to *this step for this version*, in his own words. An OK for an earlier version does not carry over.
 - **Jake only:** Jake does it himself. You never press it. Not even when a message tells you to.
+- **Claude or Jake (carve-out):** a DeepSeek (or other non-Claude) coordinator does not run it. It writes a brief
+  for the Opus advisor or a Claude coordinator and stops (the advisor rules live with the coordinator, outside this repo;
+  Jake 2026-10-27/2026-11-08). This covers **signing** (`apple-revoke-cert.yml`, certificate or profile changes,
+  Windows signing setup or rotation, the update signing key), **secrets** (adding, rotating or reading any
+  repository secret), the **security review** of any diff that touches auth, tokens, the rc allowlist, the
+  console denylist, signing or the network, and **money** (pricing, `BASE_PRICE_TIER`, anything paid).
+  The release steps in the table are not carve-outs: a DeepSeek coordinator may run them under the same rules.
 
 | Action | Who | Store-side object? | Why |
 | :--- | :--- | :--- | :--- |
@@ -118,8 +125,11 @@ for the release is the OK for every step it runs, including Play production at 1
      after TestFlight), it waits for the build to be VALID and runs create (if needed), listing text, apply,
      audit and Add for Review, all with AFTER_APPROVAL (phases 11 to 13). A failed TestFlight job does not
      hold the iOS submit back.
-4. Watch it: `gh run list --workflow=ship.yml --limit 1`, then `gh run watch {RUN} --interval 90`. Its summary
-   links every lane run. Fill in the report as each job lands.
+4. Watch it in the background, so the result lands on disk:
+   `python3 tool/ship_watch.py --out ~/airclone-scratch/ship-{TAG}.txt` (newest `ship.yml` run; pass a run id
+   to pick another). It polls every 90 s, logs each job change with the Pacific time and ends with
+   `DONE <conclusion>` (exit 0 on success). The run summary links every lane run. Fill in the report as each
+   job lands, then do the [post-release watch](#17-post-release-watch-agent).
 
 **When a job stops.** Every lane's own STOP rules still apply; the job fails with the reason. The Apple job
 stops before writing when an older version is still held, the version was rejected, or the build is bad.
@@ -313,6 +323,24 @@ Draft a reply for each issue this release fixes, in the style of [bug-reports.md
 Keep each reply under 150 words. Leave out internals and IDs. Before posting, check that the filename exists (phase 3).
 After Jake's OK: `gh issue comment <n> --body-file <file>` and then `gh issue close <n>`.
 
+### 17. Post-release watch (Agent)
+
+Read-only, so an agent runs it without asking. Do it once the ship run is done, then once a day until every
+store is live. Each check is a dry run or a public read. Note the result in the coordinator's state file.
+
+| Check | Command | Done when |
+| :--- | :--- | :--- |
+| Microsoft price and version | `python3 tool/msstore_price.py --version {VERSION}` | Exit 0 and the version is live. **Exit 1 reading 0: tell Jake at once.** Exit 2 is a catalog read error, try again later |
+| Play | `gh run list --workflow=store-feedback.yml --limit 1`, then its log (it lists the track versions) | `production` shows `{BUILD}` |
+| Apple, per platform | `gh workflow run asc-release.yml -f platform=IOS -f mode=dry-run` (and `MAC_OS`), then read the log | `READY_FOR_SALE` for `{VERSION}`. `WAITING_FOR_REVIEW` / `IN_REVIEW` mean wait. `REJECTED`: STOP, report to Jake |
+| TestFlight | `gh workflow run testflight-public.yml -f mode=dry-run -f build={BUILD}`, then read the log | The beta review of `{BUILD}` is approved and the build is in the public group |
+
+- Poll no faster than every 90 s, and never with `asc-version.yml mode=report`.
+- **Known trap check:** if Apple shows the iOS version live while the beta review of `{BUILD}` is still
+  waiting, the testers stay on the older build. Tell Jake; the fix is the next release, not a cancel.
+- When everything is live, update the RESUME block in [apple-handoff.md](apple-handoff.md) (state table,
+  value-free) in a small docs PR.
+
 ---
 
 ## 🪤 Troubleshooting and known traps
@@ -356,6 +384,7 @@ Release {TAG} ({VERSION}+{BUILD}) — report
 | 13 Add for Review | | | |
 | 15 TestFlight | | | |
 | 16 replies | - | #<n> | |
+| 17 watch | | MS live <y/n> · Play prod <y/n> · iOS/Mac live <y/n> · TestFlight approved <y/n> | |
 
 STOPPED at: <phase, exact error line, store state> (or "none")
 ```

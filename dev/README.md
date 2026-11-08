@@ -34,6 +34,9 @@ actually changed in a shipped version — and you need the exact file rather tha
 | **Start multi-step work** | [`plans/template-plan.md`](plans/template-plan.md), write into [`plans/`](plans/) | Required by rule 6 of [`AGENT.md`](../AGENT.md). |
 | **Track Google retiring rclone's shared Drive/Photos sign-in** | [`google-shared-client-id.md`](google-shared-client-id.md) | Upstream forum thread to watch, status timeline, and what to change in Airclone when the 90-day notice lands. |
 | **Reply to a bug report** | [`bug-reports.md`](bug-reports.md) | Plain and short: it's fixed, what went wrong in their terms, what to download. The mechanism belongs in the commit, not the reply. Close the issue with the reply. |
+| **Run the project day to day** (cold start, daily check, change → PR → merge, Dependabot, outside PRs) | [`coordinator-playbook.md`](coordinator-playbook.md) | Who may do what, NEVER list, numbered steps, traps, report template. Carve-outs (signing, secrets, security review, money) stay with Claude or Jake. |
+| **Take the weekly rclone update** | [`rclone-bump-playbook.md`](rclone-bump-playbook.md) | The `rclone-bump.yml` PR only moves the five pins. The checks, the reasoning comment and an advisor's security review are the work. |
+| **Watch a ship run to the end** | [`tool/ship_watch.py`](../tool/ship_watch.py) | Read-only, polls every 90 s, logs job changes in Pacific time to `--out`. Then the post-release watch, phase 17 of the store playbook. |
 | **Close out a task** | [`logs/agent-changelog.md`](logs/agent-changelog.md) + [`archive-plans/README.md`](archive-plans/README.md) | The Wrap-Up Protocol in [`AGENT.md`](../AGENT.md): log the entry, sync `wiki/`, move the finished plan. |
 
 ---
