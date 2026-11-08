@@ -71,7 +71,7 @@ sizes).
 | 5 | Attach + notes + copyright + release type | `asc-version.yml -f platform=MAC_OS -f mode=apply -f notes=true -f copyright=true -f manual_release=true` |
 | 6 | **Check it is actually submittable** | `asc-version.yml -f platform=MAC_OS -f mode=audit` — must print *No gaps* |
 | 7 | Submit to review | `asc-submit-review.yml -f platform=MAC_OS -f mode=dry-run`, then `-f mode=submit -f confirm_version=0.7.6` |
-| 8 | **Human, in the console:** press *Release* after approval | `releaseType` is MANUAL, so nothing ships by itself |
+| 8 | **Human, in the console:** press *Release* after approval | `releaseType` is MANUAL, so nothing ships by itself. [`ship.yml`](../.github/workflows/ship.yml) runs steps 0 to 7 itself with `AFTER_APPROVAL` (Jake 2026-11-08), so its versions skip this step |
 
 **Step 0** POSTs the `appStoreVersion` record with `releaseType: MANUAL` set at
 creation rather than patched afterwards. It **refuses when an editable version

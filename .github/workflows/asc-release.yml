@@ -2,7 +2,8 @@ name: Release an approved version (Apple)
 
 # Publishes a version Apple has ALREADY APPROVED and that is waiting on us.
 #
-# Every Apple version in this project is created with releaseType MANUAL, on
+# A version shipped by ship.yml is AFTER_APPROVAL and never needs this (Jake
+# 2026-11-08). Every version made by hand is created with releaseType MANUAL, on
 # purpose: approval and publication being the same event is how a version ships
 # before anyone looks at it, and it was found silently set that way once already.
 # The cost of that choice is a last human step — an approved version sits in

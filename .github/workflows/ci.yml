@@ -198,6 +198,12 @@ jobs:
           pip install --disable-pip-version-check -q requests
           python tool/test_store_submit.py
           python tool/test_msstore_price.py
+      - name: Test the ship-to-every-store glue
+        working-directory: .
+        # tool/ship_lane.py decides, with nobody watching, which run a dispatch
+        # started and whether an Apple version is created, updated, submitted
+        # or left for Jake (ship.yml).
+        run: python tool/test_ship_lane.py
       - name: Check the workflow files
         working-directory: .
         # GitHub's parser is the only authority on a workflow file and it has no

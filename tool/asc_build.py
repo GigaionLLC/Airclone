@@ -13,8 +13,10 @@ It can also SUBMIT (--submit-for-review) and answer export compliance
 is the day-to-day path: submission goes through asc-submit-review.yml, which
 requires a human to name the exact version first, and export compliance is already
 answered declaratively by ITSAppUsesNonExemptEncryption=false in both Info.plist
-files. The gate that stays human is pressing release - --create-version and
---manual-release both set releaseType MANUAL, so an approved version waits.
+files. releaseType defaults to MANUAL (--create-version and --manual-release),
+so an approved version waits for a human; ship.yml passes --release-type
+AFTER_APPROVAL, because there pushing the tag was the release decision (Jake
+2026-11-08).
 
 Usage:
   python tool/asc_build.py <key.p8> <keyid> <issuerid> <appid> [options]
@@ -55,6 +57,10 @@ Options:
                           from one command rather than from a rejection.
   --apply                 actually send it. Without this nothing is written.
   --builds                just list the builds Apple has registered, and stop.
+  --version-state 0.6.8   print one machine-readable line, STATE target=...
+                          blocking=... build=..., for the pipeline in ship.yml
+                          (with --build N for that build's processing state).
+                          Read-only.
   --release               publish a version Apple already APPROVED and that is
                           waiting on us (PENDING_DEVELOPER_RELEASE). Refuses
                           every other state. Needs --apply.
@@ -118,6 +124,12 @@ AUDIT = "--audit" in ARGV
 # upload and then died silently without ever registering, and "UPLOAD
 # SUCCEEDED" looked identical both times.
 BUILDS = "--builds" in ARGV
+# One read-only line a pipeline can act on: the state of the version it is
+# about to ship, whether anything older still holds the platform, and whether
+# the build has finished processing. ship.yml polls this instead of the
+# human-readable modes, and decides from it (see tool/ship_lane.py).
+VERSION_STATE = (ARGV[ARGV.index("--version-state") + 1]
+                 if "--version-state" in ARGV else None)
 # Create the version record itself. Apple allows exactly ONE editable version
 # per platform, so this refuses when one already exists rather than making a
 # mess that has to be deleted by hand.
@@ -620,8 +632,9 @@ def audit(ver):
               % bad)
     else:
         print("No gaps. Export compliance is answered in Info.plist. What")
-        print("remains is human: Add for")
-        print("Review, and 'Manually release this version'.")
+        print("remains: Add for Review%s." % (
+            ", and 'Manually release this version'" if AUDIT_RELEASE_TYPE == "MANUAL"
+            else " - it then publishes itself (releaseType %s)" % AUDIT_RELEASE_TYPE))
     return bad
 
 
@@ -959,6 +972,61 @@ def create_encryption_declaration():
           % (r["data"]["id"], a.get("appEncryptionDeclarationState")))
 
 
+# A version in any of these no longer holds the platform: it shipped, or it
+# was superseded. Anything else (in review, approved and waiting, editable)
+# means a new version would queue behind it, and the order is Jake's call.
+SETTLED = {
+    "READY_FOR_SALE",
+    "READY_FOR_DISTRIBUTION",
+    "REPLACED_WITH_NEW_VERSION",
+    "REMOVED_FROM_SALE",
+    "DEVELOPER_REMOVED_FROM_SALE",
+    "NOT_APPLICABLE",
+}
+
+
+def version_state(version_string):
+    """Print `STATE target=<s> blocking=<n> build=<s>` and write nothing.
+
+    target   appStoreState of version_string on PLATFORM, or NONE
+    blocking how many OTHER versions on PLATFORM are not SETTLED
+    build    processingState of build --build on PLATFORM, or NONE (also
+             NONE when no --build was given); EXPIRED if Apple expired it
+    """
+    vs = call("GET", "/v1/apps/%s/appStoreVersions?limit=200" % APP)
+    if vs is None:
+        sys.exit(1)
+    target = "NONE"
+    blocking = 0
+    for v in vs["data"]:
+        a = v["attributes"]
+        if a["platform"] != PLATFORM:
+            continue
+        print("  %s version %s  state=%s  releaseType=%s"
+              % (PLATFORM, a["versionString"], a["appStoreState"], a.get("releaseType")))
+        if a["versionString"] == version_string:
+            target = a["appStoreState"]
+        elif a["appStoreState"] not in SETTLED:
+            blocking += 1
+    build = "NONE"
+    if WANT_BUILD:
+        bs = call("GET", "/v1/builds?filter[app]=%s&filter[version]=%s&limit=10"
+                         "&include=preReleaseVersion"
+                         "&fields[builds]=version,processingState,expired,preReleaseVersion"
+                         % (APP, WANT_BUILD))
+        if bs is None:
+            sys.exit(1)
+        plat_of = {i["id"]: i["attributes"].get("platform")
+                   for i in bs.get("included", []) if i.get("type") == "preReleaseVersions"}
+        for b in bs["data"]:
+            pv = ((b.get("relationships") or {}).get("preReleaseVersion") or {}).get("data") or {}
+            if plat_of.get(pv.get("id")) != PLATFORM:
+                continue
+            a = b["attributes"]
+            build = "EXPIRED" if a.get("expired") else (a.get("processingState") or "NONE")
+    print("STATE target=%s blocking=%d build=%s" % (target, blocking, build))
+
+
 def create_version(version_string):
     """POST a new appStoreVersion. There was no way to do this before.
 
@@ -967,9 +1035,11 @@ def create_version(version_string):
     was blocked behind a human clicking "+ Version or Platform" in App Store
     Connect. The API has always allowed this; the tool simply never asked.
 
-    releaseType is set to MANUAL at creation rather than patched afterwards.
-    AFTER_APPROVAL makes approval and publication the same event, and it was found
-    silently set that way once, AFTER an audit had twice reported no gaps.
+    releaseType is set at creation rather than patched afterwards: MANUAL unless
+    --release-type says otherwise (ship.yml asks for AFTER_APPROVAL). An
+    unintended AFTER_APPROVAL makes approval and publication the same event, and
+    it was found silently set that way once, AFTER an audit had twice reported no
+    gaps.
     """
     vs = call("GET", "/v1/apps/%s/appStoreVersions?limit=200" % APP)
     if vs is None:
@@ -1038,6 +1108,9 @@ def main():
         return
     if CREATE_VERSION:
         create_version(CREATE_VERSION)
+        return
+    if VERSION_STATE:
+        version_state(VERSION_STATE)
         return
     if BUILDS:
         # Deliberately before pick_version(): the whole point is to work when no

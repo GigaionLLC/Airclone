@@ -1,0 +1,336 @@
+name: Ship to every store
+
+# A final tag (vX.Y.Z) ships to every store with no further button presses:
+# Release (release.yml) builds it, then this promotes the GitHub release to
+# Latest and sends the version to Google Play (open testing, then production),
+# the Microsoft Store and both Apple stores (Add for Review, publishing itself
+# when review passes). Jake 2026-11-08: "when i ask you to do a release, it's
+# tagged then proceeds to release to all stores".
+#
+# It drives the SAME workflows the manual playbook dispatches
+# (dev/store-release-playbook.md), through tool/ship_lane.py, so each store
+# keeps one code path and every one of its checks: Play refuses a reused
+# version code, the Microsoft lane refuses while a submission is pending and
+# reads its $1.49 price back before committing, Apple refuses a reused build
+# number and submits only with a clean audit. Nothing here changes a price.
+#
+# Pushing the tag IS the release decision. Pre-release tags (v1.2.3-rc1) never
+# ship. Each store is its own job, so `gh run rerun <id> --failed` resumes
+# only what failed - but read the failed lane's log first: a lane that got as
+# far as the store has used up its version code / build number / submission.
+#
+# Manual dispatch: ship (or resume) one tag, optionally skipping stores.
+
+on:
+  workflow_run:
+    workflows: [Release]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Final tag to ship, e.g. v0.32.0'
+        required: true
+        type: string
+      play:
+        description: 'Google Play: open testing upload, then production'
+        required: true
+        default: true
+        type: boolean
+      play_rollout:
+        description: 'Play production rollout %'
+        required: true
+        default: '100'
+        type: choice
+        options: ['1', '5', '10', '25', '50', '100']
+      msstore:
+        description: 'Microsoft Store: submit (certification, then it publishes itself)'
+        required: true
+        default: true
+        type: boolean
+      apple:
+        description: 'Apple: Mac + iOS upload, Add for Review (AFTER_APPROVAL), TestFlight'
+        required: true
+        default: true
+        type: boolean
+
+permissions:
+  actions: write   # dispatch and watch the store lanes
+  contents: read
+
+# One ship at a time: two would race for the same store slots.
+concurrency:
+  group: ship
+  cancel-in-progress: false
+
+env:
+  GH_TOKEN: ${{ github.token }}
+  GH_REPO: ${{ github.repository }}
+
+jobs:
+  gate:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      ship: ${{ steps.g.outputs.ship }}
+      tag: ${{ steps.g.outputs.tag }}
+      version: ${{ steps.g.outputs.version }}
+      build: ${{ steps.g.outputs.build }}
+      promote: ${{ steps.g.outputs.promote }}
+      play: ${{ steps.g.outputs.play }}
+      rollout: ${{ steps.g.outputs.rollout }}
+      msstore: ${{ steps.g.outputs.msstore }}
+      apple: ${{ steps.g.outputs.apple }}
+    steps:
+      - id: g
+        env:
+          # For a tag push, workflow_run.head_branch is the tag name. Both
+          # sources are free-form, so they arrive via env and are shape-checked
+          # before use.
+          TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.event.workflow_run.head_branch }}
+          PLAY: ${{ github.event_name == 'workflow_run' || inputs.play }}
+          ROLLOUT: ${{ inputs.play_rollout || '100' }}
+          MSSTORE: ${{ github.event_name == 'workflow_run' || inputs.msstore }}
+          APPLE: ${{ github.event_name == 'workflow_run' || inputs.apple }}
+        run: |
+          set -euo pipefail
+          if ! printf '%s' "$TAG" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "'$TAG' is not a final vX.Y.Z tag - nothing ships."
+            echo "ship=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          sha=$(gh api "repos/$GH_REPO/commits/$TAG" --jq .sha)
+          line=$(gh api "repos/$GH_REPO/contents/app/pubspec.yaml?ref=$TAG" --jq .content \
+                 | base64 -d | grep -E '^version:')
+          version=$(printf '%s' "$line" | sed -E 's/^version: *([0-9.]+)\+([0-9]+).*/\1/')
+          build=$(printf '%s' "$line" | sed -E 's/^version: *([0-9.]+)\+([0-9]+).*/\2/')
+          if [ "v$version" != "$TAG" ] || ! printf '%s' "$build" | grep -Eq '^[0-9]+$'; then
+            echo "::error::$TAG does not match app/pubspec.yaml ($line)"; exit 1
+          fi
+          # A tag never runs CI itself, so insist the commit it points at was
+          # green on main (playbook preflight P4).
+          green=$(gh run list --workflow ci.yml --commit "$sha" --json conclusion \
+                  --jq '[.[] | select(.conclusion == "success")] | length')
+          if [ "$green" = "0" ]; then
+            echo "::error::CI has no green run on $sha, the commit $TAG points at"; exit 1
+          fi
+          pre=$(gh release view "$TAG" --json isPrerelease --jq .isPrerelease)
+          # Already Latest means this tag has shipped before. A later Release
+          # run for it (a rebuild) must not send it to the stores twice;
+          # resuming a ship is a deliberate manual dispatch.
+          if [ "$GITHUB_EVENT_NAME" = "workflow_run" ] && [ "$pre" != "true" ]; then
+            echo "$TAG is already Latest - it shipped before. To resume, dispatch this workflow."
+            echo "ship=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          {
+            echo "ship=true"
+            echo "tag=$TAG"
+            echo "version=$version"
+            echo "build=$build"
+            # Already Latest (a resumed ship): promote-release would refuse.
+            echo "promote=$pre"
+            echo "play=$PLAY"
+            echo "rollout=$ROLLOUT"
+            echo "msstore=$MSSTORE"
+            echo "apple=$APPLE"
+          } >> "$GITHUB_OUTPUT"
+          {
+            echo "### Shipping $TAG ($version+$build)"
+            echo "commit $sha · Play $PLAY (production $ROLLOUT%) · Microsoft $MSSTORE · Apple $APPLE"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  promote:
+    needs: gate
+    if: needs.gate.outputs.ship == 'true' && needs.gate.outputs.promote == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v7
+      - name: Check every release file is there, then make it Latest
+        env:
+          TAG: ${{ needs.gate.outputs.tag }}
+        run: |
+          set -euo pipefail
+          python tool/ship_lane.py dispatch promote-release.yml -f "tag=$TAG" -f mode=check --timeout-min 15
+          python tool/ship_lane.py dispatch promote-release.yml -f "tag=$TAG" -f mode=promote --timeout-min 20
+
+  play-upload:
+    needs: [gate, promote]
+    if: >-
+      always() && needs.gate.outputs.ship == 'true' && needs.gate.outputs.play == 'true' &&
+      (needs.promote.result == 'success' || needs.promote.result == 'skipped')
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+      - name: Google Play open testing
+        env:
+          TAG: ${{ needs.gate.outputs.tag }}
+        run: python tool/ship_lane.py dispatch publish-play.yml -f "tag=$TAG" -f mode=upload --timeout-min 45
+
+  play-production:
+    needs: [gate, play-upload]
+    if: always() && needs.play-upload.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - name: Google Play production
+        env:
+          BUILD: ${{ needs.gate.outputs.build }}
+          ROLLOUT: ${{ needs.gate.outputs.rollout }}
+        run: |
+          python tool/ship_lane.py dispatch promote-play.yml -f "rollout=$ROLLOUT" \
+            -f "version_code=$BUILD" -f dry_run=false --timeout-min 20
+
+  ms-submit:
+    needs: [gate, promote]
+    if: >-
+      always() && needs.gate.outputs.ship == 'true' && needs.gate.outputs.msstore == 'true' &&
+      (needs.promote.result == 'success' || needs.promote.result == 'skipped')
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v7
+      - name: Microsoft Store submit
+        env:
+          TAG: ${{ needs.gate.outputs.tag }}
+        run: |
+          python tool/ship_lane.py dispatch submit-msstore.yml -f "tag=$TAG" -f mode=submit \
+            -f delete_pending=false --timeout-min 75
+
+  ms-verify:
+    needs: [gate, ms-submit]
+    if: always() && needs.ms-submit.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    steps:
+      - uses: actions/checkout@v7
+      - name: Watch the public catalog for the version and the $1.49 price
+        env:
+          VERSION: ${{ needs.gate.outputs.version }}
+        run: |
+          set -uo pipefail
+          # Certification took ~25 min on the first API submit and can take
+          # days. Exit 1 is a wrong price: fail loudly, Jake fixes it in
+          # Partner Center. Not live in time is only a warning.
+          for i in $(seq 1 22); do
+            out=$(python tool/msstore_price.py --version "$VERSION"); rc=$?
+            echo "$out"
+            if [ "$rc" = "1" ]; then
+              echo "::error::Microsoft Store price is WRONG - tell Jake at once"; exit 1
+            fi
+            if [ "$rc" = "0" ] && printf '%s' "$out" | grep -q ": live$"; then
+              echo "- Microsoft Store: $VERSION live at 1.49 USD" >> "$GITHUB_STEP_SUMMARY"
+              exit 0
+            fi
+            sleep 900
+          done
+          echo "::warning::$VERSION is not live on the Microsoft Store yet; run tool/msstore_price.py --version $VERSION later"
+
+  mac-upload:
+    needs: [gate, promote]
+    if: >-
+      always() && needs.gate.outputs.ship == 'true' && needs.gate.outputs.apple == 'true' &&
+      (needs.promote.result == 'success' || needs.promote.result == 'skipped')
+    runs-on: ubuntu-latest
+    timeout-minutes: 200
+    steps:
+      - uses: actions/checkout@v7
+      - name: Mac App Store build + upload
+        env:
+          TAG: ${{ needs.gate.outputs.tag }}
+        run: python tool/ship_lane.py dispatch mas-release.yml --ref "$TAG" -f mode=upload --timeout-min 180
+
+  ios-upload:
+    needs: [gate, promote]
+    if: >-
+      always() && needs.gate.outputs.ship == 'true' && needs.gate.outputs.apple == 'true' &&
+      (needs.promote.result == 'success' || needs.promote.result == 'skipped')
+    runs-on: ubuntu-latest
+    timeout-minutes: 200
+    steps:
+      - uses: actions/checkout@v7
+      - name: iOS App Store build + upload
+        env:
+          TAG: ${{ needs.gate.outputs.tag }}
+        # signing=secrets only: ephemeral mints a certificate per run, and
+        # Apple caps them per team.
+        run: |
+          python tool/ship_lane.py dispatch ios-release.yml --ref "$TAG" -f mode=upload \
+            -f signing=secrets --timeout-min 180
+
+  # The two Apple platforms run one after the other: both dispatch the same
+  # asc-* workflows, and tool/ship_lane.py refuses to guess between two runs
+  # of one workflow started at the same moment.
+  apple-mac:
+    needs: [gate, mac-upload]
+    if: always() && needs.mac-upload.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with: { python-version: '3.12' }
+      - run: pip install --quiet cryptography
+      - name: Wait for the build, then Add for Review (publishes itself on approval)
+        env:
+          P8: ${{ secrets.APPSTORE_API_PRIVATE_KEY }}
+          KEY_ID: ${{ vars.APPSTORE_API_KEY_ID }}
+          ISSUER: ${{ secrets.APPSTORE_ISSUER_ID }}
+          VERSION: ${{ needs.gate.outputs.version }}
+          BUILD: ${{ needs.gate.outputs.build }}
+        run: |
+          set -euo pipefail
+          umask 077
+          printf '%s' "$P8" > key.p8
+          python tool/ship_lane.py apple-ship --platform MAC_OS --version "$VERSION" \
+            --build "$BUILD" --key key.p8 --wait-min 150
+      - name: Shred the key
+        if: always()
+        run: rm -f key.p8
+
+  apple-ios:
+    needs: [gate, ios-upload, apple-mac]
+    if: always() && needs.ios-upload.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with: { python-version: '3.12' }
+      - run: pip install --quiet cryptography
+      - name: Wait for the build, then Add for Review (publishes itself on approval)
+        env:
+          P8: ${{ secrets.APPSTORE_API_PRIVATE_KEY }}
+          KEY_ID: ${{ vars.APPSTORE_API_KEY_ID }}
+          ISSUER: ${{ secrets.APPSTORE_ISSUER_ID }}
+          VERSION: ${{ needs.gate.outputs.version }}
+          BUILD: ${{ needs.gate.outputs.build }}
+        run: |
+          set -euo pipefail
+          umask 077
+          printf '%s' "$P8" > key.p8
+          python tool/ship_lane.py apple-ship --platform IOS --version "$VERSION" \
+            --build "$BUILD" --key key.p8 --wait-min 150
+      - name: Shred the key
+        if: always()
+        run: rm -f key.p8
+
+  # The public beta must be in Beta App Review before the App Store version
+  # goes live: Apple closes a live version to external testing.
+  ios-testflight:
+    needs: [gate, ios-upload, apple-ios]
+    if: always() && needs.ios-upload.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - name: TestFlight public beta
+        env:
+          BUILD: ${{ needs.gate.outputs.build }}
+        run: python tool/ship_lane.py dispatch testflight-public.yml -f mode=apply -f "build=$BUILD" --timeout-min 20

@@ -523,7 +523,9 @@ no gaps. It was then renamed to 0.7.5 rather than submitted.
 | Build | 119 | 118 (117 was rejected) |
 | Release type | **MANUAL** | **MANUAL** |
 
-**Release type MANUAL on both is the point.** An approved version waits for a
+**Release type MANUAL on both is the point** for a version made by hand (since
+2026-11-08, `ship.yml` deliberately submits with `AFTER_APPROVAL`: Jake asking for
+the release is the decision). An approved version waits for a
 human rather than publishing itself. It was found set to `AFTER_APPROVAL` on
 macOS *after* the audit had twice reported "no gaps" - copyright and release type
 live on the version, not the localization, and the audit only checked
