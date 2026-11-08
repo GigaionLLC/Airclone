@@ -9,14 +9,16 @@ by design** — real IDs, key paths and account state live in the encrypted vaul
 (`python tool/vault.py unlock`, then
 `dev/vault/notes/apple-appstore-setup-record.md`).
 
-## State: last written 2026-11-07 — 0.31.1 live on both
+## State: last written 2026-11-08 — 0.31.2 in review on both, publishes itself
 
-> **RESUME HERE (2026-11-07).** iOS and macOS: **0.31.1 build 166 (rclone 1.76.0) released 2026-11-07**
-> (macOS 18:05Z, iOS 20:02Z, both read back `READY_FOR_SALE`), `releaseType` MANUAL. Nothing is in review.
-> Build 166 was not sent to the public TestFlight beta before release.
-> Releasing an approved version is Jake's call
-> (`asc-release.yml -f platform=IOS|MAC_OS -f mode=release -f confirm_version=<version>`); `mode=dry-run` with
-> `confirm_version` stays green while in review and is the safe way to poll the state.
+> **RESUME HERE (2026-11-08).** iOS and macOS: **0.31.2 build 167 submitted 2026-11-08 by `ship.yml`**
+> (the first release through the automatic path, ship run 42521804507): macOS WAITING_FOR_REVIEW from 21:21Z,
+> iOS from 21:31Z, both `releaseType` **AFTER_APPROVAL**, so each publishes itself when review passes and
+> nobody presses release. Build 167 was added to the public TestFlight group (beta review pending at Apple).
+> 0.31.1 build 166 stays READY_FOR_SALE on both until then. Nothing else is held.
+> If a review is rejected, `ship.yml` does nothing more: read Resolution Center first
+> ([store-release-playbook.md](store-release-playbook.md)).
+> `asc-release.yml -f mode=dry-run -f confirm_version=0.31.2` stays green while in review and is the safe way to poll.
 > Never poll with `asc-version.yml mode=report`: it exits 1 when nothing is editable and emails a failure; use `mode=builds`.
 
 Read back from App Store Connect by the workflows that changed it, so these rows are observed.
