@@ -23,6 +23,12 @@ name: Release
 # tag reached testers like a final one, and a tag pushed merely to get artifacts
 # burned a Play version code permanently.
 #
+# Since 2026-11-08 ship.yml listens for this workflow: once a FINAL vX.Y.Z tag's
+# Release run is green, it dispatches those same store lanes, in the playbook's
+# order, to every store (Jake: "when i ask you to do a release, it's tagged then
+# proceeds to release to all stores"). Pre-release tags still go nowhere, and
+# this file still publishes nothing itself.
+#
 # A tag still does one thing that is easy to miss:
 #
 #   * it builds the Microsoft Store MSIX, with the package identity injected from

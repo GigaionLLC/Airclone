@@ -14,7 +14,7 @@ actually changed in a shipped version — and you need the exact file rather tha
 
 | I want to… | Go to | Notes |
 | :--- | :--- | :--- |
-| **Cut a release** | [Release checklist](#-release-checklist) below, then [`.github/workflows/release.yml`](../.github/workflows/release.yml). Shipping to every store step by step: [`store-release-playbook.md`](store-release-playbook.md) | Trigger is a `v*` tag push. Notes must exist *before* the tag. |
+| **Cut a release** | [Release checklist](#-release-checklist) below, then [`.github/workflows/release.yml`](../.github/workflows/release.yml). Shipping to every store: [`store-release-playbook.md`](store-release-playbook.md) (automatic via [`ship.yml`](../.github/workflows/ship.yml), or step by step) | Trigger is a `v*` tag push; a final `vX.Y.Z` tag then ships to every store. Notes must exist *before* the tag. |
 | **Write the release notes** | [`releases/`](releases/) — add `releases/vX.Y.Z.md` | CI reads this exact path as `--notes-file` for the **GitHub Release**. The store "what's new" is a different, generic file — see [Release-notes coupling](#-ci-workflows). |
 | **Know what changed in a release** | [`releases/vX.Y.Z.md`](releases/) | One curated, user-facing file per shipped tag, `v0.1.0-beta.1` → the latest tag. |
 | **Submit to the Microsoft Store** | [`windows-signing-and-store.md`](windows-signing-and-store.md) §2 | Read the dated **PATH DECISION** block first — the product is an **MSIX** again as of 2026-08-08. |
@@ -22,7 +22,7 @@ actually changed in a shipped version — and you need the exact file rather tha
 | **Triage a Windows certification failure** | [`windows-signing-and-store.md`](windows-signing-and-store.md) (2026-07-29 report + uninstall traps) | Expand every collapsed row and download the supporting-files ZIP before starting work. |
 | **Submit to Google Play** | [`google-play-store.md`](google-play-store.md) | Per-release runbook. Open testing is [`publish-play.yml`](../.github/workflows/publish-play.yml) and production is [`promote-play.yml`](../.github/workflows/promote-play.yml) — both buttons, neither a tag side-effect (open testing was automatic on every tag until v0.8.3). One-time service-account setup is [`play-ci-setup.md`](play-ci-setup.md) — not the 2026-07 research in `plans/store-automation-plan.md`, which predates the live lane. |
 | **Ship macOS (direct download)** | [`apple-appstore-and-macos.md`](apple-appstore-and-macos.md) §1 | Fully automated by the tag — no manual runbook; only confirm the notarized zip/DMG landed. |
-| **Submit to the Mac App Store or the iOS App Store** | [`apple-appstore-and-macos.md`](apple-appstore-and-macos.md) §2 | Per-release runbook, every machine step a `gh workflow run` — *Add for Review* included, via [`asc-submit-review.yml`](../.github/workflows/asc-submit-review.yml). The one human act left is pressing **release** after approval (`releaseType` is MANUAL). Real IDs and the App Review contact are in the encrypted vault, not here. |
+| **Submit to the Mac App Store or the iOS App Store** | [`apple-appstore-and-macos.md`](apple-appstore-and-macos.md) §2 | Per-release runbook, every machine step a `gh workflow run` — *Add for Review* included, via [`asc-submit-review.yml`](../.github/workflows/asc-submit-review.yml). By hand, the one human act left is pressing **release** after approval (`releaseType` is MANUAL); [`ship.yml`](../.github/workflows/ship.yml) submits with `AFTER_APPROVAL`, so its versions publish themselves. Real IDs and the App Review contact are in the encrypted vault, not here. |
 | **Find out where the Apple track stands right now** | [`apple-handoff.md`](apple-handoff.md) | Per-version state (submitted, in review, for sale), the signing-identity ledger [`apple-revoke-cert.yml`](../.github/workflows/apple-revoke-cert.yml) reads before revoking anything, and the traps already paid for. |
 | **Turn on in-app updating** | [`update/signing-key-setup.md`](update/signing-key-setup.md) | Not done yet, and deliberately a person's job: the release signing key is created on a machine you control and never touches this repo. Until it exists, releases publish an UNSIGNED `SHA256SUMS` and the app offers its release page instead of installing anything. The design behind it is [`plans/self-update-plan.md`](plans/self-update-plan.md). |
 | **Check listing copy, pricing policy, pre-submission audit** | [`../docs/store/README.md`](../docs/store/README.md) | Owns the store-fee policy and the H-17 truth-audit checklist for every platform. |
@@ -109,7 +109,7 @@ Nothing here happens because you tagged. Each is a button, and each says what it
 | [`play-images.yml`](../.github/workflows/play-images.yml) | [`tool/play_images.py`](../tool/play_images.py) | Uploads listing **images** from `docs/store/play/` — phone, tablet, TV screenshots, TV banner, feature graphic, icon. Cannot change text, attach a build, or publish; Play holds the change as a draft. `replace: true` first, or Play appends and you get duplicates. |
 | [`asc-listing.yml`](../.github/workflows/asc-listing.yml) | [`tool/asc_listing.py`](../tool/asc_listing.py) (text) · [`tool/asc_screenshots.py`](../tool/asc_screenshots.py) (screenshots) | Pushes Apple listing copy from `docs/store/apple/listing-en-US.md` (macOS) / `listing-ios-en-US.md` (iOS), or uploads screenshots. Metadata only — cannot attach a build and cannot submit. `replace=true` on screenshots: Apple adds a second asset rather than overwriting by filename. |
 | [`asc-version.yml`](../.github/workflows/asc-version.yml) | [`tool/asc_build.py`](../tool/asc_build.py) | Everything between "a build finished uploading" and "submit": `create` the version record, `builds`/`report` (did the upload register? is it `VALID`?), `apply` (attach the build, App Review notes, copyright, MANUAL release type), `audit` (**is it submittable?**). Defaults to a dry run; nothing writes without `apply`. |
-| [`asc-submit-review.yml`](../.github/workflows/asc-submit-review.yml) | `asc_build.py` + `asc_listing.py` | The point of no return — optionally re-pushes the listing, audits, then **Add for Review**. `confirm_version` must be typed exactly, and it pins both the listing refresh and the submit to that same version. It does **not** release: `releaseType` stays MANUAL, so an approved version waits for a human. Export compliance is not asked — it is declared by `ITSAppUsesNonExemptEncryption` in both `Info.plist` files. |
+| [`asc-submit-review.yml`](../.github/workflows/asc-submit-review.yml) | `asc_build.py` + `asc_listing.py` | The point of no return — optionally re-pushes the listing, audits, then **Add for Review**. `confirm_version` must be typed exactly, and it pins both the listing refresh and the submit to that same version. It does **not** release: by default `releaseType` stays MANUAL, so an approved version waits for a human (`ship.yml` passes `release_type=AFTER_APPROVAL`). Export compliance is not asked — it is declared by `ITSAppUsesNonExemptEncryption` in both `Info.plist` files. |
 | [`asc-release.yml`](../.github/workflows/asc-release.yml) | [`tool/asc_build.py`](../tool/asc_build.py) `--release` | **Publishes an APPROVED version.** The last step of the Apple lane and the only one that makes the app public. Refuses every state except `PENDING_DEVELOPER_RELEASE`, so it cannot submit, attach, edit metadata or rescue a rejection. `mode: dry-run` \| `release`, and `release` needs the version string typed exactly. No undo — pulling a release back means removing the version from sale. |
 | [`ios-release.yml`](../.github/workflows/ios-release.yml) | [`tool/asc_ios_signing.py`](../tool/asc_ios_signing.py) (`ephemeral` path only) | Builds the iOS App Store archive and uploads it as a TestFlight build; submits nothing. `mode: dry-run` (no secrets) \| `validate` \| `upload`. **`signing` defaults to `secrets`** — the stored distribution identity — and that is the path. `ephemeral` mints a certificate per run against Apple's per-team cap; `automatic` does not work at all. |
 | [`testflight-public.yml`](../.github/workflows/testflight-public.yml) | [`tool/asc_testflight.py`](../tool/asc_testflight.py) | The **public TestFlight beta** (iOS only; macOS is a free GitHub download). Creates/maintains the external group "Public beta", its public link and tester cap (`tester_limit`, default 1000, rerun to raise), the beta info, and adds the newest iOS build + submits it to Beta App Review. `mode: dry-run` \| `apply`. Rerun after each iOS upload so testers get the new build. |
@@ -231,6 +231,12 @@ Distilled from the store runbooks — Microsoft, Play, Apple — and the release
 For the full linear path through every store, with who may press each button and when to stop, follow
 [`store-release-playbook.md`](store-release-playbook.md).
 
+Since 2026-11-08 a **final** tag (`vX.Y.Z`) ships itself: once `release.yml` is green,
+[`ship.yml`](../.github/workflows/ship.yml) promotes the release and sends it to Google Play (production,
+100 %), the Microsoft Store and both Apple stores (Add for Review, `AFTER_APPROVAL`), plus the TestFlight
+public beta. So push a final tag only for a release Jake asked for; pre-release tags (`-rc1`) still reach
+no one. Steps 1 to 4 below are what has to be true before the tag.
+
 1. **Bump the version** in [`app/pubspec.yaml`](../app/pubspec.yaml) (`version: X.Y.Z+N`). The build
    number `+N` is the Play **versionCode** and must strictly increase — the single most common upload
    failure.
@@ -257,16 +263,18 @@ For the full linear path through every store, with who may press each button and
    [`promote-release.yml`](../.github/workflows/promote-release.yml) (`mode: check`, then
    `mode: promote`) to make it Latest. It refuses unless every platform file is attached and
    non-empty; `allow_missing` names a file you knowingly ship without. An `alpha`/`beta`/`rc` tag is
-   never promoted. A tag publishes to NO store — since v0.8.3 every store lane is a button. Before
-   that there was no pre-release gate and an `-rc` tag reached public open testing like any other,
-   which is the hole the manual lanes closed.
+   never promoted. A **final** tag then ships to every store via `ship.yml`, which runs steps 4 to 6
+   itself (2026-11-08); an `-rc` tag publishes to no store. Before v0.8.3 there was no pre-release gate
+   and an `-rc` tag reached public open testing like any other, which is the hole the gate closes.
 5. **Verify the artifacts — see the rule below.** Do not move on because the run is green.
-6. **Store lanes.** Nothing has been published yet — the tag only built and attached artifacts. Start with
+6. **Store lanes** (by hand; `ship.yml` does this for a final tag, and the playbook is the current
+   order). Nothing has been published yet — the tag only built and attached artifacts. Start with
    the pre-submission truth audit in [`../docs/store/README.md`](../docs/store/README.md), then:
-   - **Microsoft** — Actions → *Submit to Microsoft Store* with `mode: stage`, the only supported mode
-     (`submit` is refused by [`tool/store_submit.py`](../tool/store_submit.py) because an API commit
-     publishes this app at **$0**, which it did on 2026-08-17). Then press *Submit for certification*
-     in Partner Center yourself. ([`msstore-ci-setup.md`](msstore-ci-setup.md))
+   - **Microsoft** — Actions → *Submit to Microsoft Store*, `mode: dry-run`, then `mode: submit`.
+     [`tool/store_submit.py`](../tool/store_submit.py) sends the price as an explicit tier and refuses
+     to commit unless it reads back (an API commit without one published this app at **$0** on
+     2026-08-17); afterwards `tool/msstore_price.py --version X.Y.Z` checks the live price.
+     ([`msstore-ci-setup.md`](msstore-ci-setup.md))
    - **Apple (Mac App Store + iOS)** — the ordered runbook is
      [`apple-appstore-and-macos.md`](apple-appstore-and-macos.md) §2, one `gh workflow run` per step:
      `asc-version.yml -f mode=create` if the version record does not exist yet → `asc-listing.yml`
@@ -277,8 +285,8 @@ For the full linear path through every store, with who may press each button and
      (`mode=builds`, not `mode=report` — it reaches the build list without an editable
      version, which is exactly the window right after an upload) →
      `-f mode=apply` → `-f mode=audit` until it prints *No gaps* → `asc-submit-review.yml -f mode=submit
-     -f confirm_version=X.Y.Z`. Run each platform separately. Approval does not publish: `releaseType`
-     is MANUAL, so a human presses release. Apple's `whatsNew` is required on every update and is
+     -f confirm_version=X.Y.Z`. Run each platform separately. By hand, approval does not publish: `releaseType`
+     is MANUAL, so a human presses release (`ship.yml` uses `AFTER_APPROVAL`). Apple's `whatsNew` is required on every update and is
      **per-version** — it starts empty each release and never carries forward, which is what got both
      0.7.5 submissions refused minutes after an audit printed *No gaps*. `asc-submit-review.yml`'s
      listing refresh is what fills it, and the audit checks it now. Current state:

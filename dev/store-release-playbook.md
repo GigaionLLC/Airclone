@@ -11,6 +11,11 @@ One ordered path from a bumped version to every store, written so an agent can r
 
 **When to read this:** you have been asked to ship (or "deploy", or "release") a version of Airclone to its users and stores.
 
+**Two paths.** The [automatic path](#-automatic-path-shipyml) (since 2026-11-08) is the default: Jake asks
+for a release, you do the preflight and push the final tag, and [`ship.yml`](../.github/workflows/ship.yml)
+runs phases 3 to 15 by itself. The manual phases below are the same steps by hand. Use them to resume a
+stopped ship, to ship one store, or when Jake asks for a step-by-step release.
+
 This playbook is the path. The runbooks are the reference, and they win on detail:
 [release checklist](README.md#-release-checklist) · [Play](google-play-store.md) ·
 [Microsoft](msstore-ci-setup.md) · [Apple runbook](apple-appstore-and-macos.md#the-order-that-works) ·
@@ -31,10 +36,11 @@ Placeholders: `{TAG}` = `v0.29.1`, `{VERSION}` = `0.29.1`, `{BUILD}` = `162` (th
 | Action | Who | Store-side object? | Why |
 | :--- | :--- | :--- | :--- |
 | Dry runs, `check` modes, `mode=builds`, `mode=audit`, reading logs | Agent | No | Read-only |
-| Push the tag (phase 1) | Agent | No (GitHub pre-release only) | Cheap to redo, and nothing reaches users |
+| Push a **final** tag `vX.Y.Z` (phase 1) | Agent, only once Jake asked for this release | **Yes, on the automatic path.** It ships to every store | `ship.yml` follows it to every store. Tags `v*-rc*` and other pre-release tags still reach no one |
+| `ship.yml` manual dispatch (resume, or skip stores) | Agent, for a tag Jake asked to ship | Same as the lanes it runs | Runs only the stores still left. Read the stopped job's log first |
 | Promote to Latest (phase 5) | Agent | No | Only after `mode=check` passes in full |
 | Play open testing upload (phase 6) | Jake's OK | **Yes.** It burns a version code for good | Open testing is public |
-| Play production rollout and its % (phase 7) | **Jake only** | Yes | Reaches every user. A judgement call |
+| Play production rollout and its % (phase 7) | **Jake only** by hand. On the automatic path, 100 % unless Jake names a % | Yes | Reaches every user. Jake asking for the release is the OK (2026-11-08) |
 | MS `stage` (manual route only) | Agent | **Yes.** It makes a draft | The draft does nothing until a human submits it |
 | MS `delete_pending` (phase 8) | Agent, but only for an unsubmitted `PendingCommit` draft. Anything else is **Jake only** | Yes (it deletes) | A submitted one loses its place in the review queue |
 | MS pricing, in any store | **Jake only** | Yes | [Pricing policy](../docs/store/README.md#-pricing-policy--the-one-rule-every-platform-shares) |
@@ -43,10 +49,10 @@ Placeholders: `{TAG}` = `v0.29.1`, `{VERSION}` = `0.29.1`, `{BUILD}` = `162` (th
 | Apple upload, mas + ios (phase 10) | Agent | **Yes.** Each upload uses up a build number | Upload does not submit |
 | Apple version `create` (phase 12) | Jake's OK if an older version is held, otherwise Agent | **Yes.** It has no dry run | Only one editable version per platform |
 | Apple `apply` and `audit` (phase 12) | Agent | `apply` writes. `audit` does not | Re-runnable |
-| Apple **Add for Review**, `asc-submit-review mode=submit` (phase 13) | Jake's OK | **Yes. The point of no return** | Changing it later means withdrawing it and losing the queue place |
+| Apple **Add for Review**, `asc-submit-review mode=submit` (phase 13) | Jake's OK by hand. Automatic on the ship path | **Yes. The point of no return** | Changing it later means withdrawing it and losing the queue place |
 | Apple `asc-submit-review mode=cancel` | **Jake only** | Yes | It withdraws a submission |
-| Apple **release** an approved version (phase 14) | **Jake only** | Yes | `releaseType` is MANUAL on purpose |
-| TestFlight public beta `apply` (phase 15) | Jake's OK | Yes (beta review) | Goes to external testers |
+| Apple **release** an approved version (phase 14) | **Jake only** | Yes | Versions made by hand are MANUAL on purpose. The ship path uses AFTER_APPROVAL, so it never needs this |
+| TestFlight public beta `apply` (phase 15) | Jake's OK by hand. Automatic on the ship path | Yes (beta review) | Goes to external testers |
 | Replies on issues and discussions (phase 16) | Jake's OK | No (but public) | Public words in Jake's name |
 
 ---
@@ -61,7 +67,8 @@ Placeholders: `{TAG}` = `v0.29.1`, `{VERSION}` = `0.29.1`, `{BUILD}` = `162` (th
 - **Never release, cancel or replace an Apple version that is held for Jake** (`PENDING_DEVELOPER_RELEASE`, or listed as held in [apple-handoff.md](apple-handoff.md)).
 - **Never run `ios-release.yml` with `signing=ephemeral` or `signing=automatic`.** Use `signing=secrets` only. Ephemeral creates a certificate on every run, and Apple caps how many a team may have.
 - **Never revoke a certificate** while a submitted build that is not yet live still depends on it.
-- **Never change pricing**, and never set an Apple `release_type` other than MANUAL unless Jake asked.
+- **Never change pricing**, and never set an Apple `release_type` other than MANUAL by hand unless Jake asked. The ship path's AFTER_APPROVAL is Jake's standing choice (2026-11-08).
+- **Never push a final `vX.Y.Z` tag that Jake has not asked to release.** It ships to every store. For artifacts only, use a pre-release tag (`v0.32.0-rc1`).
 - **Never print secrets.** Never `cat` a secret, `.env` or vault file. Never paste store IDs, submission IDs or account emails into a public issue, PR or doc. The repo is public.
 - **Never edit `.github/workflows/` during a release.** A broken lane is a separate fix. Stop and report.
 - **Never claim the app is free** in store copy. Never show the command console in screenshots or reviewer notes.
@@ -87,6 +94,43 @@ Its clang fails `flutter_secure_storage_linux` under `-Werror`, and v0.29.0 ship
 because of it. The Docker build is pinned too. Every other job uses `*-latest` and can drift. See
 "Runner image drift" below. Flutter is pinned in the workflow (`flutter-version: 3.47.0`), and so is rclone
 (`RCLONE_VERSION`).
+
+---
+
+## 🤖 Automatic path (`ship.yml`)
+
+Jake 2026-11-08: "when i ask you to do a release, it's tagged then proceeds to release to all stores". His asking
+for the release is the OK for every step it runs, including Play production at 100 %, Apple Add for Review with
+`release_type=AFTER_APPROVAL` and TestFlight. Replies on issues (phase 16) still need his OK.
+
+1. Do the [preflight](#-preflight), then push the final tag (phase 1).
+2. `release.yml` builds it (phase 2). When it is green, `ship.yml` starts by itself. Its `gate` job checks the
+   tag matches `app/pubspec.yaml`, that CI was green on the tagged commit, and that the release is still a
+   pre-release (an already-shipped tag never ships twice).
+3. `ship.yml` dispatches the same lanes as the phases below, through
+   [`tool/ship_lane.py`](../tool/ship_lane.py), and waits for each (polls every 90 s):
+   - promote-release `check` then `promote` (phases 4, 5);
+   - Play `publish-play upload`, then `promote-play` at the rollout % (phases 6, 7);
+   - Microsoft `submit-msstore submit`, then it watches the public catalog for the version and $1.49 for
+     up to 5.5 h (phase 9). Not live by then is a warning, not a failure;
+   - Apple `mas-release` and `ios-release` upload (phase 10). Then, one platform after the other, it waits
+     for the build to be VALID and runs create (if needed), listing text, apply, audit and Add for Review,
+     all with AFTER_APPROVAL (phases 11 to 13). Then TestFlight `apply` (phase 15).
+4. Watch it: `gh run list --workflow=ship.yml --limit 1`, then `gh run watch {RUN} --interval 90`. Its summary
+   links every lane run. Fill in the report as each job lands.
+
+**When a job stops.** Every lane's own STOP rules still apply; the job fails with the reason. The Apple job
+stops before writing when an older version is still held, the version was rejected, or the build is bad.
+- Read the failed job's log and the lane run it links. Never re-dispatch a lane that reached a store.
+- Fix the cause, or get Jake's call. Then resume with `gh run rerun {RUN} --failed` if the failed job never
+  reached the store (the Apple job is safe to rerun: it reads the state first). Otherwise dispatch
+  `gh workflow run ship.yml -f tag={TAG}`, and set `-f play=false`, `-f msstore=false` or `-f apple=false` for
+  the stores already done.
+- One ship per tag at a time; a second run for the same tag waits. Cancelling a ship run stops every job not yet started.
+
+**Known trap:** the TestFlight job runs after Add for Review. If App Review approves the version before Beta
+App Review approves the beta, the App Store version goes live first, and Apple closes it to external testing.
+Check the TestFlight state in the report.
 
 ---
 

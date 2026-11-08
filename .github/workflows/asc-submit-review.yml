@@ -178,8 +178,17 @@ jobs:
 
       - name: What happens next
         if: ${{ success() && inputs.mode == 'submit' }}
+        env:
+          RELEASE_TYPE: ${{ inputs.release_type }}
         run: |
           echo "In review. Apple emails the outcome, usually within 48 hours."
-          echo "On approval NOTHING ships by itself - releaseType is MANUAL, so"
-          echo "someone presses release. On rejection the reason is in Resolution"
-          echo "Center, which the API cannot read."
+          if [ "$RELEASE_TYPE" = "AFTER_APPROVAL" ]; then
+            echo "On approval it publishes ITSELF (releaseType AFTER_APPROVAL)."
+          elif [ "$RELEASE_TYPE" = "SCHEDULED" ]; then
+            echo "On approval it publishes itself on the scheduled date."
+          else
+            echo "On approval NOTHING ships by itself - releaseType is MANUAL, so"
+            echo "someone presses release (asc-release.yml)."
+          fi
+          echo "On rejection the reason is in Resolution Center, which the API"
+          echo "cannot read."
