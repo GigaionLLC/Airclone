@@ -29,10 +29,11 @@ name: Release
 #     repo variables, and attaches it to the release. That path is
 #     continue-on-error end to end, so a missing MSIX does not fail the run —
 #     verify the ASSET, not the green check (`continue-on-error` is what hid an
-#     rclone-less build across v0.5.0-v0.5.2). Submitting it is the separate,
-#     manual submit-msstore.yml, and the only route that works for this product
-#     is mode=stage: tool/store_submit.py refuses --commit on an advanced-pricing
-#     product, because committing through the API sets the price to 0.
+#     rclone-less build across v0.5.0-v0.5.2). Submitting it is the separate
+#     submit-msstore.yml, mode=submit: tool/store_submit.py sends the price as
+#     an explicit tier and refuses to commit unless it reads back (an API commit
+#     without one published the app at $0 once). After publish,
+#     tool/msstore_price.py checks the live price.
 
 on:
   push:
@@ -516,13 +517,12 @@ jobs:
           path: ${{ runner.temp }}/release-assets/
           if-no-files-found: error
           retention-days: 7
-      # Microsoft Store submission is NOT automatic — it is a button, exactly like
-      # promoting on Google Play: .github/workflows/submit-msstore.yml, run from
-      # the Actions tab against a tag. Certification takes DAYS and a bad
-      # submission burns a review cycle (this app has already lost cycles to
-      # identity rejections and policy 10.2.5), so tagging stages the package and
-      # a human decides when it goes for review. The MSIX asset uploaded above is
-      # what that workflow submits.
+      # Microsoft Store submission is NOT triggered by the tag — it is a
+      # dispatch, exactly like promoting on Google Play:
+      # .github/workflows/submit-msstore.yml, mode=submit, against the final tag.
+      # A bad submission burns a review cycle (this app has already lost cycles
+      # to identity rejections and policy 10.2.5), so an -rc tag must never
+      # reach it. The MSIX asset uploaded above is what that workflow submits.
 
   linux:
     # Two architectures, each built NATIVELY on its own runner (x64 on

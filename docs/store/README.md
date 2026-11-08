@@ -136,12 +136,15 @@ Submission is a **manual Actions dispatch**, not something a tag does: *Submit t
 `mode` = `dry-run` / `stage` / `submit`. It does **not** rebuild — it downloads the exact
 `airclone.msix` attached to that release (unsigned by design, as above - the executables inside it are Azure-signed), checks the package identity against the
 repo variables before Partner Center can spend a review cycle on a mismatch, and then drives the Store
-submission REST API through [`tool/store_submit.py`](../../tool/store_submit.py). Manual is deliberate,
-for the same reason `promote-play.yml` is: certification takes **days**, and deciding a build is worth
-a review cycle is a human call.
+submission REST API through [`tool/store_submit.py`](../../tool/store_submit.py). It is a dispatch rather than
+part of the tag for the same reason `promote-play.yml` is: a bad build burns a review cycle, so only a
+final tag that passed the release gates goes in.
 
-`mode: stage` is the only route we use — see the pricing policy above for why `submit` is forbidden.
-`dry-run` creates nothing and is the cheapest way to read the product's real state, including what is
+`mode: submit` is the route: it commits at an explicit price tier and refuses unless it reads back (the
+pricing policy above), and the submission then certifies and publishes by itself (v0.31.1: about 25
+minutes). After publish, [`tool/msstore_price.py`](../../tool/msstore_price.py) checks the live price
+on the public catalog. `mode: stage` (a draft, submitted by hand in Partner Center) is the manual
+fallback. `dry-run` creates nothing and is the cheapest way to read the product's real state, including what is
 pending and what the live pricing is.
 
 It does **not** use `msstore publish`. The Microsoft Store Developer CLI refuses to update a **paid**
@@ -164,7 +167,7 @@ Partner Center role: [`dev/msstore-ci-setup.md`](../../dev/msstore-ci-setup.md).
 | " | **10.2.7** Product Removal — files left in `C:\Program Files\Airclone` | An orphaned `rcd` held a handle on the copy inside the install dir; and anything running from `{app}` at uninstall locks its own file | v0.5.5: quit the engine on window close + kill-on-close Job Object. v0.5.7: `InitializeUninstall` terminates processes under `{app}` — filtered `-notlike 'unins*'`, or the uninstaller returns -1 |
 | **2026-08-08 (v0.6.0 MSIX) — rejected 4×** | Every rejection was package identity | The 2026-07-12 placeholders were never replaced; Partner Center reported only the `PublisherDisplayName` mismatch first, masking the other three | v0.6.1: identity injected by CI from repo variables + a loud warning when unset (see [`dev/releases/v0.6.1.md`](../../dev/releases/v0.6.1.md)) |
 | **2026-08-10 (v0.6.0/v0.6.1) — certification FAILED** | **10.2.5** Installing and Updating Store Apps — "The product updates outside the Store." Cited **Settings → Check for updates → "Open release"**, which opened the GitHub releases page | One binary ships through every channel, so nothing at compile time told the MSIX apart from the Inno installer; the update check was unconditional | v0.6.2: [`install_source.dart`](../../app/lib/src/state/install_source.dart) resolves the channel at runtime and a store build makes **no GitHub request at all**, offering only the Store. `UpdateStatus` is **sealed** so no build can fall through to a download link (see [`10-external-integrations.md §5.1`](../../wiki/core/10-external-integrations.md)) |
-| **2026-08-17 (v0.6.8) — published FREE** | Not a rejection — a **self-inflicted** one. The $1.49 listing published at **$0** and stayed free for the entire certification cycle of the fix | The submission was **committed through the REST API**. `commit` applies the submission's own pricing block, and for a product on the advanced pricing model every payload that API will accept reads back as *Free*; once a submission reaches *Publishing* it cannot be stopped by anyone, by any means | Stage-only forever — `mode: stage`, then Submit in Partner Center, which re-derives pricing from the pricing module — plus a refusal in [`tool/store_submit.py`](../../tool/store_submit.py) for any product on that pricing model. Full account: [`AGENT.md`](../../AGENT.md) rule 10 and [`dev/msstore-ci-setup.md`](../../dev/msstore-ci-setup.md) §0 |
+| **2026-08-17 (v0.6.8) — published FREE** | Not a rejection — a **self-inflicted** one. The $1.49 listing published at **$0** and stayed free for the entire certification cycle of the fix | The submission was **committed through the REST API**. `commit` applies the submission's own pricing block, and for a product on the advanced pricing model every payload that API will accept reads back as *Free*; once a submission reaches *Publishing* it cannot be stopped by anyone, by any means | Stage-only until 2026-11-08, then an API commit that sends the price as an explicit tier (`Tier1017`) and refuses unless it reads back, plus a live-price check after publish. Partner Center confirmed $1.49 on the first such submission (v0.31.1). Full account: [`AGENT.md`](../../AGENT.md) rule 10 and [`dev/msstore-ci-setup.md`](../../dev/msstore-ci-setup.md) §0 |
 
 Two process rules that came out of the 2026-07-29 report and belong in every future round:
 
@@ -361,7 +364,7 @@ GUID — seller, tenant, app, subscription, Partner Center product, or `CN=<GUID
 
 | Button (Actions) | Workflow | What it drives |
 | :--- | :--- | :--- |
-| *Submit to Microsoft Store* | [`submit-msstore.yml`](../../.github/workflows/submit-msstore.yml) | [`tool/store_submit.py`](../../tool/store_submit.py) — stage the release's MSIX, then Submit in Partner Center |
+| *Submit to Microsoft Store* | [`submit-msstore.yml`](../../.github/workflows/submit-msstore.yml) | [`tool/store_submit.py`](../../tool/store_submit.py) — submit the release's MSIX at the explicit price tier; [`tool/msstore_price.py`](../../tool/msstore_price.py) checks the live price |
 | *Submit to App Review (Apple)* | [`asc-submit-review.yml`](../../.github/workflows/asc-submit-review.yml) | [`tool/asc_build.py`](../../tool/asc_build.py) — refresh listing, audit, submit; release stays manual |
 | *App Store Connect (listing text + screenshots)* | [`asc-listing.yml`](../../.github/workflows/asc-listing.yml) | [`tool/asc_listing.py`](../../tool/asc_listing.py) and [`tool/asc_screenshots.py`](../../tool/asc_screenshots.py) — one platform and one thing per run: `what=text` sends that platform's `apple/listing-*.md` plus `whatsNew`; `what=screenshots` uploads one `device` set |
 | *Play Store listing images* | [`play-images.yml`](../../.github/workflows/play-images.yml) | [`tool/play_images.py`](../../tool/play_images.py) — images only; Play text is still pasted by hand |

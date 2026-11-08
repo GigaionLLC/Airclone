@@ -192,10 +192,12 @@ jobs:
         working-directory: .
         # tool/store_submit.py commits Microsoft Store submissions, and the
         # pricing block it commits is the price customers pay (it once published
-        # this app at $0). The tests cover every path that decides a commit.
+        # this app at $0). The tests cover every path that decides a commit, and
+        # tool/msstore_price.py's reading of the public catalog that checks it.
         run: |
           pip install --disable-pip-version-check -q requests
           python tool/test_store_submit.py
+          python tool/test_msstore_price.py
       - name: Check the workflow files
         working-directory: .
         # GitHub's parser is the only authority on a workflow file and it has no

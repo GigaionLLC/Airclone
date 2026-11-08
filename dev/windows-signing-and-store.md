@@ -6,10 +6,10 @@ installer + the bundled `rclone.exe` (subject "Gigaion, LLC"), gated on org vars
 
 **The Microsoft Store product is a PACKAGED MSIX** since the 2026-08-08 path reversal (§2) — the
 unpackaged EXE/MSI product it replaced is kept below as record, not as instructions. Submission is
-the manual [`submit-msstore.yml`](../.github/workflows/submit-msstore.yml) workflow run in
-**`mode: stage`**, followed by a human pressing **Submit for certification** in Partner Center.
-Committing a submission through the API is permanently forbidden for this product — it republishes
-the app at $0 (AGENT.md rule 10). The submission credential and the workflow itself live in
+the [`submit-msstore.yml`](../.github/workflows/submit-msstore.yml) workflow run in
+**`mode: submit`**: it sends the price as an explicit tier (`Tier1017` = $1.49) and refuses to commit
+unless that reads back, because an API commit without one republished the app at $0 (AGENT.md
+rule 10). [`tool/msstore_price.py`](../tool/msstore_price.py) checks the live price after publish. The submission credential and the workflow itself live in
 [`dev/msstore-ci-setup.md`](msstore-ci-setup.md); §2 here is the account, the package identity, and
 what a human still owns per release.
 
