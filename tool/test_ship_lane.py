@@ -77,6 +77,11 @@ class DecideAppleTest(unittest.TestCase):
         for t in ("REJECTED", "METADATA_REJECTED", "INVALID_BINARY"):
             self.assertEqual(self.d(t), "stop", t)
 
+    def test_half_sent_submission_stops(self) -> None:
+        # A failed submit leaves the version READY_FOR_REVIEW; a rerun must not
+        # read that as submitted.
+        self.assertEqual(self.d("READY_FOR_REVIEW"), "stop")
+
     def test_unknown_state_stops(self) -> None:
         self.assertEqual(self.d("SOMETHING_NEW"), "stop")
 

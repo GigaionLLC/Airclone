@@ -57,9 +57,14 @@ permissions:
   actions: write   # dispatch and watch the store lanes
   contents: read
 
-# One ship at a time: two would race for the same store slots.
+# One ship per tag. Keyed by tag, not global: GitHub keeps only one PENDING run
+# per group and cancels the older, so a global group let any later Release run
+# (an rc tag, a branch) silently replace a queued hotfix's ship. Two different
+# tags shipping at once is safe, if noisy: Apple stops on the older version
+# still in review, Microsoft refuses while a submission is pending, and
+# ship_lane.py refuses to guess between two runs of one lane.
 concurrency:
-  group: ship
+  group: ship-${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.event.workflow_run.head_branch }}
   cancel-in-progress: false
 
 env:
@@ -95,6 +100,7 @@ jobs:
           ROLLOUT: ${{ inputs.play_rollout || '100' }}
           MSSTORE: ${{ github.event_name == 'workflow_run' || inputs.msstore }}
           APPLE: ${{ github.event_name == 'workflow_run' || inputs.apple }}
+          BUILT_SHA: ${{ github.event.workflow_run.head_sha }}
         run: |
           set -euo pipefail
           if ! printf '%s' "$TAG" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
@@ -103,6 +109,11 @@ jobs:
             exit 0
           fi
           sha=$(gh api "repos/$GH_REPO/commits/$TAG" --jq .sha)
+          # Ship the commit Release built, or nothing: Play and Microsoft take
+          # that run's assets, while the Apple lanes rebuild from the tag.
+          if [ "$GITHUB_EVENT_NAME" = "workflow_run" ] && [ "$sha" != "$BUILT_SHA" ]; then
+            echo "::error::$TAG now points at $sha, but Release built $BUILT_SHA. Tags never move; report it."; exit 1
+          fi
           line=$(gh api "repos/$GH_REPO/contents/app/pubspec.yaml?ref=$TAG" --jq .content \
                  | base64 -d | grep -E '^version:')
           version=$(printf '%s' "$line" | sed -E 's/^version: *([0-9.]+)\+([0-9]+).*/\1/')
@@ -161,7 +172,7 @@ jobs:
   play-upload:
     needs: [gate, promote]
     if: >-
-      always() && needs.gate.outputs.ship == 'true' && needs.gate.outputs.play == 'true' &&
+      !cancelled() && needs.gate.outputs.ship == 'true' && needs.gate.outputs.play == 'true' &&
       (needs.promote.result == 'success' || needs.promote.result == 'skipped')
     runs-on: ubuntu-latest
     timeout-minutes: 60
@@ -174,7 +185,7 @@ jobs:
 
   play-production:
     needs: [gate, play-upload]
-    if: always() && needs.play-upload.result == 'success'
+    if: !cancelled() && needs.play-upload.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -190,7 +201,7 @@ jobs:
   ms-submit:
     needs: [gate, promote]
     if: >-
-      always() && needs.gate.outputs.ship == 'true' && needs.gate.outputs.msstore == 'true' &&
+      !cancelled() && needs.gate.outputs.ship == 'true' && needs.gate.outputs.msstore == 'true' &&
       (needs.promote.result == 'success' || needs.promote.result == 'skipped')
     runs-on: ubuntu-latest
     timeout-minutes: 90
@@ -205,7 +216,7 @@ jobs:
 
   ms-verify:
     needs: [gate, ms-submit]
-    if: always() && needs.ms-submit.result == 'success'
+    if: !cancelled() && needs.ms-submit.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 350
     steps:
@@ -235,7 +246,7 @@ jobs:
   mac-upload:
     needs: [gate, promote]
     if: >-
-      always() && needs.gate.outputs.ship == 'true' && needs.gate.outputs.apple == 'true' &&
+      !cancelled() && needs.gate.outputs.ship == 'true' && needs.gate.outputs.apple == 'true' &&
       (needs.promote.result == 'success' || needs.promote.result == 'skipped')
     runs-on: ubuntu-latest
     timeout-minutes: 200
@@ -249,7 +260,7 @@ jobs:
   ios-upload:
     needs: [gate, promote]
     if: >-
-      always() && needs.gate.outputs.ship == 'true' && needs.gate.outputs.apple == 'true' &&
+      !cancelled() && needs.gate.outputs.ship == 'true' && needs.gate.outputs.apple == 'true' &&
       (needs.promote.result == 'success' || needs.promote.result == 'skipped')
     runs-on: ubuntu-latest
     timeout-minutes: 200
@@ -269,7 +280,7 @@ jobs:
   # of one workflow started at the same moment.
   apple-mac:
     needs: [gate, mac-upload]
-    if: always() && needs.mac-upload.result == 'success'
+    if: !cancelled() && needs.mac-upload.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 300
     steps:
@@ -296,7 +307,7 @@ jobs:
 
   apple-ios:
     needs: [gate, ios-upload, apple-mac]
-    if: always() && needs.ios-upload.result == 'success'
+    if: !cancelled() && needs.ios-upload.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 300
     steps:
@@ -325,7 +336,7 @@ jobs:
   # goes live: Apple closes a live version to external testing.
   ios-testflight:
     needs: [gate, ios-upload, apple-ios]
-    if: always() && needs.ios-upload.result == 'success'
+    if: !cancelled() && needs.ios-upload.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:

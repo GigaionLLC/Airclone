@@ -126,7 +126,7 @@ stops before writing when an older version is still held, the version was reject
   reached the store (the Apple job is safe to rerun: it reads the state first). Otherwise dispatch
   `gh workflow run ship.yml -f tag={TAG}`, and set `-f play=false`, `-f msstore=false` or `-f apple=false` for
   the stores already done.
-- Only one ship runs at a time. A second waits.
+- One ship per tag at a time; a second run for the same tag waits. Cancelling a ship run stops every job not yet started.
 
 **Known trap:** the TestFlight job runs after Add for Review. If App Review approves the version before Beta
 App Review approves the beta, the App Store version goes live first, and Apple closes it to external testing.

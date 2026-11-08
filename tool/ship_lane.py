@@ -44,7 +44,7 @@ FIND_TRIES = 16  # about 4 minutes for the run to show up
 # Apple states, by what they mean for a version the pipeline is shipping.
 # Submitted (or further along): nothing left for the pipeline to do.
 SUBMITTED = {
-    "WAITING_FOR_REVIEW", "IN_REVIEW", "READY_FOR_REVIEW", "ACCEPTED",
+    "WAITING_FOR_REVIEW", "IN_REVIEW", "ACCEPTED",
     "PENDING_DEVELOPER_RELEASE", "PENDING_APPLE_RELEASE",
     "PROCESSING_FOR_APP_STORE", "READY_FOR_SALE", "READY_FOR_DISTRIBUTION",
 }
@@ -70,6 +70,12 @@ def parse_state(line: str) -> dict[str, str]:
 
 def decide_apple(target: str, blocking: int, build: str) -> tuple[str, str]:
     """(action, why). action is one of wait, create, update, done, stop."""
+    if target == "READY_FOR_REVIEW":
+        # In a review submission that was never sent: the submit died between
+        # adding the item and setting submitted=true. Not done, and not
+        # editable either, so asc-submit-review cannot finish it.
+        return "stop", ("READY_FOR_REVIEW: added to a review submission that was "
+                        "never sent. Jake sends or removes it in App Store Connect.")
     if target in SUBMITTED:
         return "done", "already %s" % target
     if target in REJECTED:
