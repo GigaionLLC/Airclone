@@ -181,8 +181,8 @@ Read the log:
 `gh workflow run submit-msstore.yml -f tag={TAG} -f mode=submit -f delete_pending=<false|true>`
 
 - **Success:** the log shows `release notes for en-us set …`, `pricing preserved …`, `priceId on the new submission: Tier1017`, `uploaded`, `committed submission …` and `Submitted. Status …`. Do not copy the submission ID into any public place.
-- **Verify:** `mode=dry-run` reports the pending submission in `PreProcessing` or `Certification`. Certification takes 1–3 days; it then publishes by itself.
-- **After it publishes:** run the price check in [msstore-ci-setup.md](msstore-ci-setup.md) "Check the live price". The purchase price must read `1.49 USD`. **If it reads 0, tell Jake at once** (he fixes the price in Partner Center).
+- **Verify:** `mode=dry-run` reports the pending submission in `PreProcessing` or `Certification`, with `priceId = Tier1017`. It then publishes by itself; the first API submit (v0.31.1, 2026-11-08) went from commit to live in about 25 minutes, but allow up to 3 days.
+- **After it publishes:** `python tool/msstore_price.py --version {VERSION}` (public catalog, no credentials). It must print `{VERSION}: live` and `price OK` (1.49 USD). Until the version is live, re-check every hour or so. **Exit code 1 (`PRICE WRONG`) means tell Jake at once** (he fixes the price in Partner Center).
 - **STOP if:** the tool refuses (`Refusing to commit`, a pricing warning, `priceId read back as …`). It deleted nothing and committed nothing, but a draft may exist: dry-run, then report word for word, minus the IDs. Also stop if it fails after `created submission`; do not re-run.
 - **Store-side object:** **yes** (a submission in certification).
 
@@ -302,7 +302,7 @@ Release {TAG} ({VERSION}+{BUILD}) — report
 | 4 promote check | | | |
 | 5 promote | | | |
 | 6 Play open testing | | beta={BUILD} | |
-| 8–9 MS submit | | committed, delete_pending=<x>; live price after publish | |
+| 8–9 MS submit | | committed, delete_pending=<x>; `msstore_price.py` after publish: version live, price OK | |
 | 10 mas / ios upload | | | |
 | 11 builds VALID | | mac <y/n>, ios <y/n> | |
 | 12 create/apply/audit | | No gaps <y/n> | |

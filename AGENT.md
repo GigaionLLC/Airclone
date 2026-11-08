@@ -136,9 +136,9 @@ Store shapes, contexts, and data models.
       back, markets/trial/sales match the live submission, and the live product is on the advanced
       model. **Do not loosen those checks**, and change `BASE_PRICE_TIER` only with the price itself
       (Jake only).
-    - After each automatic publish, check the public catalog still sells at $1.49
-      ([`dev/msstore-ci-setup.md`](dev/msstore-ci-setup.md) "Check the live price"). If it reads $0,
-      tell Jake at once and fix the price in Partner Center.
+    - After each automatic publish, run [`tool/msstore_price.py`](tool/msstore_price.py) (public
+      catalog, no credentials). It exits 1 unless the live price is $1.49: then tell Jake at once and
+      fix the price in Partner Center. First run, v0.31.1 (2026-11-08): $1.49, live in about 25 minutes.
     - `mode: stage` + **Submit for certification** in Partner Center stays available as the manual route.
 11. **Partner Center is the authority on pricing and availability — never the API JSON, never a
     module's status label.** When touching a Store submission:

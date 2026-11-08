@@ -201,9 +201,8 @@ draft.
   and keywords persist across versions; the release notes start empty every time
   and never carry forward — a rename does not carry them either. They come from
   `docs/store/store-release-notes.txt`, the same line Play gets, so there is
-  nothing to write per release. The Microsoft Store is the deliberate exception:
-  `tool/store_submit.py` clones its notes forward from the last published
-  submission, so those are pasted by hand in Partner Center. Push them with
+  nothing to write per release. The Microsoft Store gets the same file:
+  `tool/store_submit.py` sets it as the English "What's new". Push them with
   `asc_listing.py --version <the version being submitted>`: unpinned, the tool
   takes the first version the API returns, and iOS lists 0.7.5 **and** 0.6.8 at
   once, so every earlier run was ordering luck. `asc-submit-review.yml` pins it

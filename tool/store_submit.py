@@ -467,6 +467,7 @@ def main() -> int:
     # seconds, so a broken package does not look like a success in the log.
     deadline = time.time() + args.poll_seconds
     status = "CommitStarted"
+    warned: set[str] = set()
     while time.time() < deadline:
         time.sleep(15)
         st = check(
@@ -485,7 +486,11 @@ def main() -> int:
                 print(f"::error::{e.get('code')}: {e.get('details')}", file=sys.stderr)
             fail(f"submission {sub_id} was rejected before certification.")
         for w in details.get("warnings") or []:
-            print(f"::warning::{w.get('code')}: {w.get('details')}")
+            # The same warnings come back on every poll (SalesUnsupportedWarning
+            # on every commit since sales left the API); print each once.
+            if w.get("code") not in warned:
+                warned.add(w.get("code"))
+                print(f"::warning::{w.get('code')}: {w.get('details')}")
         if status not in {"CommitStarted"}:
             break
 

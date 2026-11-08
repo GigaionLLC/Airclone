@@ -77,7 +77,7 @@ with `makeappx unpack` / `pack` instead of rebuilt — see
 > | back as received (`Base`) | `'Base' is not a valid PriceId for base price` |
 > | whole `pricing` object omitted | `Pricing data was not provided in the request` |
 > | `priceId` dropped | accepted, reads back `Free`. **PUT only** (a staged draft): harmless, Partner Center still showed $1.49 across 240 markets. **Commit: published at $0** |
-> | explicit tier **`Tier1017`** ($1.49) | what [`tool/store_submit.py`](../tool/store_submit.py) sends since 2026-11-08 |
+> | explicit tier **`Tier1017`** ($1.49) | **works.** What [`tool/store_submit.py`](../tool/store_submit.py) sends since 2026-11-08. v0.31.1: read back `Tier1017`, Partner Center showed $1.49 across 240 markets, published at **1.49 USD** about 25 minutes after the commit |
 >
 > Advanced-pricing tiers are `Tier1012` ($0.99) up in $0.10 steps to `Tier1102` ($9.99) (Microsoft's
 > Pricing-resource docs; the `msstore` CLI's `--priceId` option, its PR #175 of 2026-09-21, handles
@@ -94,16 +94,14 @@ with `makeappx unpack` / `pack` instead of rebuilt — see
 > After every automatic publish, read the public catalog (no credentials):
 >
 > ```bash
-> curl -s "https://displaycatalog.mp.microsoft.com/v7.0/products?bigIds=9PJ6LRTS2B8X&market=US&languages=en-US" \
->   | python3 -c 'import json,sys
-> for p in json.load(sys.stdin)["Products"]:
->   for d in p["DisplaySkuAvailabilities"]:
->     for a in d["Availabilities"]:
->       if "Purchase" in a.get("Actions", []): print(a["OrderManagementData"]["Price"])'
+> python tool/msstore_price.py --version 0.31.1
 > ```
 >
-> It must show `ListPrice` 1.49 USD (2026-11-08: 1.49, plus a trial SKU). **0 means the app is free:
-> tell Jake at once**; the price is fixed in Partner Center → Pricing and availability.
+> It prints the live purchase price of the non-trial SKU and the live package version, and exits 0
+> only at 1.49 USD (2026-11-08: `1.49 USD`, `0.31.1.0`). The catalog always lists a trial SKU and
+> License/Redeem entries at 0.0, even with no free trial configured; the script ignores those.
+> **Exit 1 (`PRICE WRONG`) means the app reads free or mispriced: tell Jake at once**; the price is
+> fixed in Partner Center → Pricing and availability.
 >
 > `STORE_SELLER_ID` is not read by `store_submit.py` (the REST API takes no seller id) but is kept
 > set, since it costs nothing and Partner Center tooling asks for it.
