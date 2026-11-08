@@ -185,7 +185,7 @@ jobs:
 
   play-production:
     needs: [gate, play-upload]
-    if: !cancelled() && needs.play-upload.result == 'success'
+    if: ${{ !cancelled() && needs.play-upload.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -216,7 +216,7 @@ jobs:
 
   ms-verify:
     needs: [gate, ms-submit]
-    if: !cancelled() && needs.ms-submit.result == 'success'
+    if: ${{ !cancelled() && needs.ms-submit.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 350
     steps:
@@ -280,7 +280,7 @@ jobs:
   # of one workflow started at the same moment.
   apple-mac:
     needs: [gate, mac-upload]
-    if: !cancelled() && needs.mac-upload.result == 'success'
+    if: ${{ !cancelled() && needs.mac-upload.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 300
     steps:
@@ -307,7 +307,7 @@ jobs:
 
   apple-ios:
     needs: [gate, ios-upload, apple-mac]
-    if: !cancelled() && needs.ios-upload.result == 'success'
+    if: ${{ !cancelled() && needs.ios-upload.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 300
     steps:
@@ -336,7 +336,7 @@ jobs:
   # goes live: Apple closes a live version to external testing.
   ios-testflight:
     needs: [gate, ios-upload, apple-ios]
-    if: !cancelled() && needs.ios-upload.result == 'success'
+    if: ${{ !cancelled() && needs.ios-upload.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
