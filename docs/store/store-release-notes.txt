@@ -1,3 +1,3 @@
-Updates the rclone engine to 1.76.0: security fixes, safer renames, and the update OneDrive for Business and SharePoint accounts need before April 2027. Adds Dosya and Infomaniak kDrive.
+Maintenance release: nothing changes in how the app works. Includes the rclone 1.76.0 engine with its security fixes, safer renames, and the update OneDrive for Business and SharePoint accounts need before April 2027.
 
 Full release notes: https://github.com/GigaionLLC/Airclone/releases

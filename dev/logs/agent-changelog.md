@@ -13,6 +13,20 @@ happened": nothing was logged between 2026-07-02 and 2026-07-15, or between 2026
      it is: it used to say ABOVE, which pushed it further down the file with every entry until
      it sat hundreds of lines under the newest one and pointed writers at the wrong place. -->
 
+## [2026-11-08] - ship.yml, and v0.31.2 to test it
+
+**Agent:** Claude Code (Claude Opus 5.5)
+**Files Modified:** `.github/workflows/ship.yml` (new), `tool/ship_lane.py` and its tests (new),
+`tool/asc_build.py` (`--version-state`), `.github/workflows/{ci,release,asc-release,asc-submit-review}.yml`,
+the store release playbook and Apple/dev docs (#70); then `app/pubspec.yaml` (0.31.2+167),
+`dev/releases/v0.31.2.md`, `docs/store/store-release-notes.txt`, this changelog.
+**Database/API Changes:** None.
+**Summary:** Jake asked that a release, once tagged, go to every store by itself. A final tag's green
+Release run now starts ship.yml, which dispatches the existing lanes in playbook order: Play open
+testing then production, Microsoft submit and a live-price watch, and Apple upload, then Add for
+Review with releaseType AFTER_APPROVAL, then TestFlight. v0.31.2 is a no-change release, which Jake
+approved, to test the path end to end.
+
 ## [2026-11-06] - rclone 1.76.0
 
 **Agent:** Claude Code (Claude Opus 5.5)
