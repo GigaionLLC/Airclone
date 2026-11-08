@@ -21,7 +21,7 @@ on:
         required: true
         type: string
       mode:
-        description: 'dry-run = look only · stage = upload but leave it a draft for a human to submit · submit = full automatic submission'
+        description: 'dry-run = look only · stage = upload but leave it a draft for a human to submit · submit = full automatic submission at the explicit price tier'
         required: true
         default: 'dry-run'
         type: choice

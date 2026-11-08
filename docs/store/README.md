@@ -26,16 +26,13 @@ This is also the reason the Microsoft Store product is an **MSIX** and not an un
 a *packaged* product has Store commerce, so the Store collects the fee and **no payment code ever
 enters this open-source app**.
 
-Because the fee is the entire point of the store channel, **the Microsoft submission is stage-only**:
-run [`submit-msstore.yml`](../../.github/workflows/submit-msstore.yml) with `mode: stage`, then press
-**Submit for certification** in Partner Center, which re-derives pricing from the pricing module.
-**Never `mode: submit` / `--commit`.** Committing through the Store REST API applies the submission's
-own pricing block, and for a product on the advanced pricing model every payload that API will accept
-reads back as *Free* — which is how v0.6.8 published at **$0** against a live $1.49 on 2026-08-17, and
-once a submission reaches *Publishing* it cannot be stopped by anyone. [`tool/store_submit.py`](../../tool/store_submit.py)
-now refuses `--commit` for a product on that pricing model; **do not remove that guard to unblock a
-release.** Full account: [`AGENT.md`](../../AGENT.md) rule 10 and
-[`dev/msstore-ci-setup.md`](../../dev/msstore-ci-setup.md) §0.
+Because the fee is the entire point of the store channel, **the Microsoft submission sends the price
+explicitly**: [`submit-msstore.yml`](../../.github/workflows/submit-msstore.yml) `mode: submit` runs
+[`tool/store_submit.py`](../../tool/store_submit.py), which names the price tier (`Tier1017` = $1.49)
+and refuses to commit unless it reads back. Committing with the price left out is how v0.6.8
+published at **$0** against a live $1.49 on 2026-08-17, and once a submission reaches *Publishing* it
+cannot be stopped by anyone; **do not loosen those checks to unblock a release.** Full account:
+[`AGENT.md`](../../AGENT.md) rule 10 and [`dev/msstore-ci-setup.md`](../../dev/msstore-ci-setup.md) §0.
 
 ## 🧭 Platforms at a glance
 
@@ -320,9 +317,9 @@ than a read of the copy.
       refused on 2026-09-06 with *"English (U.S.) — What's New in This Version — This field is
       required"*, minutes after a dry run printed "No gaps"); `asc-submit-review.yml` now sends it from
       `store-release-notes.txt` before auditing. Play reads `distribution/whatsnew/whatsnew-en-US`,
-      which the release job writes from the same file. **Microsoft is the exception:**
-      `tool/store_submit.py` clones the previous submission, so its "What's new" silently carries the
-      *last* release's text forward and must be edited by hand in Partner Center.
+      which the release job writes from the same file. Microsoft: `tool/store_submit.py` clones the
+      previous submission and then sets the English "What's new" from the same file (it refuses to
+      commit if the file is missing).
 - [ ] **Microsoft Store only —** all four MSIX identity fields match Partner Center → Product
       management → Product identity **as a set** (first mismatch masks the rest); the first **two
       lines** of the Description still disclose the bundled Visual C++ runtime (policy 10.2.4.1) and

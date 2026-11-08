@@ -416,10 +416,10 @@ Submission is a **manual** workflow, not a tag side-effect:
 [`submit-msstore.yml`](../.github/workflows/submit-msstore.yml) →
 [`tool/store_submit.py`](../tool/store_submit.py), driving the Store submission **REST API**. It
 downloads the tag's `airclone.msix`, checks its identity, creates a submission cloned from the last
-published one, uploads the package — and in `mode: stage` stops there, leaving an editable draft for
-a human to submit in Partner Center. Store review is slow and a bad submission burns a cycle, so
-deciding a build is worth one is a human call. Setup, the three modes and the pricing trap that
-makes `stage` the only supported route: [`dev/msstore-ci-setup.md`](msstore-ci-setup.md).
+published one, uploads the package, sets the English "What's new" and the price tier, and in
+`mode: submit` commits it to certification (`mode: stage` stops before that, leaving a draft for a
+human). Setup, the three modes and the pricing trap behind the explicit tier:
+[`dev/msstore-ci-setup.md`](msstore-ci-setup.md).
 
 > **The `msstore` CLI is a dead end for this product**, if you ever go looking for it. The Microsoft
 > Store Developer CLI **cannot update a paid app** — proven on 2026-08-17: it authenticated, found
