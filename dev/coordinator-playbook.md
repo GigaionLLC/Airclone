@@ -7,7 +7,8 @@ merged pull request, and watch a release land. Written so a cheaper model can do
 doing the daily check, or about to merge something.
 
 Releases have their own playbook: [store-release-playbook.md](store-release-playbook.md). The weekly rclone
-update has [rclone-bump-playbook.md](rclone-bump-playbook.md). Repo rules are in [AGENT.md](../AGENT.md); when
+update has [rclone-bump-playbook.md](rclone-bump-playbook.md). Code changes: [code-change-guide.md](code-change-guide.md).
+Red CI: [ci-triage-playbook.md](ci-triage-playbook.md). Repo rules are in [AGENT.md](../AGENT.md); when
 this page and AGENT.md disagree, AGENT.md wins. Stop and report the difference.
 
 ---
@@ -72,7 +73,7 @@ Retry-safe: all read-only.
 | 2.2 | Discussions | `gh api graphql -f query='{repository(owner:"GigaionLLC",name:"Airclone"){discussions(first:5,orderBy:{field:UPDATED_AT,direction:DESC}){nodes{number title updatedAt comments{totalCount}}}}}'` | A new one or a new comment: read it on GitHub, draft a reply if needed, ask Jake |
 | 2.3 | Play reviews | `gh run list --workflow=store-feedback.yml --limit 1`, then `gh run view <id> --log` | Runs daily 08:00 UTC. A new review that reports a bug becomes an issue-style task |
 | 2.4 | Dependabot / rclone-bump PRs | `gh pr list --author app/dependabot` · `gh pr list --search "pin rclone in:title"` | Step 6, or the [rclone-bump playbook](rclone-bump-playbook.md) |
-| 2.5 | CI warnings on main | open the newest green `CI` run's summary | A warning is work (AGENT.md rule 8) |
+| 2.5 | CI warnings on main | open the newest green `CI` run's summary | A warning is work (AGENT.md rule 8); [ci-triage-playbook.md](ci-triage-playbook.md) |
 | 2.6 | Post-release watch, if a release is not fully live | [store playbook phase 17](store-release-playbook.md#17-post-release-watch-agent) | Note the result in the state file |
 
 Retry-safe: all read-only. Write what you found into the state file before you start fixing anything.
@@ -85,6 +86,7 @@ Retry-safe: all read-only. Write what you found into the state file before you s
 3. **Change it.** Follow AGENT.md rules. Tool output ASCII only (rule 12).
 4. **Local checks.** `python3 tool/check-docs.py` and, if workflows changed, `python3 tool/check-workflows.py`.
    For tool scripts: `python3 -m unittest discover -s tool -p 'test_*.py'`. Success: each exits 0.
+   App or package code: follow the [code-change guide](code-change-guide.md) (tests, self-review checklist).
    Flutter is not on ai-dev1; Dart tests run in CI.
 5. **Wrap-up in the same PR** (AGENT.md wrap-up protocol): an entry in `dev/logs/agent-changelog.md`, `wiki/`
    and `docs/guide/` synced, `docs/guide/platforms.md` if a platform's features changed (rule 20).
@@ -94,8 +96,10 @@ Retry-safe: all read-only. Write what you found into the state file before you s
    Body: what changed, what was verified and how, what was **not** verified. It ends with the generated-by line.
 8. **Wait for checks.** `gh pr checks <n> --watch --interval 90`. Needed: `analyze-test`, `docs`, `rclone-pin`,
    `cla`, `Airclone CLA`, the three `package-airclone-rc` jobs. Red: read the log, fix, push again. Never merge red.
-9. **Carve-out?** If the diff touches anything in the carve-out list, a DeepSeek coordinator stops here and
-   asks the advisor for a review (brief: PR number, the files, what to check). Merge only after "no high findings".
+9. **Carve-out?** Run `python3 tool/carveout_paths.py --base origin/main` (an outside PR: `gh pr diff <n> > /tmp/pr.diff`
+   then `--diff-file /tmp/pr.diff`). Exit 0: go on. Exit 3: SECURITY or SIGNING stops here for a written review
+   (brief: PR number, the files, what to check); merge only after "no high findings". No reviewer available: it waits,
+   note it as an open item. MONEY: Jake only. The tool is a floor, not a review: the carve-out list above still applies.
 10. **Merge.** `gh pr merge <n> --squash --delete-branch`. Success: `gh pr view <n> --json state` says `MERGED`.
 11. **Clean up.** `git -C ~/git/Airclone worktree remove ../Airclone-wt-<slug>`. If it says "not a working tree",
     `--delete-branch` already removed it: check `git -C ~/git/Airclone worktree list`. Then

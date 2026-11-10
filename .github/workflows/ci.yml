@@ -204,6 +204,12 @@ jobs:
         # started and whether an Apple version is created, updated, submitted
         # or left for Jake (ship.yml).
         run: python tool/test_ship_lane.py
+      - name: Test the carve-out check
+        working-directory: .
+        # tool/carveout_paths.py tells the coordinator which changes may not
+        # merge on CI alone (security, signing, prices). Its worst failure is
+        # silent: a change to the rc allowlist reads "none" and merges.
+        run: python tool/test_carveout_paths.py
       - name: Check the workflow files
         working-directory: .
         # GitHub's parser is the only authority on a workflow file and it has no

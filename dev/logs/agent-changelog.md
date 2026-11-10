@@ -13,6 +13,20 @@ happened": nothing was logged between 2026-07-02 and 2026-07-15, or between 2026
      it is: it used to say ABOVE, which pushed it further down the file with every entry until
      it sat hundreds of lines under the newest one and pointed writers at the wrong place. -->
 
+## [2026-11-09] - Code-change guide, CI triage playbook, carveout_paths.py
+
+**Agent:** Claude Code (Claude Opus 5.5)
+**Files Modified:** `dev/code-change-guide.md` (new), `dev/ci-triage-playbook.md` (new), `tool/carveout_paths.py`
+and `tool/test_carveout_paths.py` (new), `.github/workflows/ci.yml` (runs the new tests in `docs`),
+`dev/coordinator-playbook.md`, `dev/README.md`, `AGENT.md`, this changelog.
+**Database/API Changes:** None
+**Summary:** More guides for a less experienced agent. The code-change guide covers where code lives, tests, local
+checks, a self-review checklist and a PR body template. The CI triage playbook covers what each required check runs,
+what its failures mean, the expected reds and the one-rerun rule. `tool/carveout_paths.py` lists the security, signing
+and money areas a branch or PR diff touches (exit 3 = needs a review or Jake), and merge step 3.9 now runs it. Tried
+on past diffs: it flags PR #65 (console denylist, web UI guards) and the ship.yml change (secrets), and leaves docs PRs
+clean.
+
 ## [2026-11-09] - Apple handoff: 0.31.2 is live
 
 **Agent:** Claude Code (Claude Opus 5.5)
