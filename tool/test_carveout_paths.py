@@ -69,6 +69,18 @@ class FindingsTest(unittest.TestCase):
         files = cp.parse_diff(diff(".github/workflows/ci.yml", "+ok"))
         self.assertEqual(files[".github/workflows/ci.yml"], ["ok"])
 
+    def test_workflow_comment_is_not_content(self) -> None:
+        self.assertEqual(self.cats(diff(".github/workflows/ci.yml",
+                                        "+        # checks prices and secrets.X")), set())
+
+    def test_removed_price_step_still_counts(self) -> None:
+        self.assertIn("MONEY", self.cats(diff(".github/workflows/ci.yml",
+                                              "-        run: python tool/check_price.py")))
+
+    def test_the_checker_itself_is_security(self) -> None:
+        self.assertEqual(self.cats(diff("tool/carveout_paths.py", '+    ("MONEY", "x"),')),
+                         {"SECURITY"})
+
     def test_several_files(self) -> None:
         text = diff("dev/README.md", "+a") + diff("tool/msstore_price.py", "+b")
         found = cp.findings(cp.parse_diff(text))

@@ -53,6 +53,9 @@ PATHS: list[tuple[str, str]] = [
     ("SECURITY", "packages/airclone_rc/lib/src/log_redaction.dart"),
     ("SECURITY", "packages/airclone_rc/lib/src/librclone_object_server.dart"),
     ("SECURITY", "tool/cla_check.py"),
+    # This checker and its tests: weakening them weakens every merge after.
+    ("SECURITY", "tool/carveout_paths.py"),
+    ("SECURITY", "tool/test_carveout_paths.py"),
     ("SECURITY", ".github/workflows/cla.yml"),
     ("SECURITY", "docker/"),
     ("SIGNING", "dev/secrets/"),
@@ -95,6 +98,16 @@ def parse_diff(text: str) -> dict[str, list[str]]:
     return files
 
 
+# Files whose own text is the patterns: they are covered by PATHS instead.
+LINE_RULE_EXEMPT = {"tool/carveout_paths.py", "tool/test_carveout_paths.py"}
+
+
+def _is_comment(path: str, line: str) -> bool:
+    """A YAML comment line in a workflow. A removed price check still shows up
+    as its original (non-comment) line, so skipping comments loses nothing."""
+    return path.startswith(".github/workflows/") and line.lstrip().startswith("#")
+
+
 def _matches(path: str, rule: str) -> bool:
     return path.startswith(rule) if rule.endswith("/") else path == rule
 
@@ -107,7 +120,9 @@ def findings(files: dict[str, list[str]]) -> list[tuple[str, str, str]]:
             if _matches(path, rule):
                 out.add((cat, path, "path"))
         for cat, prefix, pattern in LINE_RULES:
-            if path.startswith(prefix) and any(pattern.search(l) for l in lines):
+            if path in LINE_RULE_EXEMPT or not path.startswith(prefix):
+                continue
+            if any(pattern.search(l) for l in lines if not _is_comment(path, l)):
                 out.add((cat, path, "changed line matches " + cat.lower() + " pattern"))
     return sorted(out)
 
