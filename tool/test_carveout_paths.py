@@ -81,6 +81,14 @@ class FindingsTest(unittest.TestCase):
         self.assertEqual(self.cats(diff("tool/carveout_paths.py", '+    ("MONEY", "x"),')),
                          {"SECURITY"})
 
+    def test_quoted_path_fails_closed(self) -> None:
+        text = ('diff --git "a/app/lib/src/webui/\\303\\251.dart" "b/app/lib/src/webui/\\303\\251.dart"\n'
+                "+x\n")
+        self.assertEqual(self.cats(text), {"SECURITY"})
+
+    def test_path_with_space_fails_closed(self) -> None:
+        self.assertEqual(self.cats("diff --git a/dev/a b.md b/dev/a b.md\n+x\n"), {"SECURITY"})
+
     def test_several_files(self) -> None:
         text = diff("dev/README.md", "+a") + diff("tool/msstore_price.py", "+b")
         found = cp.findings(cp.parse_diff(text))

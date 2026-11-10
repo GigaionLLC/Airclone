@@ -85,18 +85,25 @@ def parse_diff(text: str) -> dict[str, list[str]]:
     current = None
     for line in text.splitlines():
         if line.startswith("diff --git "):
-            m = re.match(r"diff --git a/(.+?) b/(.+)$", line)
-            current = m.group(2) if m else None
-            if current is not None:
+            m = re.match(r"diff --git a/(\S+) b/(\S+)$", line)
+            if m:
+                current = m.group(2)
                 files.setdefault(current, [])
-                if m and m.group(1) != m.group(2):  # a rename touches both paths
+                if m.group(1) != m.group(2):  # a rename touches both paths
                     files.setdefault(m.group(1), [])
+            else:
+                # Quoted (non-ASCII) or spaced paths: fail closed, never skip.
+                current = UNPARSED + line[len("diff --git "):]
+                files.setdefault(current, [])
         elif current is None or line.startswith(("+++", "---")):
             continue
         elif line.startswith(("+", "-")):
             files[current].append(line[1:])
     return files
 
+
+# Prefix for a file header the parser could not split. Always a finding.
+UNPARSED = "?unparsed: "
 
 # Files whose own text is the patterns: they are covered by PATHS instead.
 LINE_RULE_EXEMPT = {"tool/carveout_paths.py", "tool/test_carveout_paths.py"}
@@ -116,6 +123,9 @@ def findings(files: dict[str, list[str]]) -> list[tuple[str, str, str]]:
     """Sorted, de-duplicated (category, path, why)."""
     out: set[tuple[str, str, str]] = set()
     for path, lines in files.items():
+        if path.startswith(UNPARSED):
+            out.add(("SECURITY", path, "path not parsed: check it by hand"))
+            continue
         for cat, rule in PATHS:
             if _matches(path, rule):
                 out.add((cat, path, "path"))
@@ -125,6 +135,11 @@ def findings(files: dict[str, list[str]]) -> list[tuple[str, str, str]]:
             if any(pattern.search(l) for l in lines if not _is_comment(path, l)):
                 out.add((cat, path, "changed line matches " + cat.lower() + " pattern"))
     return sorted(out)
+
+
+def say(text: str) -> None:
+    """print, ASCII only: a path from a PR diff may hold any character (rule 12)."""
+    print(text.encode("ascii", "backslashreplace").decode("ascii"))
 
 
 def git_diff(base: str) -> str:
@@ -155,18 +170,18 @@ def main(argv: list[str]) -> int:
         else:
             text = git_diff(base)
     except (OSError, RuntimeError) as e:
-        print("error: %s" % e)
+        say("error: %s" % e)
         return 2
     files = parse_diff(text)
     found = findings(files)
-    print("files changed: %d" % len(files))
+    say("files changed: %d" % len(files))
     if not found:
-        print("carve-outs: none (this is not a review; see the docstring)")
+        say("carve-outs: none (this is not a review; see the docstring)")
         return 0
     for cat, path, why in found:
-        print("%-8s %s  (%s)" % (cat, path, why))
+        say("%-8s %s  (%s)" % (cat, path, why))
     cats = sorted({c for c, _, _ in found})
-    print("STOP: carve-out(s) %s. Follow dev/coordinator-playbook.md step 3.9 before merging."
+    say("STOP: carve-out(s) %s. Follow dev/coordinator-playbook.md step 3.9 before merging."
           % ", ".join(cats))
     return 3
 
