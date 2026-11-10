@@ -13,6 +13,14 @@ happened": nothing was logged between 2026-07-02 and 2026-07-15, or between 2026
      it is: it used to say ABOVE, which pushed it further down the file with every entry until
      it sat hundreds of lines under the newest one and pointed writers at the wrong place. -->
 
+## [2026-11-09] - Apple handoff: 0.31.2 is live
+
+**Agent:** Claude Code (Claude Opus 5.5)
+**Files Modified:** `dev/apple-handoff.md`, this changelog.
+**Database/API Changes:** None
+**Summary:** Apple approved 0.31.2 build 167 on iOS and macOS, both READY_FOR_SALE (read back by `asc-release.yml`
+dry runs), and Beta App Review approved build 167 for the public TestFlight group. The RESUME block now says so.
+
 ## [2026-11-08] - Playbooks for a DeepSeek coordinator, ship_watch.py
 
 **Agent:** Claude Code (Claude Opus 5.5)
